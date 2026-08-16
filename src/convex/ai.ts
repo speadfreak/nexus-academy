@@ -88,6 +88,7 @@ export const insertConversation = internalMutation({
     userId: v.id("users"),
     title: v.string(),
     subjectId: v.optional(v.id("subjects")),
+    contentId: v.optional(v.id("contentItems")),
     createdAt: v.number(),
     updatedAt: v.number(),
   },
@@ -125,6 +126,7 @@ export const patchConversation = internalMutation({
 async function buildSystemPrompt(
   ctx: ActionCtx,
   subjectId?: Id<"subjects">,
+  contentId?: Id<"contentItems">,
 ): Promise<string> {
   const lines = [
     "You are the Nexus Academy AI tutor — a precise, encouraging study companion " +
@@ -181,6 +183,24 @@ async function buildSystemPrompt(
       "would reinforce the answer (e.g. a past paper or worksheet).",
   );
 
+  // Content grounding — the conversation is attached to a specific document.
+  if (contentId) {
+    const content = await ctx.runQuery(internal.content.getContentItemById, {
+      contentId,
+    });
+    if (content) {
+      lines.push(
+        "",
+        "The student is discussing a specific document from the library:",
+        `- Title: ${content.title}`,
+        `- Type: ${content.contentType}${content.examYear ? ` · Year: ${content.examYear}` : ""}`,
+        `- Grade: ${content.grade}`,
+        "Reference this document directly in your answers where relevant (its topics, " +
+          "structure, or the questions it contains). This is the student's frame of reference.",
+      );
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -193,6 +213,7 @@ export const sendMessage = action({
     conversationId: v.optional(v.id("conversations")),
     content: v.string(),
     subjectId: v.optional(v.id("subjects")),
+    contentId: v.optional(v.id("contentItems")),
   },
   handler: async (ctx, args): Promise<{ reply: string; conversationId: Id<"conversations"> }> => {
     const userId = await getAuthUserId(ctx);
@@ -227,9 +248,20 @@ export const sendMessage = action({
       });
       isFirstExchange = first === null;
     } else {
-      if (args.subjectId) {
+      let subjectId = args.subjectId;
+      if (args.contentId) {
+        const content = await ctx.runQuery(internal.content.getContentItemById, {
+          contentId: args.contentId,
+        });
+        if (!content) {
+          throw new ConvexError({ message: "Content item not found.", code: "invalid" });
+        }
+        // Scope to the document's subject unless the client already scoped one.
+        subjectId = subjectId ?? content.subjectId;
+      }
+      if (subjectId) {
         const subject = await ctx.runQuery(internal.ai.getSubjectById, {
-          subjectId: args.subjectId,
+          subjectId,
         });
         if (!subject) {
           throw new ConvexError({ message: "Subject not found.", code: "invalid" });
@@ -239,7 +271,8 @@ export const sendMessage = action({
       conversationId = await ctx.runMutation(internal.ai.insertConversation, {
         userId,
         title: "New chat",
-        subjectId: args.subjectId,
+        subjectId,
+        contentId: args.contentId,
         createdAt: now,
         updatedAt: now,
       });
@@ -278,7 +311,11 @@ export const sendMessage = action({
     const conversation = await ctx.runQuery(internal.ai.getConversationById, {
       conversationId,
     });
-    const systemPrompt = await buildSystemPrompt(ctx, conversation?.subjectId);
+    const systemPrompt = await buildSystemPrompt(
+      ctx,
+      conversation?.subjectId,
+      conversation?.contentId,
+    );
 
     let reply: string;
     try {
@@ -368,6 +405,7 @@ export const listConversations = query({
       .take(50);
 
     const subjectCache = new Map<Id<"subjects">, Doc<"subjects">>();
+    const contentCache = new Map<Id<"contentItems">, Doc<"contentItems">>();
     const result = [];
     for (const conversation of rows) {
       let subjectName: string | null = null;
@@ -379,9 +417,19 @@ export const listConversations = query({
         }
         subjectName = subject?.name ?? null;
       }
+      let contentTitle: string | null = null;
+      if (conversation.contentId) {
+        let content = contentCache.get(conversation.contentId);
+        if (!content) {
+          content = (await ctx.db.get(conversation.contentId)) ?? undefined;
+          if (content) contentCache.set(conversation.contentId, content);
+        }
+        contentTitle = content?.title ?? null;
+      }
       result.push({
         ...conversation,
         subjectName,
+        contentTitle,
       });
     }
     return result;

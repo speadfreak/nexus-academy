@@ -4,6 +4,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
+import { motion } from "framer-motion";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -16,6 +17,8 @@ const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const Tutor = lazy(() => import("./pages/Tutor.tsx"));
 const Todos = lazy(() => import("./pages/Todos.tsx"));
 const Focus = lazy(() => import("./pages/Focus.tsx"));
+const Plans = lazy(() => import("./pages/Plans.tsx"));
+const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -88,6 +91,25 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 
 
+/** Smooth fade/slide between routes — keyed by pathname, respects reduced motion. */
+function PageTransition({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const prefersReduced =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return (
+    <motion.div
+      key={location.pathname}
+      initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="min-h-screen"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -122,54 +144,72 @@ createRoot(document.getElementById("root")!).render(
         <BrowserRouter>
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route
-                path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
-              />
-              <Route
-                path="/dashboard"
-                element={
-                  <RequireAuth>
-                    <Dashboard />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/tutor"
-                element={
-                  <RequireAuth>
-                    <Tutor />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/todos"
-                element={
-                  <RequireAuth>
-                    <Todos />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/focus"
-                element={
-                  <RequireAuth>
-                    <Focus />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/admin/content-upload"
-                element={
-                  <RequireAuth>
-                    <AdminContentUpload />
-                  </RequireAuth>
-                }
-              />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <PageTransition>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route
+                  path="/auth"
+                  element={<AuthPage redirectAfterAuth="/dashboard" />}
+                />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <RequireAuth>
+                      <Dashboard />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/tutor"
+                  element={
+                    <RequireAuth>
+                      <Tutor />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/todos"
+                  element={
+                    <RequireAuth>
+                      <Todos />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/focus"
+                  element={
+                    <RequireAuth>
+                      <Focus />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/plans"
+                  element={
+                    <RequireAuth>
+                      <Plans />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/upgrade"
+                  element={
+                    <RequireAuth>
+                      <Upgrade />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/admin/content-upload"
+                  element={
+                    <RequireAuth>
+                      <AdminContentUpload />
+                    </RequireAuth>
+                  }
+                />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </PageTransition>
           </Suspense>
         </BrowserRouter>
         <Toaster />

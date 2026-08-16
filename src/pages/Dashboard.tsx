@@ -1,10 +1,12 @@
 import { api } from "@/convex/_generated/api";
-import { useAction, useQuery } from "convex/react";
-import { motion } from "framer-motion";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
+  BellRing,
   BookOpen,
   CalendarDays,
   ClipboardList,
+  Crown,
   Download,
   FileSearch,
   Flame,
@@ -18,7 +20,7 @@ import {
   Timer,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
@@ -58,6 +60,32 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Animated count-up for stat numbers — respects prefers-reduced-motion. */
+function StatNumber({ value, decimals = 0 }: { value: number; decimals?: number }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      setDisplay(value);
+      return;
+    }
+    const start = performance.now();
+    const duration = 700;
+    let raf = 0;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(value * eased);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{display.toFixed(decimals)}</>;
+}
+
 function ContentCard({
   item,
   onOpen,
@@ -88,9 +116,9 @@ function ContentCard({
             </Badge>
           )}
           <Link
-            to={`/tutor?subject=${encodeURIComponent(item.subjectSlug)}`}
-            title={`Ask the tutor about ${item.subjectName}`}
-            aria-label={`Ask the tutor about ${item.subjectName}`}
+            to={`/tutor?subject=${encodeURIComponent(item.subjectSlug)}&contentId=${item._id}`}
+            title={`Ask the tutor about ${item.title}`}
+            aria-label={`Ask the tutor about ${item.title}`}
             className="flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
           >
             <MessageSquare className="size-3.5" />
@@ -150,6 +178,20 @@ export default function Dashboard() {
   const subjects = useQuery(api.subjects.getAll);
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
+
+  // Trial/subscription state + reminder banner (single source of truth).
+  const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
+  const reminder = useQuery(api.reminders.getReminderBanner);
+  const syncReminders = useMutation(api.reminders.syncReminderSettings);
+  const dismissReminder = useMutation(api.reminders.dismissReminder);
+
+  // Make sure reminder settings exist for this user (idempotent).
+  const remindersSyncedRef = useRef(false);
+  useEffect(() => {
+    if (remindersSyncedRef.current) return;
+    remindersSyncedRef.current = true;
+    void syncReminders().catch(() => {});
+  }, [syncReminders]);
 
   const content = useQuery(api.content.getContent, {
     grade: grade ? Number(grade) : undefined,
@@ -234,6 +276,100 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* Trial status banner */}
+        <AnimatePresence>
+          {subscription && subscription.status === "trial" && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Crown className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold tracking-tight">
+                    Free trial — {subscription.trialDaysRemaining} active day
+                    {subscription.trialDaysRemaining === 1 ? "" : "s"} left
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    Days you actually study count toward the 14-day trial. Premium
+                    unlocks past exams, plans and unlimited tutoring.
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm" className="rounded-xl">
+                <Link to="/upgrade">Go premium</Link>
+              </Button>
+            </motion.div>
+          )}
+          {subscription && subscription.status !== "trial" && subscription.needsUpgrade && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="rounded-2xl border border-amber-400/25 bg-amber-400/8 px-4 py-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300">
+                    <Crown className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold tracking-tight">Your free trial has ended</p>
+                    <p className="text-xs text-muted-foreground">
+                      Premium downloads and study plans are paused until you upgrade.
+                    </p>
+                  </div>
+                </div>
+                <Button asChild size="sm" className="rounded-xl">
+                  <Link to="/upgrade">Upgrade now</Link>
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Streak reminder banner */}
+        <AnimatePresence>
+          {reminder?.show && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl border-primary/20 px-4 py-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <BellRing className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold tracking-tight">Keep your streak alive</p>
+                  <p className="text-xs text-muted-foreground">
+                    You haven&apos;t logged a study session today — a 25-minute focus
+                    session is all it takes.
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button asChild size="sm" className="rounded-xl">
+                  <Link to="/focus">Start session</Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="rounded-xl text-muted-foreground"
+                  onClick={() => void dismissReminder().catch(() => {})}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Stats row */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="glass-panel rounded-2xl p-4">
@@ -242,7 +378,9 @@ export default function Dashboard() {
               <Flame className="size-4 text-primary" />
             </div>
             <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{streak?.currentStreak ?? "0"}</span>
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
+                <StatNumber value={streak?.currentStreak ?? 0} />
+              </span>
               <span className="font-mono text-[10px] text-muted-foreground">days</span>
             </p>
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">longest {streak?.longestStreak ?? 0}</p>
@@ -253,7 +391,9 @@ export default function Dashboard() {
               <Timer className="size-4 text-primary" />
             </div>
             <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{streak?.totalHoursStudied.toFixed(1) ?? "0"}</span>
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
+                <StatNumber value={streak?.totalHoursStudied ?? 0} decimals={1} />
+              </span>
               <span className="font-mono text-[10px] text-muted-foreground">hours</span>
             </p>
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">all time</p>
@@ -264,7 +404,9 @@ export default function Dashboard() {
               <CalendarDays className="size-4 text-primary" />
             </div>
             <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{weekHours.toFixed(1)}</span>
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
+                <StatNumber value={weekHours} decimals={1} />
+              </span>
               <span className="font-mono text-[10px] text-muted-foreground">hours</span>
             </p>
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">last 7 days</p>
@@ -275,7 +417,9 @@ export default function Dashboard() {
               <Sparkles className="size-4 text-primary" />
             </div>
             <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{pendingTodoCount}</span>
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
+                <StatNumber value={pendingTodoCount} />
+              </span>
               <span className="font-mono text-[10px] text-muted-foreground">open</span>
             </p>
             <p className="mt-1 font-mono text-[10px] text-muted-foreground group-hover:text-primary">manage tasks</p>
@@ -430,8 +574,15 @@ export default function Dashboard() {
 
         {/* Content */}
         {content === undefined ? (
-          <div className="flex h-64 items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className="glass-panel rounded-2xl p-5">
+                <div className="size-11 animate-pulse rounded-xl bg-white/5" />
+                <div className="mt-4 h-4 w-3/4 animate-pulse rounded bg-white/5" />
+                <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-white/5" />
+                <div className="mt-4 h-9 w-full animate-pulse rounded-xl bg-white/5" />
+              </div>
+            ))}
           </div>
         ) : content.length === 0 ? (
           <div className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center">

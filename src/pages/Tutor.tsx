@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import {
   ArrowUp,
   Bot,
+  FileText,
   Loader2,
   MessageSquarePlus,
   MessageSquareText,
@@ -91,9 +92,17 @@ export default function Tutor() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scopeSubjectId, setScopeSubjectId] = useState("");
+  const [contentId, setContentId] = useState<string | null>(
+    searchParams.get("contentId"),
+  );
   const [input, setInput] = useState("");
   const [sending, setSending] = useState<{ content: string } | null>(null);
   const [isAwaiting, setIsAwaiting] = useState(false);
+
+  const contentMeta = useQuery(
+    api.content.getContentItemMeta,
+    contentId ? { contentId: contentId as never } : "skip",
+  );
 
   const sendMessage = useAction(api.ai.sendMessage);
   const messages = useQuery(
@@ -134,6 +143,7 @@ export default function Tutor() {
 
   const handleNewChat = () => {
     setSelectedId(null);
+    setContentId(null);
     setSending(null);
     setIsAwaiting(false);
     setInput("");
@@ -150,6 +160,7 @@ export default function Tutor() {
         conversationId: (selectedId || undefined) as never,
         content,
         subjectId: (scopeSubjectId || undefined) as never,
+        contentId: (contentId || undefined) as never,
       });
       if (!selectedId) setSelectedId(result.conversationId as string);
     } catch (error) {
@@ -161,6 +172,11 @@ export default function Tutor() {
   };
 
   const activeConversation = conversations?.find((c) => c._id === (selectedId as never));
+
+  // The document this chat is grounded in — either the active conversation's
+  // stored link, or the contentId carried in from a library card for a new chat.
+  const discussing =
+    activeConversation?.contentTitle ?? contentMeta?.title ?? null;
 
   return (
     <DashboardShell>
@@ -224,6 +240,7 @@ export default function Tutor() {
                     onClick={() => {
                       setSelectedId(conversation._id as string);
                       setSending(null);
+                      setContentId(null);
                       if (conversation.subjectId) {
                         setScopeSubjectId(conversation.subjectId as string);
                       }
@@ -271,6 +288,12 @@ export default function Tutor() {
                     ? `scope: ${activeConversation.subjectName}`
                     : "scope: general tutor"}
                 </p>
+                {discussing && (
+                  <p className="mt-0.5 flex max-w-full items-center gap-1.5 truncate rounded-md bg-primary/8 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                    <FileText className="size-3 shrink-0" />
+                    <span className="truncate">Discussing: {discussing}</span>
+                  </p>
+                )}
               </div>
             </div>
             <Badge className="hidden shrink-0 gap-1.5 bg-primary/10 font-mono text-[10px] text-primary sm:flex">
@@ -298,12 +321,14 @@ export default function Tutor() {
               onValueChange={(value) => {
                 if (value === "new") {
                   setSelectedId(null);
+                  setContentId(null);
                   setSending(null);
                   return;
                 }
                 const match = conversations?.find((c) => c._id === (value as never));
                 setSelectedId(value);
                 setSending(null);
+                setContentId(null);
                 if (match?.subjectId) setScopeSubjectId(match.subjectId as string);
               }}
             >
@@ -389,17 +414,17 @@ export default function Tutor() {
               </motion.div>
             )}
 
-            {/* Typing indicator */}
+            {/* Thinking indicator — scan-line, not a typing bubble */}
             {isAwaiting && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col items-start gap-1"
               >
-                <div className="glass-soft flex items-center gap-2 rounded-2xl rounded-bl-md px-4 py-3">
-                  <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+                <div className="glass-soft relative overflow-hidden rounded-2xl rounded-bl-md px-4 py-3">
+                  <div className="scan-line" aria-hidden="true" />
                   <span className="font-mono text-[11px] text-muted-foreground">
-                    grok-4.6 is thinking…
+                    <span className="text-primary">▌</span> grok-4.6 is thinking…
                   </span>
                 </div>
               </motion.div>

@@ -1,0 +1,388 @@
+import { api } from "@/convex/_generated/api";
+import { PREMIUM_PRICE_ETB, SUBSCRIPTION_DAYS } from "@/convex/constants";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Crown,
+  Loader2,
+  Smartphone,
+  Sparkles,
+  Wallet,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { DashboardShell } from "@/components/DashboardShell";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { clockTime, relativeTime } from "@/lib/dates";
+import { errorMessage } from "@/lib/errors";
+import { cn } from "@/lib/utils";
+
+type Provider = "telebirr" | "mpesa";
+type PaymentState =
+  | { phase: "idle" }
+  | { phase: "initiating" }
+  | { phase: "pending"; paymentId: string; provider: Provider }
+  | { phase: "completed"; paymentId: string }
+  | { phase: "failed"; message: string };
+
+const PROVIDERS: { id: Provider; name: string; note: string }[] = [
+  {
+    id: "telebirr",
+    name: "TeleBirr",
+    note: "Pay with the TeleBirr app — H5 checkout opens in a new tab.",
+  },
+  {
+    id: "mpesa",
+    name: "M-Pesa",
+    note: "STK push to your phone — approve the prompt on your device.",
+  },
+];
+
+export default function Upgrade() {
+  const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
+  const payments = useQuery(api.paymentsDb.getMyPayments);
+  const initiatePayment = useAction(api.payments.initiatePayment);
+  const verifyPayment = useAction(api.payments.verifyPayment);
+
+  const [provider, setProvider] = useState<Provider>("telebirr");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [payment, setPayment] = useState<PaymentState>({ phase: "idle" });
+  const pollTimerRef = useRef<number | null>(null);
+
+  // Poll the provider until the payment settles, then stop.
+  useEffect(() => {
+    if (payment.phase !== "pending") return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const result = await verifyPayment({ paymentId: payment.paymentId as never });
+        if (cancelled) return;
+        if (result.status === "completed") {
+          setPayment({ phase: "completed", paymentId: payment.paymentId });
+          toast.success("Payment confirmed — premium is active.");
+        } else if (result.status === "failed") {
+          setPayment({ phase: "failed", message: "The payment was not completed." });
+        } else {
+          pollTimerRef.current = window.setTimeout(poll, 5000);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(errorMessage(error, "Could not check the payment status."));
+        pollTimerRef.current = window.setTimeout(poll, 8000);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
+    };
+  }, [payment, verifyPayment]);
+
+  const handlePay = async () => {
+    if (payment.phase === "initiating" || payment.phase === "pending") return;
+    if (provider === "mpesa" && phoneNumber.trim().length < 9) {
+      toast.error("Enter your phone number in international format (e.g. 251912345678).");
+      return;
+    }
+    setPayment({ phase: "initiating" });
+    try {
+      const result = await initiatePayment({
+        provider,
+        amount: PREMIUM_PRICE_ETB,
+        phoneNumber: provider === "mpesa" ? phoneNumber.trim() : undefined,
+      });
+      if (result.checkoutUrl) {
+        window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
+      }
+      setPayment({
+        phase: "pending",
+        paymentId: result.paymentId as string,
+        provider,
+      });
+    } catch (error) {
+      setPayment({ phase: "failed", message: errorMessage(error) });
+      toast.error(errorMessage(error, "Could not start the payment."));
+    }
+  };
+
+  const activeLabel = subscription
+    ? subscription.status === "active"
+      ? `Premium · renews ${subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : ""}`
+      : subscription.status === "trial"
+        ? `Trial · ${subscription.trialDaysRemaining} active day${subscription.trialDaysRemaining === 1 ? "" : "s"} left`
+        : subscription.needsUpgrade
+          ? "Trial ended — upgrade to continue"
+          : subscription.status
+    : null;
+
+  return (
+    <DashboardShell>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <div>
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            // premium access
+          </p>
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Upgrade</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            One payment unlocks the full Nexus Academy experience for {SUBSCRIPTION_DAYS} days.
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+          {/* ------- Pricing card ------- */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-panel relative overflow-hidden rounded-2xl p-6"
+          >
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Crown className="size-5" />
+                </div>
+                <div>
+                  <p className="text-base font-extrabold tracking-tight">Nexus Premium</p>
+                  <p className="font-mono text-[10px] text-muted-foreground">
+                    plan tier: premium · {SUBSCRIPTION_DAYS}-day access
+                  </p>
+                </div>
+              </div>
+              {subscription?.premiumAccess && (
+                <Badge className="gap-1 bg-emerald-400/10 font-mono text-[10px] text-emerald-300">
+                  <CheckCircle2 className="size-3" /> active
+                </Badge>
+              )}
+            </div>
+
+            <div className="mt-6 flex items-baseline gap-1.5">
+              <span className="font-mono text-5xl font-extrabold tabular-nums text-gradient">
+                {PREMIUM_PRICE_ETB}
+              </span>
+              <span className="font-mono text-sm text-muted-foreground">ETB / {SUBSCRIPTION_DAYS} days</span>
+            </div>
+
+            <ul className="mt-6 space-y-2.5 text-sm">
+              {[
+                "Unlimited access to premium past exams and worksheets",
+                "AI study plans generated per subject (Grok-powered)",
+                "Unlimited tutor sessions with content-grounded answers",
+                "Streak reminders so you never lose your momentum",
+              ].map((feature) => (
+                <li key={feature} className="flex items-start gap-2.5 text-muted-foreground">
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+
+            {subscription && (
+              <p className="mt-6 rounded-xl border border-white/8 bg-white/4 px-3.5 py-2.5 font-mono text-[11px] text-muted-foreground">
+                {subscription.status === "active"
+                  ? `status: active · period ends ${subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : "—"}`
+                  : subscription.status === "trial"
+                    ? `status: trial · ${subscription.trialActiveDays}/${subscription.trialActiveDays + subscription.trialDaysRemaining} active days used`
+                    : subscription.needsUpgrade
+                      ? "status: expired — premium features are paused"
+                      : `status: ${subscription.status}`}
+              </p>
+            )}
+          </motion.div>
+
+          {/* ------- Checkout ------- */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.06 }}
+            className="glass-panel flex flex-col rounded-2xl p-6"
+          >
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              // checkout
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {PROVIDERS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setProvider(option.id)}
+                  disabled={payment.phase === "pending" || payment.phase === "initiating"}
+                  className={cn(
+                    "w-full cursor-pointer rounded-xl border p-3.5 text-left transition-colors disabled:opacity-60",
+                    provider === option.id
+                      ? "border-primary/45 bg-primary/8"
+                      : "border-white/10 bg-white/4 hover:border-white/20",
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm font-bold">
+                      {option.id === "telebirr" ? (
+                        <Wallet className="size-4 text-primary" />
+                      ) : (
+                        <Smartphone className="size-4 text-primary" />
+                      )}
+                      {option.name}
+                    </span>
+                    <ChevronRight
+                      className={cn(
+                        "size-4 transition-transform",
+                        provider === option.id ? "text-primary" : "text-muted-foreground/50",
+                      )}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{option.note}</p>
+                </button>
+              ))}
+            </div>
+
+            {provider === "mpesa" && (
+              <div className="mt-3">
+                <Input
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="Phone number · 251912345678"
+                  inputMode="tel"
+                  disabled={payment.phase === "pending"}
+                  className="h-10 rounded-xl bg-white/5 font-mono text-sm"
+                />
+                <p className="mt-1.5 font-mono text-[10px] text-muted-foreground">
+                  International format — the STK prompt is sent to this number.
+                </p>
+              </div>
+            )}
+
+            <Button
+              className="mt-5 h-11 w-full rounded-xl"
+              onClick={handlePay}
+              disabled={
+                payment.phase === "initiating" ||
+                payment.phase === "pending" ||
+                (provider === "mpesa" && phoneNumber.trim().length < 9)
+              }
+            >
+              {payment.phase === "initiating" || payment.phase === "pending" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              {payment.phase === "pending"
+                ? "Waiting for confirmation…"
+                : payment.phase === "initiating"
+                  ? "Contacting provider…"
+                  : `Pay ${PREMIUM_PRICE_ETB} ETB`}
+            </Button>
+
+            <AnimatePresence>
+              {payment.phase === "pending" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mt-4 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3"
+                >
+                  <p className="font-mono text-[11px] text-primary">
+                    {payment.provider === "telebirr"
+                      ? "Checkout opened in a new tab. Complete the payment there — this page updates automatically."
+                      : "Check your phone for the M-Pesa prompt and approve it. This page updates automatically."}
+                  </p>
+                </motion.div>
+              )}
+              {payment.phase === "completed" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mt-4 flex items-start gap-2.5 rounded-xl border border-emerald-400/25 bg-emerald-400/8 px-3.5 py-3"
+                >
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-300">Payment confirmed</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Premium is active — past exams, plans and full tutoring are unlocked.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+              {payment.phase === "failed" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mt-4 flex items-start gap-2.5 rounded-xl border border-rose-400/25 bg-rose-400/8 px-3.5 py-3"
+                >
+                  <XCircle className="mt-0.5 size-4 shrink-0 text-rose-300" />
+                  <div>
+                    <p className="text-sm font-bold text-rose-300">Payment not completed</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{payment.message}</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <p className="mt-auto pt-5 font-mono text-[10px] leading-4 text-muted-foreground/70">
+              {activeLabel ?? "status: checking…"}
+              <br />
+              Payments are processed by TeleBirr (Ethio telecom) or M-Pesa. Your
+              subscription activates the moment the provider confirms.
+            </p>
+          </motion.div>
+        </div>
+
+        {/* ------- Payment history ------- */}
+        <div className="glass-panel rounded-2xl p-5">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            // payment history
+          </p>
+          {payments === undefined ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : payments.length === 0 ? (
+            <p className="py-6 text-center font-mono text-[11px] text-muted-foreground">
+              No payments yet.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-1.5">
+              {payments.map((row) => (
+                <div
+                  key={row._id}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-white/4 px-3.5 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 text-sm font-semibold">
+                      {row.provider === "telebirr" ? (
+                        <Wallet className="size-3.5 text-primary" />
+                      ) : (
+                        <Smartphone className="size-3.5 text-primary" />
+                      )}
+                      {row.provider === "telebirr" ? "TeleBirr" : "M-Pesa"} · {row.amount} {row.currency}
+                    </p>
+                    <p className="truncate font-mono text-[10px] text-muted-foreground">
+                      {row.providerTransactionId ?? "pending reference"} ·{" "}
+                      {relativeTime(row.createdAt)} · {clockTime(row.createdAt)}
+                    </p>
+                  </div>
+                  <Badge
+                    className={cn(
+                      "shrink-0 font-mono text-[10px]",
+                      row.status === "completed" && "bg-emerald-400/10 text-emerald-300",
+                      row.status === "pending" && "bg-amber-400/10 text-amber-300",
+                      row.status === "failed" && "bg-rose-400/10 text-rose-300",
+                    )}
+                  >
+                    {row.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </DashboardShell>
+  );
+}

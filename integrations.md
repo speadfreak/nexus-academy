@@ -191,3 +191,56 @@ repo:
 To activate: enable Advanced Security on the connected repo in GitHub
 (Settings > Code security and analysis), then push this branch so the workflow
 actions are picked up.
+
+## AI Tutor (Grok / xAI)
+
+The AI tutor and study-plan generator call the Grok chat-completions API
+(`https://api.x.ai/v1/chat/completions`) from Convex actions. Set these in the
+project's **Keys / API keys** tab (never hardcode):
+
+| Key | Purpose |
+| --- | --- |
+| `XAI_API_KEY` | xAI API key (https://console.x.ai) — required for the tutor and plans |
+| `AI_MODEL` | Optional — model name, defaults to `grok-4.6` |
+
+Without `XAI_API_KEY`, the tutor and plan generator surface a clear
+"not configured" error in the UI.
+
+## Payments — TeleBirr + M-Pesa (Ethiopia)
+
+Premium subscriptions are paid via TeleBirr (Ethio telecom) or M-Pesa. The
+provider adapters (`src/convex/providers/`) are built against public
+provider documentation; before going live, confirm the exact createOrder field
+names with the TeleBirr merchant portal and the M-Pesa Ethiopia gateway with
+Safaricom Ethiopia (noted in the adapter files). Set these keys in the
+**Keys / API keys** tab:
+
+| Key | Purpose |
+| --- | --- |
+| `TELEBIRR_APP_ID` | TeleBirr merchant app id |
+| `TELEBIRR_APP_KEY` | TeleBirr app secret |
+| `TELEBIRR_SHORT_CODE` | TeleBirr merchant code (6 digits) |
+| `TELEBIRR_FABRIC_APP_ID` | TeleBirr fabric app id (UUID) for the gateway token |
+| `TELEBIRR_PRIVATE_KEY` | TeleBirr RSA private key (merchant signing) |
+| `TELEBIRR_NOTIFY_URL` | Public webhook URL for TeleBirr notifications (`<CONVEX_URL>/webhooks/telebirr`) |
+| `TELEBIRR_REDIRECT_URL` | Optional user return URL |
+| `TELEBIRR_ENVIRONMENT` | `sandbox` (default) or `production` |
+| `MPESA_CONSUMER_KEY` | M-Pesa Daraja consumer key |
+| `MPESA_CONSUMER_SECRET` | M-Pesa Daraja consumer secret |
+| `MPESA_SHORTCODE` | M-Pesa business shortcode (paybill/till) |
+| `MPESA_PASSKEY` | Lipa na M-Pesa passkey (STK push password) |
+| `MPESA_CALLBACK_URL` | Public callback URL (`<CONVEX_URL>/webhooks/mpesa`) |
+| `MPESA_ENVIRONMENT` | `sandbox` (default) or `production` |
+| `MPESA_BASE_URL` | Optional override (M-Pesa Ethiopia gateway) |
+
+Webhook endpoints: `POST <CONVEX_URL>/webhooks/telebirr` and
+`POST <CONVEX_URL>/webhooks/mpesa`. Both verify server-to-server with the
+provider before settling (never trust callback params alone).
+
+## Streak reminders
+
+In-app streak reminders run via a Convex cron (hourly check, fires once per
+user per day). No email/SMS provider is wired up — reminders surface as an
+in-app banner. If real push/email reminders are wanted later, a transactional
+email or push service would need to be added. Timezone is fixed to
+Africa/Addis_Ababa (UTC+3) until per-user timezones are stored.

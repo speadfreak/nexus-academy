@@ -130,6 +130,7 @@ export default function Focus() {
   };
 
   const progress = minutes > 0 ? 1 - remaining / (minutes * 60) : 0;
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 88;
   const selectedSubject = subjects?.find((s) => s._id === (subjectId as never));
 
   return (
@@ -159,21 +160,61 @@ export default function Focus() {
                     : "ready when you are"}
             </div>
 
-            <div
-              className={cn(
-                "mt-6 font-mono text-7xl font-bold tracking-tight tabular-nums sm:text-8xl",
-                status === "running" ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {formatClock(remaining)}
-            </div>
-
-            {/* Progress bar */}
-            <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-white/5">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-sky-400 transition-[width] duration-1000 ease-linear"
-                style={{ width: `${Math.round(progress * 100)}%` }}
-              />
+            {/* Circular progress ring — depletes as the session runs */}
+            <div className="relative mt-6 flex size-56 items-center justify-center">
+              <svg className="size-full -rotate-90" viewBox="0 0 200 200">
+                <defs>
+                  <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="oklch(0.76 0.13 255)" />
+                    <stop offset="100%" stopColor="oklch(0.83 0.1 195)" />
+                  </linearGradient>
+                </defs>
+                <circle
+                  cx="100"
+                  cy="100"
+                  r="88"
+                  fill="none"
+                  strokeWidth="6"
+                  className="stroke-white/8"
+                />
+                <motion.circle
+                  cx="100"
+                  cy="100"
+                  r="88"
+                  fill="none"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  stroke="url(#ringGradient)"
+                  strokeDasharray={RING_CIRCUMFERENCE}
+                  animate={{ strokeDashoffset: RING_CIRCUMFERENCE * progress }}
+                  transition={{ duration: 1, ease: "linear" }}
+                  className={cn(
+                    status === "running" && remaining <= 60 && "low-time-glow",
+                  )}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <span
+                  className={cn(
+                    "font-mono text-5xl font-bold tracking-tight tabular-nums",
+                    status === "running" ? "text-foreground" : "text-muted-foreground",
+                    status === "running" && remaining <= 60 && "animate-pulse text-primary",
+                  )}
+                >
+                  {formatClock(remaining)}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  {status === "running"
+                    ? remaining <= 60
+                      ? "final minute"
+                      : "in progress"
+                    : status === "paused"
+                      ? "paused"
+                      : status === "done"
+                        ? "complete"
+                        : "ready"}
+                </span>
+              </div>
             </div>
 
             {/* Controls */}

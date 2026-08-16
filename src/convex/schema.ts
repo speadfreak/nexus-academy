@@ -94,20 +94,23 @@ const schema = defineSchema(
     // AI study companion
     // ------------------------------------------------------------------
 
-    // Tutor chat threads, scoped optionally to a subject.
+    // Tutor chat threads, scoped optionally to a subject and/or a content item.
     conversations: defineTable({
       userId: v.id("users"),
       title: v.string(),
       subjectId: v.optional(v.id("subjects")),
+      contentId: v.optional(v.id("contentItems")),
       createdAt: v.number(),
       updatedAt: v.number(),
     }).index("by_user_updatedAt", ["userId", "updatedAt"]),
 
-    // Individual turns inside a conversation thread.
+    // Individual turns inside a conversation thread. contentId optionally
+    // grounds a turn in a specific library document.
     messages: defineTable({
       conversationId: v.id("conversations"),
       role: v.union(v.literal("user"), v.literal("assistant")),
       content: v.string(),
+      contentId: v.optional(v.id("contentItems")),
       createdAt: v.number(),
     }).index("by_conversation", ["conversationId", "createdAt"]),
 
@@ -147,6 +150,67 @@ const schema = defineSchema(
       longestStreak: v.number(),
       lastStudyDate: v.string(), // "YYYY-MM-DD"
       totalHoursStudied: v.number(),
+    }).index("by_user", ["userId"]),
+
+    // ------------------------------------------------------------------
+    // Monetization, plans and reminders
+    // ------------------------------------------------------------------
+
+    // One subscription per user. Trial counts ACTIVE days (days the student
+    // actually uses the app), not calendar days since signup.
+    subscriptions: defineTable({
+      userId: v.id("users"),
+      status: v.union(
+        v.literal("trial"),
+        v.literal("active"),
+        v.literal("expired"),
+        v.literal("canceled"),
+      ),
+      trialStartedAt: v.optional(v.number()),
+      trialActiveDays: v.number(),
+      lastActiveDate: v.optional(v.string()), // "YYYY-MM-DD" — guards double-counting
+      trialEndsAt: v.optional(v.number()),
+      currentPeriodEnd: v.optional(v.number()),
+      planTier: v.string(),
+    }).index("by_user", ["userId"]),
+
+    // Payment attempts, one row per initiation.
+    payments: defineTable({
+      userId: v.id("users"),
+      provider: v.union(v.literal("telebirr"), v.literal("mpesa")),
+      amount: v.number(),
+      currency: v.string(),
+      providerTransactionId: v.optional(v.string()),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("completed"),
+        v.literal("failed"),
+      ),
+      createdAt: v.number(),
+      completedAt: v.optional(v.number()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_status", ["status"])
+      .index("by_providerTransactionId", ["providerTransactionId"]),
+
+    // AI-generated study plans, stored as validated JSON strings.
+    studyPlans: defineTable({
+      userId: v.id("users"),
+      subjectId: v.id("subjects"),
+      generatedAt: v.number(),
+      targetExamDate: v.optional(v.number()),
+      planJson: v.string(),
+      isActive: v.boolean(),
+      completedWeeks: v.array(v.number()),
+    }).index("by_user_subject", ["userId", "subjectId"]),
+
+    // Per-user reminder preferences + in-app reminder flag.
+    reminderSettings: defineTable({
+      userId: v.id("users"),
+      streakRemindersEnabled: v.boolean(),
+      reminderHour: v.number(),
+      lastReminderSentDate: v.optional(v.string()), // "YYYY-MM-DD"
+      pendingReminder: v.boolean(),
     }).index("by_user", ["userId"]),
   },
   {

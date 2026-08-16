@@ -39,3 +39,8 @@ export const STREAM_LABELS: Record<Stream, string> = {
   social: "Social Science",
   common: "Common",
 };
+
+// Premium pricing — single source of truth shared by the backend (payments.ts)
+// and the upgrade page.
+export const PREMIUM_PRICE_ETB = 199;
+export const SUBSCRIPTION_DAYS = 30;

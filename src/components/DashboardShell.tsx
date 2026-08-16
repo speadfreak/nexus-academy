@@ -1,16 +1,19 @@
 import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
   BookOpen,
+  Crown,
   ListChecks,
   LogOut,
+  Map,
   MessageSquareText,
   ShieldCheck,
   Timer,
   UploadCloud,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { localDateKey } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -20,8 +23,20 @@ import logo from "@/assets/nexus-logo.svg";
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
+  const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
+  const touch = useMutation(api.subscriptions.touch);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // First activity of any authenticated session: create the trial subscription
+  // if needed and count the active day. Both are idempotent server-side, so
+  // double-fire (StrictMode) is safe.
+  const touchedRef = useRef(false);
+  useEffect(() => {
+    if (touchedRef.current) return;
+    touchedRef.current = true;
+    void touch({ localDate: localDateKey() }).catch(() => {});
+  }, [touch]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -33,6 +48,17 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     { to: "/tutor", label: "Tutor", icon: MessageSquareText },
     { to: "/todos", label: "Todos", icon: ListChecks },
     { to: "/focus", label: "Focus", icon: Timer },
+    { to: "/plans", label: "Plans", icon: Map },
+    {
+      to: "/upgrade",
+      label:
+        subscription?.status === "trial"
+          ? `Premium · ${subscription.trialDaysRemaining}d trial`
+          : subscription?.needsUpgrade
+            ? "Premium · upgrade"
+            : "Premium",
+      icon: Crown,
+    },
     ...(isAdmin
       ? [{ to: "/admin/content-upload", label: "Upload content", icon: UploadCloud }]
       : []),
@@ -113,7 +139,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
             <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
           </Link>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1">
             {navItems.map((item) => (
               <Link
                 key={item.to}

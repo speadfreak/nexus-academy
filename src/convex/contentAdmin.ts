@@ -8,6 +8,7 @@ import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdminAction } from "./admin";
+import { requireActiveSubscriptionAction } from "./subscriptions";
 import { contentTypeValidator } from "./schema";
 import { CONTENT_TYPE_SLUGS, type ContentType } from "./constants";
 import {
@@ -257,6 +258,9 @@ export const getDownloadUrl = action({
     if (!item.isPremium) {
       return { url: item.fileUrl };
     }
+
+    // Premium downloads require trial or active subscription access.
+    await requireActiveSubscriptionAction(ctx, userId);
 
     try {
       const key = keyFromUrl(item.fileUrl);

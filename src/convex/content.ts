@@ -122,6 +122,27 @@ async function withSubjects(
 // ---------------------------------------------------------------------------
 
 /**
+ * Lightweight metadata for a content item — used by the tutor page to show
+ * the "Discussing: …" chip when a chat is grounded in a library document.
+ */
+export const getContentItemMeta = query({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, { contentId }) => {
+    const item = await ctx.db.get(contentId);
+    if (!item) return null;
+    const subject = item.subjectId ? await ctx.db.get(item.subjectId) : null;
+    return {
+      _id: item._id,
+      title: item.title,
+      contentType: item.contentType,
+      examYear: item.examYear ?? null,
+      grade: item.grade,
+      subjectName: subject?.name ?? "Unknown",
+    };
+  },
+});
+
+/**
  * Public library query. Supports any combination of grade, subject slug,
  * content type, and exam year. Returns items newest-first with the subject
  * name/slug/stream joined in. This is the generic read side the student
