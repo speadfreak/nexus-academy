@@ -13,6 +13,9 @@ import "./index.css";
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
+const Tutor = lazy(() => import("./pages/Tutor.tsx"));
+const Todos = lazy(() => import("./pages/Todos.tsx"));
+const Focus = lazy(() => import("./pages/Focus.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -130,6 +133,30 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth>
                     <Dashboard />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/tutor"
+                element={
+                  <RequireAuth>
+                    <Tutor />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/todos"
+                element={
+                  <RequireAuth>
+                    <Todos />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/focus"
+                element={
+                  <RequireAuth>
+                    <Focus />
                   </RequireAuth>
                 }
               />

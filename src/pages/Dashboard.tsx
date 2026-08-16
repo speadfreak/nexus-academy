@@ -7,17 +7,21 @@ import {
   ClipboardList,
   Download,
   FileSearch,
+  Flame,
   GraduationCap,
   Loader2,
+  MessageSquare,
   Presentation,
   RotateCcw,
   Search,
   Sparkles,
+  Timer,
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
+import { lastNDayWindows, localDateKey } from "@/lib/dates";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +39,7 @@ import {
   type ContentType,
 } from "@/convex/constants";
 import type { ContentItemWithSubject } from "@/convex/content";
+import { cn } from "@/lib/utils";
 
 const TYPE_STYLES: Record<
   ContentType,
@@ -76,11 +81,21 @@ function ContentCard({
         <div className={`flex size-11 items-center justify-center rounded-xl ${style.classes}`}>
           <style.icon className="size-5" />
         </div>
-        {item.isPremium && (
-          <Badge className="gap-1 bg-amber-400/10 text-amber-300">
-            <Sparkles className="size-3" /> Premium
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5">
+          {item.isPremium && (
+            <Badge className="gap-1 bg-amber-400/10 text-amber-300">
+              <Sparkles className="size-3" /> Premium
+            </Badge>
+          )}
+          <Link
+            to={`/tutor?subject=${encodeURIComponent(item.subjectSlug)}`}
+            title={`Ask the tutor about ${item.subjectName}`}
+            aria-label={`Ask the tutor about ${item.subjectName}`}
+            className="flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            <MessageSquare className="size-3.5" />
+          </Link>
+        </div>
       </div>
 
       <h3 className="mt-4 line-clamp-2 text-sm font-bold leading-snug tracking-tight">
@@ -144,6 +159,27 @@ export default function Dashboard() {
     searchQuery: searchQuery.trim() || undefined,
   });
 
+  const streak = useQuery(api.studySessions.getStreak);
+  const todos = useQuery(api.todos.list);
+  const todayKey = localDateKey();
+  const weekDays = useMemo(() => lastNDayWindows(7), [todayKey]);
+  const weekActivity = useQuery(api.studySessions.getWeekActivity, {
+    days: weekDays as never,
+  });
+
+  const pendingTodoCount = useMemo(
+    () => todos?.filter((todo) => !todo.isDone).length ?? 0,
+    [todos],
+  );
+  const weekHours = useMemo(
+    () => (weekActivity ?? []).reduce((sum, day) => sum + day.hours, 0),
+    [weekActivity],
+  );
+  const maxWeekSeconds = useMemo(
+    () => Math.max(...(weekActivity ?? []).map((day) => day.seconds), 1),
+    [weekActivity],
+  );
+
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
     return Array.from({ length: current - 2002 }, (_, i) => current - i);
@@ -196,6 +232,82 @@ export default function Dashboard() {
               </Link>
             </Button>
           )}
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="glass-panel rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">streak</span>
+              <Flame className="size-4 text-primary" />
+            </div>
+            <p className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{streak?.currentStreak ?? "0"}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">days</span>
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground">longest {streak?.longestStreak ?? 0}</p>
+          </div>
+          <div className="glass-panel rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">studied</span>
+              <Timer className="size-4 text-primary" />
+            </div>
+            <p className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{streak?.totalHoursStudied.toFixed(1) ?? "0"}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">hours</span>
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground">all time</p>
+          </div>
+          <div className="glass-panel rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">this week</span>
+              <CalendarDays className="size-4 text-primary" />
+            </div>
+            <p className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{weekHours.toFixed(1)}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">hours</span>
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground">last 7 days</p>
+          </div>
+          <Link to="/todos" className="glass-panel group rounded-2xl p-4 transition-colors hover:border-primary/30">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">todos</span>
+              <Sparkles className="size-4 text-primary" />
+            </div>
+            <p className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">{pendingTodoCount}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">open</span>
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground group-hover:text-primary">manage tasks</p>
+          </Link>
+        </div>
+
+        {/* Week activity strip */}
+        <div className="glass-panel rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">focus minutes · last 7 days</span>
+            <Flame className="size-3.5 text-primary/60" />
+          </div>
+          <div className="mt-3 flex h-20 items-end gap-2">
+            {weekActivity?.map((day) => {
+              const height = day.seconds > 0 ? Math.max(8, Math.min(78, Math.round((day.seconds / maxWeekSeconds) * 100))) : 0;
+              const label = new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" });
+              return (
+                <div key={day.date} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5" title={`${day.date} · ${day.hours} h`}>
+                  <div
+                    className={cn(
+                      "w-full rounded-t-md transition-all",
+                      day.seconds > 0
+                        ? "bg-gradient-to-t from-primary/40 to-primary"
+                        : "bg-white/5",
+                    )}
+                    style={{ height: `${height}%` }}
+                  />
+                  <span className="font-mono text-[9px] uppercase text-muted-foreground">{label}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Search + filters */}

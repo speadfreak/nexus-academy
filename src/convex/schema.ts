@@ -89,6 +89,65 @@ const schema = defineSchema(
     })
       .index("by_content", ["contentId"])
       .index("by_topic", ["topicId"]),
+
+    // ------------------------------------------------------------------
+    // AI study companion
+    // ------------------------------------------------------------------
+
+    // Tutor chat threads, scoped optionally to a subject.
+    conversations: defineTable({
+      userId: v.id("users"),
+      title: v.string(),
+      subjectId: v.optional(v.id("subjects")),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user_updatedAt", ["userId", "updatedAt"]),
+
+    // Individual turns inside a conversation thread.
+    messages: defineTable({
+      conversationId: v.id("conversations"),
+      role: v.union(v.literal("user"), v.literal("assistant")),
+      content: v.string(),
+      createdAt: v.number(),
+    }).index("by_conversation", ["conversationId", "createdAt"]),
+
+    // Student task list. priority: low | medium | high.
+    todos: defineTable({
+      userId: v.id("users"),
+      text: v.string(),
+      subjectId: v.optional(v.id("subjects")),
+      isDone: v.boolean(),
+      priority: v.union(
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high"),
+      ),
+      dueDate: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_done", ["userId", "isDone"]),
+
+    // Completed focus sessions — powers streaks, hours and history.
+    studySessions: defineTable({
+      userId: v.id("users"),
+      subjectId: v.id("subjects"),
+      topicId: v.optional(v.id("topics")),
+      durationSeconds: v.number(),
+      startedAt: v.number(),
+      endedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_startedAt", ["userId", "startedAt"]),
+
+    // Denormalized streak state — one row per user for fast dashboard reads.
+    studyStreaks: defineTable({
+      userId: v.id("users"),
+      currentStreak: v.number(),
+      longestStreak: v.number(),
+      lastStudyDate: v.string(), // "YYYY-MM-DD"
+      totalHoursStudied: v.number(),
+    }).index("by_user", ["userId"]),
   },
   {
     schemaValidation: false,

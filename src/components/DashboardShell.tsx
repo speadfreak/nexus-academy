@@ -1,6 +1,14 @@
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
-import { BookOpen, LogOut, ShieldCheck, UploadCloud } from "lucide-react";
+import {
+  BookOpen,
+  ListChecks,
+  LogOut,
+  MessageSquareText,
+  ShieldCheck,
+  Timer,
+  UploadCloud,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
@@ -22,6 +30,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   const navItems = [
     { to: "/dashboard", label: "Library", icon: BookOpen },
+    { to: "/tutor", label: "Tutor", icon: MessageSquareText },
+    { to: "/todos", label: "Todos", icon: ListChecks },
+    { to: "/focus", label: "Focus", icon: Timer },
     ...(isAdmin
       ? [{ to: "/admin/content-upload", label: "Upload content", icon: UploadCloud }]
       : []),
