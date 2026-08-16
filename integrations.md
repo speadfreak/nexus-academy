@@ -140,3 +140,30 @@ if (!hasIntegration) {
   console.error("VLY integration key not found");
 }
 ```
+
+## GitHub Integration
+
+GitHub provides backup and version control for this project. The Freebuff platform
+manages git (git commands are blocked inside the project sandbox), so syncing is
+configured from the Freebuff UI:
+
+1. Open the project in Freebuff and go to the **Integrations tab** (left sidebar /
+   top bar of the project view).
+2. Connect your GitHub account and choose (or create) the repository for this
+   project.
+3. Deploys/snapshots push to that repo automatically from then on.
+
+### Required key
+
+Set this in the project's **Keys / API keys** tab (never hardcode it):
+
+| Key | Purpose |
+| --- | --- |
+| `GITHUB_TOKEN` | GitHub personal access token with `repo` scope (fine-grained: read/write access to the connected repo's Contents + Commit statuses) |
+
+Generate it at: GitHub > Settings > Developer settings > Personal access tokens >
+Generate new token (classic: `repo` scope; or fine-grained scoped to the connected
+repo with Contents: Read and write).
+
+If `GITHUB_TOKEN` is missing, GitHub-backed operations that require the API will
+report a clear configuration error instead of silently failing.
