@@ -1,0 +1,34 @@
+# GitHub Advanced Security — Dependabot version updates.
+#
+# Keeps application dependencies (bun ecosystem, text bun.lock) and the
+# GitHub Actions used in workflows up to date. Security-only alerts for the
+# enabled package ecosystems appear automatically in the Security tab even
+# without this file.
+
+version: 2
+updates:
+  # Application dependencies — this project uses Bun; the text-based bun.lock
+  # is required for the bun ecosystem (the legacy binary bun.lockb is not
+  # supported by Dependabot).
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Africa/Addis_Ababa"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+
+  # GitHub Actions used in workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:30"
+      timezone: "Africa/Addis_Ababa"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"

@@ -167,3 +167,27 @@ repo with Contents: Read and write).
 
 If `GITHUB_TOKEN` is missing, GitHub-backed operations that require the API will
 report a clear configuration error instead of silently failing.
+
+## GitHub Advanced Security
+
+CodeQL code scanning, secret scanning, and Dependabot are configured in this
+repo:
+
+- `.github/workflows/codeql.yml` — CodeQL static analysis (javascript-typescript)
+  on push/PR to `main` plus a weekly scheduled scan. Results land in the
+  Security > Code scanning tab.
+- `.github/dependabot.yml` — weekly version updates for the `bun` ecosystem
+  (text `bun.lock`) and for GitHub Actions.
+- Secret scanning + push protection are enabled in the repo itself
+  (Settings > Code security and analysis). Custom secret-scanning patterns for
+  private repos are configured in Settings, not by file.
+
+### Required key
+
+| Key | Purpose |
+| --- | --- |
+| `GITHUB_TOKEN` | Personal access token with `repo` scope (same key as the GitHub integration). The CodeQL workflow itself uses the automatic Actions `GITHUB_TOKEN`; a PAT is only needed for GitHub API operations outside workflows. |
+
+To activate: enable Advanced Security on the connected repo in GitHub
+(Settings > Code security and analysis), then push this branch so the workflow
+actions are picked up.

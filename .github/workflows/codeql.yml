@@ -1,0 +1,57 @@
+# GitHub Advanced Security — CodeQL code scanning.
+#
+# Runs static analysis on every push to main and every pull request, plus a
+# weekly scheduled scan, and uploads results to the Security tab (Code
+# scanning). JavaScript/TypeScript analysis is source-based, so no build step
+# is required.
+#
+# Requires: Advanced Security enabled on the repo
+# (Settings > Code security and analysis > Code scanning > Set up CodeQL).
+# The workflow uses the automatic GITHUB_TOKEN; no PAT is needed in the Keys
+# tab for this workflow to run.
+
+name: "CodeQL"
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    # Weekly scan, Monday 03:00 UTC.
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["javascript-typescript"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Initialize the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      # JavaScript/TypeScript is analyzed directly from source, so there is no
+      # build/autobuild step for this language.
+
+      # Perform CodeQL analysis and upload results to the Security tab.
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
