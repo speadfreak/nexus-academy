@@ -11,7 +11,9 @@ import {
   Loader2,
   Presentation,
   RotateCcw,
+  Search,
   Sparkles,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -19,6 +21,7 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -37,11 +40,11 @@ const TYPE_STYLES: Record<
   ContentType,
   { icon: typeof BookOpen; classes: string }
 > = {
-  textbook: { icon: BookOpen, classes: "bg-indigo-500/10 text-indigo-600" },
-  past_exam: { icon: CalendarDays, classes: "bg-sky-500/10 text-sky-600" },
-  worksheet: { icon: ClipboardList, classes: "bg-violet-500/10 text-violet-600" },
-  student_guide: { icon: GraduationCap, classes: "bg-teal-500/10 text-teal-600" },
-  teacher_guide: { icon: Presentation, classes: "bg-amber-500/10 text-amber-600" },
+  textbook: { icon: BookOpen, classes: "bg-indigo-400/10 text-indigo-300" },
+  past_exam: { icon: CalendarDays, classes: "bg-sky-400/10 text-sky-300" },
+  worksheet: { icon: ClipboardList, classes: "bg-violet-400/10 text-violet-300" },
+  student_guide: { icon: GraduationCap, classes: "bg-teal-400/10 text-teal-300" },
+  teacher_guide: { icon: Presentation, classes: "bg-amber-400/10 text-amber-300" },
 };
 
 function formatBytes(bytes?: number): string {
@@ -74,7 +77,7 @@ function ContentCard({
           <style.icon className="size-5" />
         </div>
         {item.isPremium && (
-          <Badge className="gap-1 bg-amber-400/15 text-amber-700">
+          <Badge className="gap-1 bg-amber-400/10 text-amber-300">
             <Sparkles className="size-3" /> Premium
           </Badge>
         )}
@@ -106,7 +109,7 @@ function ContentCard({
       <Button
         size="sm"
         variant="outline"
-        className="mt-4 w-full cursor-pointer rounded-xl bg-white/70"
+        className="mt-4 w-full cursor-pointer rounded-xl bg-white/5"
         onClick={() => onOpen(item)}
         disabled={opening}
       >
@@ -122,6 +125,7 @@ function ContentCard({
 }
 
 export default function Dashboard() {
+  const [searchQuery, setSearchQuery] = useState("");
   const [grade, setGrade] = useState("");
   const [subjectSlug, setSubjectSlug] = useState("");
   const [contentType, setContentType] = useState("");
@@ -137,6 +141,7 @@ export default function Dashboard() {
     subjectSlug: subjectSlug || undefined,
     contentType: (contentType || undefined) as ContentType | undefined,
     examYear: examYear ? Number(examYear) : undefined,
+    searchQuery: searchQuery.trim() || undefined,
   });
 
   const yearOptions = useMemo(() => {
@@ -144,7 +149,12 @@ export default function Dashboard() {
     return Array.from({ length: current - 2002 }, (_, i) => current - i);
   }, []);
 
-  const hasFilters = grade !== "" || subjectSlug !== "" || contentType !== "" || examYear !== "";
+  const hasFilters =
+    searchQuery.trim() !== "" ||
+    grade !== "" ||
+    subjectSlug !== "" ||
+    contentType !== "" ||
+    examYear !== "";
 
   const handleOpen = async (item: ContentItemWithSubject) => {
     if (!item.isPremium) {
@@ -180,7 +190,7 @@ export default function Dashboard() {
             </p>
           </div>
           {isAdmin && (
-            <Button asChild variant="outline" size="sm" className="rounded-xl bg-white/70">
+            <Button asChild variant="outline" size="sm" className="rounded-xl bg-white/5">
               <Link to="/admin/content-upload">
                 <Sparkles className="size-4" /> Upload content
               </Link>
@@ -188,12 +198,33 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Filters */}
-        <div className="glass-panel grid grid-cols-2 gap-3 rounded-2xl p-4 md:grid-cols-4">
+        {/* Search + filters */}
+        <div className="glass-panel rounded-2xl p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search titles and subjects — e.g. “physics past exam”"
+              className="h-10 rounded-xl bg-white/5 pl-9 pr-9 font-mono text-sm"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="flex flex-col gap-1.5">
             <span className="text-[11px] font-semibold text-muted-foreground">Grade</span>
-            <Select value={grade} onValueChange={setGrade}>
-              <SelectTrigger className="h-9 rounded-xl bg-white/70">
+            <Select value={grade} onValueChange={(v) => setGrade(v === "all" ? "" : v)}>
+              <SelectTrigger className="h-9 rounded-xl bg-white/5">
                 <SelectValue placeholder="All grades" />
               </SelectTrigger>
               <SelectContent>
@@ -209,8 +240,8 @@ export default function Dashboard() {
 
           <div className="flex flex-col gap-1.5">
             <span className="text-[11px] font-semibold text-muted-foreground">Subject</span>
-            <Select value={subjectSlug} onValueChange={setSubjectSlug}>
-              <SelectTrigger className="h-9 rounded-xl bg-white/70">
+            <Select value={subjectSlug} onValueChange={(v) => setSubjectSlug(v === "all" ? "" : v)}>
+              <SelectTrigger className="h-9 rounded-xl bg-white/5">
                 <SelectValue placeholder="All subjects" />
               </SelectTrigger>
               <SelectContent>
@@ -226,8 +257,8 @@ export default function Dashboard() {
 
           <div className="flex flex-col gap-1.5">
             <span className="text-[11px] font-semibold text-muted-foreground">Type</span>
-            <Select value={contentType} onValueChange={setContentType}>
-              <SelectTrigger className="h-9 rounded-xl bg-white/70">
+            <Select value={contentType} onValueChange={(v) => setContentType(v === "all" ? "" : v)}>
+              <SelectTrigger className="h-9 rounded-xl bg-white/5">
                 <SelectValue placeholder="All types" />
               </SelectTrigger>
               <SelectContent>
@@ -246,8 +277,8 @@ export default function Dashboard() {
               Exam year {contentType && contentType !== "past_exam" ? "· n/a" : ""}
             </span>
             {contentType === "" || contentType === "past_exam" ? (
-              <Select value={examYear} onValueChange={setExamYear} disabled={contentType === ""}>
-                <SelectTrigger className="h-9 rounded-xl bg-white/70">
+              <Select value={examYear} onValueChange={(v) => setExamYear(v === "any" ? "" : v)} disabled={contentType === ""}>
+                <SelectTrigger className="h-9 rounded-xl bg-white/5">
                   <SelectValue placeholder={contentType === "" ? "Pick Past Exams first" : "Any year"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -260,10 +291,11 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             ) : (
-              <div className="flex h-9 items-center rounded-xl border border-dashed border-border bg-white/40 px-3 text-xs text-muted-foreground">
+              <div className="flex h-9 items-center rounded-xl border border-dashed border-border bg-white/5 px-3 text-xs text-muted-foreground">
                 Only for past exams
               </div>
             )}
+          </div>
           </div>
         </div>
 
@@ -273,6 +305,7 @@ export default function Dashboard() {
             size="sm"
             className="w-fit cursor-pointer rounded-xl text-muted-foreground"
             onClick={() => {
+              setSearchQuery("");
               setGrade("");
               setSubjectSlug("");
               setContentType("");

@@ -172,7 +172,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                         <span className="w-full border-t" />
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-white/70 px-2 text-muted-foreground">
+                        <span className="bg-card px-2 text-muted-foreground">
                           Or
                         </span>
                       </div>
@@ -276,7 +276,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             </>
           )}
 
-          <div className="py-4 px-6 text-xs text-center text-muted-foreground bg-white/50 border-t border-white/60 rounded-b-2xl">
+          <div className="py-4 px-6 text-xs text-center text-muted-foreground bg-white/[0.03] border-t border-white/10 rounded-b-2xl">
             Secured by{" "}
             <a
               href="https://freebuff.com"

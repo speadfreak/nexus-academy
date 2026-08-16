@@ -42,7 +42,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           <img src={logo} alt="Nexus Academy logo" className="size-9 rounded-xl" />
           <div className="leading-tight">
             <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
-            <p className="text-[11px] text-muted-foreground">Exam prep library</p>
+            <p className="font-mono text-[10px] text-muted-foreground">exam-prep · library</p>
           </div>
         </Link>
 
@@ -57,7 +57,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                   "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                   active
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-white/60 hover:text-foreground",
+                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                 )}
               >
                 <item.icon className="size-4" />

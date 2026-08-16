@@ -14,12 +14,13 @@ import {
   GraduationCap,
   Landmark,
   Languages,
-  Library,
+  Lock,
   Map,
   Presentation,
   Search,
   Sigma,
   Sparkles,
+  Terminal,
   TrendingUp,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -42,34 +43,37 @@ const STREAMS = [
   {
     name: "Common Subjects",
     stream: "common",
-    color: "from-sky-400 to-cyan-400",
-    description: "Every student takes these — the foundation of the national exams.",
+    slug: "stream/common",
+    description:
+      "The three subjects every candidate sits — the shared foundation of the national examinations.",
     subjects: [
-      { name: "English", icon: Languages },
-      { name: "Mathematics", icon: Sigma },
-      { name: "Scholastic Aptitude Test", icon: Brain },
+      { name: "English", slug: "english", icon: Languages },
+      { name: "Mathematics", slug: "mathematics", icon: Sigma },
+      { name: "Scholastic Aptitude Test", slug: "scholastic-aptitude-test", icon: Brain },
     ],
   },
   {
     name: "Natural Science",
     stream: "natural",
-    color: "from-indigo-500 to-blue-400",
-    description: "For students in the natural science track aiming at STEM careers.",
+    slug: "stream/natural",
+    description:
+      "The science track for STEM-bound students — physics, chemistry and biology, exam-ready.",
     subjects: [
-      { name: "Physics", icon: Atom },
-      { name: "Chemistry", icon: FlaskConical },
-      { name: "Biology", icon: Dna },
+      { name: "Physics", slug: "physics", icon: Atom },
+      { name: "Chemistry", slug: "chemistry", icon: FlaskConical },
+      { name: "Biology", slug: "biology", icon: Dna },
     ],
   },
   {
     name: "Social Science",
     stream: "social",
-    color: "from-violet-500 to-sky-400",
-    description: "For students in the social science track — history, society and beyond.",
+    slug: "stream/social",
+    description:
+      "The humanities track — history, geography and economics, aligned to the national syllabus.",
     subjects: [
-      { name: "History", icon: Landmark },
-      { name: "Geography", icon: Map },
-      { name: "Economics", icon: TrendingUp },
+      { name: "History", slug: "history", icon: Landmark },
+      { name: "Geography", slug: "geography", icon: Map },
+      { name: "Economics", slug: "economics", icon: TrendingUp },
     ],
   },
 ];
@@ -79,60 +83,68 @@ const CONTENT_TYPES = [
     name: "Textbooks",
     type: "textbook",
     icon: BookOpen,
-    description: "Complete grade-level textbooks, chapter by chapter, ready to study offline.",
+    description:
+      "Full grade-level textbooks, chapter by chapter, ready for offline study.",
   },
   {
     name: "Past Exams",
     type: "past_exam",
     icon: CalendarDays,
-    description: "Real national examination papers from recent years, with answer-ready formats.",
+    description:
+      "Authentic national examination papers from recent years, with answer-ready formats.",
   },
   {
     name: "Worksheets",
     type: "worksheet",
     icon: ClipboardList,
-    description: "Topic-focused practice sets to drill the concepts that appear most on exams.",
+    description:
+      "Topic-focused practice sets that drill the concepts exams actually test.",
   },
   {
     name: "Student Guides",
     type: "student_guide",
     icon: GraduationCap,
-    description: "Walkthroughs, summaries and revision roadmaps built for exam season.",
+    description:
+      "Walkthroughs, summaries and revision roadmaps built for exam season.",
   },
   {
     name: "Teacher Guides",
     type: "teacher_guide",
     icon: Presentation,
-    description: "Curriculum-aligned teaching notes and marking guidance for educators.",
+    description:
+      "Curriculum-aligned teaching notes and marking guidance for educators.",
   },
 ];
 
 const STEPS = [
   {
-    icon: Search,
+    icon: Terminal,
     step: "01",
-    title: "Pick your stream",
-    description: "Common, natural or social science — every subject you're examined on lives here.",
+    title: "Sign in and open the catalog",
+    description:
+      "Create an account in seconds. Every textbook, past paper and guide is indexed and searchable.",
   },
   {
-    icon: Library,
+    icon: Search,
     step: "02",
-    title: "Filter by grade & subject",
-    description: "Narrow the library to your exact grade (9–12), subject and resource type.",
+    title: "Search by grade, subject and type",
+    description:
+      "Query the library the way you think — free text, stream, grade, subject and resource type.",
   },
   {
     icon: Download,
     step: "03",
-    title: "Study with real papers",
-    description: "Download textbooks, past exams and guides, then walk into the exam room ready.",
+    title: "Download and study",
+    description:
+      "Open resources instantly. Premium papers are served through time-limited signed links.",
   },
 ];
 
 const STATS = [
-  { value: "9", label: "Core subjects" },
+  { value: "09", label: "Core subjects" },
   { value: "4", label: "Grades covered" },
-  { value: "5", label: "Resource types" },
-  { value: "100%", label: "Exam-focused" },
+  { value: "05", label: "Resource types" },
+  { value: "100%", label: "Exam-aligned" },
 ];
 
 export default function Landing() {
@@ -160,20 +172,23 @@ export default function Landing() {
         >
           <Link to="/" className="flex items-center gap-2.5">
             <img src={logo} alt="Nexus Academy logo" className="size-9 rounded-xl" />
-            <span className="text-base font-extrabold tracking-tight">
-              Nexus <span className="text-gradient">Academy</span>
+            <span className="flex items-baseline gap-2">
+              <span className="text-base font-extrabold tracking-tight">Nexus Academy</span>
+              <span className="hidden font-mono text-[10px] font-medium text-muted-foreground sm:inline">
+                v1.0
+              </span>
             </span>
           </Link>
 
-          <div className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
+          <div className="hidden items-center gap-6 font-mono text-xs font-medium text-muted-foreground md:flex">
             <a href="#streams" className="transition-colors hover:text-foreground">
-              Streams
+              streams
             </a>
             <a href="#library" className="transition-colors hover:text-foreground">
-              Library
+              library
             </a>
             <a href="#how" className="transition-colors hover:text-foreground">
-              How it works
+              how-it-works
             </a>
           </div>
 
@@ -192,7 +207,7 @@ export default function Landing() {
                 </Button>
               </>
             ) : (
-              <Button asChild size="sm">
+              <Button asChild size="sm" className="rounded-lg">
                 <Link to="/auth?returnTo=%2Fdashboard">
                   Sign in <ArrowRight className="size-4" />
                 </Link>
@@ -203,7 +218,7 @@ export default function Landing() {
       </header>
 
       {/* ------- Hero ------- */}
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 lg:grid-cols-[1.05fr_0.95fr] lg:pt-20">
+      <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 lg:grid-cols-[1.02fr_0.98fr] lg:pt-20">
         <motion.div
           variants={stagger}
           initial="hidden"
@@ -211,9 +226,12 @@ export default function Landing() {
           className="flex flex-col items-start"
         >
           <motion.div variants={fadeUp}>
-            <Badge className="glass-chip gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-primary">
-              <Sparkles className="size-3.5" />
-              Ethiopian National Exam Prep · Grades 9–12
+            <Badge className="glass-chip gap-2 rounded-full px-3 py-1 font-mono text-[11px] font-semibold text-primary">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
+              </span>
+              // ethiopian national exam prep · grades 9–12
             </Badge>
           </motion.div>
 
@@ -224,16 +242,17 @@ export default function Landing() {
             Every subject.
             <br />
             Every grade.{" "}
-            <span className="text-gradient">One library.</span>
+            <span className="text-gradient">One indexed library.</span>
           </motion.h1>
 
           <motion.p
             variants={fadeUp}
             className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg"
           >
-            Nexus Academy is the content library for the national matric exams —
-            textbooks, past exam papers, worksheets and study guides for all nine
-            subjects across the common, natural and social science streams.
+            Nexus Academy is the complete content library for the Ethiopian national
+            matric exams — textbooks, past papers, worksheets and study guides across
+            all nine subjects. Sign in, search the catalog, and download exactly what
+            your grade and stream require.
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center gap-3">
@@ -242,95 +261,92 @@ export default function Landing() {
                 Explore the library <ArrowRight className="size-4" />
               </Link>
             </Button>
-            <Button asChild size="lg" variant="outline" className="rounded-xl bg-white/70">
+            <Button asChild size="lg" variant="outline" className="rounded-xl bg-white/5">
               <a href="#streams">Browse subjects</a>
             </Button>
           </motion.div>
 
-          <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+          <motion.div
+            variants={fadeUp}
+            className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-xs text-muted-foreground"
+          >
             <span className="flex items-center gap-1.5">
-              <Check className="size-4 text-primary" /> Textbooks & guides
+              <Check className="size-4 text-primary" /> 09 subjects indexed
             </span>
             <span className="flex items-center gap-1.5">
-              <Check className="size-4 text-primary" /> Past national exams
+              <Check className="size-4 text-primary" /> real national past papers
             </span>
             <span className="flex items-center gap-1.5">
-              <Check className="size-4 text-primary" /> Free forever, premium extras
+              <Lock className="size-4 text-primary" /> free to browse, premium to download
             </span>
           </motion.div>
         </motion.div>
 
-        {/* Hero card stack */}
+        {/* Terminal mock */}
         <motion.div
           initial={{ opacity: 0, scale: 0.94 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.7, ease: "easeOut", delay: 0.15 }}
-          className="relative mx-auto hidden h-[26rem] w-full max-w-md lg:block"
+          className="relative mx-auto hidden w-full max-w-md lg:block"
         >
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-            className="glass-panel absolute left-2 top-6 w-72 -rotate-6 rounded-2xl p-4"
-          >
-            <div className="flex items-center justify-between">
-              <Badge className="bg-primary/10 text-primary">Past Exam</Badge>
-              <span className="text-xs font-semibold text-muted-foreground">2023 · EC 2015</span>
+          <div className="glass-panel overflow-hidden rounded-2xl">
+            <div className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
+              <span className="size-2.5 rounded-full bg-white/15" />
+              <span className="size-2.5 rounded-full bg-white/15" />
+              <span className="size-2.5 rounded-full bg-white/15" />
+              <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                nexus — catalog
+              </span>
             </div>
-            <p className="mt-3 text-sm font-bold leading-snug">
-              2023 Grade 12 National Physics Examination
-            </p>
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <Atom className="size-3.5 text-indigo-500" /> Physics · Natural · Grade 12
+            <div className="space-y-2.5 p-5 font-mono text-[12.5px] leading-relaxed">
+              <p>
+                <span className="text-primary">$</span>{" "}
+                <span className="text-foreground">nexus search</span>{" "}
+                <span className="text-muted-foreground">
+                  --stream natural --grade 12
+                </span>
+              </p>
+              <div className="rounded-lg border border-white/8 bg-black/30 px-3 py-2.5 text-[11.5px] text-muted-foreground">
+                <p className="text-foreground">
+                  <span className="text-primary">✓</span> 2023 Grade 12 Physics — National
+                  Examination <span className="text-muted-foreground">· past-exam · 2.1 MB</span>
+                </p>
+                <p className="mt-1 text-foreground">
+                  <span className="text-primary">✓</span> Grade 12 Chemistry — Full Curriculum
+                  Textbook <span className="text-muted-foreground">· textbook · 320 pages</span>
+                </p>
+                <p className="mt-1 text-foreground">
+                  <span className="text-primary">✓</span> Mechanics & Forces — Practice Set{" "}
+                  <span className="text-muted-foreground">· worksheet · premium</span>
+                </p>
+              </div>
+              <p>
+                <span className="text-primary">$</span>{" "}
+                <span className="text-foreground">nexus download</span>{" "}
+                <span className="text-muted-foreground">
+                  "2023-grade-12-physics" --signed
+                </span>
+              </p>
+              <p className="text-[11.5px] text-muted-foreground">
+                <span className="text-emerald-400">⠿</span> signed url ready · expires in 15:00
+              </p>
             </div>
-          </motion.div>
-
-          <motion.div
-            animate={{ y: [0, 10, 0] }}
-            transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
-            className="glass-panel absolute right-0 top-24 w-72 rotate-3 rounded-2xl p-4"
-          >
-            <div className="flex items-center justify-between">
-              <Badge className="bg-sky-500/10 text-sky-600">Textbook</Badge>
-              <span className="text-xs font-semibold text-muted-foreground">Grade 11</span>
-            </div>
-            <p className="mt-3 text-sm font-bold leading-snug">
-              Grade 11 Chemistry — Full Curriculum Textbook
-            </p>
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <FlaskConical className="size-3.5 text-sky-500" /> Chemistry · Natural
-            </div>
-          </motion.div>
+          </div>
 
           <motion.div
             animate={{ y: [0, -8, 0] }}
-            transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 1.1 }}
-            className="glass-panel absolute bottom-4 left-16 w-80 -rotate-1 rounded-2xl p-4"
+            transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
+            className="glass-chip absolute -right-3 -top-3 flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-[11px] font-semibold"
           >
-            <div className="flex items-center justify-between">
-              <Badge className="bg-violet-500/10 text-violet-600">Worksheet</Badge>
-              <span className="flex items-center gap-1 text-xs font-semibold text-amber-600">
-                <Sparkles className="size-3.5" /> Premium
-              </span>
-            </div>
-            <p className="mt-3 text-sm font-bold leading-snug">
-              Mechanics & Forces — Practice Worksheet Set
-            </p>
-            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <ClipboardList className="size-3.5 text-violet-500" /> Physics · Grade 11
-              </span>
-              <span className="flex items-center gap-1">
-                <Download className="size-3.5" /> 2.4 MB
-              </span>
-            </div>
+            <BookOpen className="size-3.5 text-primary" /> 09 subjects
           </motion.div>
-
-          <div className="glass-chip absolute -left-3 top-2 flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground">
-            <FileText className="size-3.5 text-indigo-500" /> 9 subjects
-          </div>
-          <div className="glass-chip absolute bottom-16 -right-2 flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground">
-            <CalendarDays className="size-3.5 text-sky-500" /> Years of past papers
-          </div>
+          <motion.div
+            animate={{ y: [0, 8, 0] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
+            className="glass-chip absolute -bottom-4 -left-4 flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-[11px] font-semibold"
+          >
+            <CalendarDays className="size-3.5 text-primary" /> years of past papers
+          </motion.div>
         </motion.div>
       </section>
 
@@ -344,9 +360,15 @@ export default function Landing() {
           className="glass-panel grid grid-cols-2 gap-y-6 rounded-3xl px-6 py-8 sm:grid-cols-4"
         >
           {STATS.map((stat) => (
-            <motion.div key={stat.label} variants={fadeUp} className="flex flex-col items-center text-center">
-              <span className="text-gradient text-3xl font-extrabold tracking-tight">{stat.value}</span>
-              <span className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <motion.div
+              key={stat.label}
+              variants={fadeUp}
+              className="flex flex-col items-center text-center"
+            >
+              <span className="font-mono text-3xl font-bold tracking-tight text-gradient">
+                {stat.value}
+              </span>
+              <span className="mt-1 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 {stat.label}
               </span>
             </motion.div>
@@ -363,8 +385,11 @@ export default function Landing() {
           viewport={{ once: true, margin: "-80px" }}
           className="mx-auto max-w-2xl text-center"
         >
-          <motion.p variants={fadeUp} className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
-            The three streams
+          <motion.p
+            variants={fadeUp}
+            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+          >
+            // the three streams
           </motion.p>
           <motion.h2
             variants={fadeUp}
@@ -373,7 +398,8 @@ export default function Landing() {
             Everything the national exams cover
           </motion.h2>
           <motion.p variants={fadeUp} className="mt-4 text-muted-foreground">
-            Whatever track you're on, your examination subjects are organised and ready in the library.
+            Whatever track you&apos;re on, your examination subjects are organized and
+            ready in the library.
           </motion.p>
         </motion.div>
 
@@ -390,18 +416,31 @@ export default function Landing() {
               variants={fadeUp}
               className="glass-panel group rounded-2xl p-6 transition-transform duration-300 hover:-translate-y-1"
             >
-              <div
-                className={`flex size-11 items-center justify-center rounded-xl bg-gradient-to-br ${stream.color} text-white shadow-sm`}
-              >
-                <GraduationCap className="size-5" />
+              <div className="flex items-center justify-between">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.74_0.15_232_/_0.25)]">
+                  <GraduationCap className="size-5" />
+                </div>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {stream.slug}
+                </span>
               </div>
               <h3 className="mt-4 text-lg font-bold tracking-tight">{stream.name}</h3>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{stream.description}</p>
-              <ul className="mt-4 space-y-2.5">
+              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                {stream.description}
+              </p>
+              <ul className="mt-4 space-y-2.5 border-t border-white/8 pt-4">
                 {stream.subjects.map((subject) => (
-                  <li key={subject.name} className="flex items-center gap-2.5 text-sm font-medium">
-                    <subject.icon className="size-4 text-primary/70" />
-                    {subject.name}
+                  <li
+                    key={subject.name}
+                    className="flex items-center justify-between gap-2 text-sm font-medium"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <subject.icon className="size-4 text-primary/70" />
+                      {subject.name}
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground/70">
+                      {subject.slug}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -419,8 +458,11 @@ export default function Landing() {
           viewport={{ once: true, margin: "-80px" }}
           className="mx-auto max-w-2xl text-center"
         >
-          <motion.p variants={fadeUp} className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
-            The library
+          <motion.p
+            variants={fadeUp}
+            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+          >
+            // the library
           </motion.p>
           <motion.h2
             variants={fadeUp}
@@ -429,7 +471,8 @@ export default function Landing() {
             Five resource types, one search
           </motion.h2>
           <motion.p variants={fadeUp} className="mt-4 text-muted-foreground">
-            From full textbooks to real past papers — filter by grade, subject and type in seconds.
+            From full textbooks to real past papers — filter and search by grade,
+            subject and type in seconds.
           </motion.p>
         </motion.div>
 
@@ -444,7 +487,7 @@ export default function Landing() {
             <motion.div
               key={type.type}
               variants={fadeUp}
-              className={`glass-soft group rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 hover:bg-white/75 ${
+              className={`glass-soft group rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.05] ${
                 index === 4 ? "sm:col-span-2 lg:col-span-1" : ""
               }`}
             >
@@ -452,9 +495,16 @@ export default function Landing() {
                 <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <type.icon className="size-5" />
                 </div>
-                <h3 className="font-bold tracking-tight">{type.name}</h3>
+                <div className="min-w-0">
+                  <h3 className="font-bold tracking-tight">{type.name}</h3>
+                  <p className="font-mono text-[10px] text-muted-foreground">
+                    type/{type.type}
+                  </p>
+                </div>
               </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">{type.description}</p>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                {type.description}
+              </p>
             </motion.div>
           ))}
         </motion.div>
@@ -469,14 +519,17 @@ export default function Landing() {
           viewport={{ once: true, margin: "-80px" }}
           className="mx-auto max-w-2xl text-center"
         >
-          <motion.p variants={fadeUp} className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
-            How it works
+          <motion.p
+            variants={fadeUp}
+            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+          >
+            // how it works
           </motion.p>
           <motion.h2
             variants={fadeUp}
             className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl"
           >
-            From login to exam room in three steps
+            From sign-in to exam room in three steps
           </motion.h2>
         </motion.div>
 
@@ -488,15 +541,21 @@ export default function Landing() {
           className="mt-12 grid gap-5 md:grid-cols-3"
         >
           {STEPS.map((step) => (
-            <motion.div key={step.step} variants={fadeUp} className="glass-panel relative rounded-2xl p-6">
-              <span className="text-gradient absolute right-5 top-4 text-3xl font-extrabold opacity-60">
+            <motion.div
+              key={step.step}
+              variants={fadeUp}
+              className="glass-panel relative rounded-2xl p-6"
+            >
+              <span className="absolute right-5 top-4 font-mono text-3xl font-bold text-gradient opacity-70">
                 {step.step}
               </span>
               <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <step.icon className="size-5" />
               </div>
               <h3 className="mt-4 font-bold tracking-tight">{step.title}</h3>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{step.description}</p>
+              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                {step.description}
+              </p>
             </motion.div>
           ))}
         </motion.div>
@@ -511,22 +570,37 @@ export default function Landing() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="glass-panel relative overflow-hidden rounded-3xl px-6 py-14 text-center sm:px-12"
         >
-          <div className="pointer-events-none absolute -left-20 -top-24 size-64 rounded-full bg-sky-300/30 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -right-16 size-64 rounded-full bg-indigo-300/30 blur-3xl" />
+          <div className="pointer-events-none absolute -left-20 -top-24 size-72 rounded-full bg-primary/15 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -right-16 size-72 rounded-full bg-sky-400/10 blur-3xl" />
           <div className="relative">
-            <h2 className="mx-auto max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Ready to ace your <span className="text-gradient">national exams?</span>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
+              // get started
+            </p>
+            <h2 className="mx-auto mt-3 max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">
+              Ready to walk into the exam room{" "}
+              <span className="text-gradient">prepared?</span>
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-              Join Nexus Academy and get every textbook, past paper and study guide
-              for your stream — organised by grade and subject.
+              Create your free account and get instant access to every textbook,
+              past paper and study guide for your stream — organized by grade and
+              subject, with premium downloads for full exam-season access.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button asChild size="lg" className="rounded-xl">
                 <Link to={libraryHref}>
-                  {isAuthenticated ? "Open the library" : "Get started free"}
+                  {isAuthenticated ? "Open the library" : "Create free account"}
                   <ArrowRight className="size-4" />
                 </Link>
+              </Button>
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="rounded-xl bg-white/5"
+              >
+                <a href="#library">
+                  <FileText className="size-4" /> View the catalog
+                </a>
               </Button>
             </div>
           </div>
@@ -534,17 +608,20 @@ export default function Landing() {
       </section>
 
       {/* ------- Footer ------- */}
-      <footer className="border-t border-white/60 bg-white/30 backdrop-blur-md">
+      <footer className="border-t border-white/8 bg-white/[0.02] backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row">
           <div className="flex items-center gap-2.5">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
-            <span className="text-sm font-extrabold tracking-tight">
-              Nexus <span className="text-gradient">Academy</span>
-            </span>
+            <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Nexus Academy · Ethiopian national exam prep for grades 9–12
+          <p className="font-mono text-[11px] text-muted-foreground">
+            © {new Date().getFullYear()} Nexus Academy · Ethiopian national exam prep,
+            grades 9–12
           </p>
+          <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground">
+            <Sparkles className="size-3.5 text-primary" />
+            <span>premium · signed downloads</span>
+          </div>
         </div>
       </footer>
     </div>

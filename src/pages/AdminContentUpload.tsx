@@ -264,7 +264,7 @@ export default function AdminContentUpload() {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Files go to Cloudflare R2 and a row is written to the library — keyed as{" "}
-            <code className="rounded bg-white/60 px-1 text-[11px]">
+            <code className="rounded bg-white/10 px-1 text-[11px]">
               stream/grade/subject/type/filename.pdf
             </code>
             .
@@ -273,13 +273,13 @@ export default function AdminContentUpload() {
 
         {/* R2 storage status */}
         {r2Status && !r2Status.configured && (
-          <Alert className="glass-soft border-amber-300/70 bg-amber-50/70">
-            <AlertTriangle className="size-4 text-amber-600" />
-            <AlertTitle className="text-amber-800">R2 storage not configured yet</AlertTitle>
-            <AlertDescription className="text-amber-700/90">
+          <Alert className="glass-soft border-amber-400/25 bg-amber-400/10">
+            <AlertTriangle className="size-4 text-amber-300" />
+            <AlertTitle className="text-amber-300">R2 storage not configured yet</AlertTitle>
+            <AlertDescription className="text-amber-200/80">
               To enable uploads, create an R2 bucket in the Cloudflare dashboard
               and add these keys in the project&apos;s Keys / API keys tab:{" "}
-              <code className="rounded bg-white/70 px-1 text-[11px]">
+              <code className="rounded bg-white/10 px-1 text-[11px]">
                 {r2Status.missing.join(", ") || "R2_*"}
               </code>
               . Uploads are disabled until then.
@@ -287,10 +287,10 @@ export default function AdminContentUpload() {
           </Alert>
         )}
         {r2Status && r2Status.configured && (
-          <Alert className="glass-soft border-emerald-300/70 bg-emerald-50/60">
-            <CheckCircle2 className="size-4 text-emerald-600" />
-            <AlertTitle className="text-emerald-800">R2 storage is connected</AlertTitle>
-            <AlertDescription className="text-emerald-700/90">
+          <Alert className="glass-soft border-emerald-400/25 bg-emerald-400/10">
+            <CheckCircle2 className="size-4 text-emerald-300" />
+            <AlertTitle className="text-emerald-300">R2 storage is connected</AlertTitle>
+            <AlertDescription className="text-emerald-200/80">
               Files will be stored in your bucket under the human-browsable key layout.
             </AlertDescription>
           </Alert>
@@ -314,8 +314,8 @@ export default function AdminContentUpload() {
               className={cn(
                 "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors",
                 dragging
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-white/50",
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-white/[0.03]",
               )}
             >
               <input
@@ -371,7 +371,7 @@ export default function AdminContentUpload() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. 2023 Grade 12 Physics National Examination"
-                className="h-9 rounded-xl bg-white/70"
+                className="h-9 rounded-xl bg-white/5"
               />
             </div>
 
@@ -386,7 +386,7 @@ export default function AdminContentUpload() {
                     if (value !== "past_exam") setExamYear("");
                   }}
                 >
-                  <SelectTrigger className="h-9 rounded-xl bg-white/70">
+                  <SelectTrigger className="h-9 rounded-xl bg-white/5">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -402,7 +402,7 @@ export default function AdminContentUpload() {
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-muted-foreground">Grade</Label>
                 <Select value={grade} onValueChange={setGrade}>
-                  <SelectTrigger className="h-9 rounded-xl bg-white/70">
+                  <SelectTrigger className="h-9 rounded-xl bg-white/5">
                     <SelectValue placeholder="Select grade" />
                   </SelectTrigger>
                   <SelectContent>
@@ -418,7 +418,7 @@ export default function AdminContentUpload() {
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-muted-foreground">Subject</Label>
                 <Select value={subjectId} onValueChange={setSubjectId}>
-                  <SelectTrigger className="h-9 rounded-xl bg-white/70">
+                  <SelectTrigger className="h-9 rounded-xl bg-white/5">
                     <SelectValue placeholder={subjects ? "Select subject" : "Loading…"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -441,13 +441,13 @@ export default function AdminContentUpload() {
                     value={examYear}
                     onChange={(e) => setExamYear(e.target.value)}
                     placeholder="e.g. 2023"
-                    className="h-9 rounded-xl bg-white/70"
+                    className="h-9 rounded-xl bg-white/5"
                   />
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-xs font-semibold text-muted-foreground">Exam year</Label>
-                  <div className="flex h-9 items-center rounded-xl border border-dashed border-border bg-white/40 px-3 text-xs text-muted-foreground">
+                  <div className="flex h-9 items-center rounded-xl border border-dashed border-border bg-white/5 px-3 text-xs text-muted-foreground">
                     Only for past exams
                   </div>
                 </div>
@@ -455,7 +455,7 @@ export default function AdminContentUpload() {
             </div>
 
             {/* Premium toggle */}
-            <div className="flex items-center justify-between rounded-xl border border-border/70 bg-white/50 px-4 py-3">
+            <div className="flex items-center justify-between rounded-xl border border-border/70 bg-white/5 px-4 py-3">
               <div>
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
                   <Sparkles className="size-4 text-amber-500" /> Premium content
@@ -490,15 +490,15 @@ export default function AdminContentUpload() {
               Storage layout
             </p>
             <div className="mt-4 space-y-3 font-mono text-[11px] leading-5 text-muted-foreground">
-              <div className="rounded-lg bg-white/70 p-3">
+              <div className="rounded-lg border border-white/8 bg-black/30 p-3">
                 <p className="text-foreground">natural/11/physics/past-exam/</p>
                 <p>2023-physics-national-exam.pdf</p>
               </div>
-              <div className="rounded-lg bg-white/70 p-3">
+              <div className="rounded-lg border border-white/8 bg-black/30 p-3">
                 <p className="text-foreground">common/9/mathematics/textbook/</p>
                 <p>grade-9-mathematics-unit-1.pdf</p>
               </div>
-              <div className="rounded-lg bg-white/70 p-3">
+              <div className="rounded-lg border border-white/8 bg-black/30 p-3">
                 <p className="text-foreground">social/12/history/student-guide/</p>
                 <p>exam-season-revision-guide.pdf</p>
               </div>
@@ -519,8 +519,8 @@ export default function AdminContentUpload() {
               <p className="text-sm text-muted-foreground">Manage what&apos;s already in the library.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={adminGrade} onValueChange={setAdminGrade}>
-                <SelectTrigger className="h-8 w-28 rounded-lg bg-white/70 text-xs">
+              <Select value={adminGrade} onValueChange={(v) => setAdminGrade(v === "all" ? "" : v)}>
+                <SelectTrigger className="h-8 w-28 rounded-lg bg-white/5 text-xs">
                   <SelectValue placeholder="Grade" />
                 </SelectTrigger>
                 <SelectContent>
@@ -532,8 +532,8 @@ export default function AdminContentUpload() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={adminType} onValueChange={setAdminType}>
-                <SelectTrigger className="h-8 w-32 rounded-lg bg-white/70 text-xs">
+              <Select value={adminType} onValueChange={(v) => setAdminType(v === "all" ? "" : v)}>
+                <SelectTrigger className="h-8 w-32 rounded-lg bg-white/5 text-xs">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -545,8 +545,8 @@ export default function AdminContentUpload() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={adminSubjectId} onValueChange={setAdminSubjectId}>
-                <SelectTrigger className="h-8 w-32 rounded-lg bg-white/70 text-xs">
+              <Select value={adminSubjectId} onValueChange={(v) => setAdminSubjectId(v === "all" ? "" : v)}>
+                <SelectTrigger className="h-8 w-32 rounded-lg bg-white/5 text-xs">
                   <SelectValue placeholder="Subject" />
                 </SelectTrigger>
                 <SelectContent>
@@ -600,11 +600,11 @@ export default function AdminContentUpload() {
                 </TableHeader>
                 <TableBody>
                   {adminContent.map((item) => (
-                    <TableRow key={item._id} className="hover:bg-white/50">
+                    <TableRow key={item._id} className="hover:bg-white/5">
                       <TableCell className="max-w-[15rem]">
                         <p className="truncate font-semibold">{item.title}</p>
                         {item.isPremium && (
-                          <Badge className="mt-1 gap-1 bg-amber-400/15 text-amber-700">
+                          <Badge className="mt-1 gap-1 bg-amber-400/10 text-amber-300">
                             <Sparkles className="size-3" /> Premium
                           </Badge>
                         )}

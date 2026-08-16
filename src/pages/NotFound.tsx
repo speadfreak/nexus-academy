@@ -1,4 +1,6 @@
 import { motion } from "framer-motion";
+import { Link } from "react-router";
+import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
   return (
@@ -8,17 +10,21 @@ export default function NotFound() {
       transition={{ duration: 0.5 }}
       className="min-h-screen flex flex-col"
     >
-
-      
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="max-w-5xl mx-auto relative px-4">
-          <div className="flex items-center justify-center min-h-[200px]">
-            <div className="text-center">
-              <h1 className="text-4xl font-bold text-gray-900 mb-4">404</h1>
-              <p className="text-lg text-gray-600">Page Not Found</p>
-            </div>
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-4">
+        <div className="text-center">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
+            // 404
+          </p>
+          <h1 className="mt-3 text-5xl font-extrabold tracking-tight text-foreground">
+            Page not found
+          </h1>
+          <p className="mt-3 text-muted-foreground">
+            The page you&apos;re looking for doesn&apos;t exist in this library.
+          </p>
+          <Button asChild className="mt-8 rounded-xl">
+            <Link to="/">Back to Nexus Academy</Link>
+          </Button>
         </div>
       </div>
     </motion.div>

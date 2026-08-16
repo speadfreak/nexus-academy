@@ -133,9 +133,10 @@ export const getContent = query({
     subjectSlug: v.optional(v.string()),
     contentType: v.optional(contentTypeValidator),
     examYear: v.optional(v.number()),
+    searchQuery: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<ContentItemWithSubject[]> => {
-    const { grade, subjectSlug, contentType, examYear } = args;
+    const { grade, subjectSlug, contentType, examYear, searchQuery } = args;
 
     let subject: Doc<"subjects"> | null = null;
     if (subjectSlug) {
@@ -170,7 +171,21 @@ export const getContent = query({
       items = await ctx.db.query("contentItems").order("desc").take(200);
     }
 
-    return withSubjects(ctx, items);
+    const joined = await withSubjects(ctx, items);
+
+    // Free-text search over title and subject name (case-insensitive).
+    // Applied after the structural filters; catalog scale is small enough that
+    // this stays fast without a dedicated search index.
+    const query = searchQuery?.trim().toLowerCase();
+    if (query) {
+      return joined.filter(
+        (item) =>
+          item.title.toLowerCase().includes(query) ||
+          item.subjectName.toLowerCase().includes(query),
+      );
+    }
+
+    return joined;
   },
 });
 
