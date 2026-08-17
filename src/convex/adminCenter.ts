@@ -35,18 +35,102 @@ async function requireAdmin(ctx: DbCtx): Promise<Doc<"users">> {
 }
 
 const SUBSCRIPTION_MS = 30 * 24 * 60 * 60 * 1000;
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function monthKey(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Last `count` month keys, oldest first, ending at the current month. */
+function recentMonthKeys(count: number): string[] {
+  const keys: string[] = [];
+  const now = new Date();
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return keys;
+}
+
+function monthLabel(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTH_NAMES[(m ?? 1) - 1]} ’${String(y ?? 0).slice(2)}`;
+}
+
+/** When a completed payment actually earned money (falls back to creation). */
+function completedPaymentTs(payment: Doc<"payments">): number {
+  return payment.completedAt ?? payment.createdAt;
+}
+
+function buildRevenueSeries(
+  payments: Doc<"payments">[],
+  keys: string[],
+): { label: string; revenue: number; payments: number }[] {
+  const byIndex = new Map(keys.map((k, i) => [k, i]));
+  const series = keys.map((key) => ({ label: monthLabel(key), revenue: 0, payments: 0 }));
+  for (const payment of payments) {
+    if (payment.status !== "completed") continue;
+    const idx = byIndex.get(monthKey(completedPaymentTs(payment)));
+    if (idx !== undefined) {
+      series[idx]!.revenue += payment.amount;
+      series[idx]!.payments += 1;
+    }
+  }
+  return series;
+}
+
+function providerTotals(
+  payments: Doc<"payments">[],
+): { provider: string; total: number; count: number }[] {
+  const totals = new Map<string, { total: number; count: number }>();
+  for (const payment of payments) {
+    if (payment.status !== "completed") continue;
+    const entry = totals.get(payment.provider) ?? { total: 0, count: 0 };
+    entry.total += payment.amount;
+    entry.count += 1;
+    totals.set(payment.provider, entry);
+  }
+  return [...totals.entries()]
+    .map(([provider, value]) => ({ provider, ...value }))
+    .sort((a, b) => b.total - a.total);
+}
 
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
 
+export interface AdminUserRow {
+  _id: Id<"users">;
+  name: string | null;
+  email: string | null;
+  isAnonymous: boolean;
+  role: string | null;
+  createdAt: number;
+  subscriptionStatus: string;
+  trialActiveDays: number;
+  planTier: string | null;
+  stream: string | null;
+  displayName: string | null;
+  usage: {
+    studyHours: number;
+    sessions: number;
+    quizzes: number;
+    xp: number;
+    lastActiveAt: number | null;
+  };
+}
+
 export const listUsers = query({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<AdminUserRow[]> => {
     await requireAdmin(ctx);
     const users = await ctx.db.query("users").take(100);
     const subscriptions = await ctx.db.query("subscriptions").collect();
     const profiles = await ctx.db.query("userProfiles").collect();
+    const sessions = await ctx.db.query("studySessions").collect();
+    const xpRows = await ctx.db.query("xpLedger").collect();
+    const attempts = await ctx.db.query("quizAttempts").collect();
 
     const subByUser = new Map(
       subscriptions.map((sub) => [sub.userId, sub]),
@@ -54,6 +138,31 @@ export const listUsers = query({
     const profileByUser = new Map(
       profiles.map((profile) => [profile.userId, profile]),
     );
+
+    // Per-user usage aggregates — who is ACTUALLY studying, not just signed up.
+    const hoursByUser = new Map<Id<"users">, number>();
+    const sessionsByUser = new Map<Id<"users">, number>();
+    const lastActiveByUser = new Map<Id<"users">, number>();
+    for (const session of sessions) {
+      hoursByUser.set(
+        session.userId,
+        (hoursByUser.get(session.userId) ?? 0) + session.durationSeconds / 3600,
+      );
+      sessionsByUser.set(
+        session.userId,
+        (sessionsByUser.get(session.userId) ?? 0) + 1,
+      );
+      const last = lastActiveByUser.get(session.userId) ?? 0;
+      if (session.endedAt > last) lastActiveByUser.set(session.userId, session.endedAt);
+    }
+    const xpByUser = new Map<Id<"users">, number>();
+    for (const row of xpRows) {
+      xpByUser.set(row.userId, (xpByUser.get(row.userId) ?? 0) + row.amount);
+    }
+    const quizzesByUser = new Map<Id<"users">, number>();
+    for (const attempt of attempts) {
+      quizzesByUser.set(attempt.userId, (quizzesByUser.get(attempt.userId) ?? 0) + 1);
+    }
 
     return users.map((user) => {
       const sub = subByUser.get(user._id);
@@ -70,6 +179,13 @@ export const listUsers = query({
         planTier: sub?.planTier ?? null,
         stream: profile?.stream ?? null,
         displayName: profile?.displayName ?? null,
+        usage: {
+          studyHours: Math.round((hoursByUser.get(user._id) ?? 0) * 10) / 10,
+          sessions: sessionsByUser.get(user._id) ?? 0,
+          quizzes: quizzesByUser.get(user._id) ?? 0,
+          xp: xpByUser.get(user._id) ?? 0,
+          lastActiveAt: lastActiveByUser.get(user._id) ?? null,
+        },
       };
     });
   },
@@ -215,6 +331,317 @@ export const getAdminStats = query({
       notes,
       byPaymentStatus,
       bySubscriptionStatus,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Dashboard + finance (the command center)
+// ---------------------------------------------------------------------------
+
+export interface AdminDashboard {
+  totals: {
+    users: number;
+    activeThisWeek: number;
+    activeToday: number;
+    contentItems: number;
+    payingUsers: number;
+    revenueTotal: number;
+    revenueThisMonth: number;
+    paymentsCompleted: number;
+  };
+  revenueByMonth: { label: string; revenue: number; payments: number }[];
+  revenueByProvider: { provider: string; total: number; count: number }[];
+  newUsersByMonth: { label: string; count: number }[];
+  contentByType: { contentType: string; count: number }[];
+  usersByStream: { stream: string; count: number }[];
+  subscriptionBreakdown: { status: string; count: number }[];
+  powerUsers: {
+    userId: Id<"users">;
+    name: string;
+    xp: number;
+    hours: number;
+    sessions: number;
+    quizzes: number;
+    streak: number;
+  }[];
+  recentSignups: {
+    userId: Id<"users">;
+    name: string;
+    email: string | null;
+    createdAt: number;
+    isAnonymous: boolean;
+  }[];
+}
+
+/**
+ * The main admin dashboard: live totals, revenue series, activity, content
+ * inventory, stream split, power users and recent signups. One reactive
+ * query so the control center feels instant.
+ */
+export const getAdminDashboard = query({
+  args: {},
+  handler: async (ctx): Promise<AdminDashboard> => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const dayAgo = now - 24 * 60 * 60 * 1000;
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [users, subscriptions, payments, contentItems, profiles, streaks, sessions, xpRows, attempts] =
+      await Promise.all([
+        ctx.db.query("users").take(300),
+        ctx.db.query("subscriptions").collect(),
+        ctx.db.query("payments").collect(),
+        ctx.db.query("contentItems").take(500),
+        ctx.db.query("userProfiles").collect(),
+        ctx.db.query("studyStreaks").collect(),
+        ctx.db.query("studySessions").collect(),
+        ctx.db.query("xpLedger").collect(),
+        ctx.db.query("quizAttempts").collect(),
+      ]);
+
+    // --- Revenue ---------------------------------------------------------
+    const revenueByMonth = buildRevenueSeries(payments, recentMonthKeys(12));
+    let revenueTotal = 0;
+    let revenueThisMonth = 0;
+    let paymentsCompleted = 0;
+    for (const payment of payments) {
+      if (payment.status !== "completed") continue;
+      const ts = completedPaymentTs(payment);
+      revenueTotal += payment.amount;
+      paymentsCompleted += 1;
+      if (ts >= monthStart.getTime()) revenueThisMonth += payment.amount;
+    }
+    const revenueByProvider = providerTotals(payments);
+
+    // --- Activity (who actually used the app this week / today) ----------
+    const activeWeek = new Set<Id<"users">>();
+    const activeToday = new Set<Id<"users">>();
+    const hoursByUser = new Map<Id<"users">, number>();
+    const sessionsByUser = new Map<Id<"users">, number>();
+    for (const session of sessions) {
+      hoursByUser.set(
+        session.userId,
+        (hoursByUser.get(session.userId) ?? 0) + session.durationSeconds / 3600,
+      );
+      sessionsByUser.set(
+        session.userId,
+        (sessionsByUser.get(session.userId) ?? 0) + 1,
+      );
+      if (session.startedAt >= weekAgo) activeWeek.add(session.userId);
+      if (session.startedAt >= dayAgo) activeToday.add(session.userId);
+    }
+    for (const row of xpRows) {
+      if (row.createdAt >= weekAgo) activeWeek.add(row.userId);
+      if (row.createdAt >= dayAgo) activeToday.add(row.userId);
+    }
+    for (const attempt of attempts) {
+      if (attempt.completedAt >= weekAgo) activeWeek.add(attempt.userId);
+    }
+
+    // --- Subscriptions ---------------------------------------------------
+    const statusCounts: Record<string, number> = { trial: 0, active: 0, expired: 0, canceled: 0 };
+    let payingUsers = 0;
+    for (const sub of subscriptions) {
+      statusCounts[sub.status] = (statusCounts[sub.status] ?? 0) + 1;
+      if (sub.status === "active" || sub.status === "trial") payingUsers += 1;
+    }
+    const usersWithSub = new Set(subscriptions.map((s) => s.userId));
+    const subscriptionBreakdown = [
+      ...Object.entries(statusCounts).map(([status, count]) => ({ status, count })),
+      { status: "none", count: users.filter((u) => !usersWithSub.has(u._id)).length },
+    ];
+
+    // --- Content + streams + signups -------------------------------------
+    const contentCounts: Record<string, number> = {};
+    for (const item of contentItems) {
+      contentCounts[item.contentType] = (contentCounts[item.contentType] ?? 0) + 1;
+    }
+    const contentByType = Object.entries(contentCounts)
+      .map(([contentType, count]) => ({ contentType, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const profileByUser = new Map(profiles.map((p) => [p.userId, p]));
+    const streamCounts: Record<string, number> = { natural: 0, social: 0, onboarding: 0 };
+    for (const user of users) {
+      const stream = profileByUser.get(user._id)?.stream;
+      streamCounts[stream ?? "onboarding"] = (streamCounts[stream ?? "onboarding"] ?? 0) + 1;
+    }
+    const usersByStream = Object.entries(streamCounts).map(([stream, count]) => ({ stream, count }));
+
+    const signupKeys = recentMonthKeys(6);
+    const newUsersByMonth = signupKeys.map((key) => ({ label: monthLabel(key), count: 0 }));
+    const signupIndex = new Map(signupKeys.map((k, i) => [k, i]));
+    for (const user of users) {
+      const idx = signupIndex.get(monthKey(user._creationTime));
+      if (idx !== undefined) newUsersByMonth[idx]!.count += 1;
+    }
+
+    // --- Power users (ranked by XP — every study action aggregates here) -
+    const xpByUser = new Map<Id<"users">, number>();
+    for (const row of xpRows) {
+      xpByUser.set(row.userId, (xpByUser.get(row.userId) ?? 0) + row.amount);
+    }
+    const quizzesByUser = new Map<Id<"users">, number>();
+    for (const attempt of attempts) {
+      quizzesByUser.set(attempt.userId, (quizzesByUser.get(attempt.userId) ?? 0) + 1);
+    }
+    const streakByUser = new Map(streaks.map((s) => [s.userId, s.currentStreak]));
+
+    const powerUsers = [...xpByUser.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([userId, xp]) => {
+        const user = users.find((u) => u._id === userId);
+        const profile = profileByUser.get(userId);
+        return {
+          userId,
+          name: profile?.displayName ?? user?.name ?? user?.email ?? "Guest",
+          xp,
+          hours: Math.round((hoursByUser.get(userId) ?? 0) * 10) / 10,
+          sessions: sessionsByUser.get(userId) ?? 0,
+          quizzes: quizzesByUser.get(userId) ?? 0,
+          streak: streakByUser.get(userId) ?? 0,
+        };
+      });
+
+    const recentSignups = [...users]
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .slice(0, 6)
+      .map((user) => ({
+        userId: user._id,
+        name: profileByUser.get(user._id)?.displayName ?? user.name ?? user.email ?? "Guest",
+        email: user.email ?? null,
+        createdAt: user._creationTime,
+        isAnonymous: user.isAnonymous ?? false,
+      }));
+
+    return {
+      totals: {
+        users: users.length,
+        activeThisWeek: activeWeek.size,
+        activeToday: activeToday.size,
+        contentItems: contentItems.length,
+        payingUsers,
+        revenueTotal,
+        revenueThisMonth,
+        paymentsCompleted,
+      },
+      revenueByMonth,
+      revenueByProvider,
+      newUsersByMonth,
+      contentByType,
+      usersByStream,
+      subscriptionBreakdown,
+      powerUsers,
+      recentSignups,
+    };
+  },
+});
+
+export interface FinanceOverview {
+  totalEarned: number;
+  thisMonth: number;
+  last30Days: number;
+  avgPayment: number;
+  completedCount: number;
+  pendingCount: number;
+  failedCount: number;
+  payingUsers: number;
+  conversionRate: number;
+  revenueByMonth: { label: string; revenue: number; payments: number }[];
+  revenueByProvider: { provider: string; total: number; count: number }[];
+  recentTransactions: {
+    _id: Id<"payments">;
+    provider: string;
+    amount: number;
+    currency: string;
+    status: string;
+    createdAt: number;
+    completedAt: number | null;
+    providerTransactionId: string | null;
+    userEmail: string | null;
+    userName: string | null;
+  }[];
+}
+
+/** Finance page: money earned, monthly series, provider split, conversion. */
+export const getFinanceOverview = query({
+  args: {},
+  handler: async (ctx): Promise<FinanceOverview> => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+    const [payments, users, subscriptions] = await Promise.all([
+      ctx.db.query("payments").collect(),
+      ctx.db.query("users").take(300),
+      ctx.db.query("subscriptions").collect(),
+    ]);
+
+    let totalEarned = 0;
+    let thisMonth = 0;
+    let last30Days = 0;
+    let completedCount = 0;
+    let pendingCount = 0;
+    let failedCount = 0;
+    for (const payment of payments) {
+      if (payment.status === "completed") {
+        const ts = completedPaymentTs(payment);
+        totalEarned += payment.amount;
+        completedCount += 1;
+        if (ts >= monthStart.getTime()) thisMonth += payment.amount;
+        if (ts >= thirtyDaysAgo) last30Days += payment.amount;
+      } else if (payment.status === "pending") {
+        pendingCount += 1;
+      } else {
+        failedCount += 1;
+      }
+    }
+
+    const userById = new Map(users.map((u) => [u._id, u]));
+    const recentTransactions = [...payments]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 25)
+      .map((payment) => {
+        const user = userById.get(payment.userId);
+        return {
+          _id: payment._id,
+          provider: payment.provider,
+          amount: payment.amount,
+          currency: payment.currency,
+          status: payment.status,
+          createdAt: payment.createdAt,
+          completedAt: payment.completedAt ?? null,
+          providerTransactionId: payment.providerTransactionId ?? null,
+          userEmail: user?.email ?? null,
+          userName: user?.name ?? null,
+        };
+      });
+
+    const payingUsers = subscriptions.filter(
+      (s) => s.status === "active" || s.status === "trial",
+    ).length;
+
+    return {
+      totalEarned,
+      thisMonth,
+      last30Days,
+      avgPayment: completedCount > 0 ? totalEarned / completedCount : 0,
+      completedCount,
+      pendingCount,
+      failedCount,
+      payingUsers,
+      conversionRate: users.length > 0 ? payingUsers / users.length : 0,
+      revenueByMonth: buildRevenueSeries(payments, recentMonthKeys(12)),
+      revenueByProvider: providerTotals(payments),
+      recentTransactions,
     };
   },
 });
