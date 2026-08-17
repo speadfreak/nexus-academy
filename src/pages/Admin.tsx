@@ -545,29 +545,29 @@ export default function Admin() {
           className="flex flex-col gap-4 lg:flex-row lg:items-start"
         >
           {/* Command-center rail: horizontal scroll on mobile, sidebar on lg */}
-          <TabsList className="glass-panel flex w-full shrink-0 gap-1 overflow-x-auto rounded-2xl p-2 lg:w-52 lg:flex-col lg:overflow-visible lg:p-2.5">
-            <TabsTrigger value="dashboard" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+          <TabsList className="glass-panel flex w-full shrink-0 items-center gap-1 overflow-x-auto rounded-2xl p-2 lg:w-56 lg:flex-col lg:items-stretch lg:overflow-visible lg:p-2.5">
+            <TabsTrigger value="dashboard" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <Activity className="size-4" /> Dashboard
             </TabsTrigger>
-            <TabsTrigger value="content" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+            <TabsTrigger value="content" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <FileText className="size-4" /> Content
             </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+            <TabsTrigger value="users" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <UserRound className="size-4" /> Users
             </TabsTrigger>
-            <TabsTrigger value="finance" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+            <TabsTrigger value="finance" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <Wallet className="size-4" /> Finance
             </TabsTrigger>
-            <TabsTrigger value="reports" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+            <TabsTrigger value="reports" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <Flag className="size-4" /> Reports
             </TabsTrigger>
-            <TabsTrigger value="terminal" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+            <TabsTrigger value="terminal" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <Terminal className="size-4" /> Terminal
             </TabsTrigger>
-            <TabsTrigger value="broadcast" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+            <TabsTrigger value="broadcast" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <Send className="size-4" /> Broadcast
             </TabsTrigger>
-            <TabsTrigger value="system" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+            <TabsTrigger value="system" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
               <KeyRound className="size-4" /> System
             </TabsTrigger>
           </TabsList>
@@ -583,7 +583,7 @@ export default function Admin() {
             ) : (
               <>
                 {/* Live totals */}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
                   <StatCard
                     label="users"
                     value={dashboard.totals.users}
@@ -625,7 +625,7 @@ export default function Admin() {
                 </div>
 
                 {/* Revenue + subscriptions */}
-                <div className="grid gap-4 lg:grid-cols-3">
+                <div className="grid gap-4 2xl:grid-cols-3">
                   <ChartCard
                     title="revenue · last 12 months"
                     sub="Money earned from completed payments, in ETB"
@@ -716,7 +716,7 @@ export default function Admin() {
                 </div>
 
                 {/* Growth + provider + content/streams */}
-                <div className="grid gap-4 lg:grid-cols-3">
+                <div className="grid gap-4 2xl:grid-cols-3">
                   <ChartCard title="new users · last 6 months">
                     <div className="h-44">
                       <ResponsiveContainer width="100%" height="100%">
@@ -1643,7 +1643,8 @@ export default function Admin() {
                 </p>
               </div>
 
-              {!process.env.TELEGRAM_BOT_TOKEN && (
+              {integrations?.find((integration) => integration.id === "telegram")
+                ?.configured === false && (
                 <Alert className="glass-soft mt-4 border-amber-400/25 bg-amber-400/10">
                   <AlertTriangle className="size-4 text-amber-300" />
                   <AlertTitle className="text-amber-300">
