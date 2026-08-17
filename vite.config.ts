@@ -92,9 +92,11 @@ export default defineConfig({
     // Bind to all interfaces so WebContainer's server-ready event fires.
     host: true,
     port: 5173,
-    // Keep HMR on, but disable full-screen error overlay
-    hmr: {
-      overlay: false,
-    },
+    // Freebuff requires HMR to stay disabled: the preview is served through
+    // the platform's toolbox proxy, which does not route websocket upgrades
+    // (the /upgrade path) to the sandbox container. With hmr: false, Vite
+    // does a full-page reload on change instead of opening a websocket, and
+    // the preview works through the proxy. Do not re-enable HMR here.
+    hmr: false,
   },
 });
