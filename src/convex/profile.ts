@@ -88,6 +88,7 @@ export const getProfile = query({
       _id: profile?._id ?? null,
       userId,
       displayName: profile?.displayName ?? user?.name ?? null,
+      username: profile?.username ?? null,
       avatarStorageId: profile?.avatarStorageId ?? null,
       avatarUrl,
       themePreference: profile?.themePreference ?? "dark",
@@ -127,6 +128,108 @@ export const updateProfile = mutation({
     if (args.stream !== undefined) patch.stream = args.stream;
     await ctx.db.patch(row._id, patch);
     return { ok: true };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Username — the login handle (email OR username both work on /auth)
+// ---------------------------------------------------------------------------
+
+// Lowercase letters, digits and underscores, 3–20 characters. Deliberately
+// strict: it becomes part of the login surface, so no spaces or lookalike
+// characters that would make handles hard to type on a phone.
+const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
+
+// A few reserved handles nobody may claim — avoids impersonating support
+// or the system itself.
+const RESERVED_USERNAMES = new Set([
+  "admin",
+  "administrator",
+  "support",
+  "help",
+  "nexus",
+  "nexusacademy",
+  "moderator",
+  "guest",
+]);
+
+export const setUsername = mutation({
+  args: { username: v.string() },
+  handler: async (ctx, { username }): Promise<{ ok: true; username: string }> => {
+    const userId = await requireUser(ctx);
+    const value = username.trim().toLowerCase();
+    if (!USERNAME_REGEX.test(value)) {
+      throw new ConvexError({
+        message:
+          "Usernames are 3–20 characters: lowercase letters, numbers and underscores only.",
+        code: "invalid",
+      });
+    }
+    if (RESERVED_USERNAMES.has(value)) {
+      throw new ConvexError({
+        message: "That username is reserved — try something else.",
+        code: "invalid",
+      });
+    }
+
+    const existing = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_username", (q) => q.eq("username", value))
+      .first();
+    if (existing && existing.userId !== userId) {
+      throw new ConvexError({
+        message: "That username is already taken — try another one.",
+        code: "username_taken",
+      });
+    }
+
+    await ctx.runMutation(internal.profile.ensureProfile, { userId });
+    const row = await getProfileRow(ctx, userId);
+    if (!row) {
+      throw new ConvexError({ message: "Profile could not be created.", code: "internal" });
+    }
+    await ctx.db.patch(row._id, { username: value });
+    return { ok: true, username: value };
+  },
+});
+
+/**
+ * Turn "email OR username" into the account's email address so the OTP flow
+ * can send the code. Usernames are resolved through userProfiles (unique by
+ * construction — setUsername enforces it). The error message is deliberately
+ * identical for both cases so we don't leak which handles exist.
+ */
+export const resolveLoginIdentifier = query({
+  args: { identifier: v.string() },
+  handler: async (ctx, { identifier }) => {
+    const value = identifier.trim();
+    if (!value) {
+      throw new ConvexError({
+        message: "Enter your email or username.",
+        code: "invalid",
+      });
+    }
+    if (value.includes("@")) {
+      return { email: value.toLowerCase(), username: null };
+    }
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_username", (q) => q.eq("username", value.toLowerCase()))
+      .first();
+    if (!profile) {
+      throw new ConvexError({
+        message: "We couldn't find an account with that email or username.",
+        code: "not_found",
+      });
+    }
+    const user = await ctx.db.get(profile.userId);
+    if (!user?.email) {
+      throw new ConvexError({
+        message: "That account has no email connected — try Google or Continue as Guest instead.",
+        code: "not_found",
+      });
+    }
+    return { email: user.email, username: profile.username ?? null };
   },
 });
 
