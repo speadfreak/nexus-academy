@@ -15,6 +15,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import {
+  internalQuery,
   mutation,
   query,
   type MutationCtx,
@@ -220,6 +221,53 @@ export const leaveGroup = mutation({
 });
 
 // ---------------------------------------------------------------------------
+// Internal helpers (reused by rooms.ts and safety checks)
+// ---------------------------------------------------------------------------
+
+export const getGroupById = internalQuery({
+  args: { groupId: v.id("studyGroups") },
+  handler: async (ctx, { groupId }) => (await ctx.db.get(groupId)) ?? null,
+});
+
+/** True when userId is a member of groupId (any role). */
+export const isGroupMember = internalQuery({
+  args: { groupId: v.id("studyGroups"), userId: v.id("users") },
+  handler: async (ctx, { groupId, userId }) => {
+    const membership = await ctx.db
+      .query("studyGroupMembers")
+      .withIndex("by_group", (q) => q.eq("groupId", groupId))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+    return membership !== null;
+  },
+});
+
+/** All member ids of a group (any role). */
+export const listGroupMemberIds = internalQuery({
+  args: { groupId: v.id("studyGroups") },
+  handler: async (ctx, { groupId }) => {
+    const members = await ctx.db
+      .query("studyGroupMembers")
+      .withIndex("by_group", (q) => q.eq("groupId", groupId))
+      .collect();
+    return members.map((m) => m.userId);
+  },
+});
+
+/** The role (owner | member) of userId in groupId, or null if not a member. */
+export const getGroupRole = internalQuery({
+  args: { groupId: v.id("studyGroups"), userId: v.id("users") },
+  handler: async (ctx, { groupId, userId }) => {
+    const membership = await ctx.db
+      .query("studyGroupMembers")
+      .withIndex("by_group", (q) => q.eq("groupId", groupId))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+    return membership?.role ?? null;
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
 
@@ -350,5 +398,63 @@ export const getGroupLeaderboard = query({
       myRole: myMembership.role,
       members: ranked,
     };
+  },
+});
+
+/**
+ * Member roster for ONE group (members only). Names + role + joinedAt, with
+ * users the caller has blocked (or who blocked them) filtered out server-side
+ * — the same invisibility rule rooms use. This powers the group member list
+ * with per-person report/block actions.
+ */
+export const getGroupMembers = query({
+  args: { groupId: v.id("studyGroups") },
+  handler: async (ctx, { groupId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const group = await ctx.db.get(groupId);
+    if (!group) return null;
+
+    const myMembership = await ctx.db
+      .query("studyGroupMembers")
+      .withIndex("by_group", (q) => q.eq("groupId", groupId))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+    if (!myMembership) return null;
+
+    const members = await ctx.db
+      .query("studyGroupMembers")
+      .withIndex("by_group", (q) => q.eq("groupId", groupId))
+      .order("asc")
+      .collect();
+    const hidden: Id<"users">[] = await ctx.runQuery(internal.safety.getHiddenUserIds, {
+      userId,
+    });
+    const hiddenSet = new Set(hidden);
+
+    const result: {
+      userId: Id<"users">;
+      name: string;
+      role: "owner" | "member";
+      joinedAt: number;
+      isMe: boolean;
+      isOwner: boolean;
+    }[] = [];
+    for (const member of members) {
+      if (hiddenSet.has(member.userId)) continue;
+      const profile = await ctx.runQuery(internal.profile.getProfileByUser, {
+        userId: member.userId,
+      });
+      const user = await ctx.db.get(member.userId);
+      result.push({
+        userId: member.userId,
+        name: profile?.displayName ?? user?.name ?? "Student",
+        role: member.role,
+        joinedAt: member.joinedAt,
+        isMe: member.userId === userId,
+        isOwner: member.userId === group.createdBy,
+      });
+    }
+    return { members: result, myRole: myMembership.role };
   },
 });

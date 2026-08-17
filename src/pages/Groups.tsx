@@ -7,22 +7,26 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen,
   Copy,
   Crown,
   LogOut,
+  MonitorPlay,
   Plus,
   Sparkles,
   Timer,
   Trophy,
   UserPlus,
   Users,
+  Video,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { ReportBlockMenu } from "@/components/ReportBlockMenu";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,11 +50,13 @@ import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 export default function Groups() {
+  const navigate = useNavigate();
   const myGroups = useQuery(api.studyGroups.getMyGroups);
   const subjects = useQuery(api.subjects.getAll);
   const createGroup = useMutation(api.studyGroups.createGroup);
   const joinGroup = useMutation(api.studyGroups.joinGroup);
   const leaveGroup = useMutation(api.studyGroups.leaveGroup);
+  const createRoom = useAction(api.roomsActions.createRoom);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -58,6 +64,9 @@ export default function Groups() {
   const [groupName, setGroupName] = useState("");
   const [subjectFocus, setSubjectFocus] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [roomName, setRoomName] = useState("");
+  const [roomDialogOpen, setRoomDialogOpen] = useState(false);
+  const [startingRoom, setStartingRoom] = useState(false);
 
   // Keep the selected group in sync with the (possibly reloading) list.
   const selectedGroup = useMemo(
@@ -68,6 +77,33 @@ export default function Groups() {
     api.studyGroups.getGroupLeaderboard,
     selectedGroup ? { groupId: selectedGroup.groupId as Id<"studyGroups"> } : "skip",
   );
+  const activeRooms = useQuery(
+    api.rooms.listActiveRoomsForGroup,
+    selectedGroup ? { groupId: selectedGroup.groupId as Id<"studyGroups"> } : "skip",
+  );
+  const members = useQuery(
+    api.studyGroups.getGroupMembers,
+    selectedGroup ? { groupId: selectedGroup.groupId as Id<"studyGroups"> } : "skip",
+  );
+
+  const handleStartRoom = async () => {
+    if (!selectedGroup) return;
+    const name = roomName.trim() || `${selectedGroup.name} study session`;
+    setStartingRoom(true);
+    try {
+      const result = await createRoom({
+        groupId: selectedGroup.groupId as Id<"studyGroups">,
+        name,
+      });
+      setRoomDialogOpen(false);
+      setRoomName("");
+      navigate(`/rooms/${result.roomId}`);
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not start the room."));
+    } finally {
+      setStartingRoom(false);
+    }
+  };
 
   const handleCreate = async () => {
     const name = groupName.trim();
@@ -339,6 +375,149 @@ export default function Groups() {
           </div>
         </div>
       </div>
+
+      {/* Rooms section (group-scoped — no global directory) */}
+      {selectedGroup && (
+        <div className="glass-panel rounded-2xl p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                study rooms · live video + chat · members only
+              </p>
+              <h2 className="mt-1 text-lg font-extrabold tracking-tight">
+                {selectedGroup.name} rooms
+              </h2>
+            </div>
+            <Button
+              className="cursor-pointer rounded-xl"
+              onClick={() => setRoomDialogOpen(true)}
+              disabled={startingRoom}
+            >
+              <Video className="size-4" />
+              {startingRoom ? "Starting…" : "Start a room"}
+            </Button>
+          </div>
+
+          {activeRooms === undefined ? (
+            <div className="mt-4 h-16 animate-pulse rounded-xl bg-white/5" />
+          ) : activeRooms.length === 0 ? (
+            <p className="mt-4 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-6 text-center text-sm text-muted-foreground">
+              No live rooms right now — start one and your group members will get a notification.
+            </p>
+          ) : (
+            <div className="mt-4 flex flex-col gap-2">
+              {activeRooms.map((room) => (
+                <div
+                  key={room.roomId}
+                  className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
+                >
+                  <div className="relative flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <MonitorPlay className="size-4" />
+                    <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{room.name}</p>
+                    <p className="font-mono text-[10px] text-muted-foreground">
+                      {room.createdByName} · {room.participantCount} in room
+                      {room.iAmIn ? " · you're here" : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={room.iAmIn ? "outline" : "default"}
+                    className="cursor-pointer rounded-xl"
+                    onClick={() => navigate(`/rooms/${room.roomId}`)}
+                  >
+                    {room.iAmIn ? "Rejoin" : "Join"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Member roster with per-person safety actions */}
+      {selectedGroup && members && (
+        <div className="glass-panel rounded-2xl p-5">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            members · report or block anyone from here
+          </p>
+          <div className="mt-3 flex flex-col gap-1.5">
+            {members.members.map((member) => (
+              <div
+                key={member.userId}
+                className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5"
+              >
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-mono text-xs font-extrabold text-primary">
+                  {member.name
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((part) => part[0]?.toUpperCase() ?? "")
+                    .join("")}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                    {member.name}
+                    {member.isMe && (
+                      <Badge className="border-primary/30 bg-primary/10 text-primary">you</Badge>
+                    )}
+                    {member.isOwner && <Crown className="size-3 shrink-0 text-amber-300" />}
+                  </p>
+                  <p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+                    {member.role}
+                  </p>
+                </div>
+                <ReportBlockMenu
+                  targetUserId={member.userId}
+                  targetName={member.name}
+                  compact
+                  disabled={member.isMe}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Start room dialog */}
+      <Dialog open={roomDialogOpen} onOpenChange={setRoomDialogOpen}>
+        <DialogContent className="glass-panel max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Video className="size-4 text-primary" /> Start a study room
+            </DialogTitle>
+            <DialogDescription>
+              Group members get a notification with a link to join. Rooms are
+              private to {selectedGroup?.name ?? "this group"} — nothing is public.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={roomName}
+            onChange={(e) => setRoomName(e.target.value)}
+            placeholder={`${selectedGroup?.name ?? "Group"} study session`}
+            maxLength={60}
+            className="h-11 rounded-xl bg-white/5"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="cursor-pointer rounded-xl bg-white/5"
+              onClick={() => setRoomDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="cursor-pointer rounded-xl"
+              onClick={() => void handleStartRoom()}
+              disabled={startingRoom}
+            >
+              {startingRoom ? "Starting…" : "Start room"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

@@ -12,6 +12,7 @@ import {
   Crown,
   Database,
   FileText,
+  Flag,
   KeyRound,
   Loader2,
   Lock,
@@ -112,6 +113,24 @@ export default function Admin() {
 
   // ---- System tab ----
   const system = useQuery(api.adminCenter.getSystemStatus);
+
+  // ---- Reports tab (student safety) ----
+  const reports = useQuery(api.safety.listReports);
+  const updateReportStatus = useMutation(api.safety.updateReportStatus);
+  const [reportFilter, setReportFilter] = useState<string>("open");
+  const [reportActing, setReportActing] = useState<string | null>(null);
+
+  const handleReportStatus = async (reportId: string, status: "open" | "reviewed" | "resolved") => {
+    setReportActing(reportId);
+    try {
+      await updateReportStatus({ reportId: reportId as never, status });
+      toast.success(`Report marked ${status}.`);
+    } catch (error) {
+      toast.error("Could not update the report.");
+    } finally {
+      setReportActing(null);
+    }
+  };
 
   const handlePromote = async () => {
     const result = await promoteSelf();
@@ -216,6 +235,9 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="payments" className="rounded-lg">
               <Wallet className="size-3.5" /> Payments
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="rounded-lg">
+              <Flag className="size-3.5" /> Reports
             </TabsTrigger>
             <TabsTrigger value="system" className="rounded-lg">
               <KeyRound className="size-3.5" /> System
@@ -492,6 +514,128 @@ export default function Admin() {
           </TabsContent>
 
           {/* ------- System ------- */}
+          {/* ------- Reports (student safety) ------- */}
+          <TabsContent value="reports" className="flex flex-col gap-4">
+            <div className="glass-panel rounded-2xl p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-extrabold tracking-tight">Safety reports</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Student reports with enough context to act — reporter, reported,
+                    reason, room/group — without exposing unrelated private data.
+                  </p>
+                </div>
+                <div className="flex gap-1.5">
+                  {["open", "reviewed", "resolved"].map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setReportFilter(status)}
+                      className={cn(
+                        "cursor-pointer rounded-lg px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wide transition-colors",
+                        reportFilter === status
+                          ? "bg-primary/15 text-primary"
+                          : "text-muted-foreground hover:bg-white/5",
+                      )}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {reports === undefined ? (
+                <div className="mt-6 flex items-center justify-center py-10">
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="mt-4 flex flex-col gap-3">
+                  {reports.filter((report) => report.status === reportFilter).length === 0 && (
+                    <p className="py-10 text-center text-sm text-muted-foreground">
+                      No {reportFilter} reports.
+                    </p>
+                  )}
+                  {reports
+                    .filter((report) => report.status === reportFilter)
+                    .map((report) => (
+                      <div
+                        key={report._id}
+                        className="rounded-xl border border-white/5 bg-white/[0.02] p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-rose-400/10 text-rose-300">
+                              <Flag className="size-4" />
+                            </div>
+                            <div>
+                              <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
+                                {report.reported.name}
+                                <Badge className="border-rose-400/20 bg-rose-400/10 font-mono text-[9px] uppercase text-rose-300">
+                                  {report.reason.replace(/_/g, " ")}
+                                </Badge>
+                              </p>
+                              <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                                {report.reported.email ?? "no email"} · reported by{" "}
+                                {report.reporter.name} ({report.reporter.email ?? "no email"}) ·{" "}
+                                {relativeTime(report.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            {report.status === "open" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="cursor-pointer rounded-lg bg-white/5 text-xs"
+                                onClick={() => void handleReportStatus(report._id, "reviewed")}
+                                disabled={reportActing === report._id}
+                              >
+                                Mark reviewed
+                              </Button>
+                            )}
+                            {report.status !== "resolved" && (
+                              <Button
+                                size="sm"
+                                className="cursor-pointer rounded-lg text-xs"
+                                onClick={() => void handleReportStatus(report._id, "resolved")}
+                                disabled={reportActing === report._id}
+                              >
+                                Resolve
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        {report.details && (
+                          <p className="mt-3 rounded-lg bg-white/[0.03] p-3 text-[13px] leading-relaxed text-muted-foreground">
+                            “{report.details}”
+                          </p>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {report.room && (
+                            <Badge variant="outline" className="gap-1 font-mono text-[9px] text-muted-foreground">
+                              room: {report.room.name} ({report.room.status})
+                            </Badge>
+                          )}
+                          {report.group && (
+                            <Badge variant="outline" className="gap-1 font-mono text-[9px] text-muted-foreground">
+                              group: {report.group.name}
+                            </Badge>
+                          )}
+                          {report.reportedGroupMemberships.map((group) => (
+                            <Badge key={group.groupId} variant="outline" className="gap-1 font-mono text-[9px] text-muted-foreground">
+                              member of: {group.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
           <TabsContent value="system" className="flex flex-col gap-4">
             <div className="glass-panel rounded-2xl p-5">
               <div>

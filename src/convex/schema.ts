@@ -241,10 +241,15 @@ const schema = defineSchema(
     userProfiles: defineTable({
       userId: v.id("users"),
       displayName: v.optional(v.string()),
+      username: v.optional(v.string()), // lowercase handle — allows login by
+      // username in addition to email (resolved server-side, uniqueness
+      // enforced in the setter mutation, never assumed at the DB level).
       avatarStorageId: v.optional(v.string()),
       themePreference: v.union(v.literal("dark"), v.literal("light")),
       stream: v.optional(streamValidator),
-    }).index("by_user", ["userId"]),
+    })
+      .index("by_user", ["userId"])
+      .index("by_username", ["username"]),
 
     // One motivational quote per day, deterministic so every student sees
     // the same quote on the same day.
@@ -367,6 +372,86 @@ const schema = defineSchema(
       createdAt: v.number(),
       actionUrl: v.optional(v.string()),
     }).index("by_user_createdAt", ["userId", "createdAt"]),
+
+    // ------------------------------------------------------------------
+    // Study rooms (video) + safety
+    // ------------------------------------------------------------------
+
+    // A video room always belongs to a study group — never a standalone open
+    // space. status drives the join gate; videoProviderRoomId is the room
+    // name the video provider (LiveKit Cloud) knows it by.
+    studyRooms: defineTable({
+      groupId: v.id("studyGroups"),
+      name: v.string(),
+      createdBy: v.id("users"),
+      status: v.union(v.literal("active"), v.literal("ended")),
+      videoProviderRoomId: v.string(),
+      createdAt: v.number(),
+      endedAt: v.optional(v.number()),
+    })
+      .index("by_group_status", ["groupId", "status"])
+      .index("by_createdBy", ["createdBy"]),
+
+    // Presence is derived, not a separate system: a row with leftAt null IS
+    // currently in the room; leftAt set means they left.
+    roomParticipants: defineTable({
+      roomId: v.id("studyRooms"),
+      userId: v.id("users"),
+      joinedAt: v.number(),
+      leftAt: v.optional(v.number()),
+    })
+      .index("by_room", ["roomId"])
+      .index("by_user", ["userId"])
+      .index("by_room_user", ["roomId", "userId"]),
+
+    // Group chat inside a room. Persists after the room ends so the group
+    // can review what was discussed. Convex reactivity handles delivery.
+    roomMessages: defineTable({
+      roomId: v.id("studyRooms"),
+      userId: v.id("users"),
+      content: v.string(),
+      createdAt: v.number(),
+    }).index("by_room_createdAt", ["roomId", "createdAt"]),
+
+    // Collaborative workspace: library content or a note linked into a room
+    // so everyone references the same document while talking.
+    roomSharedItems: defineTable({
+      roomId: v.id("studyRooms"),
+      itemType: v.union(v.literal("content"), v.literal("note")),
+      itemId: v.string(),
+      sharedBy: v.id("users"),
+      sharedAt: v.number(),
+    }).index("by_room", ["roomId"]),
+
+    // Student safety: reports. Fixed reason categories, admin triaged.
+    userReports: defineTable({
+      reporterId: v.id("users"),
+      reportedUserId: v.id("users"),
+      roomId: v.optional(v.id("studyRooms")), // context when reported in a room
+      reason: v.union(
+        v.literal("harassment"),
+        v.literal("inappropriate_content"),
+        v.literal("spam"),
+        v.literal("other"),
+      ),
+      details: v.optional(v.string()),
+      status: v.union(v.literal("open"), v.literal("reviewed"), v.literal("resolved")),
+      createdAt: v.number(),
+    })
+      .index("by_status", ["status"])
+      .index("by_reported", ["reportedUserId"])
+      .index("by_reporter", ["reporterId"]),
+
+    // A blocked user cannot join any room the blocker is in, cannot message
+    // them, and is hidden from the blocker in shared group contexts.
+    userBlocks: defineTable({
+      blockerId: v.id("users"),
+      blockedUserId: v.id("users"),
+      createdAt: v.number(),
+    })
+      .index("by_blocker", ["blockerId"])
+      .index("by_blocked", ["blockedUserId"])
+      .index("by_pair", ["blockerId", "blockedUserId"]),
 
     // Daily challenge cache — one question per (date, subject), generated
     // once and shared by every student, deterministic by Addis calendar day.

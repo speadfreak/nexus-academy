@@ -45,6 +45,18 @@ export const anyAdminExists = internalQuery({
   },
 });
 
+/** All admin user ids — used to route safety reports to moderators. */
+export const listAdminUserIds = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const admins = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("role"), "admin"))
+      .take(50);
+    return admins.map((admin) => admin._id);
+  },
+});
+
 async function adminExistsFromDb(ctx: DbCtx): Promise<boolean> {
   const admins = await ctx.db
     .query("users")
