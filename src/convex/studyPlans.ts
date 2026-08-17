@@ -220,7 +220,7 @@ export const storePlan = internalMutation({
     for (const plan of previous) {
       if (plan.isActive) await ctx.db.patch(plan._id, { isActive: false });
     }
-    return await ctx.db.insert("studyPlans", {
+    const planId = await ctx.db.insert("studyPlans", {
       userId: args.userId,
       subjectId: args.subjectId,
       generatedAt: Date.now(),
@@ -229,6 +229,17 @@ export const storePlan = internalMutation({
       isActive: true,
       completedWeeks: [],
     });
+
+    // Mirror the plan's weeks onto the calendar as study blocks.
+    await ctx.runMutation(internal.calendar.createPlanEvents, {
+      userId: args.userId,
+      subjectId: args.subjectId,
+      planId,
+      planJson: args.planJson,
+      targetExamDate: args.targetExamDate,
+    });
+
+    return planId;
   },
 });
 

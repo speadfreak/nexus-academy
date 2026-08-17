@@ -10,6 +10,10 @@ const freebuffIssuer =
 
 export default {
   providers: [
+    // Google OAuth is configured via the Google() provider factory in
+    // src/convex/auth.ts (clientId/clientSecret come from the Keys tab). The
+    // deployment auth config below only handles token issuers — see the
+    // comments on each entry.
     // Standard Convex Auth provider for this project's own sign-in ("Get
     // Started" email/guest, see src/convex/auth.ts). The deployment
     // self-issues JWTs (iss = CONVEX_SITE_URL, no `kid` header) validated

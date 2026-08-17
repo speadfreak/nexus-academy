@@ -2,14 +2,17 @@ import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import {
   BookOpen,
+  CalendarDays,
   Crown,
   ListChecks,
   LogOut,
   Map,
   MessageSquareText,
+  NotebookPen,
+  Settings,
   ShieldCheck,
   Timer,
-  UploadCloud,
+  TrendingUp,
 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
@@ -18,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MusicPlayer } from "@/components/music-player";
 import logo from "@/assets/nexus-logo.svg";
 
 export function DashboardShell({ children }: { children: ReactNode }) {
@@ -49,6 +53,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     { to: "/todos", label: "Todos", icon: ListChecks },
     { to: "/focus", label: "Focus", icon: Timer },
     { to: "/plans", label: "Plans", icon: Map },
+    { to: "/journey", label: "Journey", icon: TrendingUp },
+    { to: "/calendar", label: "Calendar", icon: CalendarDays },
+    { to: "/notes", label: "Notes", icon: NotebookPen },
+    { to: "/settings", label: "Settings", icon: Settings },
     {
       to: "/upgrade",
       label:
@@ -59,9 +67,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             : "Premium",
       icon: Crown,
     },
-    ...(isAdmin
-      ? [{ to: "/admin/content-upload", label: "Upload content", icon: UploadCloud }]
-      : []),
+    ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: ShieldCheck }] : []),
   ];
 
   const initials = (user?.name || user?.email || "N")
@@ -111,15 +117,19 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         )}
 
         <div className="glass-soft flex items-center gap-2.5 rounded-xl p-2.5">
-          <Avatar className="size-9">
-            <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
-              {initials || "N"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-xs font-semibold">{user?.name || "Guest"}</p>
+          <Link to="/settings" title="Open settings" aria-label="Open settings">
+            <Avatar className="size-9 cursor-pointer">
+              <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
+                {initials || "N"}
+              </AvatarFallback>
+            </Avatar>
+          </Link>
+          <Link to="/settings" className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-xs font-semibold hover:text-primary">
+              {user?.name || "Guest"}
+            </p>
             <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
-          </div>
+          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -166,8 +176,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1 pb-24">{children}</main>
       </div>
+
+      {/* Persistent study-vibe player — lives at the app root so it survives
+          navigation. Defaults to off; never autoplays. */}
+      <MusicPlayer />
     </div>
   );
 }

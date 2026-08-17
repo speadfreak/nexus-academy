@@ -11,9 +11,11 @@ import {
   FileSearch,
   Flame,
   GraduationCap,
+  HelpCircle,
   Loader2,
   MessageSquare,
   Presentation,
+  Quote,
   RotateCcw,
   Search,
   Sparkles,
@@ -25,6 +27,7 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
 import { DashboardShell } from "@/components/DashboardShell";
+import { QuizFlow } from "@/components/QuizFlow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,10 +92,12 @@ function StatNumber({ value, decimals = 0 }: { value: number; decimals?: number 
 function ContentCard({
   item,
   onOpen,
+  onQuiz,
   opening,
 }: {
   item: ContentItemWithSubject;
   onOpen: (item: ContentItemWithSubject) => void;
+  onQuiz: (item: ContentItemWithSubject) => void;
   opening: boolean;
 }) {
   const style = TYPE_STYLES[item.contentType];
@@ -123,6 +128,15 @@ function ContentCard({
           >
             <MessageSquare className="size-3.5" />
           </Link>
+          <button
+            type="button"
+            onClick={() => onQuiz(item)}
+            title={`Quick check on ${item.subjectName}`}
+            aria-label={`Start a quiz for ${item.subjectName}`}
+            className="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            <HelpCircle className="size-3.5" />
+          </button>
         </div>
       </div>
 
@@ -174,10 +188,23 @@ export default function Dashboard() {
   const [contentType, setContentType] = useState("");
   const [examYear, setExamYear] = useState("");
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [quizSubjectId, setQuizSubjectId] = useState<string>("");
+  const [quizOpen, setQuizOpen] = useState(false);
 
   const subjects = useQuery(api.subjects.getAll);
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
+
+  // Daily quote: reactive query + one on-demand backfill so the AI quote is
+  // generated even before the daily cron runs.
+  const quote = useQuery(api.quotes.getTodaysQuote);
+  const ensureQuote = useAction(api.quotes.ensureTodaysQuote);
+  const quoteSyncedRef = useRef(false);
+  useEffect(() => {
+    if (quoteSyncedRef.current) return;
+    quoteSyncedRef.current = true;
+    void ensureQuote().catch(() => {});
+  }, [ensureQuote]);
 
   // Trial/subscription state + reminder banner (single source of truth).
   const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
@@ -269,12 +296,32 @@ export default function Dashboard() {
           </div>
           {isAdmin && (
             <Button asChild variant="outline" size="sm" className="rounded-xl bg-white/5">
-              <Link to="/admin/content-upload">
-                <Sparkles className="size-4" /> Upload content
+              <Link to="/admin">
+                <Sparkles className="size-4" /> Admin
               </Link>
             </Button>
           )}
         </div>
+
+        {/* Daily quote — small, earned, not a banner */}
+        {quote && (
+          <div className="glass-panel flex items-start gap-3 rounded-2xl px-4 py-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Quote className="size-3.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                // today
+              </p>
+              <p className="mt-1 text-sm leading-6 text-foreground/90">{quote.text}</p>
+              {quote.author && (
+                <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                  — {quote.author}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Trial status banner */}
         <AnimatePresence>
@@ -595,9 +642,9 @@ export default function Dashboard() {
                 ? "Nothing matches those filters. Try widening your search."
                 : "The library is being stocked. Check back soon, or ask an admin to upload content."}
             </p>
-            {isAdmin && !hasFilters && (
+              {isAdmin && !hasFilters && (
               <Button asChild size="sm" className="mt-5 rounded-xl">
-                <Link to="/admin/content-upload">
+                <Link to="/admin">
                   <Sparkles className="size-4" /> Upload the first item
                 </Link>
               </Button>
@@ -610,12 +657,23 @@ export default function Dashboard() {
                 key={item._id}
                 item={item}
                 onOpen={handleOpen}
+                onQuiz={(clicked) => {
+                  setQuizSubjectId(clicked.subjectId);
+                  setQuizOpen(true);
+                }}
                 opening={openingId === item._id}
               />
             ))}
           </motion.div>
         )}
       </div>
+
+      <QuizFlow
+        open={quizOpen}
+        onOpenChange={setQuizOpen}
+        initialSubjectId={quizSubjectId || undefined}
+        title="Quick check"
+      />
     </DashboardShell>
   );
 }

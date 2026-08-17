@@ -2,6 +2,7 @@ import { motion, type Variants } from "framer-motion";
 import {
   ArrowRight,
   Atom,
+  AudioLines,
   BookOpen,
   Brain,
   CalendarDays,
@@ -12,15 +13,18 @@ import {
   FileText,
   FlaskConical,
   GraduationCap,
+  HelpCircle,
   Landmark,
   Languages,
   Lock,
   Map,
+  NotebookPen,
   Presentation,
   Search,
   Sigma,
   Sparkles,
   Terminal,
+  Timer,
   TrendingUp,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -116,35 +120,80 @@ const CONTENT_TYPES = [
   },
 ];
 
-const STEPS = [
-  {
-    icon: Terminal,
-    step: "01",
-    title: "Sign in and open the catalog",
-    description:
-      "Create an account in seconds. Every textbook, past paper and guide is indexed and searchable.",
-  },
-  {
-    icon: Search,
-    step: "02",
-    title: "Search by grade, subject and type",
-    description:
-      "Query the library the way you think — free text, stream, grade, subject and resource type.",
-  },
-  {
-    icon: Download,
-    step: "03",
-    title: "Download and study",
-    description:
-      "Open resources instantly. Premium papers are served through time-limited signed links.",
-  },
-];
-
 const STATS = [
   { value: "09", label: "Core subjects" },
   { value: "4", label: "Grades covered" },
   { value: "05", label: "Resource types" },
-  { value: "100%", label: "Exam-aligned" },
+  { value: "14", label: "Active trial days" },
+];
+
+const COMPANION = [
+  {
+    icon: Brain,
+    title: "AI tutor that knows your syllabus",
+    description:
+      "Grok-powered tutor grounded in the real curriculum. It remembers your stream, your hard subjects and every conversation.",
+    tag: "tutor",
+  },
+  {
+    icon: HelpCircle,
+    title: "Quick-check quizzes",
+    description:
+      "AI writes exam-style questions from your subject's topics. Answer one at a time, get instant feedback, watch scores trend on your journey.",
+    tag: "quizzes",
+  },
+  {
+    icon: Map,
+    title: "Weekly study plans",
+    description:
+      "The AI sequences the syllabus into 4–8 focused weeks, exam-critical topics first, and mirrors them onto your calendar.",
+    tag: "plans",
+  },
+  {
+    icon: Timer,
+    title: "Focus timer + streaks",
+    description:
+      "Log every session. Streaks, hours and per-subject history build up on your dashboard — and reminders nudge you before the streak breaks.",
+    tag: "focus",
+  },
+  {
+    icon: NotebookPen,
+    title: "Sticky notes with difficulty tags",
+    description:
+      "Pin formulas and exam tricks. Mark a subject hard and the tutor slows down and explains from the foundation up.",
+    tag: "notes",
+  },
+  {
+    icon: AudioLines,
+    title: "Study-vibe sound",
+    description:
+      "Rain, deep focus or breeze — a persistent ambient player tuned for concentration. Never autoplays; always your call.",
+    tag: "vibe",
+  },
+];
+
+const STEPS = [
+  {
+    icon: Terminal,
+    step: "01",
+    title: "Sign in and pick your stream",
+    description:
+      "Create an account in seconds — email, Google or guest. Choose natural, social or common and the AI organizes your dashboard around your exam subjects.",
+  },
+  {
+    icon: Search,
+    step: "02",
+    title: "Study with the companion",
+    description:
+      "Search the library, open past papers, chat with the tutor, run quizzes, plan your weeks and pin notes — every action feeds your real progress.",
+  },
+  {
+    icon: TrendingUp,
+    step: "03",
+    title: "Watch your journey",
+    description:
+      "Streaks, hours, quiz scores and topic completion, charted honestly. Premium unlocks past exams, plans and unlimited tutoring.",
+  },
 ];
 
 export default function Landing() {
@@ -181,6 +230,9 @@ export default function Landing() {
           </Link>
 
           <div className="hidden items-center gap-6 font-mono text-xs font-medium text-muted-foreground md:flex">
+            <a href="#companion" className="transition-colors hover:text-foreground">
+              companion
+            </a>
             <a href="#streams" className="transition-colors hover:text-foreground">
               streams
             </a>
@@ -217,8 +269,42 @@ export default function Landing() {
         </motion.nav>
       </header>
 
+      {/* Aurora backdrop — animated, respects reduced motion */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[52rem] overflow-hidden">
+        <motion.div
+          animate={
+            typeof window !== "undefined" &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+              ? undefined
+              : { x: [0, 60, 0], y: [0, 30, 0] }
+          }
+          transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute -left-32 top-10 size-[30rem] rounded-full bg-primary/15 blur-3xl"
+        />
+        <motion.div
+          animate={
+            typeof window !== "undefined" &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+              ? undefined
+              : { x: [0, -50, 0], y: [0, 40, 0] }
+          }
+          transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute -right-24 top-24 size-[26rem] rounded-full bg-sky-400/10 blur-3xl"
+        />
+        <motion.div
+          animate={
+            typeof window !== "undefined" &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+              ? undefined
+              : { x: [0, 40, 0], y: [0, -30, 0] }
+          }
+          transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute left-1/2 top-56 size-[24rem] -translate-x-1/2 rounded-full bg-violet-400/10 blur-3xl"
+        />
+      </div>
+
       {/* ------- Hero ------- */}
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 lg:grid-cols-[1.02fr_0.98fr] lg:pt-20">
+      <section className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 lg:grid-cols-[1.02fr_0.98fr] lg:pt-20">
         <motion.div
           variants={stagger}
           initial="hidden"
@@ -347,6 +433,64 @@ export default function Landing() {
           >
             <CalendarDays className="size-3.5 text-primary" /> years of past papers
           </motion.div>
+        </motion.div>
+      </section>
+
+      {/* ------- The companion ------- */}
+      <section id="companion" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-20">
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-80px" }}
+          className="mx-auto max-w-2xl text-center"
+        >
+          <motion.p
+            variants={fadeUp}
+            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+          >
+            // the companion
+          </motion.p>
+          <motion.h2
+            variants={fadeUp}
+            className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl"
+          >
+            More than a library.{" "}
+            <span className="text-gradient">A study system.</span>
+          </motion.h2>
+          <motion.p variants={fadeUp} className="mt-4 text-muted-foreground">
+            Everything the national exams demand — organized, explained and tracked
+            by an AI that learns your stream and your pace.
+          </motion.p>
+        </motion.div>
+
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-60px" }}
+          className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {COMPANION.map((feature) => (
+            <motion.div
+              key={feature.tag}
+              variants={fadeUp}
+              className="glass-panel group rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.74_0.15_232_/_0.25)]">
+                  <feature.icon className="size-5" />
+                </div>
+                <span className="font-mono text-[10px] text-muted-foreground transition-colors group-hover:text-primary">
+                  {feature.tag}
+                </span>
+              </div>
+              <h3 className="mt-4 font-bold tracking-tight">{feature.title}</h3>
+              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                {feature.description}
+              </p>
+            </motion.div>
+          ))}
         </motion.div>
       </section>
 
@@ -620,7 +764,7 @@ export default function Landing() {
           </p>
           <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground">
             <Sparkles className="size-3.5 text-primary" />
-            <span>premium · signed downloads</span>
+            <span>trial · telebirr · mpesa</span>
           </div>
         </div>
       </footer>

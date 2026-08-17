@@ -12,4 +12,12 @@ crons.hourly(
   internal.reminders.sendStreakReminders,
 );
 
+// Once daily: generate today's motivational quote if none exists. The action
+// is idempotent (checks by date) and falls back to the pool on AI failure.
+crons.daily(
+  "daily-quote",
+  { hourUTC: 2, minuteUTC: 0 },
+  internal.quotes.generateTodaysQuoteAction,
+);
+
 export default crons;

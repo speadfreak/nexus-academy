@@ -1,6 +1,8 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { ThemeProvider } from "@/components/theme-provider";
+import { MusicProvider } from "@/components/music-player";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -18,7 +20,12 @@ const Tutor = lazy(() => import("./pages/Tutor.tsx"));
 const Todos = lazy(() => import("./pages/Todos.tsx"));
 const Focus = lazy(() => import("./pages/Focus.tsx"));
 const Plans = lazy(() => import("./pages/Plans.tsx"));
+const Journey = lazy(() => import("./pages/Journey.tsx"));
+const CalendarPage = lazy(() => import("./pages/Calendar.tsx"));
+const Notes = lazy(() => import("./pages/Notes.tsx"));
+const Settings = lazy(() => import("./pages/Settings.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
+const Admin = lazy(() => import("./pages/Admin.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -141,78 +148,122 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <PageTransition>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route
-                  path="/auth"
-                  element={<AuthPage redirectAfterAuth="/dashboard" />}
-                />
-                <Route
-                  path="/dashboard"
-                  element={
-                    <RequireAuth>
-                      <Dashboard />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/tutor"
-                  element={
-                    <RequireAuth>
-                      <Tutor />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/todos"
-                  element={
-                    <RequireAuth>
-                      <Todos />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/focus"
-                  element={
-                    <RequireAuth>
-                      <Focus />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/plans"
-                  element={
-                    <RequireAuth>
-                      <Plans />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/upgrade"
-                  element={
-                    <RequireAuth>
-                      <Upgrade />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/admin/content-upload"
-                  element={
-                    <RequireAuth>
-                      <AdminContentUpload />
-                    </RequireAuth>
-                  }
-                />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </PageTransition>
-          </Suspense>
-        </BrowserRouter>
-        <Toaster />
+        <ThemeProvider>
+          <MusicProvider>
+            <BrowserRouter>
+              <RouteSyncer />
+              <Suspense fallback={<RouteLoading />}>
+                <PageTransition>
+                  <Routes>
+                    <Route path="/" element={<Landing />} />
+                    <Route
+                      path="/auth"
+                      element={<AuthPage redirectAfterAuth="/dashboard" />}
+                    />
+                    <Route
+                      path="/dashboard"
+                      element={
+                        <RequireAuth>
+                          <Dashboard />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/tutor"
+                      element={
+                        <RequireAuth>
+                          <Tutor />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/todos"
+                      element={
+                        <RequireAuth>
+                          <Todos />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/focus"
+                      element={
+                        <RequireAuth>
+                          <Focus />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/plans"
+                      element={
+                        <RequireAuth>
+                          <Plans />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/journey"
+                      element={
+                        <RequireAuth>
+                          <Journey />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/calendar"
+                      element={
+                        <RequireAuth>
+                          <CalendarPage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/notes"
+                      element={
+                        <RequireAuth>
+                          <Notes />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/settings"
+                      element={
+                        <RequireAuth>
+                          <Settings />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/upgrade"
+                      element={
+                        <RequireAuth>
+                          <Upgrade />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/admin"
+                      element={
+                        <RequireAuth>
+                          <Admin />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/admin/content-upload"
+                      element={
+                        <RequireAuth>
+                          <AdminContentUpload />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </PageTransition>
+              </Suspense>
+            </BrowserRouter>
+            <Toaster />
+          </MusicProvider>
+        </ThemeProvider>
       </ConvexAuthProvider>
     </RootErrorBoundary>
   </StrictMode>,

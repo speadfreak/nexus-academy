@@ -1,0 +1,366 @@
+// Quiz / examination engine.
+//
+// generateQuiz asks Grok to write a personalized quiz grounded in the
+// subject's real syllabus topics (same grounding pattern as ai.ts and
+// studyPlans.ts), validates the JSON (retry once), and stores the questions
+// on a quizzes row owned by the generating user.
+//
+// submitAttempt scores SERVER-SIDE from the stored questions — a client can
+// never submit its own score. The correct answers are returned for immediate
+// per-question feedback during the attempt.
+
+import { getAuthUserId } from "@convex-dev/auth/server";
+import { ConvexError, v } from "convex/values";
+import {
+  action,
+  internalMutation,
+  mutation,
+  query,
+  type ActionCtx,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
+import { requireActiveSubscriptionAction } from "./subscriptions";
+
+const API_URL = "https://api.x.ai/v1/chat/completions";
+const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+}
+
+type DbCtx = MutationCtx | QueryCtx;
+
+async function requireUser(ctx: DbCtx): Promise<Id<"users">> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) {
+    throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+  }
+  return userId;
+}
+
+function asQuizError(error: unknown, fallback: string): ConvexError<{ message: string; code: string }> {
+  if (error instanceof ConvexError) return error;
+  const message = error instanceof Error ? error.message : fallback;
+  return new ConvexError({ message, code: "ai_error" });
+}
+
+// ---------------------------------------------------------------------------
+// Generation
+// ---------------------------------------------------------------------------
+
+async function requestQuestions(
+  ctx: ActionCtx,
+  subjectName: string,
+  stream: string,
+  topicNames: string[],
+  count: number,
+): Promise<string> {
+  if (!process.env.XAI_API_KEY) {
+    throw new ConvexError({
+      message: "Quiz generation is not configured yet — add XAI_API_KEY in the Keys tab.",
+      code: "ai_not_configured",
+    });
+  }
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: AI_MODEL,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You write multiple-choice exam questions for the Ethiopian national exams " +
+            "(ESLCE), grades 9-12. Questions must be precise, exam-realistic, and match " +
+            "the official syllabus. Respond ONLY with valid JSON and nothing else.",
+        },
+        {
+          role: "user",
+          content:
+            `Write exactly ${count} multiple-choice questions for ${subjectName} (${stream} stream). ` +
+            "Sequence them from easier to harder. Each question must have exactly 4 options " +
+            "with exactly one correct answer, plus a short explanation of why it's correct. " +
+            "Ground every question in the topics below; do not invent topics outside the list.\n" +
+            "Respond with a JSON array only, no markdown, in exactly this shape:\n" +
+            '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
+            `Topics to cover: ${topicNames.join(", ")}`,
+        },
+      ],
+      max_tokens: 4096,
+      temperature: 0.4,
+    }),
+  });
+
+  if (!response.ok) {
+    const raw = await response.text().catch(() => "");
+    throw new Error(`Grok API error ${response.status}: ${raw.slice(0, 300)}`);
+  }
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!content) throw new Error("Grok returned an empty quiz response.");
+  return content;
+}
+
+function parseAndValidate(raw: string, expectedCount: number): QuizQuestion[] {
+  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  const parsed: unknown = JSON.parse(cleaned);
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error("Quiz is not a non-empty array.");
+  }
+  if (parsed.length > expectedCount + 4) {
+    throw new Error(`Quiz returned ${parsed.length} questions (expected ${expectedCount}).`);
+  }
+  const questions: QuizQuestion[] = [];
+  for (const item of parsed) {
+    const q = item as Partial<QuizQuestion>;
+    if (
+      typeof q.question !== "string" ||
+      !q.question.trim() ||
+      !Array.isArray(q.options) ||
+      q.options.length !== 4 ||
+      q.options.some((o) => typeof o !== "string" || !o.trim()) ||
+      typeof q.correctIndex !== "number" ||
+      !Number.isInteger(q.correctIndex) ||
+      q.correctIndex < 0 ||
+      q.correctIndex > 3 ||
+      typeof q.explanation !== "string" ||
+      !q.explanation.trim()
+    ) {
+      throw new Error("One or more questions are malformed.");
+    }
+    questions.push({
+      question: q.question.trim(),
+      options: q.options.map((o) => o.trim()),
+      correctIndex: q.correctIndex,
+      explanation: q.explanation.trim(),
+    });
+  }
+  return questions.slice(0, expectedCount);
+}
+
+export const generateQuiz = action({
+  args: {
+    subjectId: v.id("subjects"),
+    topicId: v.optional(v.id("topics")),
+    questionCount: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ quizId: Id<"quizzes">; questions: QuizQuestion[] }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    // Premium feature — available during trial, gated once the trial ends.
+    await requireActiveSubscriptionAction(ctx, userId);
+
+    const subject = await ctx.runQuery(internal.ai.getSubjectById, {
+      subjectId: args.subjectId,
+    });
+    if (!subject) {
+      throw new ConvexError({ message: "Subject not found.", code: "invalid" });
+    }
+
+    let topics = await ctx.runQuery(internal.ai.listTopicsBySubject, {
+      subjectId: args.subjectId,
+    });
+    if (args.topicId) {
+      const topic = topics.find((t) => t._id === args.topicId);
+      if (!topic) {
+        throw new ConvexError({ message: "Topic not found.", code: "invalid" });
+      }
+      topics = [topic];
+    }
+    if (topics.length === 0) {
+      throw new ConvexError({
+        message: `No syllabus topics exist yet for ${subject.name}. Add topics to the library before generating a quiz.`,
+        code: "no_topics",
+      });
+    }
+
+    const count = Math.min(20, Math.max(5, Math.round(args.questionCount ?? 10)));
+    const topicNames = topics.map((t) => t.name);
+
+    // Generate with one retry on malformed output.
+    let questions: QuizQuestion[] = [];
+    let lastError = "Unknown parsing error.";
+    for (let attempt = 0; attempt < 2 && questions.length === 0; attempt++) {
+      try {
+        const raw = await requestQuestions(ctx, subject.name, subject.stream, topicNames, count);
+        questions = parseAndValidate(raw, count);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Unknown parsing error.";
+      }
+    }
+    if (questions.length === 0) {
+      throw new ConvexError({
+        message: `The AI returned an unreadable quiz (${lastError}). Please try again.`,
+        code: "ai_error",
+      });
+    }
+
+    const quizId = await ctx.runMutation(internal.quizzes.insertQuiz, {
+      subjectId: args.subjectId,
+      topicId: args.topicId,
+      generatedForUserId: userId,
+      questionsJson: JSON.stringify(questions),
+    });
+    return { quizId, questions };
+  },
+});
+
+export const insertQuiz = internalMutation({
+  args: {
+    subjectId: v.id("subjects"),
+    topicId: v.optional(v.id("topics")),
+    generatedForUserId: v.id("users"),
+    questionsJson: v.string(),
+  },
+  handler: async (ctx, args) =>
+    await ctx.db.insert("quizzes", {
+      ...args,
+      createdAt: Date.now(),
+    }),
+});
+
+// ---------------------------------------------------------------------------
+// Attempts — server-side scoring only
+// ---------------------------------------------------------------------------
+
+export const submitAttempt = mutation({
+  args: {
+    quizId: v.id("quizzes"),
+    answers: v.array(v.number()),
+  },
+  handler: async (ctx, { quizId, answers }) => {
+    const userId = await requireUser(ctx);
+    const quiz = await ctx.db.get(quizId);
+    if (!quiz || quiz.generatedForUserId !== userId) {
+      throw new ConvexError({ message: "Quiz not found.", code: "not_found" });
+    }
+
+    let questions: QuizQuestion[];
+    try {
+      questions = JSON.parse(quiz.questionsJson) as QuizQuestion[];
+    } catch {
+      throw new ConvexError({ message: "Quiz data is corrupted.", code: "internal" });
+    }
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new ConvexError({ message: "Quiz data is corrupted.", code: "internal" });
+    }
+
+    // Score from the stored questions — never from anything the client sent
+    // beyond the raw answer indices (validated + clamped here).
+    const results = questions.map((question, index) => {
+      const raw = answers[index];
+      const answered =
+        Number.isInteger(raw) && raw >= 0 && raw < question.options.length;
+      const selected = answered ? raw : -1;
+      const correct = answered && selected === question.correctIndex;
+      return {
+        question: question.question,
+        options: question.options,
+        correctIndex: question.correctIndex,
+        explanation: question.explanation,
+        selected,
+        correct,
+      };
+    });
+
+    const score = results.filter((r) => r.correct).length;
+    const storedAnswers = results.map((r) => r.selected);
+
+    await ctx.db.insert("quizAttempts", {
+      quizId,
+      userId,
+      answers: storedAnswers,
+      score,
+      totalQuestions: questions.length,
+      completedAt: Date.now(),
+    });
+
+    return {
+      score,
+      total: questions.length,
+      results,
+      quizId,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Reads
+// ---------------------------------------------------------------------------
+
+/** Full questions for an owned quiz (used if the client reloads mid-quiz). */
+export const getQuiz = query({
+  args: { quizId: v.id("quizzes") },
+  handler: async (ctx, { quizId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const quiz = await ctx.db.get(quizId);
+    if (!quiz || quiz.generatedForUserId !== userId) return null;
+    let questions: QuizQuestion[] = [];
+    try {
+      questions = JSON.parse(quiz.questionsJson) as QuizQuestion[];
+    } catch {
+      questions = [];
+    }
+    const subject = await ctx.db.get(quiz.subjectId);
+    return {
+      _id: quiz._id,
+      subjectId: quiz.subjectId,
+      subjectName: subject?.name ?? "Unknown",
+      topicId: quiz.topicId ?? null,
+      questions,
+    };
+  },
+});
+
+/** The user's past attempts with subject context, newest first. */
+export const getQuizHistory = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    const attempts = await ctx.db
+      .query("quizAttempts")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(60);
+
+    const result = [];
+    const subjectCache = new Map<Id<"subjects">, Doc<"subjects">>();
+    for (const attempt of attempts) {
+      const quiz = await ctx.db.get(attempt.quizId);
+      let subjectName = "Unknown";
+      if (quiz) {
+        let subject = subjectCache.get(quiz.subjectId);
+        if (!subject) {
+          subject = (await ctx.db.get(quiz.subjectId)) ?? undefined;
+          if (subject) subjectCache.set(quiz.subjectId, subject);
+        }
+        subjectName = subject?.name ?? "Unknown";
+      }
+      result.push({
+        _id: attempt._id,
+        quizId: attempt.quizId,
+        subjectName,
+        score: attempt.score,
+        totalQuestions: attempt.totalQuestions,
+        completedAt: attempt.completedAt,
+      });
+    }
+    return result;
+  },
+});

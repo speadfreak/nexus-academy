@@ -8,13 +8,23 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Sparkles,
   Timer,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
+import { QuizFlow } from "@/components/QuizFlow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -45,6 +55,8 @@ export default function Focus() {
   const [status, setStatus] = useState<TimerStatus>("idle");
   const [remaining, setRemaining] = useState(25 * 60);
   const [logging, setLogging] = useState(false);
+  const [quizPromptOpen, setQuizPromptOpen] = useState(false);
+  const [quizOpen, setQuizOpen] = useState(false);
 
   const startedAtRef = useRef<number>(0);
   const loggedRef = useRef(false);
@@ -95,6 +107,8 @@ export default function Focus() {
         toast.success(`Session logged — ${formatClock(durationSeconds)} of focus.`);
         setStatus("idle");
         setRemaining(minutes * 60);
+        // Optional quick check — never forced.
+        setQuizPromptOpen(true);
       })
       .catch((error) => {
         toast.error(errorMessage(error, "Could not log the session."));
@@ -372,6 +386,48 @@ export default function Focus() {
           </div>
         </div>
       </div>
+
+      {/* Optional quick-check prompt after a completed session */}
+      <Dialog open={quizPromptOpen} onOpenChange={setQuizPromptOpen}>
+        <DialogContent className="glass-panel rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="size-4 text-primary" /> Nice work
+            </DialogTitle>
+            <DialogDescription>
+              {selectedSubject
+                ? `You just logged ${formatClock(minutes * 60)} of ${selectedSubject.name}. Want a quick check to lock it in?`
+                : "You just logged a focus session. Want a quick check?"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="rounded-xl bg-white/5"
+              onClick={() => setQuizPromptOpen(false)}
+            >
+              Not now
+            </Button>
+            <Button
+              className="rounded-xl"
+              onClick={() => {
+                setQuizPromptOpen(false);
+                setQuizOpen(true);
+              }}
+              disabled={!subjectId}
+            >
+              <Sparkles className="size-4" /> Start quiz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <QuizFlow
+        open={quizOpen}
+        onOpenChange={setQuizOpen}
+        initialSubjectId={subjectId || undefined}
+        title="Quick check"
+      />
     </DashboardShell>
   );
 }

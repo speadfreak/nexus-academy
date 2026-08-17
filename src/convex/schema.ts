@@ -212,6 +212,91 @@ const schema = defineSchema(
       lastReminderSentDate: v.optional(v.string()), // "YYYY-MM-DD"
       pendingReminder: v.boolean(),
     }).index("by_user", ["userId"]),
+
+    // ------------------------------------------------------------------
+    // Study experience deepening
+    // ------------------------------------------------------------------
+
+    // Student sticky notes. difficulty is the STUDENT's own tagging of how
+    // hard the subject/topic feels — fed back into the tutor's system prompt
+    // so it adjusts pacing for subjects marked "hard".
+    notes: defineTable({
+      userId: v.id("users"),
+      subjectId: v.id("subjects"),
+      content: v.string(),
+      difficulty: v.optional(
+        v.union(v.literal("easy"), v.literal("medium"), v.literal("hard")),
+      ),
+      topicId: v.optional(v.id("topics")),
+      color: v.string(), // visual variety for the sticky-note metaphor
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_subject", ["userId", "subjectId"]),
+
+    // One row per user with display/settings preferences. `stream` lives here
+    // (it does not exist on the users table) — set during signup onboarding
+    // and used to personalize the dashboard and the AI tutor.
+    userProfiles: defineTable({
+      userId: v.id("users"),
+      displayName: v.optional(v.string()),
+      avatarStorageId: v.optional(v.string()),
+      themePreference: v.union(v.literal("dark"), v.literal("light")),
+      stream: v.optional(streamValidator),
+    }).index("by_user", ["userId"]),
+
+    // One motivational quote per day, deterministic so every student sees
+    // the same quote on the same day.
+    dailyQuotes: defineTable({
+      text: v.string(),
+      author: v.optional(v.string()),
+      dateAssigned: v.string(), // "YYYY-MM-DD"
+    }).index("by_date", ["dateAssigned"]),
+
+    // AI-generated personalized quizzes. generatedForUserId means a quiz is
+    // owned by the student it was generated for — not a shared static bank.
+    quizzes: defineTable({
+      subjectId: v.id("subjects"),
+      topicId: v.optional(v.id("topics")),
+      generatedForUserId: v.id("users"),
+      questionsJson: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["generatedForUserId"])
+      .index("by_subject", ["subjectId"]),
+
+    // Attempts on quizzes. answers are the selected option indices;
+    // score/totalQuestions are computed server-side, never client-sent.
+    quizAttempts: defineTable({
+      quizId: v.id("quizzes"),
+      userId: v.id("users"),
+      answers: v.array(v.number()),
+      score: v.number(),
+      totalQuestions: v.number(),
+      completedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_quiz", ["userId", "quizId"]),
+
+    // Calendar events — study blocks (auto-created from study plans), exam
+    // dates, reminders and custom events.
+    calendarEvents: defineTable({
+      userId: v.id("users"),
+      title: v.string(),
+      subjectId: v.optional(v.id("subjects")),
+      startAt: v.number(),
+      endAt: v.optional(v.number()),
+      type: v.union(
+        v.literal("study_block"),
+        v.literal("exam"),
+        v.literal("reminder"),
+        v.literal("custom"),
+      ),
+      sourceStudyPlanId: v.optional(v.id("studyPlans")),
+    })
+      .index("by_user_startAt", ["userId", "startAt"])
+      .index("by_user", ["userId"]),
   },
   {
     schemaValidation: false,

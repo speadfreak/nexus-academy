@@ -141,6 +141,47 @@ if (!hasIntegration) {
 }
 ```
 
+## Google OAuth
+
+Sign-in with Google is wired via the Auth.js Google provider in
+`src/convex/auth.ts` (`googleProvider`). Set these in the project's
+**Keys / API keys tab** (never hardcode):
+
+| Key | Purpose |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` | Google Cloud OAuth client id |
+| `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth client secret |
+
+In the Google Cloud console (APIs & Services > Credentials), create an OAuth
+client (Web application) and add this exact redirect URI:
+
+```
+<CONVEX_SITE_URL>/api/auth/callback/google
+```
+
+Without these keys the Google button shows a clear "not configured" error and
+email/guest sign-in still work.
+
+## Study companion features (this build)
+
+- **Daily quotes** — one AI-written motivation per day (`dailyQuotes` + hourly
+  fallback cron; deterministic pool when the AI key is missing).
+- **Study-vibe music** — persistent ambient player in `src/components/music-player.tsx`.
+  Tracks are synthesized in-browser with the Web Audio API (rain / deep focus /
+  breeze) so no audio files or licensing are required. To add real lo-fi tracks,
+  upload MP3s to R2 and add them to the `TRACKS` list with a `url`.
+- **Quizzes** — AI-generated, server-scored, premium-gated (`src/convex/quizzes.ts`).
+- **Notes** — sticky notes with difficulty tags that tune the AI tutor's pacing.
+- **Journey** — analytics page (`/journey`) with real hours, quiz trend, topic
+  completion and cross-subject topic correlations.
+- **Calendar** — week view (`/calendar`); AI study plans auto-create study-block
+  events linked via `sourceStudyPlanId`.
+- **Profile/settings/theme** — `/settings` with avatar upload, display name,
+  stream, and a working light theme (see `src/index.css` `.light` tokens).
+  Stream is chosen at first sign-in and personalizes the dashboard + tutor.
+- **Admin control center** — `/admin` tabs: Overview, Content, Users (premium
+  grant/expire/cancel for support), Payments, System (env key status).
+
 ## GitHub Integration
 
 GitHub provides backup and version control for this project. The Freebuff platform

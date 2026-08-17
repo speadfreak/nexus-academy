@@ -125,6 +125,7 @@ export const patchConversation = internalMutation({
 
 async function buildSystemPrompt(
   ctx: ActionCtx,
+  userId: Id<"users">,
   subjectId?: Id<"subjects">,
   contentId?: Id<"contentItems">,
 ): Promise<string> {
@@ -144,6 +145,28 @@ async function buildSystemPrompt(
     "",
   ];
 
+  // Personalization: the student's profile (stream + display name) and their
+  // self-marked difficulty tags for this subject. Keep it light — the tutor
+  // should feel adaptive, not like it's reading a file.
+  const profile = await ctx.runQuery(internal.profile.getProfileByUser, { userId });
+  if (profile?.stream) {
+    const streamLabel =
+      profile.stream === "natural"
+        ? "Natural Science"
+        : profile.stream === "social"
+          ? "Social Science"
+          : "Common subjects";
+    lines.push(
+      `This student is on the ${streamLabel} track. Frame advice around that stream's exam subjects.`,
+    );
+  }
+  if (profile?.displayName) {
+    lines.push(
+      `This student's name is ${profile.displayName}. Use it once or twice naturally across the conversation — never in every reply.`,
+    );
+  }
+  lines.push("");
+
   if (subjectId) {
     const subject = await ctx.runQuery(internal.ai.getSubjectById, { subjectId });
     if (subject) {
@@ -152,6 +175,28 @@ async function buildSystemPrompt(
         `Stay within ${subject.name} unless the student explicitly asks to branch out.`,
         "",
       );
+      // Difficulty-aware pacing: if the student marked this subject hard/easy
+      // in their notes, adjust the teaching style to match.
+      const noteSignals = await ctx.runQuery(internal.notes.getDifficultyBySubject, {
+        userId,
+        subjectId,
+      });
+      if (noteSignals.difficulties.includes("hard")) {
+        lines.push(
+          `This student has marked ${subject.name} as a HARD subject in their notes. ` +
+            "Adjust your pacing accordingly: define terms before using them, break steps " +
+            "into smaller pieces, check understanding frequently, and be extra patient and " +
+            "encouraging. Prefer simpler examples before moving to harder ones.",
+          "",
+        );
+      } else if (noteSignals.difficulties.includes("easy")) {
+        lines.push(
+          `This student has marked ${subject.name} as EASY in their notes. ` +
+            "Keep the pace brisk: skip redundant definitions, go deeper into nuance and " +
+            "exam-style application, and challenge them with harder variants.",
+          "",
+        );
+      }
       // Give the model the topic list that exists in the library so answers
       // track the actual syllabus structure.
       const topics = await ctx.runQuery(internal.ai.listTopicsBySubject, { subjectId });
@@ -313,6 +358,7 @@ export const sendMessage = action({
     });
     const systemPrompt = await buildSystemPrompt(
       ctx,
+      userId,
       conversation?.subjectId,
       conversation?.contentId,
     );
