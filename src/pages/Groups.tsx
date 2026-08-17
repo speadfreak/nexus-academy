@@ -24,7 +24,7 @@ import {
   Video,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { ReportBlockMenu } from "@/components/ReportBlockMenu";
 import { DashboardShell } from "@/components/DashboardShell";

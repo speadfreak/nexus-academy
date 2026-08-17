@@ -1,6 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { STREAM_LABELS } from "@/convex/constants";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   CardContent,
@@ -169,9 +170,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     searchParams.get("returnTo"),
     redirectAfterAuth,
   );
-  const [step, setStep] = useState<"signIn" | { email: string } | "onboarding">(
-    "signIn",
-  );
+  const [step, setStep] = useState<
+    "signIn" | { email: string; username: string | null } | "onboarding"
+  >("signIn");
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,14 +190,30 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     }
   }, [authLoading, isAuthenticated, profile, navigate, redirect]);
 
+  const convex = useConvex();
+
+  // Resolve "email OR username" to the account's email, then send the code.
+  // This app stores no passwords — the emailed code IS the login — so
+  // "forgot password" is really "send me a code again", which this covers.
+  const sendCodeForIdentifier = async (identifier: string) => {
+    const resolved = await convex.query(api.profile.resolveLoginIdentifier, {
+      identifier,
+    });
+    const formData = new FormData();
+    formData.set("email", resolved.email);
+    await signIn("email-otp", formData);
+    return resolved;
+  };
+
   const handleEmailSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
     try {
       const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
-      setStep({ email: formData.get("email") as string });
+      const identifier = (formData.get("identifier") as string) ?? "";
+      const resolved = await sendCodeForIdentifier(identifier);
+      setStep({ email: resolved.email, username: resolved.username });
       setIsLoading(false);
     } catch (error) {
       console.error("Email sign-in error:", error);
@@ -206,6 +223,27 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           : "Failed to send verification code. Please try again.",
       );
       setIsLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (typeof step === "object" && step !== null && "email" in step) {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const formData = new FormData();
+        formData.set("email", step.email);
+        await signIn("email-otp", formData);
+        toast.success("A fresh code is on its way — check your inbox.");
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Could not resend the code. Try again in a minute.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -264,12 +302,24 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <div className="flex flex-1 items-center justify-center px-4 py-10">
+    <div className="relative flex min-h-screen flex-col overflow-hidden">
+      {/* Cinematic ambience — grid + glows, never blocks interaction */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_-10%,rgba(99,102,241,0.16),transparent)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px]" />
+        <div className="absolute bottom-[-10%] left-1/2 h-72 w-[120%] -translate-x-1/2 rounded-[100%] bg-primary/10 blur-3xl" />
+      </div>
+      <div className="relative flex flex-1 items-center justify-center px-4 py-10">
         <div className="flex h-full flex-col items-center justify-center">
           {step === "onboarding" ? (
             <Onboarding onComplete={handleOnboardingComplete} />
           ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="flex w-full justify-center"
+            >
             <div className="glass-panel w-[min(92vw,380px)] rounded-2xl pb-0">
               {step === "signIn" ? (
                 <>
@@ -286,7 +336,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </div>
                     <CardTitle className="text-xl">Get Started</CardTitle>
                     <CardDescription>
-                      Enter your email to log in or sign up
+                      Email or username — we&apos;ll email you a code to sign in
                     </CardDescription>
                   </CardHeader>
 
@@ -340,9 +390,12 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                         <div className="relative flex-1">
                           <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                           <Input
-                            name="email"
-                            placeholder="name@example.com"
-                            type="email"
+                            name="identifier"
+                            placeholder="email or username"
+                            type="text"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
                             className="pl-9"
                             disabled={isLoading}
                             required
@@ -362,6 +415,12 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                         </Button>
                       </div>
                       {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+
+                      <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+                        Forgot your username or can&apos;t sign in? Enter your email
+                        or username and we&apos;ll email you a code — there are no
+                        passwords to forget.
+                      </p>
 
                       <div className="mt-4">
                         <Button
@@ -421,9 +480,18 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                         <Button
                           variant="link"
                           className="h-auto p-0"
+                          onClick={() => void handleResendCode()}
+                          disabled={isLoading}
+                        >
+                          Resend code
+                        </Button>{" "}
+                        or{" "}
+                        <Button
+                          variant="link"
+                          className="h-auto p-0"
                           onClick={() => setStep("signIn")}
                         >
-                          Try again
+                          try again
                         </Button>
                       </p>
                     </CardContent>
@@ -452,7 +520,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                         disabled={isLoading}
                         className="w-full"
                       >
-                        Use different email
+                        Use a different email or username
                       </Button>
                     </CardFooter>
                   </form>
@@ -471,6 +539,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 </a>
               </div>
             </div>
+            </motion.div>
           )}
         </div>
       </div>

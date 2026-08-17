@@ -49,12 +49,17 @@ export default function Settings() {
   const updateProfile = useMutation(api.profile.updateProfile);
   const generateAvatarUploadUrl = useMutation(api.profile.generateAvatarUploadUrl);
   const setAvatar = useMutation(api.profile.setAvatar);
+  const setUsername = useMutation(api.profile.setUsername);
   const navigate = useNavigate();
 
   const [displayName, setDisplayName] = useState("");
   const [nameDirty, setNameDirty] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [username, setUsernameValue] = useState("");
+  const [usernameDirty, setUsernameDirty] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSaveName = async () => {
@@ -93,6 +98,26 @@ export default function Settings() {
     } finally {
       setUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSaveUsername = async () => {
+    const value = username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(value)) {
+      setUsernameError("3–20 characters: lowercase letters, numbers and underscores only.");
+      return;
+    }
+    setSavingUsername(true);
+    setUsernameError(null);
+    try {
+      const result = await setUsername({ username: value });
+      setUsernameDirty(false);
+      setUsernameValue(result.username);
+      toast.success(`Username set — you can now sign in with “${result.username}”.`);
+    } catch (error) {
+      setUsernameError(errorMessage(error, "Could not save your username."));
+    } finally {
+      setSavingUsername(false);
     }
   };
 
@@ -203,6 +228,43 @@ export default function Settings() {
                 disabled={savingName || !nameDirty}
               >
                 {savingName ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                Save
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2">
+            <Label className="text-xs font-semibold text-muted-foreground">Username (login handle)</Label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  value={
+                    usernameDirty ? username : (username || (profile?.username ?? ""))
+                  }
+                  onChange={(e) => {
+                    setUsernameValue(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+                    setUsernameDirty(true);
+                    setUsernameError(null);
+                  }}
+                  placeholder="e.g. abebe_12"
+                  className="h-10 rounded-xl bg-white/5 font-mono text-sm"
+                />
+                {usernameError ? (
+                  <p className="mt-1 text-xs text-red-500">{usernameError}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {profile?.username
+                      ? `Sign in with your username or email — “${profile.username}”.`
+                      : "Optional: pick one so you can sign in with your username instead of your email."}
+                  </p>
+                )}
+              </div>
+              <Button
+                className="h-10 rounded-xl"
+                onClick={() => void handleSaveUsername()}
+                disabled={savingUsername || !usernameDirty}
+              >
+                {savingUsername ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
                 Save
               </Button>
             </div>

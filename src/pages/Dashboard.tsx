@@ -35,6 +35,7 @@ import { errorMessage } from "@/lib/errors";
 import { DashboardShell } from "@/components/DashboardShell";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { QuizFlow } from "@/components/QuizFlow";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,17 @@ function formatBytes(bytes?: number): string {
   if (!bytes) return "";
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Time-of-day greeting — "Good morning/afternoon/evening" plus a nod to
+ *  late-night grinding, which is very much a national-exam-prep thing. */
+function timeOfDayGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 5) return "Late night grind";
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  if (hour < 21) return "Good evening";
+  return "Night session";
 }
 
 /** Animated count-up for stat numbers — respects prefers-reduced-motion. */
@@ -207,6 +219,7 @@ export default function Dashboard() {
   const [quizOpen, setQuizOpen] = useState(false);
 
   const subjects = useQuery(api.subjects.getAll);
+  const profile = useQuery(api.profile.getProfile);
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
@@ -358,8 +371,24 @@ export default function Dashboard() {
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
-              National exam prep
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+              {profile && (
+                <Avatar className="size-7">
+                  <AvatarImage src={profile.avatarUrl ?? undefined} />
+                  <AvatarFallback className="bg-primary/10 text-[10px] font-extrabold text-primary">
+                    {(profile.displayName ?? "N")
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((part) => part[0]?.toUpperCase() ?? "")
+                      .join("") || "N"}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              <span>
+                {timeOfDayGreeting()}
+                {profile?.displayName ? `, ${profile.displayName.split(/\s+/)[0]}` : ""}
+              </span>
             </p>
             <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
               The Library

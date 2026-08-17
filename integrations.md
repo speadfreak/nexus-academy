@@ -311,3 +311,42 @@ user per day). No email/SMS provider is wired up — reminders surface as an
 in-app banner. If real push/email reminders are wanted later, a transactional
 email or push service would need to be added. Timezone is fixed to
 Africa/Addis_Ababa (UTC+3) until per-user timezones are stored.
+
+## Study rooms — LiveKit Cloud (video + screen share + group chat)
+
+Rooms always belong to a study group (invite-code only, members only — no
+public room discovery). Video runs on **LiveKit Cloud** (managed WebRTC: SFU,
+TURN, reconnection) via `@livekit/components-react`; chat and the shared
+workspace use Convex reactive queries (`roomMessages`, `roomSharedItems`).
+Safety is server-side: join tokens are minted only after group-membership +
+block checks, blocked users can't join rooms or speak into them, and report +
+block are one tap away from every participant tile (admin Reports tab in
+`/admin`). **No recording exists anywhere in this build** — ending a room
+deletes it via the provider API, terminating video for everyone.
+
+Set these keys in the **Keys / API keys** tab (from your LiveKit Cloud
+project — Project Settings > Keys; sign up at livekit.io/cloud):
+
+| Key | Purpose |
+| --- | --- |
+| `LIVEKIT_URL` | WebSocket URL, e.g. `wss://<project>.livekit.cloud` |
+| `LIVEKIT_API_KEY` | LiveKit Cloud API key |
+| `LIVEKIT_API_SECRET` | LiveKit Cloud API secret |
+
+Without them, room calls throw a clear "not configured" error in the UI.
+Free tier at time of writing: Build plan $0/mo (no card), 5,000 WebRTC
+minutes/mo + 40k free API requests, 50GB transfer.
+
+## Profile + login (username handle, no passwords)
+
+- **No passwords are stored.** Sign-in is email-OTP (6-digit code), Google
+  OAuth, or guest — the safer choice for under-18 students.
+- Students can set a **username** (login handle) in Settings → Profile;
+  `/auth` accepts **email OR username**, resolving the handle server-side
+  (`profile.resolveLoginIdentifier`) before sending the code. "Forgot
+  password" is therefore "forgot your username?" — re-enter your email or
+  username and a fresh code is emailed (`Resend code` on the OTP step).
+- Avatars upload to Convex file storage; until one is set, the UI renders an
+  initials avatar everywhere (shell, dashboard greeting, groups, rooms).
+- The dashboard greets the student by first name with a time-of-day greeting
+  ("Good morning, …" / "Late night grind").
