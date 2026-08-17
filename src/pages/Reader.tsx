@@ -40,6 +40,7 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  X,
   Youtube,
   ZoomIn,
   ZoomOut,
@@ -111,17 +112,26 @@ export default function Reader() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
   const [scale, setScale] = useState(1);
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const readerItemId = reader?.item?._id;
 
   useEffect(() => {
-    if (!reader || !reader.item) return;
+    if (!readerItemId) {
+      setPdfUrl(null);
+      return;
+    }
     let cancelled = false;
     setPdfError(null);
+    setPdfUrl(null);
+    setNumPages(null);
+    setPageNumber(1);
+    setPageInput("1");
     setLoadingPdf(true);
     const load = async () => {
       try {
-        const { url } = await getDownloadUrl({ contentId: reader.item._id });
+        const { url } = await getDownloadUrl({ contentId: readerItemId });
         if (!cancelled) setPdfUrl(url);
       } catch (error) {
         if (!cancelled) {
@@ -139,7 +149,7 @@ export default function Reader() {
     return () => {
       cancelled = true;
     };
-  }, [reader, getDownloadUrl]);
+  }, [readerItemId, getDownloadUrl]);
 
   // --- Panel -------------------------------------------------------------
   const [panelOpen, setPanelOpen] = useState(true);
@@ -210,6 +220,7 @@ export default function Reader() {
   // --- Scratchpad --------------------------------------------------------
   const [scratchText, setScratchText] = useState("");
   const [scratchSaved, setScratchSaved] = useState(true);
+  const [savingScratch, setSavingScratch] = useState(false);
   const [scratchInput, setScratchInput] = useState("");
   const [scratchResult, setScratchResult] = useState<string | null>(null);
 
@@ -221,16 +232,28 @@ export default function Reader() {
   }, [scratchpad]);
 
   const handleSaveScratch = async () => {
-    if (!contentId) return;
-    setScratchSaved(false);
+    if (!contentId || savingScratch) return;
+    setSavingScratch(true);
     try {
       await saveScratchpad({ contentId: contentId as never, content: scratchText });
       toast.success("Scratchpad saved.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save the scratchpad.");
     } finally {
+      setSavingScratch(false);
       setScratchSaved(true);
     }
+  };
+
+  const goToPage = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || !numPages) {
+      setPageInput(String(pageNumber));
+      return;
+    }
+    const next = Math.min(numPages, Math.max(1, parsed));
+    setPageNumber(next);
+    setPageInput(String(next));
   };
 
   const handleEvaluate = () => {
@@ -405,6 +428,7 @@ export default function Reader() {
                 onLoadSuccess={({ numPages: pages }) => {
                   setNumPages(pages);
                   setPageNumber(1);
+                  setPageInput("1");
                 }}
                 onLoadError={(error) => {
                   console.error("[Reader] PDF load failed:", error);
@@ -416,8 +440,8 @@ export default function Reader() {
                   <PdfPage
                     pageNumber={pageNumber}
                     scale={scale}
-                    renderTextLayer={false}
-                    renderAnnotationLayer={false}
+                    renderTextLayer
+                    renderAnnotationLayer
                     loading={
                       <div className="flex size-40 items-center justify-center">
                         <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -432,8 +456,21 @@ export default function Reader() {
 
         {/* ---- Side panel ---- */}
         {panelOpen && (
-          <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-white/8 bg-background sm:static sm:z-auto sm:w-96 sm:bg-black/20">
+          <>
+            <button
+              type="button"
+              aria-label="Close reader panel"
+              className="absolute inset-0 z-10 bg-black/45 sm:hidden"
+              onClick={() => setPanelOpen(false)}
+            />
+            <aside
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reader-panel-title"
+              className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-white/8 bg-background shadow-2xl sm:static sm:z-auto sm:w-96 sm:bg-black/20 sm:shadow-none"
+            >
             <div className="flex shrink-0 items-center gap-1 border-b border-white/8 px-2 py-2">
+              <span id="reader-panel-title" className="sr-only">Reader tools</span>
               {(
                 [
                   { id: "companion", label: "AI companion", icon: Bot },
@@ -445,6 +482,9 @@ export default function Reader() {
                   key={tab.id}
                   type="button"
                   onClick={() => setPanelTab(tab.id)}
+                  role="tab"
+                  aria-selected={panelTab === tab.id}
+                  aria-controls={`reader-panel-${tab.id}`}
                   className={cn(
                     "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-bold transition-colors",
                     panelTab === tab.id
@@ -456,11 +496,19 @@ export default function Reader() {
                   <span className="hidden sm:inline">{tab.label}</span>
                 </button>
               ))}
+              <button
+                type="button"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/5 hover:text-foreground sm:hidden"
+                onClick={() => setPanelOpen(false)}
+                aria-label="Close reader tools"
+              >
+                <X className="size-4" />
+              </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel">
               {panelTab === "companion" && (
-                <div className="flex h-full flex-col">
+                <div id="reader-panel-companion" className="flex h-full flex-col">
                   <div className="flex-1 space-y-3 overflow-y-auto p-3">
                     <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
                       <p className="flex items-center gap-1.5 font-bold text-foreground">
@@ -495,7 +543,11 @@ export default function Reader() {
                     <div ref={chatEndRef} />
                   </div>
                   <div className="flex shrink-0 items-center gap-2 border-t border-white/8 p-2.5">
+                    <label htmlFor="reader-question" className="sr-only">
+                      Ask the reading companion
+                    </label>
                     <Input
+                      id="reader-question"
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
                       onKeyDown={(e) => {
@@ -518,7 +570,7 @@ export default function Reader() {
               )}
 
               {panelTab === "videos" && (
-                <div className="space-y-3 p-3">
+                <div id="reader-panel-videos" className="space-y-3 p-3">
                   <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
                     <p className="flex items-center gap-1.5 font-bold text-foreground">
                       <Youtube className="size-3 text-primary" /> Topic videos
@@ -557,7 +609,7 @@ export default function Reader() {
                         {video.thumbnail ? (
                           <img
                             src={video.thumbnail}
-                            alt=""
+                            alt={`${video.title} thumbnail`}
                             loading="lazy"
                             className="h-16 w-24 shrink-0 rounded-lg object-cover"
                           />
@@ -594,7 +646,7 @@ export default function Reader() {
               )}
 
               {panelTab === "scratchpad" && (
-                <div className="flex h-full flex-col">
+                <div id="reader-panel-scratchpad" className="flex h-full flex-col">
                   <div className="flex items-center justify-between px-3 pt-2.5">
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                       workings · auto-saved per document
@@ -613,7 +665,11 @@ export default function Reader() {
                     </Button>
                   </div>
                   <div className="flex gap-2 px-3 pt-2">
+                    <label htmlFor="scratch-expression" className="sr-only">
+                      Expression to evaluate
+                    </label>
                     <Input
+                      id="scratch-expression"
                       value={scratchInput}
                       onChange={(e) => setScratchInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -643,6 +699,7 @@ export default function Reader() {
                     </p>
                   )}
                   <textarea
+                    aria-label="Scratchpad notes"
                     value={scratchText}
                     onChange={(e) => {
                       setScratchText(e.target.value);
@@ -659,20 +716,21 @@ export default function Reader() {
                       size="sm"
                       className="h-8 cursor-pointer rounded-lg"
                       onClick={() => void handleSaveScratch()}
-                      disabled={scratchSaved}
+                      disabled={scratchSaved || savingScratch}
                     >
-                      {scratchSaved ? (
-                        <BookmarkCheck className="size-3.5" />
-                      ) : (
+                      {savingScratch ? (
                         <Loader2 className="size-3.5 animate-spin" />
-                      )}
-                      Save notes
+                      ) : scratchSaved ? (
+                        <BookmarkCheck className="size-3.5" />
+                      ) : null}
+                      {savingScratch ? "Saving…" : scratchSaved ? "Saved" : "Save notes"}
                     </Button>
                   </div>
                 </div>
               )}
             </div>
-          </aside>
+            </aside>
+          </>
         )}
       </div>
 
