@@ -2,6 +2,12 @@
 node_modules
 dist
 
+# Vly/Freebuff platform artifacts (preview build staging + signed upload
+# script) — internal to the platform, never synced to GitHub.
+isolate/
+.vly-dist-upload.sh
+.vly-upload*
+
 # Convex generated types ARE committed so static hosts (Render) can build
 # without running Convex codegen during the build. They are deterministic
 # output of `bunx convex dev --once` / `bunx convex codegen`.
