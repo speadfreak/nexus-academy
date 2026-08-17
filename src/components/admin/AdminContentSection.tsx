@@ -145,6 +145,49 @@ export function AdminContentSection() {
   const deleteContentItem = useAction(api.contentAdmin.deleteContentItem);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // --- Sample library (one-shot demo content for an empty library) --------
+  const seedSampleLibrary = useAction(api.sampleContent.seedSampleLibrary);
+  const isLibraryEmpty = useAction(api.sampleContent.isLibraryEmpty);
+  const [libraryEmpty, setLibraryEmpty] = useState<boolean | null>(null);
+  const [seedConfirmOpen, setSeedConfirmOpen] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    isLibraryEmpty()
+      .then((result) => {
+        if (!cancelled) setLibraryEmpty(result.empty);
+      })
+      .catch(() => {
+        if (!cancelled) setLibraryEmpty(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLibraryEmpty]);
+
+  const handleSeedSample = async () => {
+    if (seeding) return;
+    setSeeding(true);
+    try {
+      const result = await seedSampleLibrary();
+      if (result.seeded > 0) {
+        toast.success(
+          `Loaded ${result.seeded} sample items — clearly labeled as demo content.`,
+        );
+        setLibraryEmpty(false);
+      } else {
+        toast.info("Nothing to seed — the library already has content.");
+        setLibraryEmpty(false);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not seed the library.");
+    } finally {
+      setSeeding(false);
+      setSeedConfirmOpen(false);
+    }
+  };
+
   const handleFile = (next: File | null) => {
     if (next && !next.name.toLowerCase().endsWith(".pdf")) {
       toast.error("Only PDF files are supported for now.");
@@ -549,6 +592,48 @@ export function AdminContentSection() {
             <p className="text-sm text-muted-foreground">Manage what&apos;s already in the library.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {libraryEmpty && (
+              <AlertDialog open={seedConfirmOpen} onOpenChange={setSeedConfirmOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 cursor-pointer rounded-lg border-primary/30 bg-primary/10 font-mono text-[10px] text-primary hover:bg-primary/20"
+                  >
+                    <Sparkles className="size-3" /> Load sample library
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="glass-panel">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Load sample content?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Adds a clearly-labeled <strong>demo library</strong> (~20 items:
+                      textbooks, past-exam papers, worksheets, guides across all
+                      subjects and grades 9–12) so the bookshelf, reader and
+                      analytics are testable before real files are uploaded. Every
+                      item is marked &quot;Sample&quot; and is not official MoE
+                      material. This only runs while the library is empty and can
+                      be deleted item-by-item afterwards.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="cursor-pointer rounded-xl"
+                      disabled={seeding}
+                      onClick={() => void handleSeedSample()}
+                    >
+                      {seeding ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="size-4" />
+                      )}
+                      Load sample content
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Select value={adminGrade} onValueChange={(v) => setAdminGrade(v === "all" ? "" : v)}>
               <SelectTrigger className="h-8 w-28 rounded-lg bg-white/5 text-xs">
                 <SelectValue placeholder="Grade" />

@@ -147,6 +147,24 @@ export const getSubjectById = internalQuery({
     (await ctx.db.get(subjectId)) ?? null,
 });
 
+export const getSubjectBySlug = internalQuery({
+  args: { slug: v.string() },
+  handler: async (ctx, { slug }) =>
+    (await ctx.db
+      .query("subjects")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique()) ?? null,
+});
+
+/** Total content items — used by the sample-library seeder to stay idempotent. */
+export const countContentItems = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.db.query("contentItems").collect();
+    return items.length;
+  },
+});
+
 export const getContentItemById = internalQuery({
   args: { contentId: v.id("contentItems") },
   handler: async (ctx, { contentId }) =>
