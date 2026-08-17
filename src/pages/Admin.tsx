@@ -223,14 +223,26 @@ export default function Admin() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get("tab") ?? "dashboard";
 
+  // Every admin-only query below is gated with Convex's "skip" sentinel
+  // until the admin check resolves to true. Otherwise a non-admin landing on
+  // /admin fires all of them at once and the server-side "Admin access
+  // required" errors crash the page (and the preview boundary).
+  const adminAccess = isAdmin === true;
+
   // ---- Dashboard tab ----
-  const dashboard = useQuery(api.adminCenter.getAdminDashboard);
+  const dashboard = useQuery(
+    api.adminCenter.getAdminDashboard,
+    adminAccess ? undefined : "skip",
+  );
 
   // ---- Finance tab ----
-  const finance = useQuery(api.adminCenter.getFinanceOverview);
+  const finance = useQuery(
+    api.adminCenter.getFinanceOverview,
+    adminAccess ? undefined : "skip",
+  );
 
   // ---- Users tab ----
-  const users = useQuery(api.adminCenter.listUsers);
+  const users = useQuery(api.adminCenter.listUsers, adminAccess ? undefined : "skip");
   const setUserPremium = useMutation(api.adminCenter.setUserPremium);
   const [premiumAction, setPremiumAction] = useState<{
     userId: string;
@@ -240,8 +252,11 @@ export default function Admin() {
   const [userQuery, setUserQuery] = useState("");
 
   // ---- System tab ----
-  const system = useQuery(api.adminCenter.getSystemStatus);
-  const integrations = useQuery(api.adminCenter.getIntegrationStatus);
+  const system = useQuery(api.adminCenter.getSystemStatus, adminAccess ? undefined : "skip");
+  const integrations = useQuery(
+    api.adminCenter.getIntegrationStatus,
+    adminAccess ? undefined : "skip",
+  );
   const testIntegration = useAction(api.systemEvents.testIntegrationConnection);
   const [integrationResults, setIntegrationResults] = useState<Record<
     string,
@@ -270,16 +285,24 @@ export default function Admin() {
   // ---- Terminal tab (system events) ----
   const [eventFilter, setEventFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const systemEvents = useQuery(api.systemEvents.getSystemEvents, {
-    eventType: eventFilter || undefined,
-    status: (statusFilter || undefined) as "success" | "error" | undefined,
-  });
-  const health = useQuery(api.systemEvents.getSystemHealthSummary);
+  const systemEvents = useQuery(
+    api.systemEvents.getSystemEvents,
+    adminAccess
+      ? {
+          eventType: eventFilter || undefined,
+          status: (statusFilter || undefined) as "success" | "error" | undefined,
+        }
+      : "skip",
+  );
+  const health = useQuery(
+    api.systemEvents.getSystemHealthSummary,
+    adminAccess ? undefined : "skip",
+  );
 
   // ---- Broadcast tab (Telegram) ----
-  const channels = useQuery(api.telegram.listTelegramChannels);
-  const templates = useQuery(api.telegram.getBroadcastTemplates);
-  const broadcastLog = useQuery(api.telegram.getBroadcastLog);
+  const channels = useQuery(api.telegram.listTelegramChannels, adminAccess ? undefined : "skip");
+  const templates = useQuery(api.telegram.getBroadcastTemplates, adminAccess ? undefined : "skip");
+  const broadcastLog = useQuery(api.telegram.getBroadcastLog, adminAccess ? undefined : "skip");
   const addChannel = useMutation(api.telegram.addTelegramChannel);
   const removeChannel = useMutation(api.telegram.removeTelegramChannel);
   const setAutoPost = useMutation(api.telegram.setAutoPost);
@@ -330,7 +353,7 @@ export default function Admin() {
   }, [tab]);
 
   // ---- Reports tab (student safety) ----
-  const reports = useQuery(api.safety.listReports);
+  const reports = useQuery(api.safety.listReports, adminAccess ? undefined : "skip");
   const updateReportStatus = useMutation(api.safety.updateReportStatus);
   const [reportFilter, setReportFilter] = useState<string>("open");
   const [reportActing, setReportActing] = useState<string | null>(null);
