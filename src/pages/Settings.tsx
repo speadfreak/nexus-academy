@@ -214,7 +214,9 @@ export default function Settings() {
             <Label className="text-xs font-semibold text-muted-foreground">Display name</Label>
             <div className="flex gap-2">
               <Input
-                value={nameDirty ? displayName : (displayName || profile?.displayName ?? user?.name ?? "")}
+                value={
+                  nameDirty ? displayName : (displayName || (profile?.displayName ?? user?.name ?? ""))
+                }
                 onChange={(e) => {
                   setDisplayName(e.target.value);
                   setNameDirty(true);
