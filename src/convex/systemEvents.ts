@@ -126,45 +126,131 @@ export interface SystemEventRow {
   createdAt: number;
 }
 
+export interface SystemEventPage {
+  events: SystemEventRow[];
+  nextCursor: string | null;
+}
+
+/**
+ * Paginated, filterable event feed for the Terminal tab.
+ *
+ * - Filters: eventType, status, and a `since` floor (date range).
+ * - Pagination: opaque keyset cursor over (createdAt desc, _id) — the
+ *   terminal scrolls backwards through history with a "load older" button;
+ *   the latest events always arrive via Convex reactivity.
+ * - `nextCursor` is null when the end of history is reached.
+ */
 export const getSystemEvents = query({
   args: {
     eventType: v.optional(v.string()),
     status: v.optional(v.union(v.literal("success"), v.literal("error"))),
+    since: v.optional(v.number()),
+    cursor: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<SystemEventRow[]> => {
+  handler: async (ctx, args): Promise<SystemEventPage> => {
     await requireAdmin(ctx);
-    const limit = Math.min(Math.max(args.limit ?? 100, 10), 500);
-    let rows: Doc<"systemEvents">[];
-    if (args.eventType || args.status) {
-      rows = await ctx.db
+    const limit = Math.min(Math.max(args.limit ?? 80, 10), 300);
+
+    // Parse the opaque cursor: { createdAt, id } — the last row of the
+    // previous page, used as a keyset boundary.
+    let cursorBoundary: { createdAt: number; id: string } | null = null;
+    if (args.cursor) {
+      try {
+        const parsed = JSON.parse(args.cursor) as { createdAt?: number; id?: string };
+        if (
+          typeof parsed.createdAt === "number" &&
+          typeof parsed.id === "string"
+        ) {
+          cursorBoundary = { createdAt: parsed.createdAt, id: parsed.id };
+        }
+      } catch {
+        // invalid cursor -> start from the top
+      }
+    }
+
+    const since = args.since && Number.isFinite(args.since) ? args.since : 0;
+    const upper =
+      cursorBoundary === null ? Number.MAX_SAFE_INTEGER : cursorBoundary.createdAt;
+
+    let rows = await ctx.db
+      .query("systemEvents")
+      .withIndex("by_createdAt", (q) =>
+        q.gte("createdAt", since).lte("createdAt", upper),
+      )
+      .order("desc")
+      .take(limit + 1);
+
+    // Keyset tiebreak: exclude rows at the exact boundary timestamp that were
+    // already returned (Convex ids are unique within a timestamp bucket).
+    if (cursorBoundary) {
+      rows = rows.filter(
+        (row) =>
+          row.createdAt < cursorBoundary!.createdAt ||
+          (row.createdAt === cursorBoundary!.createdAt &&
+            row._id < cursorBoundary!.id),
+      );
+    }
+
+    const hasMore = rows.length > limit;
+    const page = rows.slice(0, limit);
+
+    // Event-type/status filters applied after the index scan (the index only
+    // covers createdAt; the catalog is small enough that this stays cheap).
+    let filtered = page.filter((row) => {
+      if (args.eventType && row.eventType !== args.eventType) return false;
+      if (args.status && row.status !== args.status) return false;
+      return true;
+    });
+
+    let nextCursor: string | null = null;
+    if (hasMore && filtered.length > 0) {
+      const last = filtered[filtered.length - 1]!;
+      nextCursor = JSON.stringify({ createdAt: last.createdAt, id: last._id });
+    }
+
+    // If filters ate the whole page, keep scanning older rows so the "load
+    // older" button always makes progress (bounded to a few extra fetches).
+    if (hasMore && filtered.length === 0) {
+      const cursorArg = JSON.stringify({
+        createdAt: page[page.length - 1]!.createdAt,
+        id: page[page.length - 1]!._id,
+      });
+      const deeper = await ctx.db
         .query("systemEvents")
-        .withIndex("by_createdAt", (q) => q.gte("createdAt", 0))
+        .withIndex("by_createdAt", (q) =>
+          q.gte("createdAt", since).lte("createdAt", page[page.length - 1]!.createdAt),
+        )
         .order("desc")
-        .take(1000);
-      rows = rows.filter((row) => {
+        .take(limit);
+      filtered = deeper.filter((row) => {
         if (args.eventType && row.eventType !== args.eventType) return false;
         if (args.status && row.status !== args.status) return false;
         return true;
       });
-      rows = rows.slice(0, limit);
-    } else {
-      rows = await ctx.db
-        .query("systemEvents")
-        .withIndex("by_createdAt", (q) => q.gte("createdAt", 0))
-        .order("desc")
-        .take(limit);
+      nextCursor =
+        filtered.length > 0
+          ? JSON.stringify({
+              createdAt: filtered[filtered.length - 1]!.createdAt,
+              id: filtered[filtered.length - 1]!._id,
+            })
+          : null;
+      void cursorArg;
     }
-    return rows.map((row) => ({
-      _id: row._id,
-      eventType: row.eventType,
-      source: row.source,
-      status: row.status,
-      userId: row.userId ?? null,
-      metadata: row.metadata ? safeParseJson(row.metadata) : null,
-      durationMs: row.durationMs ?? null,
-      createdAt: row.createdAt,
-    }));
+
+    return {
+      events: filtered.map((row) => ({
+        _id: row._id,
+        eventType: row.eventType,
+        source: row.source,
+        status: row.status,
+        userId: row.userId ?? null,
+        metadata: row.metadata ? safeParseJson(row.metadata) : null,
+        durationMs: row.durationMs ?? null,
+        createdAt: row.createdAt,
+      })),
+      nextCursor,
+    };
   },
 });
 

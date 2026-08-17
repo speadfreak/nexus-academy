@@ -5,7 +5,7 @@
 // adminCenter queries — server-computed, never fabricated on the client.
 
 import { api } from "@/convex/_generated/api";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -283,14 +283,32 @@ export default function Admin() {
   };
 
   // ---- Terminal tab (system events) ----
+  const convexClient = useConvex();
   const [eventFilter, setEventFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sinceFilter, setSinceFilter] = useState("");
+  const [olderEvents, setOlderEvents] = useState<
+    {
+      _id: string;
+      eventType: string;
+      source: string;
+      status: string;
+      userId: string | null;
+      metadata: Record<string, unknown> | null;
+      durationMs: number | null;
+      createdAt: number;
+    }[]
+  >([]);
+  const [olderCursor, setOlderCursor] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
   const systemEvents = useQuery(
     api.systemEvents.getSystemEvents,
     adminAccess
       ? {
           eventType: eventFilter || undefined,
           status: (statusFilter || undefined) as "success" | "error" | undefined,
+          since: sinceFilter ? Number(sinceFilter) : undefined,
         }
       : "skip",
   );
@@ -298,6 +316,32 @@ export default function Admin() {
     api.systemEvents.getSystemHealthSummary,
     adminAccess ? undefined : "skip",
   );
+
+  // "Load older" — keyset-paginated history appended below the live tail.
+  const resetOlder = () => {
+    setOlderEvents([]);
+    setOlderCursor(null);
+  };
+
+  const loadOlderEvents = async () => {
+    if (!adminAccess || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const page = await convexClient.query(api.systemEvents.getSystemEvents, {
+        eventType: eventFilter || undefined,
+        status: (statusFilter || undefined) as "success" | "error" | undefined,
+        since: sinceFilter ? Number(sinceFilter) : undefined,
+        cursor: olderCursor ?? systemEvents?.nextCursor ?? undefined,
+        limit: 60,
+      });
+      setOlderEvents((prev) => [...prev, ...page.events]);
+      setOlderCursor(page.nextCursor);
+    } catch {
+      // the live tail keeps working even if an older-page fetch fails
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   // ---- Broadcast tab (Telegram) ----
   const channels = useQuery(api.telegram.listTelegramChannels, adminAccess ? undefined : "skip");
@@ -1426,7 +1470,10 @@ export default function Admin() {
                 <div className="flex flex-wrap gap-1.5">
                   <select
                     value={eventFilter}
-                    onChange={(e) => setEventFilter(e.target.value)}
+                    onChange={(e) => {
+                      setEventFilter(e.target.value);
+                      resetOlder();
+                    }}
                     aria-label="Filter by event type"
                     className="h-8 cursor-pointer rounded-lg border border-border bg-white/5 px-2 font-mono text-[10px] text-muted-foreground outline-none"
                   >
@@ -1437,13 +1484,29 @@ export default function Admin() {
                   </select>
                   <select
                     value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      resetOlder();
+                    }}
                     aria-label="Filter by status"
                     className="h-8 cursor-pointer rounded-lg border border-border bg-white/5 px-2 font-mono text-[10px] text-muted-foreground outline-none"
                   >
                     <option value="">all statuses</option>
                     <option value="success">success</option>
                     <option value="error">error</option>
+                  </select>
+                  <select
+                    value={sinceFilter}
+                    onChange={(e) => {
+                      setSinceFilter(e.target.value);
+                      resetOlder();
+                    }}
+                    aria-label="Filter by date range"
+                    className="h-8 cursor-pointer rounded-lg border border-border bg-white/5 px-2 font-mono text-[10px] text-muted-foreground outline-none"
+                  >
+                    <option value="">all time</option>
+                    <option value="86400000">last 24h</option>
+                    <option value="604800000">last 7d</option>
                   </select>
                 </div>
               </div>
@@ -1524,38 +1587,81 @@ export default function Admin() {
                     <div className="flex items-center gap-2 py-6 text-muted-foreground">
                       <Loader2 className="size-3.5 animate-spin" /> connecting…
                     </div>
-                  ) : systemEvents.length === 0 ? (
+                  ) : systemEvents.events.length === 0 && olderEvents.length === 0 ? (
                     <p className="py-6 text-muted-foreground">
                       no events yet — actions will stream in as students use the platform
                     </p>
                   ) : (
-                    systemEvents.map((event) => (
-                      <div key={event._id} className="flex gap-2 border-b border-white/[0.03] py-1.5 last:border-0">
-                        <span className="shrink-0 text-muted-foreground/70">
-                          {new Date(event.createdAt).toLocaleTimeString([], { hour12: false })}
-                        </span>
-                        <span
-                          className={cn(
-                            "shrink-0 font-bold",
-                            event.status === "error" ? "text-rose-300" : "text-emerald-300",
-                          )}
-                        >
-                          {event.status === "error" ? "✖" : "✓"}
-                        </span>
-                        <span className="shrink-0 text-primary">{event.eventType}</span>
-                        <span className="shrink-0 text-amber-200/80">{event.source}</span>
-                        {event.durationMs !== null && (
-                          <span className="shrink-0 text-muted-foreground">
-                            {event.durationMs}ms
+                    <>
+                      {systemEvents.events.map((event) => (
+                        <div key={event._id} className="flex gap-2 border-b border-white/[0.03] py-1.5 last:border-0">
+                          <span className="shrink-0 text-muted-foreground/70">
+                            {new Date(event.createdAt).toLocaleTimeString([], { hour12: false })}
                           </span>
-                        )}
-                        <span className="truncate text-muted-foreground/80">
-                          {formatEventMeta(event.metadata)}
-                        </span>
-                      </div>
-                    ))
+                          <span
+                            className={cn(
+                              "shrink-0 font-bold",
+                              event.status === "error" ? "text-rose-300" : "text-emerald-300",
+                            )}
+                          >
+                            {event.status === "error" ? "✖" : "✓"}
+                          </span>
+                          <span className="shrink-0 text-primary">{event.eventType}</span>
+                          <span className="shrink-0 text-amber-200/80">{event.source}</span>
+                          {event.durationMs !== null && (
+                            <span className="shrink-0 text-muted-foreground">
+                              {event.durationMs}ms
+                            </span>
+                          )}
+                          <span className="truncate text-muted-foreground/80">
+                            {formatEventMeta(event.metadata)}
+                          </span>
+                        </div>
+                      ))}
+                      {olderEvents.map((event) => (
+                        <div key={event._id} className="flex gap-2 border-b border-white/[0.03] py-1.5 last:border-0">
+                          <span className="shrink-0 text-muted-foreground/70">
+                            {new Date(event.createdAt).toLocaleTimeString([], { hour12: false })}
+                          </span>
+                          <span
+                            className={cn(
+                              "shrink-0 font-bold",
+                              event.status === "error" ? "text-rose-300" : "text-emerald-300",
+                            )}
+                          >
+                            {event.status === "error" ? "✖" : "✓"}
+                          </span>
+                          <span className="shrink-0 text-primary">{event.eventType}</span>
+                          <span className="shrink-0 text-amber-200/80">{event.source}</span>
+                          {event.durationMs !== null && (
+                            <span className="shrink-0 text-muted-foreground">
+                              {event.durationMs}ms
+                            </span>
+                          )}
+                          <span className="truncate text-muted-foreground/80">
+                            {formatEventMeta(event.metadata)}
+                          </span>
+                        </div>
+                      ))}
+                    </>
                   )}
                 </div>
+                {(systemEvents !== undefined &&
+                  (systemEvents.nextCursor !== null || olderCursor !== null)) && (
+                  <button
+                    onClick={loadOlderEvents}
+                    disabled={loadingOlder}
+                    className="flex w-full items-center justify-center gap-2 border-t border-white/5 py-2 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                  >
+                    {loadingOlder ? (
+                      <>
+                        <Loader2 className="size-3 animate-spin" /> loading older…
+                      </>
+                    ) : (
+                      "⌥ load older events"
+                    )}
+                  </button>
+                )}
               </div>
             </div>
             <div className="glass-panel rounded-2xl p-5">
