@@ -34,7 +34,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { errorMessage } from "@/lib/errors";
+import { errorCode, errorMessage } from "@/lib/errors";
+import { PremiumPrompt } from "@/components/PremiumPrompt";
+import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface QuizFlowProps {
@@ -68,8 +70,11 @@ export function QuizFlow({
   title = "Quick check",
 }: QuizFlowProps) {
   const subjects = useQuery(api.subjects.getAll);
+  const entitlements = useQuery(api.subscriptions.getEntitlements);
   const generateQuiz = useAction(api.quizzes.generateQuiz);
   const submitAttempt = useMutation(api.quizzes.submitAttempt);
+
+  const [limitPromptOpen, setLimitPromptOpen] = useState(false);
 
   const [phase, setPhase] = useState<Phase>({ name: "setup" });
   const [subjectId, setSubjectId] = useState(initialSubjectId ?? "");
@@ -104,6 +109,14 @@ export function QuizFlow({
         quizId: result.quizId as string,
       });
     } catch (error) {
+      const code = errorCode(error);
+      if (code === "weekly_quiz_limit") {
+        // A real, earned moment: the student saw the quiz value, then hit
+        // the free weekly allowance for this subject. Honest prompt, no pressure.
+        setLimitPromptOpen(true);
+        setPhase({ name: "setup" });
+        return;
+      }
       toast.error(
         errorMessage(
           error,
@@ -168,6 +181,7 @@ export function QuizFlow({
   const question = phase.name === "questions" ? phase.questions[current] : null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : handleClose())}>
       <DialogContent className="glass-panel max-h-[88vh] w-[min(94vw,620px)] overflow-y-auto rounded-2xl">
         <DialogHeader>
@@ -235,11 +249,17 @@ export function QuizFlow({
               </div>
 
               <Button className="mt-1 h-11 rounded-xl" onClick={handleGenerate}>
-                <Sparkles className="size-4" /> Generate quiz
+                {entitlements && !entitlements.premiumAccess ? (
+                  <Lock className="size-4 text-premium" />
+                ) : (
+                  <Sparkles className="size-4" />
+                )}
+                Generate quiz
               </Button>
               <p className="font-mono text-[10px] leading-4 text-muted-foreground">
-                Premium feature — available during your free trial. The AI writes
-                questions grounded in the subject&apos;s actual syllabus topics.
+                {entitlements && !entitlements.premiumAccess
+                  ? `Free accounts get ${entitlements.quizWeeklyLimit} quiz per subject per week — your score still saves to your journey.`
+                  : "Available during your trial, and free accounts get a weekly allowance. The AI writes questions grounded in the subject's actual syllabus topics."}
               </p>
             </motion.div>
           )}
@@ -422,5 +442,13 @@ export function QuizFlow({
         </AnimatePresence>
       </DialogContent>
     </Dialog>
+
+    <PremiumPrompt
+      open={limitPromptOpen}
+      onOpenChange={setLimitPromptOpen}
+      reason="weekly_quiz_limit"
+      subjectName={selectedSubject?.name}
+    />
+    </>
   );
 }

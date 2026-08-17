@@ -47,7 +47,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     navigate("/");
   };
 
-  const navItems = [
+  const navItems: {
+    to: string;
+    label: string;
+    icon: typeof Crown;
+    premiumActive?: boolean;
+  }[] = [
     { to: "/dashboard", label: "Library", icon: BookOpen },
     { to: "/tutor", label: "Tutor", icon: MessageSquareText },
     { to: "/todos", label: "Todos", icon: ListChecks },
@@ -66,6 +71,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             ? "Premium · upgrade"
             : "Premium",
       icon: Crown,
+      premiumActive: Boolean(subscription?.premiumAccess),
     },
     ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: ShieldCheck }] : []),
   ];
@@ -105,6 +111,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               >
                 <item.icon className="size-4" />
                 {item.label}
+                {item.premiumActive && (
+                  <span
+                    title="Premium access active"
+                    className="ml-auto size-1.5 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)]"
+                  />
+                )}
               </Link>
             );
           })}

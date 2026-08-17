@@ -14,6 +14,7 @@ import { ConvexError, v } from "convex/values";
 import {
   action,
   internalMutation,
+  internalQuery,
   mutation,
   query,
   type ActionCtx,
@@ -22,7 +23,8 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireActiveSubscriptionAction } from "./subscriptions";
+import { getPremiumAccess } from "./subscriptions";
+import { FREE_QUIZ_WEEKLY_LIMIT, FREE_QUIZ_WINDOW_DAYS } from "./constants";
 
 const API_URL = "https://api.x.ai/v1/chat/completions";
 const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
@@ -160,8 +162,26 @@ export const generateQuiz = action({
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     }
-    // Premium feature — available during trial, gated once the trial ends.
-    await requireActiveSubscriptionAction(ctx, userId);
+    // Free tier gets a fair allowance: one quiz per subject per week, so
+    // students see real value before deciding to upgrade. Premium (trial or
+    // paid) is unlimited. The weekly window matches the entitlement query.
+    const premium = await getPremiumAccess(ctx, userId);
+    if (!premium) {
+      const weekStart = Date.now() - FREE_QUIZ_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      const used = await ctx.runQuery(internal.quizzes.countQuizzesForSubjectSince, {
+        userId,
+        subjectId: args.subjectId,
+        since: weekStart,
+      });
+      if (used >= FREE_QUIZ_WEEKLY_LIMIT) {
+        throw new ConvexError({
+          message:
+            `Free accounts get ${FREE_QUIZ_WEEKLY_LIMIT} quiz per subject per week — you've used yours for this subject. ` +
+            "Try again next week, or upgrade for unlimited quizzes and your full score history.",
+          code: "weekly_quiz_limit",
+        });
+      }
+    }
 
     const subject = await ctx.runQuery(internal.ai.getSubjectById, {
       subjectId: args.subjectId,
@@ -215,6 +235,32 @@ export const generateQuiz = action({
       questionsJson: JSON.stringify(questions),
     });
     return { quizId, questions };
+  },
+});
+
+/**
+ * How many quizzes this user has generated for a subject within the last
+ * FREE_QUIZ_WINDOW_DAYS — used to enforce the free-tier weekly allowance
+ * (one per subject per week) before a single token is spent.
+ */
+export const countQuizzesForSubjectSince = internalQuery({
+  args: {
+    userId: v.id("users"),
+    subjectId: v.id("subjects"),
+    since: v.number(),
+  },
+  handler: async (ctx, { userId, subjectId, since }) => {
+    const quizzes = await ctx.db
+      .query("quizzes")
+      .withIndex("by_user", (q) => q.eq("generatedForUserId", userId))
+      .take(200);
+    let count = 0;
+    for (const quiz of quizzes) {
+      if (quiz.subjectId === subjectId && quiz.createdAt >= since) {
+        count += 1;
+      }
+    }
+    return count;
   },
 });
 

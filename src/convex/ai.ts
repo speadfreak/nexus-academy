@@ -19,6 +19,8 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { getPremiumAccess } from "./subscriptions";
+import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 
 const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
 const API_URL = "https://api.x.ai/v1/chat/completions";
@@ -57,6 +59,36 @@ export const getMessagesByConversation = internalQuery({
       .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
       .order("asc")
       .take(200),
+});
+
+/**
+ * Count of user turns across ALL of a user's conversations within a window.
+ * Used to enforce the free-tier daily tutor cap. Premium users skip the cap
+ * entirely (checked in sendMessage before this is called).
+ */
+export const countUserMessagesSince = internalQuery({
+  args: { userId: v.id("users"), since: v.number() },
+  handler: async (ctx, { userId, since }) => {
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_user_updatedAt", (q) => q.eq("userId", userId))
+      .take(50);
+    let count = 0;
+    for (const conversation of conversations) {
+      const messages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) =>
+          q.eq("conversationId", conversation._id),
+        )
+        .take(200);
+      for (const message of messages) {
+        if (message.role === "user" && message.createdAt >= since) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  },
 });
 
 export const getFirstMessage = internalQuery({
@@ -272,6 +304,29 @@ export const sendMessage = action({
     }
     if (content.length > 4000) {
       throw new ConvexError({ message: "Message is too long (max 4,000 characters).", code: "invalid" });
+    }
+
+    // --- Free-tier daily cap ---------------------------------------------
+    // Free accounts get a fair number of messages per day — enough to get
+    // real help, never a teaser. Premium (trial or paid) is unlimited. The
+    // cap is checked BEFORE the message is persisted, so rejected sends
+    // don't consume the quota. Uses a rolling 24h window so no client
+    // timezone math is needed server-side.
+    const premium = await getPremiumAccess(ctx, userId);
+    if (!premium) {
+      const since = Date.now() - 24 * 60 * 60 * 1000;
+      const used = await ctx.runQuery(internal.ai.countUserMessagesSince, {
+        userId,
+        since,
+      });
+      if (used >= FREE_TUTOR_DAILY_LIMIT) {
+        throw new ConvexError({
+          message:
+            `You've used your ${FREE_TUTOR_DAILY_LIMIT} free tutor messages for today. ` +
+            "Come back tomorrow for a fresh set — or upgrade for unlimited tutoring.",
+          code: "daily_limit_reached",
+        });
+      }
     }
 
     // --- Resolve or create the conversation -----------------------------

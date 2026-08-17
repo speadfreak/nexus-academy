@@ -152,7 +152,7 @@ export const generatePlan = action({
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     }
     // Plans are a premium feature (available during the trial).
-    await requireActiveSubscriptionAction(ctx, userId);
+    await requireActiveSubscriptionAction(ctx, userId, "premium_plans");
 
     const subject = await ctx.runQuery(internal.ai.getSubjectById, {
       subjectId: args.subjectId,

@@ -259,8 +259,10 @@ export const getDownloadUrl = action({
       return { url: item.fileUrl };
     }
 
-    // Premium downloads require trial or active subscription access.
-    await requireActiveSubscriptionAction(ctx, userId);
+    // Premium downloads require trial or active subscription access. The
+    // reason tells the client to show the contextual "premium_content"
+    // prompt instead of a generic paywall.
+    await requireActiveSubscriptionAction(ctx, userId, "premium_content");
 
     try {
       const key = keyFromUrl(item.fileUrl);

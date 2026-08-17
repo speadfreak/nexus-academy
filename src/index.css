@@ -33,6 +33,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-premium: var(--premium);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -48,6 +49,7 @@
    light theme is a genuinely usable, high-contrast cool-gray variant. */
 :root {
   --radius: 0.75rem;
+  --premium: oklch(0.6 0.13 72);
   --background: oklch(0.972 0.006 250);
   --foreground: oklch(0.23 0.022 258);
   --card: oklch(1 0 0 / 0.82);
@@ -116,6 +118,7 @@
 }
 
 .dark {
+  --premium: oklch(0.82 0.13 85);
   --background: oklch(0.148 0.014 258);
   --foreground: oklch(0.96 0.008 250);
   --card: oklch(0.19 0.018 258 / 0.92);

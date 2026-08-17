@@ -414,7 +414,7 @@ export default function Landing() {
                 </span>
               </p>
               <p className="text-[11.5px] text-muted-foreground">
-                <span className="text-emerald-400">⠿</span> signed url ready · expires in 15:00
+                <span className="text-emerald-400">⠿</span> signed url ready · valid for 15 min
               </p>
             </div>
           </div>
@@ -727,12 +727,14 @@ export default function Landing() {
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
               Create your free account and get instant access to every textbook,
               past paper and study guide for your stream — organized by grade and
-              subject, with premium downloads for full exam-season access.
+              subject. Free covers the library, todos, the focus timer, streaks,
+              15 tutor messages a day and a weekly quiz. Premium adds unlimited
+              tutoring, unlimited quizzes and AI study plans when you&apos;re ready.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button asChild size="lg" className="rounded-xl">
                 <Link to={libraryHref}>
-                  {isAuthenticated ? "Open the library" : "Create free account"}
+                  {isAuthenticated ? "Open the library" : "Start studying free"}
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>

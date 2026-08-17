@@ -19,8 +19,30 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import {
+  FREE_QUIZ_WEEKLY_LIMIT,
+  FREE_QUIZ_WINDOW_DAYS,
+  FREE_TUTOR_DAILY_LIMIT,
+} from "./constants";
 
 export const TRIAL_ACTIVE_DAYS = 14;
+
+/**
+ * Machine-readable reason for a premium gate. The frontend maps each reason
+ * to a specific, contextual upgrade prompt — never a generic paywall.
+ */
+export type GateReason =
+  | "trial_expired"
+  | "daily_limit_reached"
+  | "weekly_quiz_limit"
+  | "premium_content"
+  | "premium_plans"
+  | "premium_quizzes"
+  | "premium_analytics";
+
+export function isPremiumStatus(status: string | undefined): boolean {
+  return status === "trial" || status === "active";
+}
 
 export type SubscriptionStatus =
   | "trial"
@@ -204,22 +226,119 @@ export const getSubscriptionStatus = query({
 });
 
 // ---------------------------------------------------------------------------
+// Entitlements — the client-facing source of truth for what this user can
+// do right now, plus real free-tier usage counts. Drives the tutor cap UI,
+// the quiz flow, and the /upgrade comparison table so copy never drifts
+// from what the gates actually enforce.
+// ---------------------------------------------------------------------------
+
+export const getEntitlements = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return {
+        premiumAccess: false,
+        status: "none" as const,
+        planTier: "premium",
+        trialActiveDays: 0,
+        trialDaysRemaining: TRIAL_ACTIVE_DAYS,
+        trialStartedAt: null,
+        trialEndsAt: null,
+        currentPeriodEnd: null,
+        needsUpgrade: false,
+        tutorDailyLimit: FREE_TUTOR_DAILY_LIMIT,
+        tutorUsedToday: 0,
+        tutorRemainingToday: FREE_TUTOR_DAILY_LIMIT,
+        quizWeeklyLimit: FREE_QUIZ_WEEKLY_LIMIT,
+        quizUsedThisWeek: [],
+        quizUsedThisWeekTotal: 0,
+      };
+    }
+
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const premiumAccess = sub !== null && isPremiumStatus(sub.status);
+
+    // --- Real free-tier usage counts -------------------------------------
+    // Tutor messages in the last 24h (rolling window — same window the gate
+    // in ai.ts uses, so the UI count always matches the enforced cap).
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    let tutorUsedToday = 0;
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_user_updatedAt", (q) => q.eq("userId", userId))
+      .take(50);
+    for (const conversation of conversations) {
+      const messages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) =>
+          q.eq("conversationId", conversation._id),
+        )
+        .take(200);
+      for (const message of messages) {
+        if (message.role === "user" && message.createdAt >= since) {
+          tutorUsedToday += 1;
+        }
+      }
+    }
+
+    // Quizzes generated per subject in the last 7 days (same window as the
+    // gate in quizzes.ts).
+    const weekStart = Date.now() - FREE_QUIZ_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const quizzes = await ctx.db
+      .query("quizzes")
+      .withIndex("by_user", (q) => q.eq("generatedForUserId", userId))
+      .take(200);
+    const perSubject = new Map<Id<"subjects">, number>();
+    for (const quiz of quizzes) {
+      if (quiz.createdAt < weekStart) continue;
+      perSubject.set(quiz.subjectId, (perSubject.get(quiz.subjectId) ?? 0) + 1);
+    }
+    const quizUsedThisWeek = [...perSubject.entries()].map(([subjectId, used]) => ({
+      subjectId,
+      used,
+    }));
+
+    return {
+      premiumAccess,
+      status: sub?.status ?? ("none" as const),
+      planTier: sub?.planTier ?? "premium",
+      trialActiveDays: sub?.trialActiveDays ?? 0,
+      trialDaysRemaining: Math.max(0, TRIAL_ACTIVE_DAYS - (sub?.trialActiveDays ?? 0)),
+      trialStartedAt: sub?.trialStartedAt ?? null,
+      trialEndsAt: sub?.trialEndsAt ?? null,
+      currentPeriodEnd: sub?.currentPeriodEnd ?? null,
+      needsUpgrade: !premiumAccess,
+      tutorDailyLimit: FREE_TUTOR_DAILY_LIMIT,
+      tutorUsedToday,
+      tutorRemainingToday: Math.max(0, FREE_TUTOR_DAILY_LIMIT - tutorUsedToday),
+      quizWeeklyLimit: FREE_QUIZ_WEEKLY_LIMIT,
+      quizUsedThisWeek,
+      quizUsedThisWeekTotal: quizUsedThisWeek.reduce((sum, entry) => sum + entry.used, 0),
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Server-side gate — throws for anyone without trial/active access.
 // ---------------------------------------------------------------------------
 
 export async function requireActiveSubscriptionDb(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"users">,
+  reason: GateReason = "trial_expired",
 ): Promise<Doc<"subscriptions">> {
   const sub = await ctx.db
     .query("subscriptions")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .unique();
-  if (!sub || (sub.status !== "trial" && sub.status !== "active")) {
+  if (!sub || !isPremiumStatus(sub.status)) {
     throw new ConvexError({
-      message:
-        "Premium access required. Your free trial has ended — upgrade to continue.",
-      code: "premium_required",
+      message: "Premium access required. Your free trial has ended — upgrade to continue.",
+      code: reason,
     });
   }
   return sub;
@@ -228,15 +347,15 @@ export async function requireActiveSubscriptionDb(
 export async function requireActiveSubscriptionAction(
   ctx: ActionCtx,
   userId: Id<"users">,
+  reason: GateReason = "trial_expired",
 ): Promise<Doc<"subscriptions">> {
   const sub = await ctx.runQuery(internal.subscriptions.getSubscriptionByUser, {
     userId,
   });
-  if (!sub || (sub.status !== "trial" && sub.status !== "active")) {
+  if (!sub || !isPremiumStatus(sub.status)) {
     throw new ConvexError({
-      message:
-        "Premium access required. Your free trial has ended — upgrade to continue.",
-      code: "premium_required",
+      message: "Premium access required. Your free trial has ended — upgrade to continue.",
+      code: reason,
     });
   }
   return sub;
@@ -244,6 +363,21 @@ export async function requireActiveSubscriptionAction(
 
 /** Action-side wrapper so callers can use one import regardless of ctx type. */
 export const requireActiveSubscription = requireActiveSubscriptionAction;
+
+/**
+ * Whether the user currently has premium access (trial or paid). Actions use
+ * this instead of the throwing helper when they want a free-tier allowance
+ * (e.g. one quiz per week) rather than a hard gate.
+ */
+export async function getPremiumAccess(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+): Promise<boolean> {
+  const sub = await ctx.runQuery(internal.subscriptions.getSubscriptionByUser, {
+    userId,
+  });
+  return sub !== null && isPremiumStatus(sub.status);
+}
 
 /** Public action used by client polling (mirrors the query for convenience). */
 export const getSubscriptionStatusAction = action({

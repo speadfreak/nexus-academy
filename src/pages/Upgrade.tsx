@@ -1,3 +1,11 @@
+// Upgrade — a genuine value comparison, not a hard sell.
+//
+// The comparison table renders from PREMIUM_COMPARISON (src/lib/premium.ts),
+// which imports the SAME limit constants the backend gates enforce — so the
+// marketing table can never drift from reality. The \"why upgrade\" line is
+// built from the user's REAL usage (tutor cap hit, weekly quiz used), trial
+// state is shown factually, and renewal terms are stated plainly.
+
 import { api } from "@/convex/_generated/api";
 import { PREMIUM_PRICE_ETB, SUBSCRIPTION_DAYS } from "@/convex/constants";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -6,7 +14,9 @@ import {
   CheckCircle2,
   ChevronRight,
   Crown,
+  Info,
   Loader2,
+  Lock,
   Smartphone,
   Sparkles,
   Wallet,
@@ -20,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { clockTime, relativeTime } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
+import { FREE_INCLUDED_IDS, PREMIUM_COMPARISON } from "@/lib/premium";
 import { cn } from "@/lib/utils";
 
 type Provider = "telebirr" | "mpesa";
@@ -43,8 +54,28 @@ const PROVIDERS: { id: Provider; name: string; note: string }[] = [
   },
 ];
 
+/** A short, honest \"why upgrade\" line based on this user's real usage. */
+function whyUpgrade(entitlements: NonNullable<ReturnType<typeof useEntitlements>>): string {
+  if (entitlements.premiumAccess) {
+    return "You have premium access right now — this page is for renewing or understanding what you have.";
+  }
+  if (entitlements.tutorRemainingToday === 0) {
+    return `You used all ${entitlements.tutorDailyLimit} free tutor messages today. Premium makes it unlimited — no waiting for tomorrow.`;
+  }
+  if (entitlements.quizUsedThisWeekTotal >= entitlements.quizWeeklyLimit) {
+    return `You used your free weekly quiz allowance this week. Premium unlocks unlimited quizzes and your full score history.`;
+  }
+  return "Free already gives you the library, todos, timer, streaks, 15 tutor messages a day and a weekly quiz. Premium adds the rest — when you're ready.";
+}
+
+/** Small helper so we can type the entitlements query result. */
+function useEntitlements() {
+  return useQuery(api.subscriptions.getEntitlements);
+}
+
 export default function Upgrade() {
   const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
+  const entitlements = useEntitlements();
   const payments = useQuery(api.paymentsDb.getMyPayments);
   const initiatePayment = useAction(api.payments.initiatePayment);
   const verifyPayment = useAction(api.payments.verifyPayment);
@@ -112,11 +143,11 @@ export default function Upgrade() {
 
   const activeLabel = subscription
     ? subscription.status === "active"
-      ? `Premium · renews ${subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : ""}`
+      ? `Premium active · period ends ${subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : ""}`
       : subscription.status === "trial"
-        ? `Trial · ${subscription.trialDaysRemaining} active day${subscription.trialDaysRemaining === 1 ? "" : "s"} left`
+        ? `Trial · ${subscription.trialDaysRemaining} active day${subscription.trialDaysRemaining === 1 ? "" : "s"} left (days you actually study)`
         : subscription.needsUpgrade
-          ? "Trial ended — upgrade to continue"
+          ? "Trial ended — premium features are paused, everything free still works"
           : subscription.status
     : null;
 
@@ -133,6 +164,82 @@ export default function Upgrade() {
           </p>
         </div>
 
+        {/* Honest, usage-based framing */}
+        {entitlements && (
+          <div className="glass-panel flex items-start gap-3 rounded-2xl px-4 py-3">
+            <div
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                entitlements.premiumAccess
+                  ? "bg-emerald-400/10 text-emerald-300"
+                  : "bg-premium/10 text-premium",
+              )}
+            >
+              {entitlements.premiumAccess ? (
+                <CheckCircle2 className="size-4" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold tracking-tight">
+                {entitlements.premiumAccess ? "You're on premium" : "Where you are right now"}
+              </p>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{whyUpgrade(entitlements)}</p>
+              {!entitlements.premiumAccess && (
+                <p className="mt-1.5 font-mono text-[10px] text-muted-foreground">
+                  tutor: {entitlements.tutorUsedToday}/{entitlements.tutorDailyLimit} free messages
+                  today · quizzes this week: {entitlements.quizUsedThisWeekTotal}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Free vs premium comparison — rendered from the real limits */}
+        <div className="glass-panel overflow-hidden rounded-2xl">
+          <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              // free vs premium
+            </p>
+            <span className="font-mono text-[10px] text-muted-foreground">
+              limits enforced by the app, shown exactly
+            </span>
+          </div>
+          <div className="grid grid-cols-[1.2fr_1fr_1fr] gap-px bg-white/5 text-sm">
+            <div className="bg-background/60 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+              feature
+            </div>
+            <div className="bg-background/60 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+              free
+            </div>
+            <div className="flex items-center gap-1.5 bg-premium/8 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-premium">
+              <Crown className="size-3" /> premium
+            </div>
+            {PREMIUM_COMPARISON.map((row) => (
+              <div key={row.id} className="contents">
+                <div className="bg-background/60 px-4 py-3 font-medium text-foreground/90">
+                  {row.feature}
+                </div>
+                <div className="bg-background/60 px-4 py-3 text-muted-foreground">
+                  {FREE_INCLUDED_IDS.has(row.id) ? (
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="size-3.5 shrink-0 text-emerald-400/80" />
+                      {row.free}
+                    </span>
+                  ) : (
+                    row.free
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 bg-premium/5 px-4 py-3 text-foreground/90">
+                  <CheckCircle2 className="size-3.5 shrink-0 text-premium" />
+                  {row.premium}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
           {/* ------- Pricing card ------- */}
           <motion.div
@@ -140,10 +247,10 @@ export default function Upgrade() {
             animate={{ opacity: 1, y: 0 }}
             className="glass-panel relative overflow-hidden rounded-2xl p-6"
           >
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-premium/70 to-transparent" />
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-premium/10 text-premium">
                   <Crown className="size-5" />
                 </div>
                 <div>
@@ -169,13 +276,14 @@ export default function Upgrade() {
 
             <ul className="mt-6 space-y-2.5 text-sm">
               {[
-                "Unlimited access to premium past exams and worksheets",
-                "AI study plans generated per subject (Grok-powered)",
-                "Unlimited tutor sessions with content-grounded answers",
-                "Streak reminders so you never lose your momentum",
+                "Unlimited AI tutor messages, grounded in your stream's curriculum",
+                "Unlimited quiz generation + full score history on your journey",
+                "AI study plans per subject, auto-scheduled onto your calendar",
+                "Premium past exams and teacher guides via signed links",
+                "Full journey analytics — score trends, correlations, completion",
               ].map((feature) => (
                 <li key={feature} className="flex items-start gap-2.5 text-muted-foreground">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-premium" />
                   {feature}
                 </li>
               ))}
@@ -188,10 +296,23 @@ export default function Upgrade() {
                   : subscription.status === "trial"
                     ? `status: trial · ${subscription.trialActiveDays}/${subscription.trialActiveDays + subscription.trialDaysRemaining} active days used`
                     : subscription.needsUpgrade
-                      ? "status: expired — premium features are paused"
+                      ? "status: expired — premium features are paused, the free tier still works"
                       : `status: ${subscription.status}`}
               </p>
             )}
+
+            {/* Renewal terms — stated plainly, not in fine print */}
+            <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-white/8 bg-white/4 px-3.5 py-3">
+              <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <p className="font-mono text-[10px] leading-5 text-muted-foreground">
+                How renewal works: manual, never automatic. Your premium lasts{" "}
+                {SUBSCRIPTION_DAYS} days from the moment your payment is confirmed.
+                When it ends, nothing is charged and nothing is lost — your streaks,
+                notes and progress stay. You decide whether to renew.{" "}
+                {PREMIUM_PRICE_ETB} ETB is the full amount you pay; there are no
+                hidden fees.
+              </p>
+            </div>
           </motion.div>
 
           {/* ------- Checkout ------- */}
@@ -215,23 +336,23 @@ export default function Upgrade() {
                   className={cn(
                     "w-full cursor-pointer rounded-xl border p-3.5 text-left transition-colors disabled:opacity-60",
                     provider === option.id
-                      ? "border-primary/45 bg-primary/8"
+                      ? "border-premium/45 bg-premium/8"
                       : "border-white/10 bg-white/4 hover:border-white/20",
                   )}
                 >
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2 text-sm font-bold">
                       {option.id === "telebirr" ? (
-                        <Wallet className="size-4 text-primary" />
+                        <Wallet className="size-4 text-premium" />
                       ) : (
-                        <Smartphone className="size-4 text-primary" />
+                        <Smartphone className="size-4 text-premium" />
                       )}
                       {option.name}
                     </span>
                     <ChevronRight
                       className={cn(
                         "size-4 transition-transform",
-                        provider === option.id ? "text-primary" : "text-muted-foreground/50",
+                        provider === option.id ? "text-premium" : "text-muted-foreground/50",
                       )}
                     />
                   </div>
@@ -268,7 +389,7 @@ export default function Upgrade() {
               {payment.phase === "initiating" || payment.phase === "pending" ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Sparkles className="size-4" />
+                <Lock className="size-4" />
               )}
               {payment.phase === "pending"
                 ? "Waiting for confirmation…"
@@ -283,9 +404,9 @@ export default function Upgrade() {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="mt-4 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3"
+                  className="mt-4 rounded-xl border border-premium/25 bg-premium/8 px-3.5 py-3"
                 >
-                  <p className="font-mono text-[11px] text-primary">
+                  <p className="font-mono text-[11px] text-premium">
                     {payment.provider === "telebirr"
                       ? "Checkout opened in a new tab. Complete the payment there — this page updates automatically."
                       : "Check your phone for the M-Pesa prompt and approve it. This page updates automatically."}
@@ -303,7 +424,8 @@ export default function Upgrade() {
                   <div>
                     <p className="text-sm font-bold text-emerald-300">Payment confirmed</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Premium is active — past exams, plans and full tutoring are unlocked.
+                      Premium is active for {SUBSCRIPTION_DAYS} days — past exams, plans and
+                      unlimited tutoring are unlocked.
                     </p>
                   </div>
                 </motion.div>
@@ -328,7 +450,8 @@ export default function Upgrade() {
               {activeLabel ?? "status: checking…"}
               <br />
               Payments are processed by TeleBirr (Ethio telecom) or M-Pesa. Your
-              subscription activates the moment the provider confirms.
+              subscription activates the moment the provider confirms — no automatic
+              charges afterwards.
             </p>
           </motion.div>
         </div>

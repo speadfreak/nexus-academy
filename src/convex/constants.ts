@@ -44,3 +44,11 @@ export const STREAM_LABELS: Record<Stream, string> = {
 // and the upgrade page.
 export const PREMIUM_PRICE_ETB = 199;
 export const SUBSCRIPTION_DAYS = 30;
+
+// Free-tier limits — single source of truth shared by the backend gates
+// (ai.ts, quizzes.ts) and the frontend (tutor page, quiz flow, /upgrade
+// comparison table) so marketing copy can never drift from what the code
+// actually enforces.
+export const FREE_TUTOR_DAILY_LIMIT = 15; // tutor messages per rolling 24h
+export const FREE_QUIZ_WEEKLY_LIMIT = 1; // quizzes per subject per rolling 7 days
+export const FREE_QUIZ_WINDOW_DAYS = 7;

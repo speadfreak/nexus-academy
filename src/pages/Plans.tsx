@@ -25,14 +25,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { relativeTime } from "@/lib/dates";
-import { errorMessage } from "@/lib/errors";
+import { errorCode, errorMessage } from "@/lib/errors";
+import { PremiumPrompt } from "@/components/PremiumPrompt";
+import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Plans() {
   const subjects = useQuery(api.subjects.getAll);
+  const entitlements = useQuery(api.subscriptions.getEntitlements);
   const [subjectId, setSubjectId] = useState("");
   const [targetExamDate, setTargetExamDate] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [planPromptOpen, setPlanPromptOpen] = useState(false);
 
   const generatePlan = useAction(api.studyPlans.generatePlan);
   const markWeekComplete = useMutation(api.studyPlans.markWeekComplete);
@@ -57,7 +61,13 @@ export default function Plans() {
       });
       toast.success(`Study plan generated for ${selectedSubject?.name ?? "this subject"}.`);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not generate the plan."));
+      if (errorCode(error) === "premium_plans") {
+        // The student picked a subject and reached for a real study tool —
+        // surface the premium value at that exact moment, dismissibly.
+        setPlanPromptOpen(true);
+      } else {
+        toast.error(errorMessage(error, "Could not generate the plan."));
+      }
     } finally {
       setGenerating(false);
     }
@@ -117,18 +127,27 @@ export default function Plans() {
               className="h-10 rounded-xl bg-white/5 font-mono text-sm"
             />
           </div>
-          <Button
-            className="h-10 rounded-xl"
-            onClick={handleGenerate}
-            disabled={!subjectId || generating}
-          >
-            {generating ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Sparkles className="size-4" />
+          <div className="flex flex-col gap-1">
+            <Button
+              className="h-10 rounded-xl"
+              onClick={handleGenerate}
+              disabled={!subjectId || generating}
+            >
+              {generating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : entitlements && !entitlements.premiumAccess ? (
+                <Lock className="size-4 text-premium" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              {plan ? "Regenerate plan" : "Generate plan"}
+            </Button>
+            {entitlements && !entitlements.premiumAccess && (
+              <span className="self-end rounded-md border border-premium/30 bg-premium/8 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.15em] text-premium">
+                premium
+              </span>
             )}
-            {plan ? "Regenerate plan" : "Generate plan"}
-          </Button>
+          </div>
         </div>
 
         {/* Plan view */}
@@ -309,6 +328,12 @@ export default function Plans() {
           </div>
         )}
       </div>
+
+      <PremiumPrompt
+        open={planPromptOpen}
+        onOpenChange={setPlanPromptOpen}
+        reason="premium_plans"
+      />
     </DashboardShell>
   );
 }

@@ -25,12 +25,53 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useState } from "react";
 import { DashboardShell } from "@/components/DashboardShell";
+import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Lock } from "lucide-react";
 import { relativeTime } from "@/lib/dates";
+import { cn } from "@/lib/utils";
 
 const AXIS_COLOR = "var(--muted-foreground)";
 const GRID_COLOR = "var(--border)";
+/**
+ * Wraps a premium analytics section for free-tier users: the student's REAL
+ * data renders underneath a soft blur (honest motivation — seeing your own
+ * progress locked), with a dismissible prompt to unlock.
+ */
+function PremiumBlur({
+  locked,
+  onUnlock,
+  children,
+}: {
+  locked: boolean;
+  onUnlock: () => void;
+  children: React.ReactNode;
+}) {
+  if (!locked) return <>{children}</>;
+  return (
+    <div className="relative">
+      <div className="pointer-events-none select-none blur-md" aria-hidden="true">
+        {children}
+      </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 rounded-2xl bg-background/30 backdrop-blur-[1px]">
+        <span className="flex items-center gap-1.5 rounded-full border border-premium/30 bg-premium/10 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-premium">
+          <Lock className="size-3" /> premium analytics
+        </span>
+        <p className="max-w-xs text-center text-xs leading-5 text-muted-foreground">
+          Your real scores and completion are tracked here — unlock the full view
+          with premium.
+        </p>
+        <Button size="sm" className="rounded-xl" onClick={onUnlock}>
+          See what premium includes
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 const TOOLTIP_STYLE: React.CSSProperties = {
   background: "var(--popover)",
   border: "1px solid var(--border)",
@@ -42,6 +83,7 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 
 export default function Journey() {
   const journey = useQuery(api.journey.getJourney);
+  const [analyticsPromptOpen, setAnalyticsPromptOpen] = useState(false);
 
   if (journey === undefined) {
     return (
@@ -134,6 +176,10 @@ export default function Journey() {
             <TrendingUp className="size-4 text-primary" />
             <p className="text-sm font-bold tracking-tight">Quiz score trend</p>
           </div>
+          <PremiumBlur
+            locked={!journey.premiumAccess}
+            onUnlock={() => setAnalyticsPromptOpen(true)}
+          >
           {trendData.length === 0 ? (
             <p className="py-12 text-center text-sm text-muted-foreground">
               Take a quiz from the library or after a focus session to start your trend line.
@@ -174,6 +220,7 @@ export default function Journey() {
               </ResponsiveContainer>
             </div>
           )}
+          </PremiumBlur>
         </motion.div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -188,6 +235,10 @@ export default function Journey() {
               <Target className="size-4 text-primary" />
               <p className="text-sm font-bold tracking-tight">Topic completion</p>
             </div>
+            <PremiumBlur
+              locked={!journey.premiumAccess}
+              onUnlock={() => setAnalyticsPromptOpen(true)}
+            >
             {journey.topicCompletion.length === 0 ? (
               <p className="py-12 text-center text-sm text-muted-foreground">
                 No syllabus topics exist yet. Add topics and generate plans to track completion.
@@ -212,6 +263,7 @@ export default function Journey() {
                 ))}
               </div>
             )}
+            </PremiumBlur>
           </motion.div>
 
           {/* Topic correlations */}
@@ -225,6 +277,10 @@ export default function Journey() {
               <Link2 className="size-4 text-primary" />
               <p className="text-sm font-bold tracking-tight">Cross-subject links</p>
             </div>
+            <PremiumBlur
+              locked={!journey.premiumAccess}
+              onUnlock={() => setAnalyticsPromptOpen(true)}
+            >
             {journey.correlations.length === 0 ? (
               <p className="py-12 text-center text-sm text-muted-foreground">
                 Topics shared across subjects appear here once content is linked — the AI uses
@@ -251,11 +307,12 @@ export default function Journey() {
                 ))}
               </div>
             )}
+            </PremiumBlur>
           </motion.div>
         </div>
 
         {/* Recent quiz history */}
-        {journey.quizTrend.length > 0 && (
+        {journey.premiumAccess && journey.quizTrend.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -289,6 +346,12 @@ export default function Journey() {
           </motion.div>
         )}
       </div>
+
+      <PremiumPrompt
+        open={analyticsPromptOpen}
+        onOpenChange={setAnalyticsPromptOpen}
+        reason="premium_analytics"
+      />
     </DashboardShell>
   );
 }

@@ -25,7 +25,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { clockTime, relativeTime } from "@/lib/dates";
-import { errorMessage } from "@/lib/errors";
+import { errorCode, errorMessage } from "@/lib/errors";
+import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { cn } from "@/lib/utils";
 
 type MessageDoc = {
@@ -89,8 +90,10 @@ export default function Tutor() {
   const [searchParams] = useSearchParams();
   const subjects = useQuery(api.subjects.getAll);
   const conversations = useQuery(api.ai.listConversations);
+  const entitlements = useQuery(api.subscriptions.getEntitlements);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [capPromptOpen, setCapPromptOpen] = useState(false);
   const [scopeSubjectId, setScopeSubjectId] = useState("");
   const [contentId, setContentId] = useState<string | null>(
     searchParams.get("contentId"),
@@ -164,7 +167,13 @@ export default function Tutor() {
       });
       if (!selectedId) setSelectedId(result.conversationId as string);
     } catch (error) {
-      toast.error(errorMessage(error, "The tutor couldn't reply. Try again."));
+      if (errorCode(error) === "daily_limit_reached") {
+        // A real, earned moment: the student used today's free messages.
+        // Offer upgrade, never lock them out of the rest of the app.
+        setCapPromptOpen(true);
+      } else {
+        toast.error(errorMessage(error, "The tutor couldn't reply. Try again."));
+      }
     } finally {
       setSending(null);
       setIsAwaiting(false);
@@ -434,6 +443,18 @@ export default function Tutor() {
           {/* Input */}
           <div className="border-t border-white/8 p-4">
             <div className="flex items-center gap-2.5">
+              {entitlements && !entitlements.premiumAccess && (
+                <span
+                  title={
+                    entitlements.tutorRemainingToday > 0
+                      ? `${entitlements.tutorRemainingToday} of ${entitlements.tutorDailyLimit} free messages left today`
+                      : "Daily free messages used — they reset tomorrow"
+                  }
+                  className="hidden shrink-0 rounded-lg border border-premium/30 bg-premium/8 px-2.5 py-1.5 font-mono text-[10px] text-premium sm:block"
+                >
+                  free · {entitlements.tutorRemainingToday}/{entitlements.tutorDailyLimit} today
+                </span>
+              )}
               <span className="hidden shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground sm:block">
                 {scopeSubject ? scopeSubject.name : "general"}
               </span>
@@ -467,6 +488,12 @@ export default function Tutor() {
           </div>
         </section>
       </div>
+
+      <PremiumPrompt
+        open={capPromptOpen}
+        onOpenChange={setCapPromptOpen}
+        reason="daily_limit_reached"
+      />
     </DashboardShell>
   );
 }

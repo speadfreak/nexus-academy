@@ -8,6 +8,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { isPremiumStatus } from "./subscriptions";
 
 interface PlanWeek {
   week: number;
@@ -20,8 +21,19 @@ export const getJourney = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      return { hoursBySubject: [], quizTrend: [], topicCompletion: [], correlations: [] };
+      return {
+        premiumAccess: false,
+        hoursBySubject: [],
+        quizTrend: [],
+        topicCompletion: [],
+        correlations: [],
+      };
     }
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const premiumAccess = sub !== null && isPremiumStatus(sub.status);
 
     // --- Hours per subject ------------------------------------------------
     const sessions = await ctx.db
@@ -186,6 +198,6 @@ export const getJourney = query({
       if (correlations.length >= 12) break;
     }
 
-    return { hoursBySubject, quizTrend, topicCompletion, correlations };
+    return { premiumAccess, hoursBySubject, quizTrend, topicCompletion, correlations };
   },
 });

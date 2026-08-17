@@ -13,6 +13,7 @@ import {
   GraduationCap,
   HelpCircle,
   Loader2,
+  Lock,
   MessageSquare,
   Presentation,
   Quote,
@@ -27,6 +28,7 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
 import { DashboardShell } from "@/components/DashboardShell";
+import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { QuizFlow } from "@/components/QuizFlow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,11 +93,14 @@ function StatNumber({ value, decimals = 0 }: { value: number; decimals?: number 
 
 function ContentCard({
   item,
+  locked,
   onOpen,
   onQuiz,
   opening,
 }: {
   item: ContentItemWithSubject;
+  /** Premium item and the current user is not on premium access. */
+  locked: boolean;
   onOpen: (item: ContentItemWithSubject) => void;
   onQuiz: (item: ContentItemWithSubject) => void;
   opening: boolean;
@@ -116,8 +121,13 @@ function ContentCard({
         </div>
         <div className="flex items-center gap-1.5">
           {item.isPremium && (
-            <Badge className="gap-1 bg-amber-400/10 text-amber-300">
-              <Sparkles className="size-3" /> Premium
+            <Badge className="gap-1 border-premium/30 bg-premium/10 text-premium">
+              {locked ? (
+                <Lock className="size-3" />
+              ) : (
+                <Sparkles className="size-3" />
+              )}
+              Premium
             </Badge>
           )}
           <Link
@@ -175,7 +185,7 @@ function ContentCard({
         ) : (
           <Download className="size-3.5" />
         )}
-        {item.isPremium ? "Open signed copy" : "Open"}
+        {item.isPremium ? (locked ? "Premium — locked" : "Open signed copy") : "Open"}
       </Button>
     </motion.div>
   );
@@ -193,7 +203,9 @@ export default function Dashboard() {
 
   const subjects = useQuery(api.subjects.getAll);
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
+  const entitlements = useQuery(api.subscriptions.getEntitlements);
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
+  const [premiumPrompt, setPremiumPrompt] = useState<{ reason: "premium_content"; open: boolean } | null>(null);
 
   // Daily quote: reactive query + one on-demand backfill so the AI quote is
   // generated even before the daily cron runs.
@@ -264,6 +276,13 @@ export default function Dashboard() {
   const handleOpen = async (item: ContentItemWithSubject) => {
     if (!item.isPremium) {
       window.open(item.fileUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    // Free-tier users meet premium content with a contextual, dismissible
+    // prompt — not a dead end and not a pressure wall. The signed download
+    // itself stays server-gated.
+    if (entitlements && !entitlements.premiumAccess) {
+      setPremiumPrompt({ reason: "premium_content", open: true });
       return;
     }
     setOpeningId(item._id);
@@ -656,6 +675,7 @@ export default function Dashboard() {
               <ContentCard
                 key={item._id}
                 item={item}
+                locked={Boolean(entitlements && !entitlements.premiumAccess) && item.isPremium}
                 onOpen={handleOpen}
                 onQuiz={(clicked) => {
                   setQuizSubjectId(clicked.subjectId);
@@ -673,6 +693,12 @@ export default function Dashboard() {
         onOpenChange={setQuizOpen}
         initialSubjectId={quizSubjectId || undefined}
         title="Quick check"
+      />
+
+      <PremiumPrompt
+        open={Boolean(premiumPrompt?.open)}
+        onOpenChange={(next) => setPremiumPrompt((prev) => (prev ? { ...prev, open: next } : prev))}
+        reason="premium_content"
       />
     </DashboardShell>
   );
