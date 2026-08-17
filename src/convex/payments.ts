@@ -19,6 +19,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import * as telebirr from "./providers/telebirr";
 import * as mpesa from "./providers/mpesa";
 import { PREMIUM_PRICE_ETB, SUBSCRIPTION_DAYS } from "./constants";
+import { logEventAction } from "./systemEvents";
 
 const SUBSCRIPTION_MS = SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000;
 
@@ -82,6 +83,13 @@ export const initiatePayment = action({
           paymentId,
           providerTransactionId: result.providerTransactionId,
         });
+        await logEventAction(ctx, {
+          eventType: "payment_event",
+          source: "payments.initiate",
+          status: "success",
+          userId,
+          metadata: { provider: "telebirr", amount: args.amount, paymentId },
+        });
         return {
           paymentId,
           checkoutUrl: result.checkoutUrl,
@@ -100,6 +108,13 @@ export const initiatePayment = action({
         paymentId,
         providerTransactionId: result.providerTransactionId,
       });
+      await logEventAction(ctx, {
+        eventType: "payment_event",
+        source: "payments.initiate",
+        status: "success",
+        userId,
+        metadata: { provider: "mpesa", amount: args.amount, paymentId },
+      });
       return {
         paymentId,
         checkoutUrl: null,
@@ -112,6 +127,18 @@ export const initiatePayment = action({
       await ctx.runMutation(internal.paymentsDb.setPaymentStatus, {
         paymentId,
         status: "failed",
+      });
+      await logEventAction(ctx, {
+        eventType: "payment_event",
+        source: "payments.initiate",
+        status: "error",
+        userId,
+        metadata: {
+          provider: args.provider,
+          amount: args.amount,
+          paymentId,
+          message: error instanceof Error ? error.message : "unknown",
+        },
       });
       throw error;
     }
@@ -155,12 +182,26 @@ export const verifyPayment = action({
         paymentId,
         providerTransactionId: payment.providerTransactionId,
       });
+      await logEventAction(ctx, {
+        eventType: "payment_event",
+        source: "payments.verify",
+        status: "success",
+        userId,
+        metadata: { paymentId, provider: payment.provider, amount: payment.amount, outcome: "completed" },
+      });
       return { status: "completed" as const };
     }
     if (verified.status === "failed") {
       await ctx.runMutation(internal.paymentsDb.setPaymentStatus, {
         paymentId,
         status: "failed",
+      });
+      await logEventAction(ctx, {
+        eventType: "payment_event",
+        source: "payments.verify",
+        status: "error",
+        userId,
+        metadata: { paymentId, provider: payment.provider, amount: payment.amount, outcome: "failed" },
       });
       return { status: "failed" as const };
     }

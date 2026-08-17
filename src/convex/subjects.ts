@@ -1,4 +1,11 @@
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
+
+/** Internal list for node actions (AI classification matches against the
+ * real subject table so the model can never invent a new subject). */
+export const listAllSubjects = internalQuery({
+  args: {},
+  handler: async (ctx) => await ctx.db.query("subjects").collect(),
+});
 
 /**
  * All subjects, ordered by name. Used by the library filters and the

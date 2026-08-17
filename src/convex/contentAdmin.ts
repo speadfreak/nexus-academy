@@ -11,6 +11,7 @@ import { requireAdminAction } from "./admin";
 import { requireActiveSubscriptionAction } from "./subscriptions";
 import { contentTypeValidator } from "./schema";
 import { CONTENT_TYPE_SLUGS, type ContentType } from "./constants";
+import { logEventAction } from "./systemEvents";
 import {
   deleteFile,
   getR2Config,
@@ -90,9 +91,13 @@ export const adminUploadContent = action({
     isPremium: v.boolean(),
     storageId: v.string(), // Id of the blob in Convex temp storage
     filename: v.string(),
+    // Optional AI-suggested topic candidates (already reviewed by the admin
+    // in the upload form) — created/linked as contentTopics after insert.
+    topicCandidates: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<UploadedContent> => {
     const adminUser = await requireAdminAction(ctx);
+    const uploadStart = Date.now();
 
     // --- Validation -----------------------------------------------------
     const title = args.title.trim();
@@ -175,6 +180,43 @@ export const adminUploadContent = action({
         },
       );
 
+      // AI topic candidates -> real topics rows + contentTopics links.
+      if (args.topicCandidates && args.topicCandidates.length > 0) {
+        await ctx.runMutation(internal.content.linkContentTopics, {
+          contentId: createdId,
+          subjectId: args.subjectId,
+          grade: args.grade,
+          topicNames: args.topicCandidates,
+        });
+      }
+
+      await logEventAction(ctx, {
+        eventType: "content_event",
+        source: "contentAdmin.upload",
+        status: "success",
+        userId: adminUser._id,
+        metadata: {
+          contentId: createdId,
+          contentType: args.contentType,
+          grade: args.grade,
+          fileSizeBytes: bytes.byteLength,
+          topics: args.topicCandidates?.length ?? 0,
+        },
+        durationMs: Date.now() - uploadStart,
+      });
+
+      // Optional Telegram auto-post (explicit admin toggle, defaults OFF).
+      // Fire-and-forget: a broadcast failure must never fail the upload.
+      await ctx
+        .runAction(internal.telegramActions.postNewContent, {
+          title,
+          contentType: args.contentType,
+          grade: args.grade,
+          subjectName: subject.name,
+          contentId: createdId,
+        })
+        .catch(() => {});
+
       return {
         id: createdId,
         title,
@@ -197,6 +239,17 @@ export const adminUploadContent = action({
       } catch {
         // ignore cleanup failure
       }
+      await logEventAction(ctx, {
+        eventType: "error",
+        source: "contentAdmin.upload",
+        status: "error",
+        userId: adminUser._id,
+        metadata: {
+          filename: args.filename,
+          message: error instanceof Error ? error.message : "unknown",
+        },
+        durationMs: Date.now() - uploadStart,
+      });
       throw asConvexError(error, "Upload failed. Check the R2 configuration.");
     }
   },

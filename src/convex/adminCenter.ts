@@ -682,3 +682,138 @@ export const getSystemStatus = query({
     };
   },
 });
+
+// ---------------------------------------------------------------------------
+// Integration status (A3) — configured + real usage from systemEvents.
+// NEVER returns a key value back to the browser, even to an admin.
+// ---------------------------------------------------------------------------
+
+const INTEGRATION_DEFS = [
+  {
+    id: "xai",
+    label: "Grok (xAI tutor)",
+    envKey: "XAI_API_KEY",
+    sourcePrefix: "ai.",
+  },
+  {
+    id: "gemini",
+    label: "Gemini (reader)",
+    envKey: "GEMINI_API_KEY",
+    sourcePrefix: "geminiReader.",
+  },
+  {
+    id: "telegram",
+    label: "Telegram",
+    envKey: "TELEGRAM_BOT_TOKEN",
+    sourcePrefix: "telegram.",
+  },
+  {
+    id: "livekit",
+    label: "LiveKit (rooms)",
+    envKey: "LIVEKIT_API_KEY",
+    sourcePrefix: "rooms.",
+  },
+  {
+    id: "r2",
+    label: "Cloudflare R2",
+    envKey: "R2_ACCOUNT_ID",
+    sourcePrefix: "contentAdmin.",
+  },
+  {
+    id: "telebirr",
+    label: "TeleBirr",
+    envKey: "TELEBIRR_APP_ID",
+    sourcePrefix: "payments.initiate",
+  },
+  {
+    id: "mpesa",
+    label: "M-Pesa",
+    envKey: "MPESA_CONSUMER_KEY",
+    sourcePrefix: "payments.initiate",
+  },
+  {
+    id: "google",
+    label: "Google OAuth",
+    envKey: "GOOGLE_CLIENT_ID",
+    sourcePrefix: null,
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    envKey: "GITHUB_TOKEN",
+    sourcePrefix: "github",
+  },
+] as const;
+
+export interface IntegrationStatusRow {
+  id: string;
+  label: string;
+  configured: boolean;
+  calls24h: number;
+  errors24h: number;
+  errorRate: number;
+  lastUsedAt: number | null;
+}
+
+/**
+ * Per-integration status: configured (env key present — value never shown),
+ * plus real 24h call volume + error rate derived from systemEvents.
+ */
+export const getIntegrationStatus = query({
+  args: {},
+  handler: async (ctx): Promise<IntegrationStatusRow[]> => {
+    await requireAdmin(ctx);
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const events = await ctx.db
+      .query("systemEvents")
+      .withIndex("by_createdAt", (q) => q.gte("createdAt", since))
+      .take(2000);
+
+    const rows: IntegrationStatusRow[] = [];
+    for (const def of INTEGRATION_DEFS) {
+      const relevant = def.sourcePrefix
+        ? events.filter((event) => event.source.startsWith(def.sourcePrefix))
+        : [];
+
+      // TeleBirr vs M-Pesa share the payments.initiate source — split by
+      // the provider field in the JSON metadata.
+      let calls = relevant.length;
+      let errors = 0;
+      let lastUsedAt: number | null = null;
+      if (def.sourcePrefix === "payments.initiate") {
+        calls = 0;
+        for (const event of relevant) {
+          let provider: string | null = null;
+          if (event.metadata) {
+            try {
+              const parsed = JSON.parse(event.metadata) as { provider?: string };
+              provider = parsed.provider ?? null;
+            } catch {
+              // ignore
+            }
+          }
+          if (provider !== def.id) continue;
+          calls += 1;
+          if (event.status === "error") errors += 1;
+          if (event.createdAt > (lastUsedAt ?? 0)) lastUsedAt = event.createdAt;
+        }
+      } else {
+        for (const event of relevant) {
+          if (event.status === "error") errors += 1;
+          if (event.createdAt > (lastUsedAt ?? 0)) lastUsedAt = event.createdAt;
+        }
+      }
+
+      rows.push({
+        id: def.id,
+        label: def.label,
+        configured: Boolean(process.env[def.envKey]),
+        calls24h: calls,
+        errors24h: errors,
+        errorRate: calls > 0 ? errors / calls : 0,
+        lastUsedAt,
+      });
+    }
+    return rows;
+  },
+});

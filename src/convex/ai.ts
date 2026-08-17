@@ -21,6 +21,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
+import { logEventAction } from "./systemEvents";
 
 const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
 const API_URL = "https://api.x.ai/v1/chat/completions";
@@ -320,6 +321,13 @@ export const sendMessage = action({
         since,
       });
       if (used >= FREE_TUTOR_DAILY_LIMIT) {
+        await logEventAction(ctx, {
+          eventType: "api_call",
+          source: "ai.sendMessage.cap_hit",
+          status: "error",
+          userId,
+          metadata: { used, limit: FREE_TUTOR_DAILY_LIMIT },
+        });
         throw new ConvexError({
           message:
             `You've used your ${FREE_TUTOR_DAILY_LIMIT} free tutor messages for today. ` +
@@ -404,6 +412,12 @@ export const sendMessage = action({
 
     // --- Call Grok -------------------------------------------------------
     if (!process.env.XAI_API_KEY) {
+      await logEventAction(ctx, {
+        eventType: "error",
+        source: "ai.sendMessage.not_configured",
+        status: "error",
+        userId,
+      });
       throw new ConvexError({
         message: "AI tutor is not configured yet — add XAI_API_KEY in the Keys tab.",
         code: "ai_not_configured",
@@ -421,6 +435,7 @@ export const sendMessage = action({
     );
 
     let reply: string;
+    const aiStart = Date.now();
     try {
       const response = await fetch(API_URL, {
         method: "POST",
@@ -451,7 +466,23 @@ export const sendMessage = action({
       if (!reply) {
         throw new Error("Grok returned an empty response.");
       }
+      await logEventAction(ctx, {
+        eventType: "api_call",
+        source: "ai.sendMessage.grok",
+        status: "success",
+        userId,
+        metadata: { model: AI_MODEL, conversationId },
+        durationMs: Date.now() - aiStart,
+      });
     } catch (error) {
+      await logEventAction(ctx, {
+        eventType: "error",
+        source: "ai.sendMessage.grok",
+        status: "error",
+        userId,
+        metadata: { message: error instanceof Error ? error.message : "unknown" },
+        durationMs: Date.now() - aiStart,
+      });
       throw asAiError(error, "The AI tutor could not reach the Grok API. Try again.");
     }
 

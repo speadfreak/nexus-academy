@@ -7,7 +7,7 @@ import {
   query,
   type QueryCtx,
 } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { isAdmin } from "./admin";
 import { contentTypeValidator } from "./schema";
 
@@ -72,6 +72,68 @@ export const deleteContentRow = internalMutation({
       await ctx.db.delete(link._id);
     }
     await ctx.db.delete(contentId);
+  },
+});
+
+/**
+ * Create-or-match topic rows and link them to a content item (admin AI
+ * classification flow). Idempotent — safe to call after a re-upload. Cap of
+ * 5 topics keeps the junction clean.
+ */
+export const linkContentTopics = internalMutation({
+  args: {
+    contentId: v.id("contentItems"),
+    subjectId: v.id("subjects"),
+    grade: v.number(),
+    topicNames: v.array(v.string()),
+  },
+  handler: async (ctx, { contentId, subjectId, grade, topicNames }) => {
+    const names = [
+      ...new Set(
+        topicNames
+          .map((name) => name.trim().replace(/\s+/g, " "))
+          .filter((name) => name.length >= 3 && name.length <= 80),
+      ),
+    ].slice(0, 5);
+    for (const name of names) {
+      const existing = await ctx.db
+        .query("topics")
+        .withIndex("by_subject_grade", (q) =>
+          q.eq("subjectId", subjectId).eq("grade", grade),
+        )
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+      let topicId = existing?._id;
+      if (!topicId) {
+        topicId = await ctx.db.insert("topics", { name, subjectId, grade });
+      }
+      const linked = await ctx.db
+        .query("contentTopics")
+        .withIndex("by_content", (q) => q.eq("contentId", contentId))
+        .filter((q) => q.eq(q.field("topicId"), topicId))
+        .first();
+      if (!linked) {
+        await ctx.db.insert("contentTopics", { contentId, topicId });
+      }
+    }
+    return { ok: true };
+  },
+});
+
+/** Topics linked to a content item (reader + tutor grounding). */
+export const getContentTopics = internalQuery({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, { contentId }) => {
+    const links = await ctx.db
+      .query("contentTopics")
+      .withIndex("by_content", (q) => q.eq("contentId", contentId))
+      .collect();
+    const topics: { _id: Id<"topics">; name: string; grade: number }[] = [];
+    for (const link of links) {
+      const topic = await ctx.db.get(link.topicId);
+      if (topic) topics.push({ _id: topic._id, name: topic.name, grade: topic.grade });
+    }
+    return topics;
   },
 });
 
@@ -207,6 +269,89 @@ export const getContent = query({
     }
 
     return joined;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Reader API
+// ---------------------------------------------------------------------------
+
+/**
+ * Full read model for the in-app reader: the content item with subject
+ * joined, its linked topics, and whether the signed-in student bookmarked
+ * it. Ownership-scoped — signed-out callers get null.
+ */
+export const getReaderContent = query({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, { contentId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const item = await ctx.db.get(contentId);
+    if (!item) return null;
+    const subject = item.subjectId ? await ctx.db.get(item.subjectId) : null;
+    const links = await ctx.db
+      .query("contentTopics")
+      .withIndex("by_content", (q) => q.eq("contentId", contentId))
+      .collect();
+    const topics: { _id: Id<"topics">; name: string }[] = [];
+    for (const link of links) {
+      const topic = await ctx.db.get(link.topicId);
+      if (topic) topics.push({ _id: topic._id, name: topic.name });
+    }
+    const bookmark = await ctx.db
+      .query("bookmarks")
+      .withIndex("by_user_content", (q) =>
+        q.eq("userId", userId).eq("contentId", contentId),
+      )
+      .first();
+    return {
+      item: {
+        ...item,
+        subjectName: subject?.name ?? "Unknown",
+        subjectSlug: subject?.slug ?? "",
+        subjectStream: subject?.stream ?? "common",
+      },
+      topics,
+      bookmarked: Boolean(bookmark),
+    };
+  },
+});
+
+/**
+ * Other library items sharing at least one topic with this one — the
+ * "related resources" strip in the reader, powered by the topic correlation
+ * from the admin classification flow.
+ */
+export const getRelatedContent = query({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, { contentId }): Promise<ContentItemWithSubject[]> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const links = await ctx.db
+      .query("contentTopics")
+      .withIndex("by_content", (q) => q.eq("contentId", contentId))
+      .collect();
+    const sharedCount = new Map<Id<"contentItems">, number>();
+    for (const link of links) {
+      const otherLinks = await ctx.db
+        .query("contentTopics")
+        .withIndex("by_topic", (q) => q.eq("topicId", link.topicId))
+        .collect();
+      for (const other of otherLinks) {
+        if (other.contentId === contentId) continue;
+        sharedCount.set(other.contentId, (sharedCount.get(other.contentId) ?? 0) + 1);
+      }
+    }
+    const ranked = [...sharedCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([id]) => id);
+    const items: ContentItem[] = [];
+    for (const id of ranked) {
+      const item = await ctx.db.get(id);
+      if (item) items.push(item);
+    }
+    return withSubjects(ctx, items);
   },
 });
 

@@ -126,6 +126,7 @@ const schema = defineSchema(
         v.literal("high"),
       ),
       dueDate: v.optional(v.number()),
+      contentId: v.optional(v.id("contentItems")), // optional link to a library item being studied
       createdAt: v.number(),
     })
       .index("by_user", ["userId"])
@@ -470,6 +471,79 @@ const schema = defineSchema(
       answeredCorrectly: v.boolean(),
       completedAt: v.number(),
     }).index("by_user", ["userId"]),
+
+    // ------------------------------------------------------------------
+    // Admin command center: observability + broadcasts
+    // ------------------------------------------------------------------
+
+    // Internal observability feed. Written from critical paths only (AI
+    // provider calls, payments, auth events, rooms, content uploads) — never
+    // instrumented per-request noise. metadata is a JSON string so the feed
+    // stays schema-stable as call sites evolve.
+    systemEvents: defineTable({
+      eventType: v.union(
+        v.literal("api_call"),
+        v.literal("error"),
+        v.literal("auth_event"),
+        v.literal("payment_event"),
+        v.literal("room_event"),
+        v.literal("content_event"),
+      ),
+      source: v.string(), // module/function that logged it
+      userId: v.optional(v.id("users")),
+      metadata: v.optional(v.string()), // JSON string
+      durationMs: v.optional(v.number()),
+      status: v.union(v.literal("success"), v.literal("error")),
+      createdAt: v.number(),
+    })
+      .index("by_createdAt", ["createdAt"])
+      .index("by_type_createdAt", ["eventType", "createdAt"]),
+
+    // Telegram broadcast channels (group/channel chat ids the admin can
+    // message). Auto-post-on-upload is an explicit per-channel toggle that
+    // defaults to OFF — never on by default.
+    telegramChannels: defineTable({
+      name: v.string(), // admin-facing label
+      chatId: v.string(), // numeric channel/group id
+      addedAt: v.number(),
+    }).index("by_chatId", ["chatId"]),
+
+    telegramAutoPosts: defineTable({
+      channelId: v.id("telegramChannels"),
+      enabled: v.boolean(),
+      updatedAt: v.number(),
+    }).index("by_channel", ["channelId"]),
+
+    // History of what was broadcast and when (admin audit trail).
+    broadcastLog: defineTable({
+      message: v.string(),
+      channels: v.array(v.string()), // channel names targeted
+      sentAt: v.number(),
+      sentBy: v.id("users"),
+      status: v.union(v.literal("sent"), v.literal("failed")),
+    }).index("by_sentAt", ["sentAt"]),
+
+    // ------------------------------------------------------------------
+    // Cinematic library: bookmarks + reader scratchpads
+    // ------------------------------------------------------------------
+
+    // Student reading list. One row per (user, content).
+    bookmarks: defineTable({
+      userId: v.id("users"),
+      contentId: v.id("contentItems"),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_content", ["userId", "contentId"]),
+
+    // Per (user, content) scratchpad content, persisted so returning to a
+    // book keeps the student's working notes.
+    scratchpads: defineTable({
+      userId: v.id("users"),
+      contentId: v.id("contentItems"),
+      content: v.string(),
+      updatedAt: v.number(),
+    }).index("by_user_content", ["userId", "contentId"]),
   },
   {
     schemaValidation: false,

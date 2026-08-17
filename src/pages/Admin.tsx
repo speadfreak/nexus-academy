@@ -22,10 +22,15 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  Plug,
+  Plus,
   RefreshCw,
   Search,
+  Send,
   ShieldCheck,
+  Terminal,
   Timer,
+  Trash2,
   TrendingUp,
   Trophy,
   UserRound,
@@ -53,6 +58,7 @@ import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { DashboardShell } from "@/components/DashboardShell";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +73,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -75,6 +82,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { relativeTime } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -124,6 +132,14 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   student_guide: "Student guides",
   teacher_guide: "Teacher guides",
 };
+
+function formatEventMeta(metadata: Record<string, unknown> | null): string {
+  if (!metadata) return "";
+  const entries = Object.entries(metadata)
+    .filter(([, value]) => typeof value === "string" || typeof value === "number")
+    .map(([key, value]) => `${key}=${String(value)}`);
+  return entries.length > 0 ? entries.join(" ") : "";
+}
 
 function initials(name: string): string {
   return (
@@ -225,6 +241,56 @@ export default function Admin() {
 
   // ---- System tab ----
   const system = useQuery(api.adminCenter.getSystemStatus);
+  const integrations = useQuery(api.adminCenter.getIntegrationStatus);
+  const testIntegration = useAction(api.systemEvents.testIntegrationConnection);
+  const [integrationResults, setIntegrationResults] = useState<Record<
+    string,
+    { ok: boolean; detail: string | null }
+  >>({});
+  const [testingIntegration, setTestingIntegration] = useState<string | null>(null);
+
+  const runIntegrationTest = async (integration: string) => {
+    setTestingIntegration(integration);
+    try {
+      const result = await testIntegration({ integration: integration as never });
+      setIntegrationResults((prev) => ({ ...prev, [integration]: result }));
+    } catch (error) {
+      setIntegrationResults((prev) => ({
+        ...prev,
+        [integration]: {
+          ok: false,
+          detail: error instanceof Error ? error.message : "Connection test failed.",
+        },
+      }));
+    } finally {
+      setTestingIntegration(null);
+    }
+  };
+
+  // ---- Terminal tab (system events) ----
+  const [eventFilter, setEventFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const systemEvents = useQuery(api.systemEvents.getSystemEvents, {
+    eventType: eventFilter || undefined,
+    status: (statusFilter || undefined) as "success" | "error" | undefined,
+  });
+  const health = useQuery(api.systemEvents.getSystemHealthSummary);
+
+  // ---- Broadcast tab (Telegram) ----
+  const channels = useQuery(api.telegram.listTelegramChannels);
+  const templates = useQuery(api.telegram.getBroadcastTemplates);
+  const broadcastLog = useQuery(api.telegram.getBroadcastLog);
+  const addChannel = useMutation(api.telegram.addTelegramChannel);
+  const removeChannel = useMutation(api.telegram.removeTelegramChannel);
+  const setAutoPost = useMutation(api.telegram.setAutoPost);
+  const sendBroadcastAction = useAction(api.telegramActions.sendBroadcast);
+  const [channelName, setChannelName] = useState("");
+  const [channelChatId, setChannelChatId] = useState("");
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [addingChannel, setAddingChannel] = useState(false);
+  const [autoPostActing, setAutoPostActing] = useState<string | null>(null);
 
   // ---- GitHub connection check ----
   const verifyGithub = useAction(api.github.verifyGithubConnection);
@@ -290,6 +356,72 @@ export default function Admin() {
       toast.success("Admin access granted. Welcome!");
     } else {
       toast.error("Could not grant admin access — an admin account already exists.");
+    }
+  };
+
+  const handleAddChannel = async () => {
+    if (addingChannel) return;
+    if (!channelName.trim() || !channelChatId.trim()) {
+      toast.error("Channel name and chat id are required.");
+      return;
+    }
+    setAddingChannel(true);
+    try {
+      await addChannel({ name: channelName.trim(), chatId: channelChatId.trim() });
+      toast.success("Channel added. Auto-post starts OFF — toggle it if you want it.");
+      setChannelName("");
+      setChannelChatId("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add the channel.");
+    } finally {
+      setAddingChannel(false);
+    }
+  };
+
+  const handleRemoveChannel = async (channelId: string) => {
+    try {
+      await removeChannel({ channelId: channelId as never });
+      setSelectedChannels((prev) => prev.filter((id) => id !== channelId));
+      toast.success("Channel removed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove the channel.");
+    }
+  };
+
+  const handleToggleAutoPost = async (channelId: string, enabled: boolean) => {
+    setAutoPostActing(channelId);
+    try {
+      await setAutoPost({ channelId: channelId as never, enabled });
+      toast.success(enabled ? "Auto-post enabled for this channel." : "Auto-post disabled.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update auto-post.");
+    } finally {
+      setAutoPostActing(null);
+    }
+  };
+
+  const handleBroadcast = async () => {
+    if (broadcasting) return;
+    if (selectedChannels.length === 0) {
+      toast.error("Pick at least one channel to broadcast to.");
+      return;
+    }
+    if (!broadcastMessage.trim()) {
+      toast.error("Write a message first.");
+      return;
+    }
+    setBroadcasting(true);
+    try {
+      const result = await sendBroadcastAction({
+        channelIds: selectedChannels as never[],
+        message: broadcastMessage.trim(),
+      });
+      toast.success(`Broadcast sent — ${result.sent} delivered${result.failed > 0 ? `, ${result.failed} failed` : ""}.`);
+      setBroadcastMessage("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Broadcast failed.");
+    } finally {
+      setBroadcasting(false);
     }
   };
 
@@ -387,27 +519,37 @@ export default function Admin() {
           onValueChange={(next) =>
             setSearchParams(next === "dashboard" ? {} : { tab: next })
           }
+          className="flex flex-col gap-4 lg:flex-row lg:items-start"
         >
-          <TabsList className="glass-panel flex w-fit flex-wrap gap-1 rounded-xl p-1">
-            <TabsTrigger value="dashboard" className="rounded-lg">
-              <Activity className="size-3.5" /> Dashboard
+          {/* Command-center rail: horizontal scroll on mobile, sidebar on lg */}
+          <TabsList className="glass-panel flex w-full shrink-0 gap-1 overflow-x-auto rounded-2xl p-2 lg:w-52 lg:flex-col lg:overflow-visible lg:p-2.5">
+            <TabsTrigger value="dashboard" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <Activity className="size-4" /> Dashboard
             </TabsTrigger>
-            <TabsTrigger value="content" className="rounded-lg">
-              <FileText className="size-3.5" /> Content
+            <TabsTrigger value="content" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <FileText className="size-4" /> Content
             </TabsTrigger>
-            <TabsTrigger value="users" className="rounded-lg">
-              <UserRound className="size-3.5" /> Users
+            <TabsTrigger value="users" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <UserRound className="size-4" /> Users
             </TabsTrigger>
-            <TabsTrigger value="finance" className="rounded-lg">
-              <Wallet className="size-3.5" /> Finance
+            <TabsTrigger value="finance" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <Wallet className="size-4" /> Finance
             </TabsTrigger>
-            <TabsTrigger value="reports" className="rounded-lg">
-              <Flag className="size-3.5" /> Reports
+            <TabsTrigger value="reports" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <Flag className="size-4" /> Reports
             </TabsTrigger>
-            <TabsTrigger value="system" className="rounded-lg">
-              <KeyRound className="size-3.5" /> System
+            <TabsTrigger value="terminal" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <Terminal className="size-4" /> Terminal
+            </TabsTrigger>
+            <TabsTrigger value="broadcast" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <Send className="size-4" /> Broadcast
+            </TabsTrigger>
+            <TabsTrigger value="system" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm lg:w-full">
+              <KeyRound className="size-4" /> System
             </TabsTrigger>
           </TabsList>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
 
           {/* ------- Dashboard ------- */}
           <TabsContent value="dashboard" className="flex flex-col gap-4">
@@ -1244,6 +1386,434 @@ export default function Admin() {
             </div>
           </TabsContent>
 
+          {/* ------- Terminal (live system events) ------- */}
+          <TabsContent value="terminal" className="flex flex-col gap-4">
+            <div className="glass-panel rounded-2xl p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+                    <Terminal className="size-4 text-primary" /> System terminal
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Live feed of the platform&apos;s critical paths — AI calls,
+                    payments, rooms, uploads. Updates in real time via Convex
+                    reactivity (no polling).
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <select
+                    value={eventFilter}
+                    onChange={(e) => setEventFilter(e.target.value)}
+                    aria-label="Filter by event type"
+                    className="h-8 cursor-pointer rounded-lg border border-border bg-white/5 px-2 font-mono text-[10px] text-muted-foreground outline-none"
+                  >
+                    <option value="">all types</option>
+                    {["api_call", "error", "auth_event", "payment_event", "room_event", "content_event"].map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    aria-label="Filter by status"
+                    className="h-8 cursor-pointer rounded-lg border border-border bg-white/5 px-2 font-mono text-[10px] text-muted-foreground outline-none"
+                  >
+                    <option value="">all statuses</option>
+                    <option value="success">success</option>
+                    <option value="error">error</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Health strip */}
+              {health === undefined ? (
+                <div className="mt-4 flex h-14 items-center">
+                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <div className="rounded-xl bg-white/4 px-3 py-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+                      events 24h
+                    </p>
+                    <p className="mt-1 font-mono text-lg font-extrabold tabular-nums">
+                      {health.last24hCount}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/4 px-3 py-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+                      error rate
+                    </p>
+                    <p className={cn("mt-1 font-mono text-lg font-extrabold tabular-nums", health.errorRate > 0.05 ? "text-rose-300" : "text-emerald-300")}>
+                      {(health.errorRate * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/4 px-3 py-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+                      AI latency avg
+                    </p>
+                    <p className="mt-1 font-mono text-lg font-extrabold tabular-nums">
+                      {health.avgAiLatencyMs > 0 ? `${health.avgAiLatencyMs}ms` : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/4 px-3 py-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+                      AI calls 24h
+                    </p>
+                    <p className="mt-1 font-mono text-lg font-extrabold tabular-nums">
+                      {health.aiCallsLast24h}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/4 px-3 py-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+                      active now
+                    </p>
+                    <p className="mt-1 font-mono text-lg font-extrabold tabular-nums text-primary">
+                      {health.activeUsersRightNow}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/4 px-3 py-2.5">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+                      by type
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[10px] font-bold text-muted-foreground">
+                      {health.byType.map((entry) => `${entry.eventType}:${entry.count}`).join(" · ") || "—"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Live feed */}
+              <div className="mt-4 overflow-hidden rounded-xl border border-white/5 bg-black/40">
+                <div className="flex items-center gap-2 border-b border-white/5 px-3 py-2">
+                  <span className="size-2 rounded-full bg-rose-400/80" />
+                  <span className="size-2 rounded-full bg-amber-400/80" />
+                  <span className="size-2 rounded-full bg-emerald-400/80" />
+                  <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                    nexus://system-events --tail -f
+                  </span>
+                  <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] text-emerald-300">
+                    <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> live
+                  </span>
+                </div>
+                <div className="max-h-[26rem] overflow-y-auto p-3 font-mono text-[11px] leading-5">
+                  {systemEvents === undefined ? (
+                    <div className="flex items-center gap-2 py-6 text-muted-foreground">
+                      <Loader2 className="size-3.5 animate-spin" /> connecting…
+                    </div>
+                  ) : systemEvents.length === 0 ? (
+                    <p className="py-6 text-muted-foreground">
+                      no events yet — actions will stream in as students use the platform
+                    </p>
+                  ) : (
+                    systemEvents.map((event) => (
+                      <div key={event._id} className="flex gap-2 border-b border-white/[0.03] py-1.5 last:border-0">
+                        <span className="shrink-0 text-muted-foreground/70">
+                          {new Date(event.createdAt).toLocaleTimeString([], { hour12: false })}
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 font-bold",
+                            event.status === "error" ? "text-rose-300" : "text-emerald-300",
+                          )}
+                        >
+                          {event.status === "error" ? "✖" : "✓"}
+                        </span>
+                        <span className="shrink-0 text-primary">{event.eventType}</span>
+                        <span className="shrink-0 text-amber-200/80">{event.source}</span>
+                        {event.durationMs !== null && (
+                          <span className="shrink-0 text-muted-foreground">
+                            {event.durationMs}ms
+                          </span>
+                        )}
+                        <span className="truncate text-muted-foreground/80">
+                          {formatEventMeta(event.metadata)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="glass-panel rounded-2xl p-5">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+                  <Plug className="size-4 text-primary" /> Integrations
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Configuration status plus real 24h usage per service. Secret
+                  values are never displayed — even here. Test buttons ping each
+                  provider with a read-only call.
+                </p>
+              </div>
+              <div className="mt-4 flex flex-col gap-2">
+                {(integrations ?? []).map((integration) => {
+                  const testResult = integrationResults[integration.id];
+                  return (
+                    <div
+                      key={integration.id}
+                      className="flex flex-wrap items-center gap-3 rounded-xl bg-white/4 px-3.5 py-2.5"
+                    >
+                      <span className="w-44 shrink-0 text-sm font-semibold">
+                        {integration.label}
+                      </span>
+                      {integration.configured ? (
+                        <span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-300">
+                          <CheckCircle2 className="size-3.5" /> configured
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 font-mono text-[10px] text-amber-300">
+                          <AlertTriangle className="size-3.5" /> key missing
+                        </span>
+                      )}
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {integration.calls24h} calls ·{" "}
+                        {(integration.errorRate * 100).toFixed(0)}% err ·{" "}
+                        {integration.lastUsedAt
+                          ? relativeTime(integration.lastUsedAt)
+                          : "never used"}
+                      </span>
+                      {["xai", "gemini", "telegram", "github"].includes(integration.id) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="ml-auto h-7 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
+                          onClick={() => void runIntegrationTest(integration.id)}
+                          disabled={testingIntegration === integration.id}
+                        >
+                          {testingIntegration === integration.id ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="size-3" />
+                          )}
+                          Test
+                        </Button>
+                      )}
+                      {testResult && (
+                        <p
+                          className={cn(
+                            "w-full font-mono text-[10px]",
+                            testResult.ok ? "text-emerald-300" : "text-rose-300",
+                          )}
+                        >
+                          {testResult.detail ?? (testResult.ok ? "connected" : "failed")}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* ------- Broadcast (Telegram) ------- */}
+          <TabsContent value="broadcast" className="flex flex-col gap-4">
+            <div className="glass-panel rounded-2xl p-5">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+                  <Send className="size-4 text-primary" /> Telegram broadcast
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Send a message to one or more channels. Broadcasting is always
+                  an explicit action — and auto-post on new content is OFF per
+                  channel until you toggle it.
+                </p>
+              </div>
+
+              {!process.env.TELEGRAM_BOT_TOKEN && (
+                <Alert className="glass-soft mt-4 border-amber-400/25 bg-amber-400/10">
+                  <AlertTriangle className="size-4 text-amber-300" />
+                  <AlertTitle className="text-amber-300">
+                    TELEGRAM_BOT_TOKEN not set
+                  </AlertTitle>
+                  <AlertDescription className="text-amber-200/80">
+                    Create a bot with @BotFather and paste its token in the Keys
+                    tab before broadcasting. Channels can be added now and will
+                    work the moment the key lands.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Channels */}
+              <div className="mt-5">
+                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  channels
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  {channels === undefined ? (
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  ) : channels.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-border bg-white/[0.02] px-4 py-6 text-center text-sm text-muted-foreground">
+                      No channels yet — add the first one below.
+                    </p>
+                  ) : (
+                    channels.map((channel) => (
+                      <div
+                        key={channel._id}
+                        className="flex flex-wrap items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3.5 py-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{channel.name}</p>
+                          <p className="truncate font-mono text-[10px] text-muted-foreground">
+                            chat id: {channel.chatId}
+                          </p>
+                        </div>
+                        <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] text-muted-foreground">
+                          <Switch
+                            checked={channel.autoPost}
+                            disabled={autoPostActing === channel._id}
+                            onCheckedChange={(next) => void handleToggleAutoPost(channel._id, next)}
+                          />
+                          auto-post
+                        </label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 cursor-pointer text-muted-foreground hover:text-rose-300"
+                          onClick={() => void handleRemoveChannel(channel._id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Add channel */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Input
+                  value={channelName}
+                  onChange={(e) => setChannelName(e.target.value)}
+                  placeholder="Channel name (e.g. Grade 12 Physics)"
+                  className="h-9 w-56 rounded-xl bg-white/5 font-mono text-xs"
+                />
+                <Input
+                  value={channelChatId}
+                  onChange={(e) => setChannelChatId(e.target.value)}
+                  placeholder="chat id (e.g. -1001234567890)"
+                  className="h-9 w-56 rounded-xl bg-white/5 font-mono text-xs"
+                />
+                <Button
+                  size="sm"
+                  className="h-9 cursor-pointer rounded-xl"
+                  onClick={() => void handleAddChannel()}
+                  disabled={addingChannel}
+                >
+                  {addingChannel ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                  Add channel
+                </Button>
+              </div>
+              <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+                How to get a chat id: add your bot to the group/channel, then send
+                any message and open{" "}
+                <code className="rounded bg-white/10 px-1">
+                  https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates
+                </code>{" "}
+                — the numeric id appears in the result.
+              </p>
+            </div>
+
+            {/* Composer */}
+            <div className="glass-panel rounded-2xl p-5">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                compose broadcast
+              </p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(templates ?? []).map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => setBroadcastMessage(template.text)}
+                    className="cursor-pointer rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                  >
+                    {template.id}
+                  </button>
+                ))}
+              </div>
+              <Textarea
+                value={broadcastMessage}
+                onChange={(e) => setBroadcastMessage(e.target.value)}
+                placeholder="Write the message… (HTML is supported)"
+                className="mt-3 min-h-24 rounded-xl bg-white/5 font-mono text-xs"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {(channels ?? []).map((channel) => (
+                  <label
+                    key={channel._id}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 font-mono text-[11px] transition-colors",
+                      selectedChannels.includes(channel._id)
+                        ? "border-primary/50 bg-primary/10 text-primary"
+                        : "border-white/10 bg-white/5 text-muted-foreground hover:border-white/25",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-[var(--primary)]"
+                      checked={selectedChannels.includes(channel._id)}
+                      onChange={(e) =>
+                        setSelectedChannels((prev) =>
+                          e.target.checked
+                            ? [...prev, channel._id]
+                            : prev.filter((id) => id !== channel._id),
+                        )
+                      }
+                    />
+                    {channel.name}
+                  </label>
+                ))}
+              </div>
+              <Button
+                onClick={() => void handleBroadcast()}
+                disabled={broadcasting}
+                className="mt-4 h-10 cursor-pointer rounded-xl"
+              >
+                {broadcasting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Send className="size-4" />
+                )}
+                Send broadcast
+              </Button>
+            </div>
+
+            {/* Log */}
+            <div className="glass-panel rounded-2xl p-5">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                broadcast history
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                {(broadcastLog ?? []).length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    Nothing broadcast yet.
+                  </p>
+                ) : (
+                  (broadcastLog ?? []).map((entry) => (
+                    <div key={entry._id} className="rounded-xl border border-white/5 bg-white/[0.02] px-3.5 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm">{entry.message}</p>
+                        <Badge
+                          className={cn(
+                            "shrink-0 font-mono text-[9px]",
+                            entry.status === "sent"
+                              ? "bg-emerald-400/10 text-emerald-300"
+                              : "bg-rose-400/10 text-rose-300",
+                          )}
+                        >
+                          {entry.status}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                        {entry.channels.join(", ")} · {relativeTime(entry.sentAt)}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
           {/* ------- System ------- */}
           <TabsContent value="system" className="flex flex-col gap-4">
             <div className="glass-panel rounded-2xl p-5">
@@ -1355,6 +1925,7 @@ export default function Admin() {
               )}
             </div>
           </TabsContent>
+          </div>
         </Tabs>
       </div>
     </DashboardShell>

@@ -28,4 +28,12 @@ crons.daily(
   internal.studyPlans.notifyDuePlanWeeks,
 );
 
+// Hourly: todo due-date reminders (due now or within the next 24h).
+// Dedupes per todo per day, so a student gets one nudge per todo.
+crons.hourly(
+  "notify-due-todos",
+  { minuteUTC: 30 },
+  internal.todos.notifyDueTodos,
+);
+
 export default crons;

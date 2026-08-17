@@ -37,6 +37,7 @@ import { action, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { assertGroupMember, assertNoBlockWithParticipants } from "./rooms";
+import { logEventAction } from "./systemEvents";
 
 const LIVEKIT_API_BASE = "https://api.livekit.io";
 const TOKEN_TTL_SECONDS = 60 * 15; // 15 minutes — short-lived by design
@@ -179,6 +180,14 @@ export const createRoom = action({
       videoProviderRoomId: providerRoomId,
     });
 
+    await logEventAction(ctx, {
+      eventType: "room_event",
+      source: "rooms.createRoom",
+      status: "success",
+      userId,
+      metadata: { groupId, roomId, name: trimmed },
+    });
+
     // Tell the other members a room is live.
     const memberIds = await ctx.runQuery(internal.studyGroups.listGroupMemberIds, {
       groupId,
@@ -240,7 +249,19 @@ export const getJoinToken = action({
       room: room.videoProviderRoomId,
       roomAdmin,
     });
+    await logEventAction(ctx, {
+      eventType: "room_event",
+      source: "rooms.getJoinToken",
+      status: "success",
+      userId,
+      metadata: { roomId },
+    });
     return { url, token };
+  },
+});
+
+/**
+ * End a room for EVERYONE. Only the room creator or a group owner can do it.
   },
 });
 
