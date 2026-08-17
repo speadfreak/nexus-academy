@@ -19,13 +19,18 @@ services:
     name: nexus-academy
     runtime: static
     buildCommand: |
+      set -e
       if command -v bun >/dev/null 2>&1; then
-        bun install --frozen-lockfile && bun run build
+        bun install && bun run build
       else
         npm install --no-audit --no-fund && npm run build
       fi
     staticPublishPath: ./dist
     envVars:
+      # Vite 7 requires Node >= 20.19 / >= 22.12 — pin an LTS so the build
+      # image doesn't fall back to an old default.
+      - key: NODE_VERSION
+        value: 22.14.0
       # REQUIRED — the Convex backend this frontend talks to. The dev
       # deployment URL is fine for testing; use the production deployment
       # URL once one exists (bunx convex deploy in the Convex CLI).

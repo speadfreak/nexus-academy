@@ -1,4 +1,7 @@
 .env.local
 node_modules
 dist
-src/convex/_generated
+
+# Convex generated types ARE committed so static hosts (Render) can build
+# without running Convex codegen during the build. They are deterministic
+# output of `bunx convex dev --once` / `bunx convex codegen`.
