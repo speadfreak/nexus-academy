@@ -62,3 +62,45 @@ export const SUBSCRIPTION_DAYS = 30;
 export const FREE_TUTOR_DAILY_LIMIT = 15; // tutor messages per rolling 24h
 export const FREE_QUIZ_WEEKLY_LIMIT = 1; // quizzes per subject per rolling 7 days
 export const FREE_QUIZ_WINDOW_DAYS = 7;
+
+// ---------------------------------------------------------------------------
+// Gamification
+// ---------------------------------------------------------------------------
+
+// XP awarded for real study actions. Written ONLY through internal.xp.awardXp
+// from existing mutation success paths — a client can never grant XP.
+export const XP_VALUES = {
+  quiz_complete_base: 20,
+  quiz_complete_per_correct: 5, // +5 per correct answer
+  focus_session: 15,
+  focus_session_min_minutes: 20, // sessions shorter than this earn nothing
+  streak_day: 10,
+  plan_week_complete: 30,
+  daily_challenge: 10,
+} as const;
+
+// Level curve: level n requires 50 * (n-1)^2 total XP.
+//   level = floor(sqrt(totalXp / 50)) + 1
+// Early levels come fast (1 -> 2 at 50 XP), later ones slow down (9 -> 10 at
+// 4050 XP), so progress stays motivating without inflating.
+export const LEVEL_XP_FACTOR = 50;
+
+// Study groups are capped so they feel like a real class/friend group, not a
+// public arena. Opt-in only — reachable solely via a shared invite code.
+export const GROUP_MAX_SIZE = 20;
+
+// Human labels for XP ledger reasons (shown in the "recent XP" feed).
+export const XP_REASON_LABELS: Record<string, string> = {
+  quiz_complete: "Quiz completed",
+  streak_day: "Streak day",
+  focus_session: "Focus session",
+  plan_week_complete: "Plan week completed",
+  daily_challenge: "Daily challenge",
+};
+
+// The three stream-specific subjects per track (used by the
+// "full coverage" achievement — shared subjects excluded by design).
+export const STREAM_SPECIFIC_SUBJECT_SLUGS = {
+  natural: ["physics", "chemistry", "biology"],
+  social: ["history", "geography", "economics"],
+} as const;

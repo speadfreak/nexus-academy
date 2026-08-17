@@ -92,9 +92,10 @@ export const setUserPremium = mutation({
     }
 
     // Ensure a row exists so we never hit a missing-subscription edge case.
-    const subId = await ctx.runMutation(internal.subscriptions.ensureSubscription, {
-      userId,
-    });
+    const subId: Id<"subscriptions"> = await ctx.runMutation(
+      internal.subscriptions.ensureSubscription,
+      { userId },
+    );
     const sub = await ctx.db.get(subId);
     if (!sub) return { ok: false };
 

@@ -24,7 +24,11 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
-import { FREE_QUIZ_WEEKLY_LIMIT, FREE_QUIZ_WINDOW_DAYS } from "./constants";
+import {
+  FREE_QUIZ_WEEKLY_LIMIT,
+  FREE_QUIZ_WINDOW_DAYS,
+  XP_VALUES,
+} from "./constants";
 
 const API_URL = "https://api.x.ai/v1/chat/completions";
 const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
@@ -56,7 +60,7 @@ function asQuizError(error: unknown, fallback: string): ConvexError<{ message: s
 // Generation
 // ---------------------------------------------------------------------------
 
-async function requestQuestions(
+export async function requestQuestions(
   ctx: ActionCtx,
   subjectName: string,
   stream: string,
@@ -114,7 +118,7 @@ async function requestQuestions(
   return content;
 }
 
-function parseAndValidate(raw: string, expectedCount: number): QuizQuestion[] {
+export function parseAndValidate(raw: string, expectedCount: number): QuizQuestion[] {
   const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
   const parsed: unknown = JSON.parse(cleaned);
   if (!Array.isArray(parsed) || parsed.length === 0) {
@@ -334,11 +338,22 @@ export const submitAttempt = mutation({
       completedAt: Date.now(),
     });
 
+    // XP is earned through the real action of completing a quiz: base + per
+    // correct answer. Awarded server-side, never grantable by a client call.
+    await ctx.runMutation(internal.xp.awardXp, {
+      userId,
+      amount: XP_VALUES.quiz_complete_base + XP_VALUES.quiz_complete_per_correct * score,
+      reason: "quiz_complete",
+    });
+    // Idempotent sweep — first quiz + perfect-paper achievements.
+    await ctx.runMutation(internal.achievements.checkAndAward, { userId });
+
     return {
       score,
       total: questions.length,
       results,
       quizId,
+      xpAwarded: XP_VALUES.quiz_complete_base + XP_VALUES.quiz_complete_per_correct * score,
     };
   },
 });

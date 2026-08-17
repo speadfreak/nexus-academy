@@ -30,7 +30,7 @@ const ADDIS_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3, no DST
 // Addis-time helpers (fixed zone — see limitation note above)
 // ---------------------------------------------------------------------------
 
-function addisDateKey(now = Date.now()): string {
+export function addisDateKey(now = Date.now()): string {
   return new Date(now + ADDIS_OFFSET_MS).toISOString().slice(0, 10);
 }
 

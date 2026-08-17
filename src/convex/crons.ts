@@ -20,4 +20,12 @@ crons.daily(
   internal.quotes.generateTodaysQuoteAction,
 );
 
+// Once daily: notify students whose study-plan week starts today (Addis
+// calendar day) and isn't completed yet. Runs at 04:00 UTC = 07:00 Addis.
+crons.daily(
+  "plan-week-due",
+  { hourUTC: 4, minuteUTC: 0 },
+  internal.studyPlans.notifyDuePlanWeeks,
+);
+
 export default crons;

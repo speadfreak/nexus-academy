@@ -297,6 +297,94 @@ const schema = defineSchema(
     })
       .index("by_user_startAt", ["userId", "startAt"])
       .index("by_user", ["userId"]),
+
+    // ------------------------------------------------------------------
+    // Gamification + social layer
+    // ------------------------------------------------------------------
+
+    // Static achievement definitions, seeded once from achievements.ts.
+    achievements: defineTable({
+      id: v.string(), // stable key, e.g. "first_streak_7"
+      name: v.string(),
+      description: v.string(),
+      icon: v.string(), // lucide-react icon name
+      tier: v.union(v.literal("bronze"), v.literal("silver"), v.literal("gold")),
+    }).index("by_achievement", ["id"]),
+
+    // Earned achievements. checkAndAward is idempotent — a user can never
+    // earn the same achievement twice.
+    userAchievements: defineTable({
+      userId: v.id("users"),
+      achievementId: v.string(),
+      earnedAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    // Append-only XP ledger. Sum this for total XP (auditable, rebalanceable
+    // without a migration). XP is only ever written through internal.awardXp
+    // from real study actions — never directly by a client call.
+    xpLedger: defineTable({
+      userId: v.id("users"),
+      amount: v.number(),
+      reason: v.string(), // quiz_complete | streak_day | focus_session | plan_week_complete | daily_challenge
+      createdAt: v.number(),
+    }).index("by_user_createdAt", ["userId", "createdAt"]),
+
+    // Denormalized level row, kept in sync with xpLedger writes.
+    userLevels: defineTable({
+      userId: v.id("users"),
+      totalXp: v.number(),
+      currentLevel: v.number(),
+    }).index("by_user", ["userId"]),
+
+    // Opt-in study groups. Everything here is private: groups are only
+    // reachable via a shared invite code, capped at GROUP_MAX_SIZE members.
+    studyGroups: defineTable({
+      name: v.string(),
+      createdBy: v.id("users"),
+      inviteCode: v.string(),
+      subjectFocus: v.optional(v.id("subjects")),
+      createdAt: v.number(),
+    })
+      .index("by_inviteCode", ["inviteCode"])
+      .index("by_createdBy", ["createdBy"]),
+
+    studyGroupMembers: defineTable({
+      groupId: v.id("studyGroups"),
+      userId: v.id("users"),
+      joinedAt: v.number(),
+      role: v.union(v.literal("owner"), v.literal("member")),
+    })
+      .index("by_group", ["groupId"])
+      .index("by_user", ["userId"]),
+
+    // In-app notifications (no push infra — visible when the app is open).
+    notifications: defineTable({
+      userId: v.id("users"),
+      type: v.string(),
+      title: v.string(),
+      body: v.string(),
+      readAt: v.optional(v.number()),
+      createdAt: v.number(),
+      actionUrl: v.optional(v.string()),
+    }).index("by_user_createdAt", ["userId", "createdAt"]),
+
+    // Daily challenge cache — one question per (date, subject), generated
+    // once and shared by every student, deterministic by Addis calendar day.
+    dailyChallenges: defineTable({
+      challengeDate: v.string(), // "YYYY-MM-DD" in Africa/Addis_Ababa
+      subjectId: v.id("subjects"),
+      questionJson: v.string(),
+      createdAt: v.number(),
+    }).index("by_date_subject", ["challengeDate", "subjectId"]),
+
+    // Per-user daily challenge completions (one per subject per day).
+    dailyChallengeAttempts: defineTable({
+      userId: v.id("users"),
+      challengeDate: v.string(),
+      subjectId: v.id("subjects"),
+      answeredCorrectly: v.boolean(),
+      completedAt: v.number(),
+    }).index("by_user", ["userId"]),
   },
   {
     schemaValidation: false,

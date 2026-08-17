@@ -9,7 +9,9 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import {
   action,
+  internalAction,
   internalMutation,
+  internalQuery,
   mutation,
   query,
   type ActionCtx,
@@ -17,6 +19,10 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireActiveSubscriptionAction } from "./subscriptions";
+import { XP_VALUES } from "./constants";
+import { addisDateKey } from "./reminders";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
 const API_URL = "https://api.x.ai/v1/chat/completions";
@@ -311,10 +317,80 @@ export const markWeekComplete = mutation({
       throw new ConvexError({ message: "Plan not found.", code: "not_found" });
     }
     const completed = plan.completedWeeks ?? [];
-    const next = completed.includes(args.week)
+    const wasCompleted = completed.includes(args.week);
+    const next = wasCompleted
       ? completed.filter((w) => w !== args.week)
       : [...completed, args.week];
     await ctx.db.patch(plan._id, { completedWeeks: next });
+
+    // XP only when a week actually completes (un-completing earns nothing).
+    if (!wasCompleted) {
+      await ctx.runMutation(internal.xp.awardXp, {
+        userId,
+        amount: XP_VALUES.plan_week_complete,
+        reason: "plan_week_complete",
+      });
+      // Idempotent sweep — plan_complete unlocks when every week is done.
+      await ctx.runMutation(internal.achievements.checkAndAward, { userId });
+    }
     return { ok: true, completedWeeks: next };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Plan-week-due notifications (cron)
+// ---------------------------------------------------------------------------
+
+export const listActivePlans = internalQuery({
+  args: {},
+  handler: async (ctx) =>
+    await ctx.db
+      .query("studyPlans")
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect(),
+});
+
+/**
+ * Daily cron: for each active plan, a week's study block "comes due" on the
+ * week's start date (generatedAt + (week-1) * 7 days, Addis calendar day). If
+ * that day is today and the week isn't completed yet, drop an in-app
+ * notification — a gentle nudge visible when the student opens the app, never
+ * an external ping. Runs once daily, so no double-notify guard is needed.
+ */
+export const notifyDuePlanWeeks = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ checked: number; notified: number }> => {
+    const plans = await ctx.runQuery(internal.studyPlans.listActivePlans, {});
+    if (plans.length === 0) return { checked: 0, notified: 0 };
+
+    const today = addisDateKey();
+    let notified = 0;
+    for (const plan of plans) {
+      let weeks: { week: number; topicIds: Id<"topics">[]; focusHours: number }[] = [];
+      try {
+        weeks = JSON.parse(plan.planJson) as typeof weeks;
+      } catch {
+        continue;
+      }
+      const completed = new Set(plan.completedWeeks ?? []);
+      for (const week of weeks) {
+        if (completed.has(week.week)) continue;
+        const weekStartMs = plan.generatedAt + (week.week - 1) * 7 * DAY_MS;
+        if (addisDateKey(weekStartMs) !== today) continue;
+
+        const subject = await ctx.runQuery(internal.ai.getSubjectById, {
+          subjectId: plan.subjectId,
+        });
+        await ctx.runMutation(internal.notifications.createNotification, {
+          userId: plan.userId,
+          type: "plan_week_due",
+          title: `Week ${week.week} of your ${subject?.name ?? ""} plan is here`,
+          body: `${week.focusHours} focus hours scheduled — mark it complete when you finish.`,
+          actionUrl: "/plans",
+        });
+        notified += 1;
+      }
+    }
+    return { checked: plans.length, notified };
   },
 });

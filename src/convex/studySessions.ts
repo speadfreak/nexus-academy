@@ -11,8 +11,15 @@
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { XP_VALUES } from "./constants";
 
 function toDateKey(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
@@ -86,35 +93,90 @@ export const logSession = mutation({
       endedAt: args.endedAt,
     });
 
-    // --- Streak math -----------------------------------------------------
-    const streak = await getOrCreateStreakRow(ctx, userId);
-    const today = args.localDate;
-    const hours = args.durationSeconds / 3600;
+    // Streak math lives in the shared internal mutation so the daily
+    // challenge can contribute to the streak exactly like a study session.
+    await ctx.runMutation(internal.studySessions.recordStudyDay, {
+      userId,
+      localDate: args.localDate,
+      hours: args.durationSeconds / 3600,
+    });
 
-    if (streak.lastStudyDate === today) {
-      // Already studied today: keep the streak, just add hours.
+    // Real focus time earns XP (sessions under the threshold earn nothing —
+    // the habit itself is its own reward, but XP tracks deep work).
+    if (args.durationSeconds >= XP_VALUES.focus_session_min_minutes * 60) {
+      await ctx.runMutation(internal.xp.awardXp, {
+        userId,
+        amount: XP_VALUES.focus_session,
+        reason: "focus_session",
+      });
+    }
+
+    // Idempotent achievement sweep (first session, streaks, subject hours,
+    // full-coverage week). Never punishes a broken streak — it just resets.
+    await ctx.runMutation(internal.achievements.checkAndAward, { userId });
+
+    return { ok: true };
+  },
+});
+
+/**
+ * Shared streak math, callable from logSession and the daily challenge.
+ * Records a study day (hours can be 0 — a completed daily challenge keeps
+ * the habit alive the same way a focus session does), extends the streak on
+ * consecutive days, resets to 1 after a gap (never penalizes beyond the
+ * reset — no XP loss, no shaming copy), and awards the streak-day XP.
+ */
+export const recordStudyDay = internalMutation({
+  args: {
+    userId: v.id("users"),
+    localDate: v.string(), // "YYYY-MM-DD"
+    hours: v.number(),
+  },
+  handler: async (ctx, { userId, localDate, hours }) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
+      throw new ConvexError({ message: "Invalid date format.", code: "invalid" });
+    }
+    const streak = await getOrCreateStreakRow(ctx, userId);
+    const h = Math.max(0, hours);
+    let newDayRecorded = false;
+
+    if (streak.lastStudyDate === localDate) {
+      // Already recorded today: keep the streak, just add hours.
       await ctx.db.patch(streak._id, {
-        totalHoursStudied: Math.round((streak.totalHoursStudied + hours) * 1000) / 1000,
+        totalHoursStudied: Math.round((streak.totalHoursStudied + h) * 1000) / 1000,
       });
     } else {
       let current = 0;
-      if (streak.lastStudyDate === shiftDateKey(today, -1)) {
+      if (streak.lastStudyDate === shiftDateKey(localDate, -1)) {
         current = streak.currentStreak + 1;
       } else if (streak.lastStudyDate === "") {
         current = 1;
       } else {
-        // Gap of a day or more: reset to a fresh streak of 1.
+        // Gap of a day or more: reset to a fresh streak of 1. The counter
+        // resets — nothing else. No XP penalty, no lost achievements.
         current = 1;
       }
       await ctx.db.patch(streak._id, {
         currentStreak: current,
         longestStreak: Math.max(streak.longestStreak, current),
-        lastStudyDate: today,
-        totalHoursStudied: Math.round((streak.totalHoursStudied + hours) * 1000) / 1000,
+        lastStudyDate: localDate,
+        totalHoursStudied: Math.round((streak.totalHoursStudied + h) * 1000) / 1000,
+      });
+      newDayRecorded = true;
+      // Habit day earned — awarded once per day via the lastStudyDate guard.
+      await ctx.runMutation(internal.xp.awardXp, {
+        userId,
+        amount: XP_VALUES.streak_day,
+        reason: "streak_day",
       });
     }
 
-    return { ok: true };
+    const updated = await ctx.db.get(streak._id);
+    return {
+      newDayRecorded,
+      currentStreak: updated?.currentStreak ?? streak.currentStreak,
+      totalHoursStudied: updated?.totalHoursStudied ?? streak.totalHoursStudied,
+    };
   },
 });
 
