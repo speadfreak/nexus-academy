@@ -26,6 +26,14 @@ export interface AchievementDef {
   tier: AchievementTier;
 }
 
+/** A freshly earned achievement, returned by checkAndAward to the action
+ *  that triggered it so the UI can celebrate without a full-screen moment. */
+export interface NewAchievement {
+  id: string;
+  name: string;
+  tier: AchievementTier;
+}
+
 // Real, meaningful achievements — tied to actual study behavior. Deliberately
 // small in number so each one means something.
 export const ACHIEVEMENT_DEFINITIONS: AchievementDef[] = [
@@ -242,7 +250,7 @@ async function checkRequirement(
 
 export const checkAndAward = internalMutation({
   args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
+  handler: async (ctx, { userId }): Promise<NewAchievement[]> => {
     await ctx.runMutation(internal.achievements.seedAchievements, {});
     const earnedRows = await ctx.db
       .query("userAchievements")
@@ -250,7 +258,7 @@ export const checkAndAward = internalMutation({
       .collect();
     const earned = new Set(earnedRows.map((row) => row.achievementId));
 
-    const newly: { id: string; name: string; tier: AchievementTier }[] = [];
+    const newly: NewAchievement[] = [];
     for (const def of ACHIEVEMENT_DEFINITIONS) {
       if (earned.has(def.id)) continue; // never twice
       const met = await checkRequirement(ctx, userId, def.id);

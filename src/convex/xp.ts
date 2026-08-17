@@ -61,13 +61,20 @@ export const getRecentXpByUser = internalQuery({
  * level-up notification. Returns the delta so callers can surface a
  * celebratory toast (never an interrupting interstitial).
  */
+export interface XpAwardResult {
+  xpAwarded: number;
+  totalXp: number;
+  level: number;
+  levelUp: boolean;
+}
+
 export const awardXp = internalMutation({
   args: {
     userId: v.id("users"),
     amount: v.number(),
     reason: v.string(),
   },
-  handler: async (ctx, { userId, amount, reason }) => {
+  handler: async (ctx, { userId, amount, reason }): Promise<XpAwardResult> => {
     const rounded = Math.round(amount);
     if (!Number.isFinite(rounded) || rounded <= 0) {
       return { xpAwarded: 0, totalXp: 0, level: 1, levelUp: false };

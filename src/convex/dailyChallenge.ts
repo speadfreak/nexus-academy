@@ -41,10 +41,36 @@ function computeWantedSubjects(
   stream: string | null | undefined,
 ): Doc<"subjects">[] {
   if (stream === "natural" || stream === "social") {
-    const slugs = new Set(STREAM_SPECIFIC_SUBJECT_SLUGS[stream]);
+    const slugs = new Set<string>(STREAM_SPECIFIC_SUBJECT_SLUGS[stream]);
     return subjects.filter((s) => slugs.has(s.slug) || s.stream === "common");
   }
   return subjects;
+}
+
+/** One row of the dashboard's daily-challenge view. */
+export interface ChallengeView {
+  subjectId: Id<"subjects">;
+  subjectName: string;
+  stream: string;
+  question: string | null;
+  options: string[];
+  answered: boolean;
+  answeredCorrectly: boolean | null;
+  // Explanation is only surfaced AFTER answering — the question itself
+  // never leaks the correct answer.
+  explanation: string | null;
+}
+
+export interface SubmitChallengeResult {
+  correct: boolean;
+  correctIndex: number;
+  explanation: string;
+  xpAwarded: number;
+  levelUp: boolean;
+  newLevel: number;
+  streakExtended: boolean;
+  currentStreak: number;
+  newAchievements: { id: string; name: string; tier: "bronze" | "silver" | "gold" }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +112,7 @@ export const getChallengesViewInternal = internalQuery({
     userId: v.id("users"),
     date: v.string(),
   },
-  handler: async (ctx, { userId, date }) => {
+  handler: async (ctx, { userId, date }): Promise<ChallengeView[]> => {
     const profile = await ctx.runQuery(internal.profile.getProfileByUser, { userId });
     const subjects = await ctx.db.query("subjects").collect();
     const wanted = computeWantedSubjects(subjects, profile?.stream);
@@ -143,7 +169,7 @@ export const getChallengesViewInternal = internalQuery({
  */
 export const ensureDailyChallenges = action({
   args: {},
-  handler: async (ctx): Promise<{ date: string; challenges: unknown[]; generated: number }> => {
+  handler: async (ctx): Promise<{ date: string; challenges: ChallengeView[]; generated: number }> => {
     const userId = await getAuthUserId(ctx);
     const date = addisDateKey();
     if (!userId) return { date, challenges: [], generated: 0 };
@@ -160,7 +186,8 @@ export const ensureDailyChallenges = action({
       });
       if (existing) continue;
 
-      const topics = await ctx.runQuery(internal.ai.listTopicsBySubject, {
+      // ActionCtx.runQuery is deliberately untyped (any) — annotate the rows.
+      const topics: Doc<"topics">[] = await ctx.runQuery(internal.ai.listTopicsBySubject, {
         subjectId: subject._id,
       });
       const topicNames = topics.map((t) => t.name);
@@ -191,7 +218,7 @@ export const ensureDailyChallenges = action({
       generated += 1;
     }
 
-    const challenges = await ctx.runQuery(
+    const challenges: ChallengeView[] = await ctx.runQuery(
       internal.dailyChallenge.getChallengesViewInternal,
       { userId, date },
     );
@@ -202,7 +229,7 @@ export const ensureDailyChallenges = action({
 /** Reactive view — challenges appear as the action caches them. */
 export const getTodaysChallenges = query({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<ChallengeView[]> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return [];
     return await ctx.runQuery(internal.dailyChallenge.getChallengesViewInternal, {
@@ -221,7 +248,7 @@ export const submitDailyChallenge = mutation({
     subjectId: v.id("subjects"),
     answer: v.number(),
   },
-  handler: async (ctx, { subjectId, answer }) => {
+  handler: async (ctx, { subjectId, answer }): Promise<SubmitChallengeResult> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
@@ -279,6 +306,8 @@ export const submitDailyChallenge = mutation({
     // XP only for a correct answer; wrong answers still get feedback + the
     // streak contribution (habit is the point of the challenge).
     let xpAwarded = 0;
+    let levelUp = false;
+    let newLevel = 1;
     if (correct) {
       const award = await ctx.runMutation(internal.xp.awardXp, {
         userId,
@@ -286,6 +315,8 @@ export const submitDailyChallenge = mutation({
         reason: "daily_challenge",
       });
       xpAwarded = award.xpAwarded;
+      levelUp = award.levelUp;
+      newLevel = award.level;
     }
 
     // Contributing to the streak exactly like a study session (hours = 0).
@@ -296,15 +327,22 @@ export const submitDailyChallenge = mutation({
     });
 
     // Idempotent sweep — daily_challenge_first achievement.
-    await ctx.runMutation(internal.achievements.checkAndAward, { userId });
+    const newly = await ctx.runMutation(internal.achievements.checkAndAward, { userId });
 
     return {
       correct,
       correctIndex: question.correctIndex,
       explanation: question.explanation,
       xpAwarded,
+      levelUp,
+      newLevel,
       streakExtended: streak.newDayRecorded,
       currentStreak: streak.currentStreak,
+      newAchievements: newly.map((a) => ({
+        id: a.id,
+        name: a.name,
+        tier: a.tier,
+      })),
     };
   },
 });

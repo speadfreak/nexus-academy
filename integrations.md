@@ -182,6 +182,32 @@ email/guest sign-in still work.
 - **Admin control center** — `/admin` tabs: Overview, Content, Users (premium
   grant/expire/cancel for support), Payments, System (env key status).
 
+## Gamification + social layer
+
+XP, levels, achievements, study groups and in-app notifications are built on
+Convex (`src/convex/xp.ts`, `achievements.ts`, `studyGroups.ts`,
+`notifications.ts`, `dailyChallenge.ts`):
+
+- **XP + levels** — XP is only ever written server-side through
+  `internal.xp.awardXp` from real action success paths (quiz completed =
+  20 + 5/correct, focus session ≥20 min = 15, streak day = 10, plan week =
+  30, daily challenge correct = 10). Level curve: `level = floor(sqrt(xp/50)) + 1`.
+  Level-ups surface as non-intrusive toasts + a bell notification, never an
+  interstitial.
+- **Achievements** — 10 meaningful ones, seeded idempotently from code. Every
+  requirement checks real data (`checkAndAward` is idempotent); locked
+  achievements show their exact requirement. `/achievements` shows the full
+  grid with tier colors and a recent-XP feed.
+- **Study groups** — opt-in and private: reachable only via a 6-char invite
+  code, capped at 20 members, weekly leaderboard ranks XP only (never quiz
+  scores or weak topics). `/groups` has create/join/leave + the board.
+- **Notifications** — in-app only (no push infra fabricated): achievement,
+  level-up, group-joined and plan-week notifications with an unread badge in
+  the app shell.
+- **Daily challenge** — one AI question per subject per day (deterministic by
+  Addis date, cached globally), surfaced on the dashboard. Correct answer
+  earns XP; completing it keeps the streak alive either way.
+
 ## GitHub Integration
 
 GitHub provides backup and version control for this project. The Freebuff platform

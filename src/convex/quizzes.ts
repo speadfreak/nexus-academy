@@ -194,15 +194,18 @@ export const generateQuiz = action({
       throw new ConvexError({ message: "Subject not found.", code: "invalid" });
     }
 
-    let topics = await ctx.runQuery(internal.ai.listTopicsBySubject, {
-      subjectId: args.subjectId,
-    });
+    // ActionCtx.runQuery is deliberately untyped (any) — annotate the rows so
+    // downstream callbacks stay type-safe.
+    const topics: Doc<"topics">[] = await ctx.runQuery(
+      internal.ai.listTopicsBySubject,
+      { subjectId: args.subjectId },
+    );
     if (args.topicId) {
       const topic = topics.find((t) => t._id === args.topicId);
       if (!topic) {
         throw new ConvexError({ message: "Topic not found.", code: "invalid" });
       }
-      topics = [topic];
+      topics.splice(0, topics.length, topic);
     }
     if (topics.length === 0) {
       throw new ConvexError({
@@ -286,12 +289,30 @@ export const insertQuiz = internalMutation({
 // Attempts — server-side scoring only
 // ---------------------------------------------------------------------------
 
+export interface SubmitAttemptResult {
+  score: number;
+  total: number;
+  results: {
+    question: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+    selected: number;
+    correct: boolean;
+  }[];
+  quizId: Id<"quizzes">;
+  xpAwarded: number;
+  levelUp: boolean;
+  newLevel: number;
+  newAchievements: { id: string; name: string; tier: "bronze" | "silver" | "gold" }[];
+}
+
 export const submitAttempt = mutation({
   args: {
     quizId: v.id("quizzes"),
     answers: v.array(v.number()),
   },
-  handler: async (ctx, { quizId, answers }) => {
+  handler: async (ctx, { quizId, answers }): Promise<SubmitAttemptResult> => {
     const userId = await requireUser(ctx);
     const quiz = await ctx.db.get(quizId);
     if (!quiz || quiz.generatedForUserId !== userId) {
@@ -340,20 +361,29 @@ export const submitAttempt = mutation({
 
     // XP is earned through the real action of completing a quiz: base + per
     // correct answer. Awarded server-side, never grantable by a client call.
-    await ctx.runMutation(internal.xp.awardXp, {
+    const xpAmount =
+      XP_VALUES.quiz_complete_base + XP_VALUES.quiz_complete_per_correct * score;
+    const award = await ctx.runMutation(internal.xp.awardXp, {
       userId,
-      amount: XP_VALUES.quiz_complete_base + XP_VALUES.quiz_complete_per_correct * score,
+      amount: xpAmount,
       reason: "quiz_complete",
     });
     // Idempotent sweep — first quiz + perfect-paper achievements.
-    await ctx.runMutation(internal.achievements.checkAndAward, { userId });
+    const newly = await ctx.runMutation(internal.achievements.checkAndAward, { userId });
 
     return {
       score,
       total: questions.length,
       results,
       quizId,
-      xpAwarded: XP_VALUES.quiz_complete_base + XP_VALUES.quiz_complete_per_correct * score,
+      xpAwarded: xpAmount,
+      levelUp: award.levelUp,
+      newLevel: award.level,
+      newAchievements: newly.map((a) => ({
+        id: a.id,
+        name: a.name,
+        tier: a.tier,
+      })),
     };
   },
 });

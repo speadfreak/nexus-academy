@@ -393,9 +393,11 @@ export const sendMessage = action({
     });
 
     // --- Pull bounded history for context -------------------------------
-    const historyRows = await ctx.runQuery(internal.ai.getMessagesByConversation, {
-      conversationId,
-    });
+    // ActionCtx.runQuery is deliberately untyped (any) — annotate the rows.
+    const historyRows: Doc<"messages">[] = await ctx.runQuery(
+      internal.ai.getMessagesByConversation,
+      { conversationId },
+    );
     const history = historyRows
       .slice(-HISTORY_LIMIT)
       .map((message) => ({ role: message.role, content: message.content }));

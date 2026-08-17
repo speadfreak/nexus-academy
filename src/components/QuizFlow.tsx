@@ -50,7 +50,7 @@ type Phase =
   | { name: "setup" }
   | { name: "generating" }
   | { name: "questions"; questions: QuizQuestion[]; quizId: string }
-  | { name: "results"; results: QuizResult[]; score: number; total: number };
+  | { name: "results"; results: QuizResult[]; score: number; total: number; xpAwarded: number };
 
 interface QuizResult {
   question: string;
@@ -158,7 +158,19 @@ export function QuizFlow({
         results: result.results,
         score: result.score,
         total: result.total,
+        xpAwarded: result.xpAwarded,
       });
+      // Celebratory but non-intrusive: a toast for the level-up and any
+      // achievements earned, never a full-screen interruption.
+      if (result.xpAwarded > 0) {
+        toast.success(`Quiz complete — +${result.xpAwarded} XP.`);
+      }
+      if (result.levelUp) {
+        toast.success(`Level up — you're now level ${result.newLevel}.`);
+      }
+      for (const achievement of result.newAchievements) {
+        toast.success(`Achievement unlocked: ${achievement.name}`);
+      }
     } catch (error) {
       toast.error(errorMessage(error, "Could not submit your answers."));
     } finally {
@@ -389,6 +401,13 @@ export function QuizFlow({
                     {phase.total > 0 ? Math.round((phase.score / phase.total) * 100) : 0}%
                   </p>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5">
+                <Sparkles className="size-3.5 text-primary" />
+                <p className="font-mono text-[11px] font-semibold text-primary">
+                  +{phase.xpAwarded} XP · saved to your journey
+                </p>
               </div>
 
               <div className="flex flex-col gap-3">

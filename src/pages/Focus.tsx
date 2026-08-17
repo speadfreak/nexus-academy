@@ -103,8 +103,19 @@ export default function Focus() {
       endedAt: Date.now(),
       localDate: localDateKey(),
     })
-      .then(() => {
+      .then((result) => {
         toast.success(`Session logged — ${formatClock(durationSeconds)} of focus.`);
+        // Real focus time earns XP; level-ups and achievements surface as
+        // small toasts, never an interrupting screen.
+        if (result.xpAwarded > 0) {
+          toast.success(`+${result.xpAwarded} XP earned.`);
+        }
+        if (result.levelUp) {
+          toast.success(`Level up — you're now level ${result.newLevel}.`);
+        }
+        for (const achievement of result.newAchievements) {
+          toast.success(`Achievement unlocked: ${achievement.name}`);
+        }
         setStatus("idle");
         setRemaining(minutes * 60);
         // Optional quick check — never forced.

@@ -54,6 +54,14 @@ async function getOrCreateStreakRow(
   return row!;
 }
 
+export interface LogSessionResult {
+  ok: true;
+  xpAwarded: number;
+  levelUp: boolean;
+  newLevel: number;
+  newAchievements: { id: string; name: string; tier: "bronze" | "silver" | "gold" }[];
+}
+
 export const logSession = mutation({
   args: {
     subjectId: v.id("subjects"),
@@ -62,7 +70,7 @@ export const logSession = mutation({
     endedAt: v.number(),
     localDate: v.string(), // client's local "YYYY-MM-DD"
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<LogSessionResult> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
@@ -103,19 +111,35 @@ export const logSession = mutation({
 
     // Real focus time earns XP (sessions under the threshold earn nothing —
     // the habit itself is its own reward, but XP tracks deep work).
+    let xpAwarded = 0;
+    let levelUp = false;
+    let newLevel = 1;
     if (args.durationSeconds >= XP_VALUES.focus_session_min_minutes * 60) {
-      await ctx.runMutation(internal.xp.awardXp, {
+      const award = await ctx.runMutation(internal.xp.awardXp, {
         userId,
         amount: XP_VALUES.focus_session,
         reason: "focus_session",
       });
+      xpAwarded = award.xpAwarded;
+      levelUp = award.levelUp;
+      newLevel = award.level;
     }
 
     // Idempotent achievement sweep (first session, streaks, subject hours,
     // full-coverage week). Never punishes a broken streak — it just resets.
-    await ctx.runMutation(internal.achievements.checkAndAward, { userId });
+    const newly = await ctx.runMutation(internal.achievements.checkAndAward, { userId });
 
-    return { ok: true };
+    return {
+      ok: true,
+      xpAwarded,
+      levelUp,
+      newLevel,
+      newAchievements: newly.map((a) => ({
+        id: a.id,
+        name: a.name,
+        tier: a.tier,
+      })),
+    };
   },
 });
 
@@ -126,13 +150,19 @@ export const logSession = mutation({
  * consecutive days, resets to 1 after a gap (never penalizes beyond the
  * reset — no XP loss, no shaming copy), and awards the streak-day XP.
  */
+export interface StudyDayResult {
+  newDayRecorded: boolean;
+  currentStreak: number;
+  totalHoursStudied: number;
+}
+
 export const recordStudyDay = internalMutation({
   args: {
     userId: v.id("users"),
     localDate: v.string(), // "YYYY-MM-DD"
     hours: v.number(),
   },
-  handler: async (ctx, { userId, localDate, hours }) => {
+  handler: async (ctx, { userId, localDate, hours }): Promise<StudyDayResult> => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
       throw new ConvexError({ message: "Invalid date format.", code: "invalid" });
     }

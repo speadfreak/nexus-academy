@@ -1,6 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import {
+  Award,
   BookOpen,
   CalendarDays,
   Crown,
@@ -13,7 +14,9 @@ import {
   ShieldCheck,
   Timer,
   TrendingUp,
+  Users,
 } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { localDateKey } from "@/lib/dates";
@@ -61,6 +64,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     { to: "/journey", label: "Journey", icon: TrendingUp },
     { to: "/calendar", label: "Calendar", icon: CalendarDays },
     { to: "/notes", label: "Notes", icon: NotebookPen },
+    { to: "/achievements", label: "Achievements", icon: Award },
+    { to: "/groups", label: "Groups", icon: Users },
     { to: "/settings", label: "Settings", icon: Settings },
     {
       to: "/upgrade",
@@ -87,13 +92,16 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     <div className="mx-auto flex min-h-screen w-full max-w-7xl gap-6 px-4 py-6 lg:px-8">
       {/* Sidebar (desktop) */}
       <aside className="glass-panel sticky top-6 hidden h-[calc(100vh-3rem)] w-64 shrink-0 flex-col rounded-2xl p-4 lg:flex">
-        <Link to="/" className="flex items-center gap-2.5 px-1 py-2">
-          <img src={logo} alt="Nexus Academy logo" className="size-9 rounded-xl" />
-          <div className="leading-tight">
-            <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
-            <p className="font-mono text-[10px] text-muted-foreground">exam-prep · library</p>
-          </div>
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-2.5 px-1 py-2">
+            <img src={logo} alt="Nexus Academy logo" className="size-9 rounded-xl" />
+            <div className="leading-tight">
+              <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
+              <p className="font-mono text-[10px] text-muted-foreground">exam-prep · library</p>
+            </div>
+          </Link>
+          <NotificationBell />
+        </div>
 
         <nav className="mt-6 flex flex-1 flex-col gap-1">
           {navItems.map((item) => {
@@ -176,6 +184,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 {item.label}
               </Link>
             ))}
+            <NotificationBell />
             <Button
               variant="ghost"
               size="icon"

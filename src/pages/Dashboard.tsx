@@ -5,6 +5,7 @@ import {
   BellRing,
   BookOpen,
   CalendarDays,
+  CheckCircle2,
   ClipboardList,
   Crown,
   Download,
@@ -20,13 +21,17 @@ import {
   RotateCcw,
   Search,
   Sparkles,
+  Target,
   Timer,
   X,
+  XCircle,
+  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
+import { errorMessage } from "@/lib/errors";
 import { DashboardShell } from "@/components/DashboardShell";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { QuizFlow } from "@/components/QuizFlow";
@@ -218,6 +223,34 @@ export default function Dashboard() {
     void ensureQuote().catch(() => {});
   }, [ensureQuote]);
 
+  // Daily challenge: one question per subject per day, cached server-side.
+  // Fired once on load; idempotent, so the second student of the day pays
+  // nothing for generation.
+  const dailyChallenges = useQuery(api.dailyChallenge.getTodaysChallenges);
+  const ensureChallenges = useAction(api.dailyChallenge.ensureDailyChallenges);
+  const submitChallenge = useMutation(api.dailyChallenge.submitDailyChallenge);
+  const challengesSyncedRef = useRef(false);
+  useEffect(() => {
+    if (challengesSyncedRef.current) return;
+    challengesSyncedRef.current = true;
+    void ensureChallenges().catch(() => {});
+  }, [ensureChallenges]);
+
+  const [challengeSubjectId, setChallengeSubjectId] = useState<string>("");
+  const [challengeAnswer, setChallengeAnswer] = useState<number | null>(null);
+  const [challengeSubmitting, setChallengeSubmitting] = useState(false);
+  const activeChallenge = useMemo(() => {
+    const list = dailyChallenges ?? [];
+    return (
+      list.find((c) => c.subjectId === (challengeSubjectId as never)) ??
+      list.find((c) => !c.answered) ??
+      list[0]
+    );
+  }, [dailyChallenges, challengeSubjectId]);
+
+  // Level + XP for the stats row.
+  const level = useQuery(api.xp.getMyLevel);
+
   // Trial/subscription state + reminder banner (single source of truth).
   const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
   const reminder = useQuery(api.reminders.getReminderBanner);
@@ -272,6 +305,28 @@ export default function Dashboard() {
     subjectSlug !== "" ||
     contentType !== "" ||
     examYear !== "";
+
+  const handleChallengePick = async (optionIndex: number) => {
+    if (!activeChallenge || activeChallenge.answered || challengeSubmitting) return;
+    setChallengeAnswer(optionIndex);
+    setChallengeSubmitting(true);
+    try {
+      const result = await submitChallenge({
+        subjectId: activeChallenge.subjectId as never,
+        answer: optionIndex,
+      });
+      if (result.xpAwarded > 0) toast.success(`Correct! +${result.xpAwarded} XP earned.`);
+      if (result.levelUp) toast.success(`Level up — you're now level ${result.newLevel}.`);
+      for (const achievement of result.newAchievements) {
+        toast.success(`Achievement unlocked: ${achievement.name}`);
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not submit the challenge."));
+    } finally {
+      setChallengeSubmitting(false);
+      setChallengeAnswer(null);
+    }
+  };
 
   const handleOpen = async (item: ContentItemWithSubject) => {
     if (!item.isPremium) {
@@ -437,7 +492,7 @@ export default function Dashboard() {
         </AnimatePresence>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <div className="glass-panel rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">streak</span>
@@ -490,6 +545,19 @@ export default function Dashboard() {
             </p>
             <p className="mt-1 font-mono text-[10px] text-muted-foreground group-hover:text-primary">manage tasks</p>
           </Link>
+          <Link to="/achievements" className="glass-panel group rounded-2xl p-4 transition-colors hover:border-primary/30">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">level</span>
+              <Zap className="size-4 text-primary" />
+            </div>
+            <p className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
+                <StatNumber value={level?.currentLevel ?? 1} />
+              </span>
+              <span className="font-mono text-[10px] text-muted-foreground">· {level?.totalXp ?? 0} xp</span>
+            </p>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground group-hover:text-primary">{level?.xpToNext ?? 0} xp to next</p>
+          </Link>
         </div>
 
         {/* Week activity strip */}
@@ -519,6 +587,113 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+
+        {/* Daily challenge — one AI question per subject per day. Free, quick,
+            and XP is only earned for a correct answer. */}
+        {dailyChallenges !== undefined && dailyChallenges.length > 0 && activeChallenge && (
+          <div className="glass-panel rounded-2xl p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  daily challenge · one shot per subject
+                </span>
+                <p className="mt-1 text-sm font-bold leading-6 tracking-tight">
+                  {activeChallenge.question ?? "Preparing today's question…"}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 font-mono text-[10px] font-bold text-primary">
+                <Target className="size-3" /> +10 XP on a correct answer
+              </div>
+            </div>
+
+            {/* Subject pills */}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {dailyChallenges.map((challenge) => (
+                <button
+                  key={challenge.subjectId}
+                  type="button"
+                  onClick={() => setChallengeSubjectId(challenge.subjectId as string)}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors",
+                    activeChallenge.subjectId === challenge.subjectId
+                      ? "bg-primary/15 text-primary"
+                      : "bg-white/5 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {challenge.subjectName}
+                  {challenge.answered &&
+                    (challenge.answeredCorrectly ? (
+                      <CheckCircle2 className="size-3 text-emerald-300" />
+                    ) : (
+                      <XCircle className="size-3 text-rose-300" />
+                    ))}
+                </button>
+              ))}
+            </div>
+
+            {activeChallenge.question ? (
+              <div className="mt-4 flex flex-col gap-2">
+                {activeChallenge.options.map((option, index) => {
+                  const answered = activeChallenge.answered;
+                  const selected = challengeAnswer === index && !answered;
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => void handleChallengePick(index)}
+                      disabled={answered || challengeSubmitting}
+                      className={cn(
+                        "flex w-full cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default",
+                        selected
+                          ? "border-primary/50 bg-primary/10"
+                          : answered
+                            ? "border-white/5 bg-white/[0.02] text-muted-foreground"
+                            : "border-white/10 bg-white/5 hover:border-primary/40 hover:text-foreground",
+                      )}
+                    >
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {String.fromCharCode(65 + index)}
+                      </span>
+                      <span className="flex-1">{option}</span>
+                      {challengeSubmitting && selected && (
+                        <Loader2 className="size-4 animate-spin text-primary" />
+                      )}
+                    </button>
+                  );
+                })}
+
+                {activeChallenge.answered && activeChallenge.explanation && (
+                  <div
+                    className={cn(
+                      "mt-1 rounded-xl border px-4 py-3 text-sm leading-6",
+                      activeChallenge.answeredCorrectly
+                        ? "border-emerald-400/25 bg-emerald-400/5"
+                        : "border-rose-400/25 bg-rose-400/5",
+                    )}
+                  >
+                    <p className="flex items-center gap-2 font-semibold">
+                      {activeChallenge.answeredCorrectly ? (
+                        <>
+                          <CheckCircle2 className="size-4 text-emerald-300" /> Correct — well done.
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="size-4 text-rose-300" /> Not quite this time.
+                        </>
+                      )}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">{activeChallenge.explanation}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin text-primary" />
+                Generating today's question…
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Search + filters */}
         <div className="glass-panel rounded-2xl p-4">
