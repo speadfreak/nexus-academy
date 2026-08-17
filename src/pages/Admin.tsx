@@ -312,6 +312,15 @@ export default function Admin() {
         }
       : "skip",
   );
+
+  // Normalize the feed for the paginated page shape ({ events, nextCursor })
+  // and, defensively, a plain-array shape — a frontend/backend shape mismatch
+  // during deploys must never crash the tab, just render what's available.
+  const liveFeed = Array.isArray(systemEvents)
+    ? systemEvents
+    : (systemEvents?.events ?? []);
+  const liveHasMore =
+    !Array.isArray(systemEvents) && (systemEvents?.nextCursor ?? null) !== null;
   const health = useQuery(
     api.systemEvents.getSystemHealthSummary,
     adminAccess ? undefined : "skip",
@@ -331,7 +340,11 @@ export default function Admin() {
         eventType: eventFilter || undefined,
         status: (statusFilter || undefined) as "success" | "error" | undefined,
         since: sinceFilter ? Number(sinceFilter) : undefined,
-        cursor: olderCursor ?? systemEvents?.nextCursor ?? undefined,
+        cursor:
+          olderCursor ??
+          (Array.isArray(systemEvents)
+            ? undefined
+            : (systemEvents?.nextCursor ?? undefined)),
         limit: 60,
       });
       setOlderEvents((prev) => [...prev, ...page.events]);
@@ -1587,13 +1600,13 @@ export default function Admin() {
                     <div className="flex items-center gap-2 py-6 text-muted-foreground">
                       <Loader2 className="size-3.5 animate-spin" /> connecting…
                     </div>
-                  ) : systemEvents.events.length === 0 && olderEvents.length === 0 ? (
+                  ) : liveFeed.length === 0 && olderEvents.length === 0 ? (
                     <p className="py-6 text-muted-foreground">
                       no events yet — actions will stream in as students use the platform
                     </p>
                   ) : (
                     <>
-                      {systemEvents.events.map((event) => (
+                      {liveFeed.map((event) => (
                         <div key={event._id} className="flex gap-2 border-b border-white/[0.03] py-1.5 last:border-0">
                           <span className="shrink-0 text-muted-foreground/70">
                             {new Date(event.createdAt).toLocaleTimeString([], { hour12: false })}
@@ -1647,7 +1660,7 @@ export default function Admin() {
                   )}
                 </div>
                 {(systemEvents !== undefined &&
-                  (systemEvents.nextCursor !== null || olderCursor !== null)) && (
+                  (liveHasMore || olderCursor !== null)) && (
                   <button
                     onClick={loadOlderEvents}
                     disabled={loadingOlder}
