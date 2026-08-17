@@ -337,6 +337,35 @@ Without them, room calls throw a clear "not configured" error in the UI.
 Free tier at time of writing: Build plan $0/mo (no card), 5,000 WebRTC
 minutes/mo + 40k free API requests, 50GB transfer.
 
+## Hosting — Render (static frontend, Convex backend)
+
+The app is a Vite/React SPA backed by Convex (`https://hearty-seahorse-455.convex.cloud`).
+Render serves the static build; it runs NO backend code and holds NO secrets —
+all backend keys live in the Convex dashboard's environment variables.
+
+`render.yaml` (repo root) is a Render Blueprint: static site, build command
+(`bun install && bun run build`, falls back to npm), publish dir `./dist`,
+and an SPA rewrite (`/*` -> `/index.html`) so direct refreshes on
+`/dashboard`, `/admin`, `/rooms/:id` work.
+
+### Deploy steps
+
+1. Repo is already on GitHub (`speadfreak/nexus-academy`).
+2. Render dashboard: **New + -> Blueprint** -> pick the repo. Render reads
+   `render.yaml` and creates the site.
+3. **Env var on Render (build-time):** `VITE_CONVEX_URL`
+   (`https://hearty-seahorse-455.convex.cloud` for the dev deployment; use
+   the production deployment URL once one exists via `bunx convex deploy`).
+   Optional: `VITE_VLY_APP_ID` / `VITE_VLY_MONITORING_URL` (error telemetry;
+   the app no-ops without them).
+4. Deploy, then test at the Render URL. Auth (email OTP, Google), payments,
+   LiveKit rooms and R2 downloads all talk to Convex directly — nothing else
+   to configure.
+
+Auth caveat: Google OAuth's callback is `${CONVEX_SITE_URL}/api/auth/callback/google`
+— that stays on the Convex domain, so Google sign-in works from any frontend
+origin without extra setup.
+
 ## Profile + login (username handle, no passwords)
 
 - **No passwords are stored.** Sign-in is email-OTP (6-digit code), Google

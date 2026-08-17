@@ -1,0 +1,45 @@
+# Render blueprint — Nexus Academy frontend (static site).
+#
+# The app is a Vite/React SPA whose backend is Convex (hosted at
+# https://hearty-seahorse-455.convex.cloud). Render only serves the static
+# build; ALL backend keys (XAI_API_KEY, R2_*, TELEBIRR_*, MPESA_*, LIVEKIT_*,
+# GOOGLE_*, GITHUB_TOKEN) live in the Convex dashboard's environment
+# variables — never here and never in the repo.
+#
+# How to deploy:
+#   1. Push this repo to GitHub (already connected: speadfreak/nexus-academy).
+#   2. In Render: New + -> Blueprint -> pick the repo.
+#   3. Render reads render.yaml, creates the static site, runs the build
+#      below and serves ./dist. The SPA rewrite makes /dashboard, /admin,
+#      /rooms/:id etc. work on direct refresh.
+#   4. Optional: point a custom domain at it in the Render dashboard.
+
+services:
+  - type: web
+    name: nexus-academy
+    runtime: static
+    buildCommand: |
+      if command -v bun >/dev/null 2>&1; then
+        bun install --frozen-lockfile && bun run build
+      else
+        npm install --no-audit --no-fund && npm run build
+      fi
+    staticPublishPath: ./dist
+    envVars:
+      # REQUIRED — the Convex backend this frontend talks to. The dev
+      # deployment URL is fine for testing; use the production deployment
+      # URL once one exists (bunx convex deploy in the Convex CLI).
+      - key: VITE_CONVEX_URL
+        value: https://hearty-seahorse-455.convex.cloud
+      # Optional Vly platform telemetry (error reporting). Safe to leave
+      # unset — the app no-ops without them.
+      - key: VITE_VLY_APP_ID
+        sync: false
+      - key: VITE_VLY_MONITORING_URL
+        sync: false
+    routes:
+      # SPA fallback: any unknown path serves index.html so client-side
+      # routing works on refresh.
+      - type: rewrite
+        source: /*
+        destination: /index.html
