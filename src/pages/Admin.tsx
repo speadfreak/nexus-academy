@@ -5,7 +5,7 @@
 // adminCenter queries — server-computed, never fabricated on the client.
 
 import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -17,9 +17,12 @@ import {
   FileText,
   Flag,
   Flame,
+  Github,
+  Globe,
   KeyRound,
   Loader2,
   Lock,
+  RefreshCw,
   Search,
   ShieldCheck,
   Timer,
@@ -45,7 +48,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
@@ -222,6 +225,43 @@ export default function Admin() {
 
   // ---- System tab ----
   const system = useQuery(api.adminCenter.getSystemStatus);
+
+  // ---- GitHub connection check ----
+  const verifyGithub = useAction(api.github.verifyGithubConnection);
+  const [githubStatus, setGithubStatus] = useState<{
+    configured: boolean;
+    valid: boolean;
+    login: string | null;
+    repos: { fullName: string; private: boolean; pushedAt: string | null }[];
+    error: string | null;
+  } | null>(null);
+  const [checkingGithub, setCheckingGithub] = useState(false);
+
+  const runGithubCheck = async () => {
+    setCheckingGithub(true);
+    try {
+      const result = await verifyGithub();
+      setGithubStatus(result);
+    } catch (error) {
+      setGithubStatus({
+        configured: true,
+        valid: false,
+        login: null,
+        repos: [],
+        error: error instanceof Error ? error.message : "Connection check failed.",
+      });
+    } finally {
+      setCheckingGithub(false);
+    }
+  };
+
+  // Auto-check once when the System tab opens.
+  useEffect(() => {
+    if (tab === "system" && githubStatus === null && !checkingGithub) {
+      void runGithubCheck();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // ---- Reports tab (student safety) ----
   const reports = useQuery(api.safety.listReports);
@@ -1206,6 +1246,81 @@ export default function Admin() {
 
           {/* ------- System ------- */}
           <TabsContent value="system" className="flex flex-col gap-4">
+            <div className="glass-panel rounded-2xl p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+                    <Github className="size-4" /> GitHub connection
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Live check of the GITHUB_TOKEN used by the platform&apos;s
+                    GitHub sync (pushing is managed from the Integrations tab).
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="cursor-pointer rounded-lg bg-white/5"
+                  onClick={() => void runGithubCheck()}
+                  disabled={checkingGithub}
+                >
+                  {checkingGithub ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  Re-check
+                </Button>
+              </div>
+
+              {checkingGithub && githubStatus === null ? (
+                <div className="mt-4 flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Checking GitHub…
+                </div>
+              ) : !githubStatus ? (
+                <p className="mt-4 py-6 text-sm text-muted-foreground">
+                  Click re-check to test the token.
+                </p>
+              ) : !githubStatus.configured ? (
+                <div className="mt-4 rounded-xl bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-200">
+                  {githubStatus.error}
+                </div>
+              ) : !githubStatus.valid ? (
+                <div className="mt-4 rounded-xl bg-rose-400/10 px-4 py-3 text-sm leading-6 text-rose-200">
+                  {githubStatus.error}
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <p className="flex items-center gap-2 text-sm">
+                    <CheckCircle2 className="size-4 text-emerald-300" />
+                    Connected as{" "}
+                    <span className="font-mono font-bold">@{githubStatus.login}</span>
+                  </p>
+                  {githubStatus.repos.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {githubStatus.repos.map((repo) => (
+                        <Badge
+                          key={repo.fullName}
+                          variant="outline"
+                          className="gap-1 font-mono text-[10px] text-muted-foreground"
+                        >
+                          {repo.private ? (
+                            <Lock className="size-3 text-emerald-300" />
+                          ) : (
+                            <Globe className="size-3 text-amber-300" />
+                          )}
+                          {repo.fullName}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+                    token scope: repo access · {githubStatus.repos.length} repos visible
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="glass-panel rounded-2xl p-5">
               <div>
                 <h2 className="text-lg font-extrabold tracking-tight">System status</h2>
