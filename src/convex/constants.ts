@@ -5,6 +5,14 @@
 export const STREAMS = ["natural", "social", "common"] as const;
 export type Stream = (typeof STREAMS)[number];
 
+// The streams a STUDENT can actually be on. There are only two: Natural and
+// Social Science. English, Mathematics and the SAT are sat by BOTH streams,
+// so they are listed inside each stream — "common" is only an internal
+// classification on the subjects table (shared by both tracks), never a
+// choice offered at signup or in settings.
+export const USER_STREAMS = ["natural", "social"] as const;
+export type UserStream = (typeof USER_STREAMS)[number];
+
 export const CONTENT_TYPES = [
   "textbook",
   "past_exam",
@@ -37,7 +45,9 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
 export const STREAM_LABELS: Record<Stream, string> = {
   natural: "Natural Science",
   social: "Social Science",
-  common: "Common",
+  // Internal only — never offered as a user choice. Shown to legacy users
+  // who picked "common" before the two-stream model.
+  common: "Shared (all streams)",
 };
 
 // Premium pricing — single source of truth shared by the backend (payments.ts)

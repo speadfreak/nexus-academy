@@ -43,19 +43,23 @@ const stagger: Variants = {
   show: { transition: { staggerChildren: 0.09 } },
 };
 
-const STREAMS = [
-  {
-    name: "Common Subjects",
-    stream: "common",
-    slug: "stream/common",
-    description:
-      "The three subjects every candidate sits — the shared foundation of the national examinations.",
-    subjects: [
-      { name: "English", slug: "english", icon: Languages },
-      { name: "Mathematics", slug: "mathematics", icon: Sigma },
-      { name: "Scholastic Aptitude Test", slug: "scholastic-aptitude-test", icon: Brain },
-    ],
-  },
+type StreamSubject = { name: string; slug: string; icon: typeof Languages; shared?: boolean };
+
+// English, Mathematics and the SAT are sat by EVERY candidate — they're part
+// of both tracks, so each stream card lists them with the "both streams" tag.
+const SHARED_SUBJECTS: StreamSubject[] = [
+  { name: "English", slug: "english", icon: Languages, shared: true },
+  { name: "Mathematics", slug: "mathematics", icon: Sigma, shared: true },
+  { name: "Scholastic Aptitude Test", slug: "scholastic-aptitude-test", icon: Brain, shared: true },
+];
+
+const STREAMS: {
+  name: string;
+  stream: string;
+  slug: string;
+  description: string;
+  subjects: StreamSubject[];
+}[] = [
   {
     name: "Natural Science",
     stream: "natural",
@@ -66,6 +70,7 @@ const STREAMS = [
       { name: "Physics", slug: "physics", icon: Atom },
       { name: "Chemistry", slug: "chemistry", icon: FlaskConical },
       { name: "Biology", slug: "biology", icon: Dna },
+      ...SHARED_SUBJECTS,
     ],
   },
   {
@@ -78,6 +83,7 @@ const STREAMS = [
       { name: "History", slug: "history", icon: Landmark },
       { name: "Geography", slug: "geography", icon: Map },
       { name: "Economics", slug: "economics", icon: TrendingUp },
+      ...SHARED_SUBJECTS,
     ],
   },
 ];
@@ -533,17 +539,18 @@ export default function Landing() {
             variants={fadeUp}
             className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
           >
-            // the three streams
+            // the two streams
           </motion.p>
           <motion.h2
             variants={fadeUp}
             className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl"
           >
-            Everything the national exams cover
+            Two streams, one national exam
           </motion.h2>
           <motion.p variants={fadeUp} className="mt-4 text-muted-foreground">
-            Whatever track you&apos;re on, your examination subjects are organized and
-            ready in the library.
+            English, Mathematics and the SAT are sat by every candidate — they&apos;re
+            part of both tracks. Pick your stream and the library is already
+            organized around your exam subjects.
           </motion.p>
         </motion.div>
 
@@ -583,7 +590,11 @@ export default function Landing() {
                       {subject.name}
                     </span>
                     <span className="font-mono text-[10px] text-muted-foreground/70">
-                      {subject.slug}
+                      {subject.shared ? (
+                        <span className="text-primary/60">both streams</span>
+                      ) : (
+                        subject.slug
+                      )}
                     </span>
                   </li>
                 ))}

@@ -22,7 +22,6 @@ import {
   ArrowRight,
   Atom,
   Check,
-  GraduationCap,
   Landmark,
   Loader2,
   Mail,
@@ -46,6 +45,11 @@ function resolveRedirectAfterAuth(
   return fallback;
 }
 
+// There are exactly two streams a student can be on. English, Mathematics
+// and the SAT are sat by EVERY candidate, so they're listed inside both
+// streams below — never offered as a third "common" choice.
+const SHARED_SUBJECTS = "English · Mathematics · SAT";
+
 const STREAM_OPTIONS = [
   {
     id: "natural",
@@ -57,20 +61,15 @@ const STREAM_OPTIONS = [
     icon: Landmark,
     subjects: "History · Geography · Economics",
   },
-  {
-    id: "common",
-    icon: GraduationCap,
-    subjects: "English · Mathematics · SAT",
-  },
 ] as const;
 
 function Onboarding({
   onComplete,
 }: {
-  onComplete: (stream: "natural" | "social" | "common") => Promise<void>;
+  onComplete: (stream: "natural" | "social") => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState<"natural" | "social" | "common" | null>(null);
+  const [selected, setSelected] = useState<"natural" | "social" | null>(null);
 
   const handleSubmit = async () => {
     if (!selected || saving) return;
@@ -98,7 +97,8 @@ function Onboarding({
         <CardTitle className="text-xl">Pick your stream</CardTitle>
         <CardDescription>
           Your dashboard and AI tutor are organized around the subjects you
-          actually sit. You can change this later in Settings.
+          actually sit. English, Mathematics and the SAT are part of every
+          stream. You can change this later in Settings.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2.5">
@@ -128,6 +128,10 @@ function Onboarding({
                 </p>
                 <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
                   {option.subjects}
+                </p>
+                <p className="mt-0.5 font-mono text-[9px] leading-4 text-muted-foreground/70">
+                  + {SHARED_SUBJECTS}{" "}
+                  <span className="text-primary/70">(both streams)</span>
                 </p>
               </div>
               {active && <Check className="size-4 shrink-0 text-primary" />}
@@ -254,7 +258,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     }
   };
 
-  const handleOnboardingComplete = async (stream: "natural" | "social" | "common") => {
+  const handleOnboardingComplete = async (stream: "natural" | "social") => {
     await saveStream({ stream });
     navigate(redirect);
   };

@@ -187,7 +187,7 @@ async function buildSystemPrompt(
         ? "Natural Science"
         : profile.stream === "social"
           ? "Social Science"
-          : "Common subjects";
+          : "the shared common subjects (English, Mathematics and the SAT)";
     lines.push(
       `This student is on the ${streamLabel} track. Frame advice around that stream's exam subjects.`,
     );

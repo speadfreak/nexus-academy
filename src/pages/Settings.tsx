@@ -11,7 +11,6 @@ import {
   Camera,
   Check,
   Crown,
-  GraduationCap,
   Landmark,
   Loader2,
   LogOut,
@@ -33,10 +32,13 @@ import { useTheme } from "@/components/theme-provider";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
+// Two streams only. English, Mathematics and the SAT are sat by every
+// candidate, so they're shown inside both tracks — never as a third choice.
+const SHARED_SUBJECTS = "English · Mathematics · SAT";
+
 const STREAM_OPTIONS = [
   { id: "natural", icon: Atom, label: "Natural Science", subjects: "Physics · Chemistry · Biology" },
   { id: "social", icon: Landmark, label: "Social Science", subjects: "History · Geography · Economics" },
-  { id: "common", icon: GraduationCap, label: "Common", subjects: "English · Mathematics · SAT" },
 ] as const;
 
 export default function Settings() {
@@ -94,7 +96,7 @@ export default function Settings() {
     }
   };
 
-  const handleStream = async (stream: "natural" | "social" | "common") => {
+  const handleStream = async (stream: "natural" | "social") => {
     try {
       await updateProfile({ stream });
       toast.success(`Stream set to ${STREAM_LABELS[stream]}.`);
@@ -264,8 +266,9 @@ export default function Settings() {
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             The AI tutor and dashboard organize around your stream&apos;s exam subjects.
+            English, Mathematics and the SAT are part of both streams.
           </p>
-          <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
+          <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
             {STREAM_OPTIONS.map((option) => {
               const active = profile?.stream === option.id;
               return (
@@ -284,6 +287,10 @@ export default function Settings() {
                   <p className="text-sm font-bold tracking-tight">{option.label}</p>
                   <p className="font-mono text-[9px] leading-4 text-muted-foreground">
                     {option.subjects}
+                  </p>
+                  <p className="font-mono text-[9px] leading-4 text-muted-foreground/70">
+                    + {SHARED_SUBJECTS}{" "}
+                    <span className="text-primary/70">(both streams)</span>
                   </p>
                 </button>
               );
