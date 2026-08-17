@@ -29,20 +29,29 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TrackId = "rain" | "focus" | "breeze";
+type TrackId = "rain" | "focus" | "breeze" | "white" | "brown" | "night" | "binaural";
+
+type TrackCategory = "Focus" | "Calm" | "Deep Work";
 
 interface Track {
   id: TrackId;
   label: string;
   hint: string;
+  category: TrackCategory;
   url?: string; // optional R2-hosted audio file; synthesis is used when absent
 }
 
 const TRACKS: Track[] = [
-  { id: "rain", label: "Rain", hint: "soft rain on a tin roof" },
-  { id: "focus", label: "Deep Focus", hint: "warm analog drone" },
-  { id: "breeze", label: "Breeze", hint: "air through an open window" },
+  { id: "focus", label: "Deep Focus", hint: "warm analog drone", category: "Focus" },
+  { id: "binaural", label: "Binaural Tone", hint: "soft 4 Hz beat — wear headphones", category: "Focus" },
+  { id: "rain", label: "Rain", hint: "soft rain on a tin roof", category: "Calm" },
+  { id: "breeze", label: "Breeze", hint: "air through an open window", category: "Calm" },
+  { id: "night", label: "Night", hint: "quiet room, distant crickets", category: "Calm" },
+  { id: "white", label: "White Noise", hint: "flat, steady, detail-friendly", category: "Deep Work" },
+  { id: "brown", label: "Brown Noise", hint: "deep rumble, low distraction", category: "Deep Work" },
 ];
+
+const CATEGORY_ORDER: TrackCategory[] = ["Focus", "Calm", "Deep Work"];
 
 interface MusicContextValue {
   playing: boolean;
@@ -172,7 +181,7 @@ class AmbientEngine {
       gain.connect(out);
       this.nodes.push(lowpass, gain);
       this.addLfo(0.09, 0.05, gain.gain);
-    } else {
+    } else if (trackId === "breeze") {
       // breeze — filtered noise, gentler and airier than rain
       const source = ctx.createBufferSource();
       source.buffer = this.noiseBuffer(ctx);
@@ -194,6 +203,99 @@ class AmbientEngine {
       this.source = source;
       this.nodes.push(bandpass, lowpass, gain);
       this.addLfo(0.2, 0.06, gain.gain);
+    } else if (trackId === "white") {
+      // white noise — full spectrum with a gentle highpass so it's steady
+      // without being harsh
+      const source = ctx.createBufferSource();
+      source.buffer = this.noiseBuffer(ctx);
+      source.loop = true;
+      const highpass = ctx.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 120;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.14;
+      source.connect(highpass);
+      highpass.connect(gain);
+      gain.connect(out);
+      source.start();
+      this.source = source;
+      this.nodes.push(highpass, gain);
+      this.addLfo(0.07, 0.025, gain.gain);
+    } else if (trackId === "brown") {
+      // brown noise — heavy lowpass on noise reads as a deep rumble,
+      // the classic "covers everything" study sound
+      const source = ctx.createBufferSource();
+      source.buffer = this.noiseBuffer(ctx);
+      source.loop = true;
+      const lowpass = ctx.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 210;
+      lowpass.Q.value = 0.3;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.3;
+      source.connect(lowpass);
+      lowpass.connect(gain);
+      gain.connect(out);
+      source.start();
+      this.source = source;
+      this.nodes.push(lowpass, gain);
+      this.addLfo(0.05, 0.04, gain.gain);
+    } else if (trackId === "night") {
+      // night — low room-noise bed plus a faint cricket chirp (a quiet
+      // high sine with fast amplitude modulation), barely there
+      const source = ctx.createBufferSource();
+      source.buffer = this.noiseBuffer(ctx);
+      source.loop = true;
+      const lowpass = ctx.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 620;
+      const bedGain = ctx.createGain();
+      bedGain.gain.value = 0.16;
+      source.connect(lowpass);
+      lowpass.connect(bedGain);
+      bedGain.connect(out);
+      source.start();
+      this.source = source;
+      this.nodes.push(lowpass, bedGain);
+      this.addLfo(0.09, 0.03, bedGain.gain);
+
+      const cricket = ctx.createOscillator();
+      cricket.type = "sine";
+      cricket.frequency.value = 4100;
+      const cricketGain = ctx.createGain();
+      cricketGain.gain.value = 0.004;
+      cricket.connect(cricketGain);
+      cricketGain.connect(out);
+      cricket.start();
+      this.nodes.push(cricket, cricketGain);
+      this.addLfo(22, 0.0038, cricketGain.gain);
+    } else {
+      // binaural-style — two close sines (200 + 204 Hz) create a soft
+      // 4 Hz beating tone; panned slightly for a headphone-friendly width.
+      // A true binaural beat needs separate L/R channels; this is the
+      // synthesized approximation, safe on speakers too.
+      const left = ctx.createOscillator();
+      left.type = "sine";
+      left.frequency.value = 200;
+      const right = ctx.createOscillator();
+      right.type = "sine";
+      right.frequency.value = 204;
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = 0;
+      const sum = ctx.createGain();
+      sum.gain.value = 0.07;
+      const lowpass = ctx.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 900;
+      left.connect(lowpass);
+      right.connect(lowpass);
+      lowpass.connect(sum);
+      sum.connect(panner);
+      panner.connect(out);
+      left.start();
+      right.start();
+      this.nodes.push(left, right, lowpass, sum, panner);
+      this.addLfo(0.12, 0.01, sum.gain);
     }
   }
 
@@ -381,6 +483,9 @@ export function MusicPlayer() {
                   className={cn("size-3.5 text-primary", playing && "animate-pulse")}
                 />
                 {track.label}
+                <span className="rounded-md border border-white/10 bg-white/5 px-1 py-px font-mono text-[8px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {track.category}
+                </span>
               </p>
               <p className="truncate font-mono text-[9px] text-muted-foreground">
                 {playing ? track.hint : "vibe · tap to play"}

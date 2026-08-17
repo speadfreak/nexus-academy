@@ -379,3 +379,74 @@ origin without extra setup.
   initials avatar everywhere (shell, dashboard greeting, groups, rooms).
 - The dashboard greets the student by first name with a time-of-day greeting
   ("Good morning, …" / "Late night grind").
+
+## Admin command center + observability (Phase: Admin overhaul)
+
+- **`systemEvents` table + `src/convex/systemEvents.ts`** — internal
+  observability. Critical paths log events: AI tutor/classifier calls
+  (cost + latency), payments, auth failures, room create/join, content
+  uploads. Admin queries: `getSystemEvents` (paginated/filterable),
+  `getSystemHealthSummary` (24h counts, error rate, avg AI latency, active
+  users), plus `testIntegrationConnection` (live ping of xAI/R2/TeleBirr/
+  M-Pesa/LiveKit/Google/GitHub/YouTube/Gemini keys).
+- **Admin /admin** is now a sidebar command center: Dashboard (live charts),
+  Content (AI-assisted upload), Users, Finance, Reports, **Terminal**
+  (live-scrolling monospace event feed, color-coded, filterable, real-time
+  via Convex reactivity), **Broadcast** (Telegram), System (integration
+  health — status only, never secret values).
+- **AI content auto-classification** — `src/convex/contentAI.ts`
+  (`classifyContentText`): admin upload form extracts the first pages of a
+  PDF **in the browser** (pdf.js — it crashes the Convex node analyzer, so
+  it never runs server-side), sends the sample to Grok, and pre-fills the
+  upload form marked "AI suggested — review before confirming". Nothing is
+  ever auto-saved; the admin always confirms. Topic candidates become real
+  `topics` rows + `contentTopics` links and power the reader's related-
+  resources strip.
+- **Telegram** — `src/convex/telegramActions.ts` (node) + `telegram.ts`
+  (mutations/queries): `sendTelegramMessage`, channels, broadcast templates,
+  broadcast log. The auto-post-on-upload hook defaults to **OFF** (admin
+  toggle per channel). Requires `TELEGRAM_BOT_TOKEN` (see STOP-AND-ASK
+  below for BotFather steps).
+
+## Cinematic student library + reader (Phase: Reader)
+
+- **Bookshelf redesign** — `/dashboard` content grid is now book-cover tiles
+  (per-subject gradient spine, type icon, premium/year chips) with Framer
+  Motion layout reflow, a **Bookmark** toggle per tile, and a
+  "Bookmarked" reading-list filter (`bookmarks` table).
+- **In-app reader at `/read/:contentId`** — real PDF rendering (react-pdf +
+  pdfjs worker served as a Vite asset), page nav + zoom, dark chrome.
+  Collapsible side panel (drawer on phones) with three tabs:
+  - **AI companion** — `src/convex/geminiReader.ts` (`askReaderQuestion`):
+    prefers `GEMINI_API_KEY` (Google AI Studio), falls back to Grok until
+    that key lands; grounded in the specific document's title/subject/topics;
+    shares the fair free daily cap, premium unlimited.
+  - **Videos** — `src/convex/media.ts` (`searchYouTubeVideos`): 3-5 topic
+    videos, opened in a new tab (never embedded/autoplayed). Requires
+    `YOUTUBE_API_KEY`; graceful "not configured" state when missing.
+  - **Scratchpad** — mathjs expression evaluator + free notes, persisted per
+    (user, content item) via the `scratchpads` table.
+  - **Related resources strip** — other library items sharing topics
+    (`getRelatedContent`), the first student-facing use of the topic-
+    correlation data.
+- **Todo → notification cron** — todos got an optional `contentId`; a cron
+  in `src/convex/crons.ts` scans for due-today todos and creates in-app
+  notifications via the existing notifications pattern.
+- **Music system** — expanded to 7 synthesized tracks in 3 categories
+  (Focus: Deep Focus, Binaural; Calm: Rain, Breeze, Night; Deep Work:
+  White Noise, Brown Noise), all Web-Audio-synthesized, still off by
+  default, persists across routes. Category chip in the player.
+- **Branding** — branded preloader (real load-completion based, not a
+  timer), new `public/logo.svg` favicon (dark + blue N/book mark) and
+  updated manifest.
+
+### Keys to add in the Keys / API keys tab (from this phase)
+
+| Key | Where from | Purpose |
+| --- | --- | --- |
+| `TELEGRAM_BOT_TOKEN` | @BotFather (see STOP-AND-ASK) | Broadcast to Telegram channels |
+| `GEMINI_API_KEY` | Google AI Studio (free tier) | Reader AI companion (preferred provider) |
+| `GEMINI_MODEL` | optional | default `gemini-2.0-flash` |
+| `YOUTUBE_API_KEY` | Google Cloud Console → YouTube Data API v3 | Topic video search |
+
+Admin System tab auto-detects each key and shows live test results.

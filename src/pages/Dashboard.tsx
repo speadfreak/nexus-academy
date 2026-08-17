@@ -3,12 +3,13 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BellRing,
+  Bookmark,
+  BookmarkCheck,
   BookOpen,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
   Crown,
-  Download,
   FileSearch,
   Flame,
   GraduationCap,
@@ -28,7 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
@@ -64,6 +65,29 @@ const TYPE_STYLES: Record<
   student_guide: { icon: GraduationCap, classes: "bg-teal-400/10 text-teal-300" },
   teacher_guide: { icon: Presentation, classes: "bg-amber-400/10 text-amber-300" },
 };
+
+/** Per-subject book-cover palettes — the "spine" of each shelf tile. */
+const SUBJECT_COVERS: Record<string, { from: string; to: string; text: string }> = {
+  physics: { from: "#1c3a5e", to: "#0d1b2e", text: "text-sky-200" },
+  chemistry: { from: "#1f4d3a", to: "#0c1f16", text: "text-emerald-200" },
+  biology: { from: "#2c4a2a", to: "#12200f", text: "text-lime-200" },
+  mathematics: { from: "#3b2d5e", to: "#171026", text: "text-violet-200" },
+  english: { from: "#5e2335", to: "#260d14", text: "text-rose-200" },
+  history: { from: "#5e4a1f", to: "#261d0a", text: "text-amber-200" },
+  geography: { from: "#1f4d4d", to: "#0c1f1f", text: "text-teal-200" },
+  economics: { from: "#2a335e", to: "#0f1326", text: "text-indigo-200" },
+  "scholastic-aptitude-test": { from: "#4a2d5e", to: "#1e1026", text: "text-fuchsia-200" },
+};
+
+function coverFor(subjectSlug: string) {
+  return (
+    SUBJECT_COVERS[subjectSlug] ?? {
+      from: "#2b2f3a",
+      to: "#14161c",
+      text: "text-slate-200",
+    }
+  );
+}
 
 function formatBytes(bytes?: number): string {
   if (!bytes) return "";
@@ -108,21 +132,24 @@ function StatNumber({ value, decimals = 0 }: { value: number; decimals?: number 
   return <>{display.toFixed(decimals)}</>;
 }
 
-function ContentCard({
+function BookTile({
   item,
   locked,
+  bookmarked,
+  onToggleBookmark,
   onOpen,
   onQuiz,
-  opening,
 }: {
   item: ContentItemWithSubject;
   /** Premium item and the current user is not on premium access. */
   locked: boolean;
+  bookmarked: boolean;
+  onToggleBookmark: (item: ContentItemWithSubject) => void;
   onOpen: (item: ContentItemWithSubject) => void;
   onQuiz: (item: ContentItemWithSubject) => void;
-  opening: boolean;
 }) {
   const style = TYPE_STYLES[item.contentType];
+  const cover = coverFor(item.subjectSlug);
   return (
     <motion.div
       layout
@@ -130,80 +157,108 @@ function ContentCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="glass-panel group flex flex-col rounded-2xl p-5 transition-transform duration-300 hover:-translate-y-1"
+      className="group flex flex-col gap-2.5"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className={`flex size-11 items-center justify-center rounded-xl ${style.classes}`}>
-          <style.icon className="size-5" />
-        </div>
-        <div className="flex items-center gap-1.5">
-          {item.isPremium && (
-            <Badge className="gap-1 border-premium/30 bg-premium/10 text-premium">
-              {locked ? (
-                <Lock className="size-3" />
-              ) : (
-                <Sparkles className="size-3" />
-              )}
-              Premium
-            </Badge>
-          )}
-          <Link
-            to={`/tutor?subject=${encodeURIComponent(item.subjectSlug)}&contentId=${item._id}`}
-            title={`Ask the tutor about ${item.title}`}
-            aria-label={`Ask the tutor about ${item.title}`}
-            className="flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+      {/* Book cover */}
+      <button
+        type="button"
+        onClick={() => onOpen(item)}
+        className="relative flex aspect-[3/4] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-xl text-left ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.7)] hover:ring-primary/40"
+        style={{
+          background: `linear-gradient(160deg, ${cover.from} 0%, ${cover.to} 100%)`,
+        }}
+        aria-label={`Open ${item.title}`}
+      >
+        {/* Spine highlight */}
+        <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-white/25 to-white/5" />
+        {/* Fine book-edge texture */}
+        <span className="pointer-events-none absolute inset-y-0 left-[10px] w-px bg-white/10" />
+
+        {/* Top row: type chip + bookmark */}
+        <div className="flex items-start justify-between gap-2 p-2.5 pl-4">
+          <span
+            className={`flex size-7 items-center justify-center rounded-lg ${style.classes} backdrop-blur`}
+            title={CONTENT_TYPE_LABELS[item.contentType]}
           >
-            <MessageSquare className="size-3.5" />
-          </Link>
+            <style.icon className="size-3.5" />
+          </span>
           <button
             type="button"
-            onClick={() => onQuiz(item)}
-            title={`Quick check on ${item.subjectName}`}
-            aria-label={`Start a quiz for ${item.subjectName}`}
-            className="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBookmark(item);
+            }}
+            title={bookmarked ? "Remove from reading list" : "Save to reading list"}
+            aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}
+            className={cn(
+              "flex size-7 cursor-pointer items-center justify-center rounded-lg backdrop-blur transition-colors",
+              bookmarked
+                ? "bg-primary/25 text-primary"
+                : "bg-black/25 text-white/60 hover:text-white",
+            )}
           >
-            <HelpCircle className="size-3.5" />
+            {bookmarked ? <BookmarkCheck className="size-3.5" /> : <Bookmark className="size-3.5" />}
           </button>
         </div>
-      </div>
 
-      <h3 className="mt-4 line-clamp-2 text-sm font-bold leading-snug tracking-tight">
-        {item.title}
-      </h3>
+        {/* Bottom: title + meta */}
+        <div className="px-3 pb-3 pl-4">
+          <h3 className={`line-clamp-3 text-[13px] font-bold leading-5 tracking-tight ${cover.text}`}>
+            {item.title}
+          </h3>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-white/70">
+              Grade {item.grade}
+            </span>
+            {item.examYear && (
+              <span className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[9px] font-bold text-white/70">
+                {item.examYear}
+              </span>
+            )}
+            {item.isPremium && (
+              <span className="flex items-center gap-1 rounded bg-amber-400/20 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-200">
+                {locked ? <Lock className="size-2.5" /> : <Sparkles className="size-2.5" />}
+                Premium
+              </span>
+            )}
+          </div>
+        </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
-        <span className="glass-chip rounded-md px-2 py-0.5 text-muted-foreground">
-          {item.subjectName}
-        </span>
-        <span className="glass-chip rounded-md px-2 py-0.5 text-muted-foreground">
-          Grade {item.grade}
-        </span>
-        {item.examYear ? (
-          <span className="glass-chip rounded-md px-2 py-0.5 text-muted-foreground">
-            {item.examYear}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="mt-3 text-[11px] text-muted-foreground">
-        {formatBytes(item.fileSizeBytes)}
-        {item.pageCount ? ` · ${item.pageCount} pages` : ""}
-      </div>
-
-      <Button
-        size="sm"
-        variant="outline"
-        className="mt-4 w-full cursor-pointer rounded-xl bg-white/5"
-        onClick={() => onOpen(item)}
-        disabled={opening}
-      >
-        {opening ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          <Download className="size-3.5" />
+        {/* Bookmark corner ribbon when saved */}
+        {bookmarked && (
+          <span className="pointer-events-none absolute -right-0 top-0 border-l-[18px] border-t-[18px] border-l-transparent border-t-primary/80" />
         )}
-        {item.isPremium ? (locked ? "Premium — locked" : "Open signed copy") : "Open"}
-      </Button>
+      </button>
+
+      {/* Action row */}
+      <div className="flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 flex-1 cursor-pointer rounded-lg bg-white/5 text-[11px]"
+          onClick={() => onOpen(item)}
+        >
+          <BookOpen className="size-3" />
+          {item.isPremium && locked ? "Locked" : "Read"}
+        </Button>
+        <Link
+          to={`/tutor?subject=${encodeURIComponent(item.subjectSlug)}&contentId=${item._id}`}
+          title={`Ask the tutor about ${item.title}`}
+          aria-label={`Ask the tutor about ${item.title}`}
+          className="flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+        >
+          <MessageSquare className="size-3.5" />
+        </Link>
+        <button
+          type="button"
+          onClick={() => onQuiz(item)}
+          title={`Quick check on ${item.subjectName}`}
+          aria-label={`Start a quiz for ${item.subjectName}`}
+          className="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+        >
+          <HelpCircle className="size-3.5" />
+        </button>
+      </div>
     </motion.div>
   );
 }
@@ -214,15 +269,17 @@ export default function Dashboard() {
   const [subjectSlug, setSubjectSlug] = useState("");
   const [contentType, setContentType] = useState("");
   const [examYear, setExamYear] = useState("");
-  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
   const [quizSubjectId, setQuizSubjectId] = useState<string>("");
   const [quizOpen, setQuizOpen] = useState(false);
+  const navigate = useNavigate();
 
   const subjects = useQuery(api.subjects.getAll);
+  const bookmarkIds = useQuery(api.bookmarks.getMyBookmarkIds);
+  const toggleBookmark = useMutation(api.bookmarks.toggleBookmark);
   const profile = useQuery(api.profile.getProfile);
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
-  const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const [premiumPrompt, setPremiumPrompt] = useState<{ reason: "premium_content"; open: boolean } | null>(null);
 
   // Daily quote: reactive query + one on-demand backfill so the AI quote is
@@ -317,7 +374,17 @@ export default function Dashboard() {
     grade !== "" ||
     subjectSlug !== "" ||
     contentType !== "" ||
-    examYear !== "";
+    examYear !== "" ||
+    bookmarkedOnly;
+
+  // Client-side reading-list filter: the server query stays as-is, we just
+  // narrow the reactive result to bookmarked ids.
+  const visibleContent = useMemo(() => {
+    if (!content) return content;
+    if (!bookmarkedOnly) return content;
+    const ids = new Set(bookmarkIds ?? []);
+    return content.filter((item) => ids.has(item._id));
+  }, [content, bookmarkedOnly, bookmarkIds]);
 
   const handleChallengePick = async (optionIndex: number) => {
     if (!activeChallenge || activeChallenge.answered || challengeSubmitting) return;
@@ -341,29 +408,21 @@ export default function Dashboard() {
     }
   };
 
-  const handleOpen = async (item: ContentItemWithSubject) => {
-    if (!item.isPremium) {
-      window.open(item.fileUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
+  const handleOpen = (item: ContentItemWithSubject) => {
     // Free-tier users meet premium content with a contextual, dismissible
-    // prompt — not a dead end and not a pressure wall. The signed download
-    // itself stays server-gated.
-    if (entitlements && !entitlements.premiumAccess) {
+    // prompt — not a dead end and not a pressure wall. The server re-checks
+    // the subscription inside the reader's signed-URL action too.
+    if (item.isPremium && entitlements && !entitlements.premiumAccess) {
       setPremiumPrompt({ reason: "premium_content", open: true });
       return;
     }
-    setOpeningId(item._id);
-    try {
-      const { url } = await getDownloadUrl({ contentId: item._id });
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not generate a download link.",
-      );
-    } finally {
-      setOpeningId(null);
-    }
+    navigate(`/read/${item._id}`);
+  };
+
+  const handleToggleBookmark = (item: ContentItemWithSubject) => {
+    void toggleBookmark({ contentId: item._id })
+      .then(() => {})
+      .catch(() => toast.error("Could not update your reading list."));
   };
 
   return (
@@ -746,6 +805,36 @@ export default function Dashboard() {
             )}
           </div>
 
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setBookmarkedOnly((value) => !value)}
+              className={cn(
+                "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors",
+                bookmarkedOnly
+                  ? "bg-primary/15 text-primary"
+                  : "bg-white/5 text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {bookmarkedOnly ? (
+                <BookmarkCheck className="size-3.5" />
+              ) : (
+                <Bookmark className="size-3.5" />
+              )}
+              Bookmarked
+              {bookmarkedOnly && bookmarkIds ? (
+                <span className="rounded bg-primary/20 px-1 font-mono text-[9px]">
+                  {bookmarkIds.length}
+                </span>
+              ) : null}
+            </button>
+            {(bookmarkIds?.length ?? 0) > 0 && !bookmarkedOnly && (
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {bookmarkIds?.length} saved
+              </span>
+            )}
+          </div>
+
           <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="flex flex-col gap-1.5">
             <span className="text-[11px] font-semibold text-muted-foreground">Grade</span>
@@ -836,6 +925,7 @@ export default function Dashboard() {
               setSubjectSlug("");
               setContentType("");
               setExamYear("");
+              setBookmarkedOnly(false);
             }}
           >
             <RotateCcw className="size-3.5" /> Reset filters
@@ -854,16 +944,18 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        ) : content.length === 0 ? (
+        ) : (visibleContent ?? []).length === 0 ? (
           <div className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <FileSearch className="size-6" />
             </div>
             <h3 className="mt-4 font-bold tracking-tight">No content here yet</h3>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-              {hasFilters
-                ? "Nothing matches those filters. Try widening your search."
-                : "The library is being stocked. Check back soon, or ask an admin to upload content."}
+              {bookmarkedOnly
+                ? "Nothing saved to your reading list yet — tap the bookmark on any book to start one."
+                : hasFilters
+                  ? "Nothing matches those filters. Try widening your search."
+                  : "The library is being stocked. Check back soon, or ask an admin to upload content."}
             </p>
               {isAdmin && !hasFilters && (
               <Button asChild size="sm" className="mt-5 rounded-xl">
@@ -874,18 +966,22 @@ export default function Dashboard() {
             )}
           </div>
         ) : (
-          <motion.div layout className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {content.map((item) => (
-              <ContentCard
+          <motion.div
+            layout
+            className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+          >
+            {(visibleContent ?? []).map((item) => (
+              <BookTile
                 key={item._id}
                 item={item}
                 locked={Boolean(entitlements && !entitlements.premiumAccess) && item.isPremium}
+                bookmarked={Boolean(bookmarkIds?.includes(item._id))}
+                onToggleBookmark={handleToggleBookmark}
                 onOpen={handleOpen}
                 onQuiz={(clicked) => {
                   setQuizSubjectId(clicked.subjectId);
                   setQuizOpen(true);
                 }}
-                opening={openingId === item._id}
               />
             ))}
           </motion.div>

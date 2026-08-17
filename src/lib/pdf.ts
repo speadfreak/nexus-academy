@@ -22,7 +22,8 @@ export async function extractPdfText(
   maxChars = 12000,
 ): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+  const doc = await loadingTask.promise;
   try {
     let text = "";
     const pages = Math.min(doc.numPages, maxPages);
@@ -39,7 +40,7 @@ export async function extractPdfText(
     }
     return text.slice(0, maxChars);
   } finally {
-    await doc.destroy();
+    await loadingTask.destroy();
   }
 }
 

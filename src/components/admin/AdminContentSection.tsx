@@ -13,8 +13,10 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
+  Wand2,
   X,
 } from "lucide-react";
+import { extractPdfText } from "@/lib/pdf";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -97,6 +99,39 @@ export function AdminContentSection() {
 
   const generateUploadUrl = useMutation(api.content.generateUploadUrl);
   const adminUploadContent = useAction(api.contentAdmin.adminUploadContent);
+  const classifyContentText = useAction(api.contentAI.classifyContentText);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<Awaited<
+    ReturnType<typeof classifyContentText>
+  > | null>(null);
+
+  const handleAnalyze = async () => {
+    if (!file) return;
+    setAnalyzing(true);
+    setAiSuggestion(null);
+    try {
+      const sample = await extractPdfText(file);
+      const suggestion = await classifyContentText({
+        sample,
+        filename: file.name,
+      });
+      setAiSuggestion(suggestion);
+      if (suggestion.analyzed) {
+        if (suggestion.title) setTitle(suggestion.title);
+        if (suggestion.contentType) setContentType(suggestion.contentType as ContentType);
+        if (suggestion.grade) setGrade(String(suggestion.grade));
+        if (suggestion.subjectId) setSubjectId(suggestion.subjectId);
+        if (suggestion.examYear) setExamYear(String(suggestion.examYear));
+        toast.success("AI suggestion ready — review before confirming.");
+      } else {
+        toast.warning(suggestion.note ?? "Could not analyze this file.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "AI analysis failed.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   // --- Recent uploads ---------------------------------------------------
   const [adminGrade, setAdminGrade] = useState("");
@@ -166,6 +201,7 @@ export function AdminContentSection() {
         isPremium,
         storageId,
         filename: file.name,
+        topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
       });
 
       toast.success("Content uploaded to the library.");
@@ -295,7 +331,72 @@ export function AdminContentSection() {
                 </p>
               </>
             )}
+            {file && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 cursor-pointer border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                onClick={handleAnalyze}
+                disabled={analyzing}
+              >
+                {analyzing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="size-3.5" />
+                )}
+                {analyzing ? "Analyzing with AI…" : "Analyze with AI"}
+              </Button>
+            )}
           </div>
+
+          {aiSuggestion && (
+            <div
+              className={cn(
+                "flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-xs leading-5",
+                aiSuggestion.analyzed
+                  ? "border-primary/30 bg-primary/10"
+                  : "border-amber-400/30 bg-amber-400/10",
+              )}
+            >
+              <Wand2
+                className={cn(
+                  "mt-0.5 size-4 shrink-0",
+                  aiSuggestion.analyzed ? "text-primary" : "text-amber-300",
+                )}
+              />
+              <div>
+                {aiSuggestion.analyzed ? (
+                  <>
+                    <p className="font-semibold text-foreground">
+                      AI suggested — review before confirming
+                    </p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      Analyzed {aiSuggestion.sampleChars.toLocaleString()} chars.
+                      {aiSuggestion.subjectSlug
+                        ? ` Detected subject: ${aiSuggestion.subjectSlug}.`
+                        : ""}
+                      {aiSuggestion.topics.length > 0
+                        ? ` Topics: ${aiSuggestion.topics.join(", ")}.`
+                        : ""}
+                      Nothing is saved until you confirm below.
+                    </p>
+                  </>
+                ) : (
+                  <p className="font-semibold text-amber-300">
+                    {aiSuggestion.note ?? "Could not analyze this file."}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setAiSuggestion(null)}
+                  className="mt-1 cursor-pointer text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs font-semibold text-muted-foreground">Title</Label>

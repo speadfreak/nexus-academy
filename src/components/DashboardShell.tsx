@@ -169,13 +169,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
             <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
           </Link>
-          <div className="flex flex-wrap items-center justify-end gap-1">
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {navItems.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "rounded-lg px-2.5 py-1.5 text-xs font-semibold",
+                  "shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold",
                   location.pathname === item.to
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground",

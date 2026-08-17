@@ -6,7 +6,7 @@ import { MusicProvider } from "@/components/music-player";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -26,6 +26,7 @@ const Notes = lazy(() => import("./pages/Notes.tsx"));
 const Achievements = lazy(() => import("./pages/Achievements.tsx"));
 const Groups = lazy(() => import("./pages/Groups.tsx"));
 const Room = lazy(() => import("./pages/Room.tsx"));
+const Reader = lazy(() => import("./pages/Reader.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
@@ -120,6 +121,86 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Branded preloader — a quick, intentional moment tied to real load
+ *  completion (window load + first painted frame), with a hard safety cap so
+ *  a slow asset can never trap the user. Not an artificial timer. */
+function AppPreloader({ ready }: { ready: boolean }) {
+  return (
+    <AnimatePresence>
+      {!ready && (
+        <motion.div
+          key="preloader"
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background"
+          aria-hidden="true"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="relative flex size-20 items-center justify-center rounded-2xl border border-primary/30 bg-gradient-to-b from-primary/20 to-primary/5 shadow-[0_0_60px_-10px_var(--primary)]"
+          >
+            <motion.span
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.4 }}
+              className="font-serif text-3xl font-black text-primary"
+            >
+              N
+            </motion.span>
+            <motion.span
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+              className="absolute -bottom-2 h-px w-14 origin-left bg-gradient-to-r from-transparent via-primary to-transparent"
+            />
+          </motion.div>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.35, duration: 0.4 }}
+            className="mt-6 font-mono text-[10px] font-bold uppercase tracking-[0.4em] text-muted-foreground"
+          >
+            Nexus Academy
+          </motion.p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Holds the preloader until the app is genuinely ready: window load fired
+ *  AND the first content has painted. Falls back to a 2.5s safety cap. */
+function PreloaderGate({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      // Let the first real frame paint before fading the overlay.
+      requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
+    };
+    if (document.readyState === "complete") {
+      finish();
+    } else {
+      window.addEventListener("load", finish, { once: true });
+    }
+    const safety = window.setTimeout(finish, 2500);
+    return () => {
+      window.removeEventListener("load", finish);
+      window.clearTimeout(safety);
+    };
+  }, []);
+  return (
+    <>
+      <AppPreloader ready={ready} />
+      {children}
+    </>
+  );
+}
+
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -153,8 +234,9 @@ createRoot(document.getElementById("root")!).render(
       <ConvexAuthProvider client={convex}>
         <ThemeProvider>
           <MusicProvider>
-            <BrowserRouter>
-              <RouteSyncer />
+            <PreloaderGate>
+              <BrowserRouter>
+                <RouteSyncer />
               <Suspense fallback={<RouteLoading />}>
                 <PageTransition>
                   <Routes>
@@ -252,6 +334,14 @@ createRoot(document.getElementById("root")!).render(
                       }
                     />
                     <Route
+                      path="/read/:contentId"
+                      element={
+                        <RequireAuth>
+                          <Reader />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
                       path="/settings"
                       element={
                         <RequireAuth>
@@ -287,7 +377,8 @@ createRoot(document.getElementById("root")!).render(
                   </Routes>
                 </PageTransition>
               </Suspense>
-            </BrowserRouter>
+              </BrowserRouter>
+            </PreloaderGate>
             <Toaster />
           </MusicProvider>
         </ThemeProvider>
