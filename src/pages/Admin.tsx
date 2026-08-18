@@ -133,6 +133,53 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   teacher_guide: "Teacher guides",
 };
 
+// Command-center rail registry — single source of truth for the admin tabs.
+const ADMIN_TABS = [
+  { id: "dashboard", label: "Dashboard", index: "01", icon: Activity },
+  { id: "content", label: "Content", index: "02", icon: FileText },
+  { id: "users", label: "Users", index: "03", icon: UserRound },
+  { id: "finance", label: "Finance", index: "04", icon: Wallet },
+  { id: "reports", label: "Reports", index: "05", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "06", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "07", icon: Send },
+  { id: "system", label: "System", index: "08", icon: KeyRound },
+] as const;
+
+type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
+
+function LiveClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+      {now.toLocaleTimeString([], { hour12: false })}{" "}
+      <span className="text-primary">UTC</span>
+    </span>
+  );
+}
+
+function RailStatusChip({ label, tone }: { label: string; tone?: "ok" | "warn" }) {
+  return (
+    <span
+      className={cn(
+        "glass-chip flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em]",
+        tone === "ok" ? "text-emerald-300" : tone === "warn" ? "text-amber-300" : "text-muted-foreground",
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 animate-pulse rounded-full",
+          tone === "ok" ? "bg-emerald-300" : tone === "warn" ? "bg-amber-300" : "bg-muted-foreground/60",
+        )}
+      />
+      {label}
+    </span>
+  );
+}
+
 function formatEventMeta(metadata: Record<string, unknown> | null): string {
   if (!metadata) return "";
   const entries = Object.entries(metadata)
@@ -177,20 +224,31 @@ function StatCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       className={cn(
-        "glass-soft rounded-2xl p-4",
+        "admin-stat group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-4 transition-colors hover:border-primary/30",
         money && "border-primary/25 bg-primary/[0.06]",
       )}
     >
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      {/* top accent line on hover */}
+      <span className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           {label}
         </span>
-        <Icon className="size-4 text-primary" />
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+            money
+              ? "bg-primary/15 text-primary"
+              : "bg-white/5 text-muted-foreground group-hover:text-primary",
+          )}
+        >
+          <Icon className="size-3.5" />
+        </span>
       </div>
-      <p className="mt-2 font-mono text-2xl font-bold tabular-nums text-gradient sm:text-3xl">
+      <p className="mt-2.5 font-mono text-2xl font-bold tabular-nums text-gradient sm:text-3xl">
         {value}
       </p>
-      {sub && <p className="mt-1 font-mono text-[10px] text-muted-foreground">{sub}</p>}
+      {sub && <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{sub}</p>}
     </motion.div>
   );
 }
@@ -583,17 +641,25 @@ export default function Admin() {
     <DashboardShell>
       <div className="admin-surface flex min-w-0 flex-col gap-5 sm:gap-6">
         <div className="admin-command-header relative overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.035] px-4 py-5 sm:px-6 sm:py-6">
+          <div className="admin-grid-bg pointer-events-none absolute inset-0" />
+          <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-primary/10 blur-3xl" />
           <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(ellipse_at_right,rgba(112,196,255,0.12),transparent_68%)]" />
           <div className="relative">
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-            // control center
-          </p>
-          <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl">
-            Command center
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Users, money, content, activity and safety — the whole platform in one place.
-          </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                // control center
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <RailStatusChip label="convex linked" tone="ok" />
+                <LiveClock />
+              </div>
+            </div>
+            <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl">
+              Command center
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Users, money, content, activity and safety — the whole platform in one place.
+            </p>
           </div>
         </div>
 
@@ -604,32 +670,24 @@ export default function Admin() {
           }
           className="admin-tabs flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start"
         >
-          {/* Command-center rail: horizontal scroll on mobile, sidebar on lg */}
-          <TabsList className="admin-tabs-list glass-panel flex w-full max-w-full shrink-0 items-center gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:w-56 xl:flex-col xl:items-stretch xl:overflow-visible xl:p-2.5">
-            <TabsTrigger value="dashboard" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <Activity className="size-4" /> Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="content" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <FileText className="size-4" /> Content
-            </TabsTrigger>
-            <TabsTrigger value="users" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <UserRound className="size-4" /> Users
-            </TabsTrigger>
-            <TabsTrigger value="finance" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <Wallet className="size-4" /> Finance
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <Flag className="size-4" /> Reports
-            </TabsTrigger>
-            <TabsTrigger value="terminal" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <Terminal className="size-4" /> Terminal
-            </TabsTrigger>
-            <TabsTrigger value="broadcast" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <Send className="size-4" /> Broadcast
-            </TabsTrigger>
-            <TabsTrigger value="system" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
-              <KeyRound className="size-4" /> System
-            </TabsTrigger>
+          {/* Command-center rail: registry-driven dock. Horizontal scroll on
+              mobile/tablet, mission-control sidebar on xl+. */}
+          <TabsList className="admin-tabs-list glass-panel flex w-full max-w-full shrink-0 items-center gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:w-60 xl:flex-col xl:items-stretch xl:overflow-visible xl:p-2.5">
+            {ADMIN_TABS.map(({ id, label, index, icon: TabIcon }) => (
+              <TabsTrigger
+                key={id}
+                value={id}
+                className="group flex shrink-0 cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs sm:text-sm xl:w-full xl:justify-start"
+              >
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-muted-foreground transition-colors group-data-[state=active]:bg-primary/15 group-data-[state=active]:text-primary">
+                  <TabIcon className="size-4" />
+                </span>
+                <span className="font-medium">{label}</span>
+                <span className="ml-auto hidden font-mono text-[9px] text-muted-foreground/50 xl:inline">
+                  {index}
+                </span>
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
@@ -643,7 +701,7 @@ export default function Admin() {
             ) : (
               <>
                 {/* Live totals */}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
                   <StatCard
                     label="users"
                     value={dashboard.totals.users}
@@ -1148,7 +1206,7 @@ export default function Admin() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                   <StatCard
                     label="total earned"
                     value={`${fmtMoney(finance.totalEarned)} ETB`}
@@ -1533,7 +1591,7 @@ export default function Admin() {
                   <Loader2 className="size-4 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
                   <div className="rounded-xl bg-white/4 px-3 py-2.5">
                     <p className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
                       events 24h
@@ -1697,47 +1755,68 @@ export default function Admin() {
                   return (
                     <div
                       key={integration.id}
-                      className="flex flex-wrap items-center gap-3 rounded-xl bg-white/4 px-3.5 py-2.5"
+                      className="rounded-xl border border-white/5 bg-white/[0.03] px-3.5 py-3"
                     >
-                      <span className="w-44 shrink-0 text-sm font-semibold">
-                        {integration.label}
-                      </span>
-                      {integration.configured ? (
-                        <span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-300">
-                          <CheckCircle2 className="size-3.5" /> configured
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5 font-mono text-[10px] text-amber-300">
-                          <AlertTriangle className="size-3.5" /> key missing
-                        </span>
-                      )}
-                      <span className="font-mono text-[10px] text-muted-foreground">
-                        {integration.calls24h} calls ·{" "}
-                        {(integration.errorRate * 100).toFixed(0)}% err ·{" "}
-                        {integration.lastUsedAt
-                          ? relativeTime(integration.lastUsedAt)
-                          : "never used"}
-                      </span>
-                      {["xai", "gemini", "telegram", "github"].includes(integration.id) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="ml-auto h-7 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
-                          onClick={() => void runIntegrationTest(integration.id)}
-                          disabled={testingIntegration === integration.id}
-                        >
-                          {testingIntegration === integration.id ? (
-                            <Loader2 className="size-3 animate-spin" />
-                          ) : (
-                            <RefreshCw className="size-3" />
+                      <div className="grid items-center gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className={cn(
+                              "flex size-7 shrink-0 items-center justify-center rounded-lg",
+                              integration.configured
+                                ? "bg-emerald-400/10 text-emerald-300"
+                                : "bg-amber-400/10 text-amber-300",
+                            )}
+                          >
+                            {integration.configured ? (
+                              <CheckCircle2 className="size-3.5" />
+                            ) : (
+                              <AlertTriangle className="size-3.5" />
+                            )}
+                          </span>
+                          <span className="truncate text-sm font-semibold">
+                            {integration.label}
+                          </span>
+                        </div>
+                        <span
+                          className={cn(
+                            "flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide",
+                            integration.configured
+                              ? "bg-emerald-400/10 text-emerald-300"
+                              : "bg-amber-400/10 text-amber-300",
                           )}
-                          Test
-                        </Button>
-                      )}
+                        >
+                          {integration.configured ? "configured" : "key missing"}
+                        </span>
+                        <div className="flex min-w-0 items-center justify-between gap-3 sm:justify-end">
+                          <span className="truncate font-mono text-[10px] text-muted-foreground">
+                            {integration.calls24h} calls ·{" "}
+                            {(integration.errorRate * 100).toFixed(0)}% err ·{" "}
+                            {integration.lastUsedAt
+                              ? relativeTime(integration.lastUsedAt)
+                              : "never used"}
+                          </span>
+                          {["xai", "gemini", "telegram", "github"].includes(integration.id) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 shrink-0 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
+                              onClick={() => void runIntegrationTest(integration.id)}
+                              disabled={testingIntegration === integration.id}
+                            >
+                              {testingIntegration === integration.id ? (
+                                <Loader2 className="size-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="size-3" />
+                              )}
+                              Test
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                       {testResult && (
                         <p
                           className={cn(
-                            "w-full font-mono text-[10px]",
+                            "mt-2 border-t border-white/5 pt-2 font-mono text-[10px]",
                             testResult.ok ? "text-emerald-300" : "text-rose-300",
                           )}
                         >
@@ -2073,6 +2152,19 @@ export default function Admin() {
           </TabsContent>
           </div>
         </Tabs>
+
+        {/* Console footer status bar */}
+        <div className="admin-foot mt-1 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" />
+            nexus://admin · 8 modules online
+          </span>
+          <span className="hidden sm:inline">convex reactive · no polling</span>
+          <span className="flex items-center gap-2">
+            <ShieldCheck className="size-3.5 text-primary" /> access: admin
+            <LiveClock />
+          </span>
+        </div>
       </div>
     </DashboardShell>
   );

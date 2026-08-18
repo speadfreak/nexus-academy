@@ -242,6 +242,30 @@ body {
     animation: admin-rise 420ms ease-out both;
   }
 
+  /* Command-center header: faint blueprint grid behind the title block. */
+  .admin-grid-bg {
+    background-image:
+      linear-gradient(rgb(116 196 255 / 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(116 196 255 / 0.06) 1px, transparent 1px);
+    background-size: 26px 26px;
+    -webkit-mask-image: radial-gradient(ellipse at 20% 0%, black 20%, transparent 72%);
+    mask-image: radial-gradient(ellipse at 20% 0%, black 20%, transparent 72%);
+  }
+
+  .light .admin-grid-bg {
+    background-image:
+      linear-gradient(rgb(37 99 235 / 0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(37 99 235 / 0.09) 1px, transparent 1px);
+  }
+
+  .admin-surface .admin-stat {
+    transition: border-color 180ms ease, transform 180ms ease;
+  }
+
+  .admin-surface .admin-stat:hover {
+    transform: translateY(-2px);
+  }
+
   .admin-tabs-list {
     scrollbar-width: thin;
     scrollbar-color: rgb(116 196 255 / 0.35) transparent;
