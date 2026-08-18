@@ -42,6 +42,52 @@ function RouteLoading() {
   );
 }
 
+/** Error boundary that catches lazy-load / chunk-fetch failures and offers a
+ *  retry button instead of a dead page.  Without this, a transient CDN hiccup
+ *  on Render/Cloudflare makes the entire route unusable until a hard refresh. */
+class LazyErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; message: string }
+> {
+  state = { hasError: false, message: '' };
+  static getDerivedStateFromError(error: Error) {
+    return {
+      hasError: true,
+      message: error?.message || 'Failed to load this page.',
+    };
+  }
+  componentDidCatch(err: Error) {
+    console.error('[LazyErrorBoundary]', err);
+  }
+  retry = () => {
+    // Clear the error state — React.lazy will re-attempt the import.
+    // Force a re-render by toggling the key on the parent <Suspense>.
+    this.setState({ hasError: false, message: '' });
+    window.location.reload();
+  };
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background p-6">
+          <div className="max-w-md text-center glass-panel rounded-2xl p-8">
+            <p className="text-sm font-semibold text-foreground">Page failed to load</p>
+            <p className="mt-2 text-xs text-muted-foreground break-words">
+              {this.state.message}
+            </p>
+            <button
+              onClick={this.retry}
+              className="mt-4 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
 class ToolbarErrorBoundary extends React.Component<
@@ -246,6 +292,7 @@ createRoot(document.getElementById("root")!).render(
               <BrowserRouter>
                 <RouteSyncer />
               <Suspense fallback={<RouteLoading />}>
+                <LazyErrorBoundary>
                 <PageTransition>
                   <Routes>
                     <Route path="/" element={<Landing />} />
@@ -384,6 +431,7 @@ createRoot(document.getElementById("root")!).render(
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </PageTransition>
+                </LazyErrorBoundary>
               </Suspense>
               </BrowserRouter>
             </PreloaderGate>

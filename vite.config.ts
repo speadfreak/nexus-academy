@@ -6,7 +6,23 @@ import { defineConfig } from "vite";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), vlyPlugin(), tailwindcss()],
+  plugins: [
+    react(),
+    vlyPlugin(),
+    tailwindcss(),
+    // Strip `crossorigin` from built <script> tags.  Cloudflare CDN (fronting
+    // Render) does not always return Access-Control-Allow-Origin for JS assets,
+    // and the crossorigin attribute forces the browser into CORS mode for every
+    // dynamic import() — producing "Failed to fetch dynamically imported module"
+    // even when all chunk files exist and return HTTP 200.
+    {
+      name: 'strip-crossorigin',
+      enforce: 'post',
+      transformIndexHtml(html) {
+        return html.replace(/ crossorigin(?= |>|\/>)/g, '');
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -71,6 +87,14 @@ export default defineConfig({
     target: 'esnext',
     // Minify options - using esbuild (faster than terser)
     minify: 'esbuild',
+    // Disable module preload polyfill to remove the crossorigin attribute from
+    // <script> and <link rel=modulepreload> tags.  Cloudflare CDN (fronting
+    // Render) doesn't always propagate Access-Control-Allow-Origin for JS
+    // modules, and the crossorigin attribute makes the browser enforce CORS on
+    // all dynamic import() calls — causing "Failed to fetch dynamically
+    // imported module" errors on deployed builds even when every chunk file
+    // exists and returns HTTP 200.
+    modulePreload: false,
   },
   // Optimize dependencies
   optimizeDeps: {
