@@ -242,7 +242,7 @@ export default function Plans() {
               </div>
 
               {/* Weekly cards */}
-              {plan.weeks.map((week: { week: number; topics: Array<{ id: string; name: string }>; days: string[] }, index: number) => {
+              {plan.weeks.map((week: { week: number; topics: Array<{ id: string; name: string }>; focusHours: number }, index: number) => {
                 const done = plan.completedWeeks.includes(week.week);
                 return (
                   <motion.div

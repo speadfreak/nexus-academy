@@ -454,7 +454,7 @@ export default function Room() {
                         No messages yet — say hi and share what you're studying.
                       </p>
                     ) : (
-                      visibleMessages.map((message: { _id: string; isMine: boolean; content: string; userName: string; userId: string; createdAt: number }) => (
+                      visibleMessages.map((message: { _id: string; isMine: boolean; content: string; name: string; userId: string; createdAt: number }) => (
                         <div key={message._id} className={cn("flex flex-col", message.isMine ? "items-end" : "items-start")}>
                           <div
                             className={cn(
@@ -543,7 +543,7 @@ export default function Room() {
                         Link a textbook, past exam or note so the group can study the same page while talking.
                       </p>
                     ) : (
-                      visibleSharedItems.map((item: { _id: string; title: string; itemType: string; sharedByName: string; sharedAt: number; contentType?: string; subjectName?: string; grade?: number; fileUrl?: string; content?: string }) => (
+                      visibleSharedItems.map((item: { _id: string; title: string; itemType: string; sharedAt: number; contentType?: string; subjectName?: string; grade?: number; fileUrl?: string; content?: string }) => (
                         <div key={item._id} className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -582,7 +582,7 @@ export default function Room() {
       {/* Participant strip overlay (bottom-left) */}
       {room.participants.length > 0 && (
         <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex max-w-[60vw] gap-2 overflow-x-auto rounded-2xl border border-white/5 bg-black/50 p-2 backdrop-blur">
-          {room.participants.map((participant: { userId: string; name: string; isMuted: boolean; isCameraOff: boolean; isMe: boolean; isCreator: boolean }) => (
+          {room.participants.map((participant) => (
             <div
               key={participant.userId}
               className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-xl bg-white/5 py-1.5 pl-1.5 pr-1"
@@ -600,7 +600,7 @@ export default function Room() {
                 </p>
               </div>
               <ReportBlockMenu
-                targetUserId={participant.userId}
+                targetUserId={participant.userId as Id<"users">}
                 targetName={participant.name}
                 roomId={room.roomId}
                 compact

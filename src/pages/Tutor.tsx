@@ -240,7 +240,7 @@ export default function Tutor() {
                 Start a chat to begin.
               </p>
             ) : (
-              conversations.map((conversation: { _id: string; title: string; subjectName?: string; subjectId?: string; updatedAt: number }) => {
+              conversations.map((conversation: { _id: string; title: string; subjectName: string | null; subjectId?: string; updatedAt: number }) => {
                 const active = conversation._id === (selectedId as never);
                 return (
                   <button

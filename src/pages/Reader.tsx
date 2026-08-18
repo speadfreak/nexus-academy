@@ -759,7 +759,7 @@ export default function Reader() {
             related resources · shared topics
           </p>
           <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-            {relatedItems.map((relatedItem: { _id: string; title: string; contentType: string }) => (
+            {relatedItems.map((relatedItem: { _id: string; title: string; contentType: string; subjectSlug: string }) => (
               <Link
                 key={relatedItem._id}
                 to={`/read/${relatedItem._id}`}

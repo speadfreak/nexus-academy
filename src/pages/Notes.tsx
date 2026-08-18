@@ -296,7 +296,7 @@ export default function Notes() {
         ) : (
           <motion.div layout className="columns-1 gap-4 sm:columns-2 lg:columns-3">
             <AnimatePresence>
-              {notes.map((note: { _id: string; difficulty?: string; color: string; content: string; subjectId?: string }) => {
+              {notes.map((note: { _id: string; difficulty?: string; color: string; content: string; subjectId?: string; subjectName?: string }) => {
                 const meta = note.difficulty
                   ? DIFFICULTY_META[note.difficulty as keyof typeof DIFFICULTY_META]
                   : null;
@@ -336,7 +336,7 @@ export default function Notes() {
                             setEditing({
                               id: note._id,
                               content: note.content,
-                              difficulty: note.difficulty ?? "none",
+                              difficulty: (note.difficulty ?? "none") as Difficulty | "none",
                               color: (note.color as NoteColor) ?? "default",
                             })
                           }
