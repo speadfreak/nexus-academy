@@ -7,6 +7,22 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nexus Academy — Ethiopian National Exam Prep Library</title>
+  <script>
+    // Apply theme before first paint to prevent light-theme flash.
+    // Default is dark; only switch to light if explicitly saved.
+    (function () {
+      try {
+        var t = localStorage.getItem("nexus-theme");
+        if (t !== "light") t = "dark";
+      } catch (e) {
+        t = "dark";
+      }
+      var el = document.documentElement;
+      el.classList.remove("dark", "light");
+      el.classList.add(t);
+      el.style.colorScheme = t;
+    })();
+  </script>
 </head>
 
 

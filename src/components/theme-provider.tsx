@@ -32,7 +32,7 @@ function readStoredTheme(): Theme {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() =>
-    typeof window === "undefined" ? "light" : readStoredTheme(),
+    typeof window === "undefined" ? "dark" : readStoredTheme(),
   );
   const profile = useQuery(api.profile.getProfile);
 

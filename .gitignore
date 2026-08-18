@@ -1,13 +1,43 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Environment variables
+.env
 .env.local
-node_modules
-dist
+.env.*.local
 
-# Vly/Freebuff platform artifacts (preview build staging + signed upload
-# script) — internal to the platform, never synced to GitHub.
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Convex
+.convex/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Bolt
+.bolt/
+
+# Old build artifacts
 isolate/
-.vly-dist-upload.sh
-.vly-upload*
 
-# Convex generated types ARE committed so static hosts (Render) can build
-# without running Convex codegen during the build. They are deterministic
-# output of `bunx convex dev --once` / `bunx convex codegen`.
+# Replit
+.replit
