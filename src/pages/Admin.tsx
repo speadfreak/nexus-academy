@@ -581,17 +581,20 @@ export default function Admin() {
 
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-6">
-        <div>
+      <div className="admin-surface flex min-w-0 flex-col gap-5 sm:gap-6">
+        <div className="admin-command-header relative overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.035] px-4 py-5 sm:px-6 sm:py-6">
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(ellipse_at_right,rgba(112,196,255,0.12),transparent_68%)]" />
+          <div className="relative">
           <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
             // control center
           </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl">
             Command center
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Users, money, content, activity and safety — the whole platform in one place.
           </p>
+          </div>
         </div>
 
         <Tabs
@@ -599,40 +602,40 @@ export default function Admin() {
           onValueChange={(next) =>
             setSearchParams(next === "dashboard" ? {} : { tab: next })
           }
-          className="flex flex-col gap-4 lg:flex-row lg:items-start"
+          className="admin-tabs flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start"
         >
           {/* Command-center rail: horizontal scroll on mobile, sidebar on lg */}
-          <TabsList className="glass-panel flex w-full shrink-0 items-center gap-1 overflow-x-auto rounded-2xl p-2 lg:w-56 lg:flex-col lg:items-stretch lg:overflow-visible lg:p-2.5">
-            <TabsTrigger value="dashboard" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+          <TabsList className="admin-tabs-list glass-panel flex w-full max-w-full shrink-0 items-center gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:w-56 xl:flex-col xl:items-stretch xl:overflow-visible xl:p-2.5">
+            <TabsTrigger value="dashboard" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <Activity className="size-4" /> Dashboard
             </TabsTrigger>
-            <TabsTrigger value="content" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+            <TabsTrigger value="content" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <FileText className="size-4" /> Content
             </TabsTrigger>
-            <TabsTrigger value="users" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+            <TabsTrigger value="users" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <UserRound className="size-4" /> Users
             </TabsTrigger>
-            <TabsTrigger value="finance" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+            <TabsTrigger value="finance" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <Wallet className="size-4" /> Finance
             </TabsTrigger>
-            <TabsTrigger value="reports" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+            <TabsTrigger value="reports" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <Flag className="size-4" /> Reports
             </TabsTrigger>
-            <TabsTrigger value="terminal" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+            <TabsTrigger value="terminal" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <Terminal className="size-4" /> Terminal
             </TabsTrigger>
-            <TabsTrigger value="broadcast" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+            <TabsTrigger value="broadcast" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <Send className="size-4" /> Broadcast
             </TabsTrigger>
-            <TabsTrigger value="system" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm lg:w-full lg:justify-start">
+            <TabsTrigger value="system" className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm xl:w-full xl:justify-start">
               <KeyRound className="size-4" /> System
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
 
           {/* ------- Dashboard ------- */}
-          <TabsContent value="dashboard" className="flex flex-col gap-4">
+          <TabsContent value="dashboard" className="admin-tab-content flex min-w-0 flex-col gap-4">
             {dashboard === undefined ? (
               <div className="flex h-40 items-center justify-center">
                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -957,12 +960,12 @@ export default function Admin() {
           </TabsContent>
 
           {/* ------- Content ------- */}
-          <TabsContent value="content">
+          <TabsContent value="content" className="admin-tab-content min-w-0">
             <AdminContentSection />
           </TabsContent>
 
           {/* ------- Users ------- */}
-          <TabsContent value="users" className="flex flex-col gap-4">
+          <TabsContent value="users" className="admin-tab-content flex min-w-0 flex-col gap-4">
             <div className="glass-panel rounded-2xl p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1138,7 +1141,7 @@ export default function Admin() {
           </TabsContent>
 
           {/* ------- Finance ------- */}
-          <TabsContent value="finance" className="flex flex-col gap-4">
+          <TabsContent value="finance" className="admin-tab-content flex min-w-0 flex-col gap-4">
             {finance === undefined ? (
               <div className="flex h-40 items-center justify-center">
                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -1345,7 +1348,7 @@ export default function Admin() {
           </TabsContent>
 
           {/* ------- Reports (student safety) ------- */}
-          <TabsContent value="reports" className="flex flex-col gap-4">
+          <TabsContent value="reports" className="admin-tab-content flex min-w-0 flex-col gap-4">
             <div className="glass-panel rounded-2xl p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1467,7 +1470,7 @@ export default function Admin() {
           </TabsContent>
 
           {/* ------- Terminal (live system events) ------- */}
-          <TabsContent value="terminal" className="flex flex-col gap-4">
+          <TabsContent value="terminal" className="admin-tab-content flex min-w-0 flex-col gap-4">
             <div className="glass-panel rounded-2xl p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1749,7 +1752,7 @@ export default function Admin() {
           </TabsContent>
 
           {/* ------- Broadcast (Telegram) ------- */}
-          <TabsContent value="broadcast" className="flex flex-col gap-4">
+          <TabsContent value="broadcast" className="admin-tab-content flex min-w-0 flex-col gap-4">
             <div className="glass-panel rounded-2xl p-5">
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
@@ -1958,7 +1961,7 @@ export default function Admin() {
           </TabsContent>
 
           {/* ------- System ------- */}
-          <TabsContent value="system" className="flex flex-col gap-4">
+          <TabsContent value="system" className="admin-tab-content flex min-w-0 flex-col gap-4">
             <div className="glass-panel rounded-2xl p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

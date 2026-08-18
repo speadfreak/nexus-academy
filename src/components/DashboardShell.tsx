@@ -96,9 +96,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     .join("");
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-7xl gap-6 px-4 py-6 lg:px-8">
+    <div className="mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] gap-6 overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Sidebar (desktop) */}
-      <aside className="glass-panel sticky top-6 hidden h-[calc(100vh-3rem)] w-64 shrink-0 flex-col rounded-2xl p-4 lg:flex">
+      <aside className="glass-panel sticky top-6 hidden h-[calc(100vh-3rem)] w-60 shrink-0 flex-col rounded-2xl p-4 xl:flex">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 px-1 py-2">
             <img src={logo} alt="Nexus Academy logo" className="size-9 rounded-xl" />
@@ -171,8 +171,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Mobile top bar */}
-      <div className="flex w-full flex-col gap-4">
-        <header className="glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 lg:hidden">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <header className="glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
             <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
