@@ -29,9 +29,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TrackId = "rain" | "focus" | "breeze" | "white" | "brown" | "night" | "binaural";
+type TrackId = "rain" | "focus" | "breeze" | "white" | "brown" | "night" | "binaural" | "birds" | "hum";
 
-type TrackCategory = "Focus" | "Calm" | "Deep Work";
+type TrackCategory = "Focus" | "Calm" | "Deep Work" | "Energize" | "Wind-down";
 
 interface Track {
   id: TrackId;
@@ -49,6 +49,8 @@ const TRACKS: Track[] = [
   { id: "night", label: "Night", hint: "quiet room, distant crickets", category: "Calm" },
   { id: "white", label: "White Noise", hint: "flat, steady, detail-friendly", category: "Deep Work" },
   { id: "brown", label: "Brown Noise", hint: "deep rumble, low distraction", category: "Deep Work" },
+  { id: "birds", label: "Morning Birds", hint: "gentle dawn chorus", category: "Energize" },
+  { id: "hum", label: "Soft Hum", hint: "low sine drone for winding down", category: "Wind-down" },
 ];
 
 interface MusicContextValue {

@@ -543,7 +543,7 @@ export default function Room() {
                         Link a textbook, past exam or note so the group can study the same page while talking.
                       </p>
                     ) : (
-                      visibleSharedItems.map((item: { _id: string; title: string; itemType: string; sharedAt: number; contentType?: string; subjectName?: string; grade?: number; fileUrl?: string; content?: string }) => (
+                      visibleSharedItems.map((item: { _id: string; title: string; itemType: string; sharedAt: number; contentType?: string; subjectName?: string | null; grade?: number; fileUrl?: string; content?: string }) => (
                         <div key={item._id} className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -695,7 +695,7 @@ export default function Room() {
                 ) : contentOptions.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">No content matches.</p>
                 ) : (
-                  contentOptions.slice(0, 30).map((item: { _id: string; title: string; contentType: string; subjectName?: string; grade?: number }) => (
+                  contentOptions.slice(0, 30).map((item: { _id: string; title: string; contentType: string; subjectName?: string | null; grade?: number }) => (
                     <button
                       key={item._id}
                       type="button"
