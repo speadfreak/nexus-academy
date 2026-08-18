@@ -57,8 +57,8 @@ export default function Todos() {
   const [dueDate, setDueDate] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const pending = useMemo(() => todos?.filter((t) => !t.isDone) ?? [], [todos]);
-  const done = useMemo(() => todos?.filter((t) => t.isDone) ?? [], [todos]);
+  const pending = useMemo(() => todos?.filter((t: { isDone: boolean }) => !t.isDone) ?? [], [todos]);
+  const done = useMemo(() => todos?.filter((t: { isDone: boolean }) => t.isDone) ?? [], [todos]);
 
   const handleAdd = async () => {
     const value = text.trim();
@@ -226,7 +226,7 @@ export default function Todos() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">No subject</SelectItem>
-                {subjects?.map((subject) => (
+                {subjects?.map((subject: { _id: string; name: string }) => (
                   <SelectItem key={subject._id} value={subject._id as string}>
                     {subject.name}
                   </SelectItem>

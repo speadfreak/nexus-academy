@@ -15,12 +15,12 @@ import { logEventAction } from "./systemEvents";
 import {
   deleteFile,
   getR2Config,
+  type R2Config,
   getSignedDownloadUrl,
   keyFromUrl,
   uploadFile,
   type R2ConfigOverrides,
 } from "./r2";
-import { internal } from "./_generated/api";
 
 type ActionErrorData = { message: string; code: string };
 
@@ -145,13 +145,12 @@ export const adminUploadContent = action({
     // --- Upload to R2, then persist the DB row --------------------------
     try {
       // Check both env vars and the admin Keys tab (configKeys table)
-      const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
       const r2Overrides: R2ConfigOverrides = {
-        R2_ACCOUNT_ID: dbKeys.R2_ACCOUNT_ID,
-        R2_ACCESS_KEY_ID: dbKeys.R2_ACCESS_KEY_ID,
-        R2_SECRET_ACCESS_KEY: dbKeys.R2_SECRET_ACCESS_KEY,
-        R2_BUCKET_NAME: dbKeys.R2_BUCKET_NAME,
-        R2_PUBLIC_URL: dbKeys.R2_PUBLIC_URL,
+        R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+        R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
+        R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
       };
       const r2 = getR2Config(r2Overrides);
       if (!r2.configured) {
@@ -287,13 +286,12 @@ export const deleteContentItem = action({
 
     let r2Error: string | null = null;
     try {
-      const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
       const r2Overrides: R2ConfigOverrides = {
-        R2_ACCOUNT_ID: dbKeys.R2_ACCOUNT_ID,
-        R2_ACCESS_KEY_ID: dbKeys.R2_ACCESS_KEY_ID,
-        R2_SECRET_ACCESS_KEY: dbKeys.R2_SECRET_ACCESS_KEY,
-        R2_BUCKET_NAME: dbKeys.R2_BUCKET_NAME,
-        R2_PUBLIC_URL: dbKeys.R2_PUBLIC_URL,
+        R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+        R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
+        R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
       };
       const key = keyFromUrl(item.fileUrl, r2Overrides);
       if (key) await deleteFile(key, r2Overrides);
@@ -339,13 +337,12 @@ export const getDownloadUrl = action({
     await requireActiveSubscriptionAction(ctx, userId, "premium_content");
 
     try {
-      const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
       const r2Overrides: R2ConfigOverrides = {
-        R2_ACCOUNT_ID: dbKeys.R2_ACCOUNT_ID,
-        R2_ACCESS_KEY_ID: dbKeys.R2_ACCESS_KEY_ID,
-        R2_SECRET_ACCESS_KEY: dbKeys.R2_SECRET_ACCESS_KEY,
-        R2_BUCKET_NAME: dbKeys.R2_BUCKET_NAME,
-        R2_PUBLIC_URL: dbKeys.R2_PUBLIC_URL,
+        R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+        R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
+        R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
       };
       const key = keyFromUrl(item.fileUrl, r2Overrides);
       if (!key) {
@@ -368,8 +365,7 @@ export const getDownloadUrl = action({
 
 export const getR2Status = action({
   args: {},
-  handler: async (ctx) => {
-    const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
-    return getR2Config(dbKeys);
+  handler: async (ctx): Promise<R2Config> => {
+    return getR2Config();
   },
 });

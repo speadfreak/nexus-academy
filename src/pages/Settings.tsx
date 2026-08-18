@@ -139,7 +139,7 @@ export default function Settings() {
     .split(/[\s@]/)
     .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
+    .map((part: string) => part[0]?.toUpperCase())
     .join("");
 
   return (
@@ -204,7 +204,7 @@ export default function Settings() {
               </p>
               {profile?.stream && (
                 <Badge className="mt-1.5 gap-1 bg-primary/10 font-mono text-[10px] text-primary">
-                  <UserRound className="size-3" /> {STREAM_LABELS[profile.stream]} stream
+                  <UserRound className="size-3" /> {STREAM_LABELS[profile.stream as keyof typeof STREAM_LABELS]} stream
                 </Badge>
               )}
             </div>

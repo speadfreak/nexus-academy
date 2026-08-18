@@ -296,9 +296,9 @@ export default function Notes() {
         ) : (
           <motion.div layout className="columns-1 gap-4 sm:columns-2 lg:columns-3">
             <AnimatePresence>
-              {notes.map((note) => {
+              {notes.map((note: { _id: string; difficulty?: string; color: string; content: string; subjectId?: string }) => {
                 const meta = note.difficulty
-                  ? DIFFICULTY_META[note.difficulty]
+                  ? DIFFICULTY_META[note.difficulty as keyof typeof DIFFICULTY_META]
                   : null;
                 const colorMeta = COLOR_META[(note.color as NoteColor) ?? "default"];
                 return (

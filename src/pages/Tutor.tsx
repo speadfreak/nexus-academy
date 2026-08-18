@@ -118,12 +118,12 @@ export default function Tutor() {
     if (!subjects) return;
     const slug = searchParams.get("subject");
     if (!slug) return;
-    const match = subjects.find((s) => s.slug === slug);
+    const match = subjects.find((s: { slug: string; _id: string }) => s.slug === slug);
     if (match) setScopeSubjectId(match._id as string);
   }, [subjects, searchParams]);
 
   const scopeSubject = useMemo(
-    () => subjects?.find((s) => s._id === (scopeSubjectId as never)),
+    () => subjects?.find((s: { _id: string }) => s._id === (scopeSubjectId as never)),
     [subjects, scopeSubjectId],
   );
 
@@ -180,7 +180,7 @@ export default function Tutor() {
     }
   };
 
-  const activeConversation = conversations?.find((c) => c._id === (selectedId as never));
+  const activeConversation = conversations?.find((c: { _id: string }) => c._id === (selectedId as never));
 
   // The document this chat is grounded in — either the active conversation's
   // stored link, or the contentId carried in from a library card for a new chat.
@@ -210,7 +210,7 @@ export default function Tutor() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All subjects</SelectItem>
-                {subjects?.map((subject) => (
+                {subjects?.map((subject: { _id: string; name: string }) => (
                   <SelectItem key={subject._id} value={subject._id as string}>
                     {subject.name}
                   </SelectItem>
@@ -240,7 +240,7 @@ export default function Tutor() {
                 Start a chat to begin.
               </p>
             ) : (
-              conversations.map((conversation) => {
+              conversations.map((conversation: { _id: string; title: string; subjectName?: string; subjectId?: string; updatedAt: number }) => {
                 const active = conversation._id === (selectedId as never);
                 return (
                   <button
@@ -318,7 +318,7 @@ export default function Tutor() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All subjects</SelectItem>
-                {subjects?.map((subject) => (
+                {subjects?.map((subject: { _id: string; name: string }) => (
                   <SelectItem key={subject._id} value={subject._id as string}>
                     {subject.name}
                   </SelectItem>
@@ -334,7 +334,7 @@ export default function Tutor() {
                   setSending(null);
                   return;
                 }
-                const match = conversations?.find((c) => c._id === (value as never));
+                const match = conversations?.find((c: { _id: string; subjectId?: string }) => c._id === (value as never));
                 setSelectedId(value);
                 setSending(null);
                 setContentId(null);
@@ -346,7 +346,7 @@ export default function Tutor() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="new">+ New chat</SelectItem>
-                {conversations?.map((conversation) => (
+                {conversations?.map((conversation: { _id: string; title: string }) => (
                   <SelectItem key={conversation._id} value={conversation._id as string}>
                     {conversation.title}
                   </SelectItem>
@@ -401,7 +401,7 @@ export default function Tutor() {
               </div>
             ) : (
               <>
-                {messages.map((message) => (
+                {messages.map((message: MessageDoc) => (
                   <Bubble key={message._id} message={message as MessageDoc} />
                 ))}
               </>

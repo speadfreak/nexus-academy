@@ -47,7 +47,7 @@ export default function Plans() {
   );
 
   const selectedSubject = useMemo(
-    () => subjects?.find((s) => s._id === (subjectId as never)),
+    () => subjects?.find((s: { _id: string }) => s._id === (subjectId as never)),
     [subjects, subjectId],
   );
 
@@ -108,7 +108,7 @@ export default function Plans() {
                 <SelectValue placeholder="Pick a subject…" />
               </SelectTrigger>
               <SelectContent>
-                {subjects?.map((subject) => (
+                {subjects?.map((subject: { _id: string; name: string }) => (
                   <SelectItem key={subject._id} value={subject._id as string}>
                     {subject.name}
                   </SelectItem>
@@ -242,7 +242,7 @@ export default function Plans() {
               </div>
 
               {/* Weekly cards */}
-              {plan.weeks.map((week, index) => {
+              {plan.weeks.map((week: { week: number; topics: Array<{ id: string; name: string }>; days: string[] }, index: number) => {
                 const done = plan.completedWeeks.includes(week.week);
                 return (
                   <motion.div
@@ -288,7 +288,7 @@ export default function Plans() {
                             topics pending syllabus mapping
                           </span>
                         ) : (
-                          week.topics.map((topic) => (
+                          week.topics.map((topic: { id: string; name: string }) => (
                             <span
                               key={topic.id}
                               className="glass-chip rounded-md px-2 py-0.5 text-[11px] text-muted-foreground"

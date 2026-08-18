@@ -471,7 +471,7 @@ export default function Upgrade() {
             </p>
           ) : (
             <div className="mt-3 space-y-1.5">
-              {payments.map((row) => (
+              {payments.map((row: { _id: string; provider: string; amount: number; currency: string; providerTransactionId?: string; createdAt: number; status: string }) => (
                 <div
                   key={row._id}
                   className="flex items-center justify-between gap-3 rounded-xl bg-white/4 px-3.5 py-2.5"
