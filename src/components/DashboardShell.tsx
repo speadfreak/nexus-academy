@@ -121,7 +121,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+                  "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
                   active
                     ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.1)]"
                     : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
@@ -151,7 +151,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               <Link
                 to={premium.to}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
+                  "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
                   premium.premiumActive
                     ? "bg-premium/10 text-premium"
                     : active
@@ -173,7 +173,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <Link
               to="/admin"
               className={cn(
-                "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+                "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
                 location.pathname === "/admin"
                   ? "bg-primary/10 text-primary"
                   : "text-primary/70 hover:bg-primary/5 hover:text-primary",
@@ -246,7 +246,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       to={item.to}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
+                        "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
                         active
                           ? "bg-primary/10 text-primary"
                           : "text-muted-foreground hover:bg-white/5 hover:text-foreground",

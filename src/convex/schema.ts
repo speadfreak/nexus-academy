@@ -405,6 +405,23 @@ const schema = defineSchema(
       .index("by_user", ["userId"])
       .index("by_room_user", ["roomId", "userId"]),
 
+    // Persistent group chat — the group's "home base" conversation, separate
+    // from ephemeral room messages. Supports text, file attachments, and
+    // async voice notes. Blocked users' messages are filtered server-side.
+    groupChatMessages: defineTable({
+      groupId: v.id("studyGroups"),
+      userId: v.id("users"),
+      content: v.optional(v.string()),
+      attachmentStorageId: v.optional(v.string()),
+      attachmentType: v.optional(v.union(v.literal("file"), v.literal("image"))),
+      attachmentName: v.optional(v.string()),
+      messageType: v.union(v.literal("text"), v.literal("file"), v.literal("voice_note")),
+      voiceNoteDurationSeconds: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_group_createdAt", ["groupId", "createdAt"])
+      .index("by_group", ["groupId"]),
+
     // Group chat inside a room. Persists after the room ends so the group
     // can review what was discussed. Convex reactivity handles delivery.
     roomMessages: defineTable({
