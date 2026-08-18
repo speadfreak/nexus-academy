@@ -18,10 +18,8 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import * as telebirr from "./providers/telebirr";
 import * as mpesa from "./providers/mpesa";
-import { PREMIUM_PRICE_ETB, SUBSCRIPTION_DAYS } from "./constants";
+import { PREMIUM_PRICE_ETB } from "./constants";
 import { logEventAction } from "./systemEvents";
-
-const SUBSCRIPTION_MS = SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000;
 
 type Provider = "telebirr" | "mpesa";
 type PaymentStatus = "pending" | "completed" | "failed";

@@ -16,10 +16,8 @@ import {
   internalMutation,
   internalQuery,
   query,
-  type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import { LEVEL_XP_FACTOR } from "./constants";
 
 /** Total XP required to REACH level n (level 1 = 0 XP). */

@@ -21,7 +21,6 @@ import {
   type ActionCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 
 const DEFAULT_REMINDER_HOUR = 19; // 7 PM Addis time
 const ADDIS_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3, no DST

@@ -27,7 +27,6 @@ import {
   ArrowLeft,
   BookOpen,
   FileText,
-  Flag,
   Loader2,
   MessageSquare,
   MicOff,
@@ -104,7 +103,6 @@ export default function Room() {
 
   const [token, setToken] = useState<string | null>(null);
   const [liveKitUrl, setLiveKitUrl] = useState<string | null>(null);
-  const [joining, setJoining] = useState(true);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const [roomEndedByHost, setRoomEndedByHost] = useState(false);
@@ -148,7 +146,7 @@ export default function Room() {
           setJoinError(errorMessage(error, "Could not join the room."));
         }
       } finally {
-        if (!cancelled) setJoining(false);
+        // The room query remains the source of truth for join readiness.
       }
     })();
     return () => {

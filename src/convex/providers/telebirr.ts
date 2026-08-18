@@ -72,11 +72,12 @@ function requireConfig(): { baseUrl: string } {
   return { baseUrl: config.baseUrl };
 }
 
-function signPayload(payload: unknown): string {
+function signPayload(_payload: unknown): string {
   // TODO(merchant): sign the request payload with the merchant RSA private
   // key (TELEBIRR_PRIVATE_KEY) per the official integration guide (RSA-PSS).
   // Signature algorithm + exact signed-field set must be confirmed against
   // the official guide before going live.
+  void _payload;
   return "unverified-signature";
 }
 

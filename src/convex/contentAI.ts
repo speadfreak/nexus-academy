@@ -13,7 +13,7 @@
 // confirming". Misclassified national-exam content is a trust problem, so a
 // human always clicks confirm.
 
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";

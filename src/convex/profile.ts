@@ -57,7 +57,7 @@ export const ensureProfile = internalMutation({
     if (existing) return existing._id;
     return await ctx.db.insert("userProfiles", {
       userId,
-      themePreference: "dark",
+      themePreference: "light",
     });
   },
 });

@@ -109,8 +109,6 @@ export const ACHIEVEMENT_DEFINITIONS: AchievementDef[] = [
   },
 ];
 
-const DEF_BY_ID = new Map(ACHIEVEMENT_DEFINITIONS.map((def) => [def.id, def]));
-
 // ---------------------------------------------------------------------------
 // Seeding (idempotent)
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { PREMIUM_PRICE_ETB, SUBSCRIPTION_DAYS } from "@/convex/constants";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,

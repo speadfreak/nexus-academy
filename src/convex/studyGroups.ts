@@ -18,14 +18,10 @@ import {
   internalQuery,
   mutation,
   query,
-  type MutationCtx,
-  type QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { GROUP_MAX_SIZE } from "./constants";
-
-type DbCtx = MutationCtx | QueryCtx;
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 const CODE_LENGTH = 6;
@@ -37,14 +33,6 @@ function generateInviteCode(): string {
     code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]!;
   }
   return code;
-}
-
-async function requireUser(ctx: DbCtx): Promise<Id<"users">> {
-  const userId = await getAuthUserId(ctx);
-  if (!userId) {
-    throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
-  }
-  return userId;
 }
 
 // ---------------------------------------------------------------------------

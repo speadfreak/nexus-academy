@@ -9,7 +9,6 @@ import {
   Check,
   ClipboardList,
   Dna,
-  Download,
   FileText,
   FlaskConical,
   GraduationCap,
@@ -23,12 +22,15 @@ import {
   Search,
   Sigma,
   Sparkles,
+  Moon,
+  Sun,
   Terminal,
   Timer,
   TrendingUp,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import logo from "@/assets/nexus-logo.svg";
@@ -204,6 +206,7 @@ const STEPS = [
 
 export default function Landing() {
   const { isAuthenticated, isLoading, user, signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const libraryHref = isAuthenticated
@@ -251,6 +254,24 @@ export default function Landing() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              className="group gap-2 rounded-lg border-primary/20 bg-background/70 px-2.5 shadow-sm backdrop-blur"
+            >
+              {theme === "light" ? (
+                <Moon className="size-3.5 text-primary" />
+              ) : (
+                <Sun className="size-3.5 text-amber-500" />
+              )}
+              <span className="hidden font-mono text-[10px] font-bold uppercase tracking-wider sm:inline">
+                {theme === "light" ? "Dark mode" : "Light mode"}
+              </span>
+            </Button>
             {isLoading ? null : isAuthenticated ? (
               <>
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">

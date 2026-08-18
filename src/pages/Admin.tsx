@@ -410,7 +410,7 @@ export default function Admin() {
     try {
       await updateReportStatus({ reportId: reportId as never, status });
       toast.success(`Report marked ${status}.`);
-    } catch (error) {
+    } catch {
       toast.error("Could not update the report.");
     } finally {
       setReportActing(null);
