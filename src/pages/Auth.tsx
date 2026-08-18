@@ -20,6 +20,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import logo from "@/assets/nexus-logo.svg";
 import {
+  ArrowLeft,
   ArrowRight,
   Atom,
   Check,
@@ -302,9 +303,20 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden">
-      {/* Cinematic ambience — grid + glows, never blocks interaction */}
-      <div className="pointer-events-none absolute inset-0">
+    <div className="relative flex min-h-screen flex-col overflow-hidden">        {/* Back to site link */}
+        <div className="absolute left-4 top-4 z-10 sm:left-6 sm:top-6">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+          >
+            <ArrowLeft className="size-3.5 transition-transform group-hover:-translate-x-0.5" />
+            Back to site
+          </button>
+        </div>
+
+        {/* Cinematic ambience — grid + glows, never blocks interaction */}
+        <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_-10%,rgba(99,102,241,0.16),transparent)]" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px]" />
         <div className="absolute bottom-[-10%] left-1/2 h-72 w-[120%] -translate-x-1/2 rounded-[100%] bg-primary/10 blur-3xl" />

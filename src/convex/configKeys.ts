@@ -129,6 +129,22 @@ export const deleteKey = mutation({
   },
 });
 
+/** Get the actual values of known R2 keys (internal, for actions). */
+export const getR2KeyValues = query({
+  args: {},
+  handler: async (ctx) => {
+    const stored = await ctx.db.query("configKeys").collect();
+    const storedMap = new Map(stored.map((r) => [r.key, r.value]));
+    return {
+      R2_ACCOUNT_ID: storedMap.get("R2_ACCOUNT_ID") || undefined,
+      R2_ACCESS_KEY_ID: storedMap.get("R2_ACCESS_KEY_ID") || undefined,
+      R2_SECRET_ACCESS_KEY: storedMap.get("R2_SECRET_ACCESS_KEY") || undefined,
+      R2_BUCKET_NAME: storedMap.get("R2_BUCKET_NAME") || undefined,
+      R2_PUBLIC_URL: storedMap.get("R2_PUBLIC_URL") || undefined,
+    };
+  },
+});
+
 /** Get the actual value of a key (admin-only, for testing connections). */
 export const getKeyValue = query({
   args: { key: v.string() },

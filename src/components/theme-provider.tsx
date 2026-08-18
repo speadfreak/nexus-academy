@@ -27,7 +27,7 @@ function readStoredTheme(): Theme {
   } catch {
     // ignore storage errors
   }
-  return "light";
+  return "dark";
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

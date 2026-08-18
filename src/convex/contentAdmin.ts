@@ -18,7 +18,9 @@ import {
   getSignedDownloadUrl,
   keyFromUrl,
   uploadFile,
+  type R2ConfigOverrides,
 } from "./r2";
+import { internal } from "./_generated/api";
 
 type ActionErrorData = { message: string; code: string };
 
@@ -142,7 +144,16 @@ export const adminUploadContent = action({
 
     // --- Upload to R2, then persist the DB row --------------------------
     try {
-      const r2 = getR2Config();
+      // Check both env vars and the admin Keys tab (configKeys table)
+      const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
+      const r2Overrides: R2ConfigOverrides = {
+        R2_ACCOUNT_ID: dbKeys.R2_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: dbKeys.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: dbKeys.R2_SECRET_ACCESS_KEY,
+        R2_BUCKET_NAME: dbKeys.R2_BUCKET_NAME,
+        R2_PUBLIC_URL: dbKeys.R2_PUBLIC_URL,
+      };
+      const r2 = getR2Config(r2Overrides);
       if (!r2.configured) {
         throw new ConvexError({
           message: `R2 storage is not configured yet. Add these keys in the project's Keys/API keys tab: ${r2.missing.join(", ")}`,
@@ -161,6 +172,7 @@ export const adminUploadContent = action({
         key,
         bytes,
         contentTypeForFilename(args.filename),
+        r2Overrides,
       );
       // Temp blob is no longer needed now that the file lives in R2.
       await ctx.storage.delete(storageId);
@@ -239,6 +251,7 @@ export const adminUploadContent = action({
       } catch {
         // ignore cleanup failure
       }
+
       await logEventAction(ctx, {
         eventType: "error",
         source: "contentAdmin.upload",
@@ -274,8 +287,16 @@ export const deleteContentItem = action({
 
     let r2Error: string | null = null;
     try {
-      const key = keyFromUrl(item.fileUrl);
-      if (key) await deleteFile(key);
+      const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
+      const r2Overrides: R2ConfigOverrides = {
+        R2_ACCOUNT_ID: dbKeys.R2_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: dbKeys.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: dbKeys.R2_SECRET_ACCESS_KEY,
+        R2_BUCKET_NAME: dbKeys.R2_BUCKET_NAME,
+        R2_PUBLIC_URL: dbKeys.R2_PUBLIC_URL,
+      };
+      const key = keyFromUrl(item.fileUrl, r2Overrides);
+      if (key) await deleteFile(key, r2Overrides);
     } catch (error) {
       r2Error =
         error instanceof Error
@@ -318,11 +339,19 @@ export const getDownloadUrl = action({
     await requireActiveSubscriptionAction(ctx, userId, "premium_content");
 
     try {
-      const key = keyFromUrl(item.fileUrl);
+      const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
+      const r2Overrides: R2ConfigOverrides = {
+        R2_ACCOUNT_ID: dbKeys.R2_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: dbKeys.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: dbKeys.R2_SECRET_ACCESS_KEY,
+        R2_BUCKET_NAME: dbKeys.R2_BUCKET_NAME,
+        R2_PUBLIC_URL: dbKeys.R2_PUBLIC_URL,
+      };
+      const key = keyFromUrl(item.fileUrl, r2Overrides);
       if (!key) {
         throw new Error("Could not resolve the R2 object key for this item.");
       }
-      const url = await getSignedDownloadUrl(key);
+      const url = await getSignedDownloadUrl(key, r2Overrides);
       return { url };
     } catch (error) {
       throw asConvexError(
@@ -339,7 +368,8 @@ export const getDownloadUrl = action({
 
 export const getR2Status = action({
   args: {},
-  handler: async () => {
-    return getR2Config();
+  handler: async (ctx) => {
+    const dbKeys = await ctx.runQuery(internal.configKeys.getR2KeyValues);
+    return getR2Config(dbKeys);
   },
 });
