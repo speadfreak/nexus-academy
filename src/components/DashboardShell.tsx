@@ -7,6 +7,7 @@ import {
   Crown,
   ListChecks,
   LogOut,
+  Menu,
   Map,
   MessageSquareText,
   NotebookPen,
@@ -15,9 +16,10 @@ import {
   Timer,
   TrendingUp,
   Users,
+  X,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { localDateKey } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -34,6 +36,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const touch = useMutation(api.subscriptions.touch);
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // First activity of any authenticated session: create the trial subscription
   // if needed and count the active day. Both are idempotent server-side, so
@@ -44,6 +47,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     touchedRef.current = true;
     void touch({ localDate: localDateKey() }).catch(() => {});
   }, [touch]);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -116,6 +123,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                 )}
+                aria-current={active ? "page" : undefined}
               >
                 <item.icon className="size-4" />
                 {item.label}
@@ -164,37 +172,60 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
       {/* Mobile top bar */}
       <div className="flex w-full flex-col gap-4">
-        <header className="glass-panel flex items-center justify-between rounded-2xl px-4 py-2.5 lg:hidden">
+        <header className="glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 lg:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
             <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
           </Link>
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {navItems.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold",
-                  location.pathname === item.to
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+          <div className="flex items-center gap-1">
             <NotificationBell />
             <Button
               variant="ghost"
               size="icon"
-              onClick={handleSignOut}
-              aria-label="Sign out"
+              onClick={() => setMobileOpen((open) => !open)}
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-navigation"
+              aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
               className="size-8 text-muted-foreground"
             >
-              <LogOut className="size-4" />
+              {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
             </Button>
           </div>
+          {mobileOpen && (
+            <div
+              id="mobile-navigation"
+              className="absolute inset-x-0 top-[calc(100%+0.5rem)] z-50 rounded-2xl border border-white/10 bg-background/95 p-2 shadow-2xl backdrop-blur-xl"
+            >
+              <nav aria-label="Mobile navigation" className="grid gap-1">
+                {navItems.map((item) => {
+                  const active = location.pathname === item.to;
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                      )}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+                <Button
+                  variant="ghost"
+                  onClick={handleSignOut}
+                  className="justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground"
+                >
+                  <LogOut className="size-4" /> Sign out
+                </Button>
+              </nav>
+            </div>
+          )}
         </header>
 
         <main className="min-w-0 flex-1 pb-24">{children}</main>

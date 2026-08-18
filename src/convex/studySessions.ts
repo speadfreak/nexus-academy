@@ -21,10 +21,6 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { XP_VALUES } from "./constants";
 
-function toDateKey(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
 function shiftDateKey(key: string, deltaDays: number): string {
   const [y, m, d] = key.split("-").map(Number);
   const date = new Date(Date.UTC(y!, m! - 1, d!));

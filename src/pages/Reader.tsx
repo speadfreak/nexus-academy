@@ -33,10 +33,8 @@ import {
   Loader2,
   Lock,
   MessageSquare,
-  Minus,
   PanelRightClose,
   PanelRightOpen,
-  Plus,
   RefreshCw,
   Send,
   Sparkles,
@@ -45,7 +43,6 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -390,8 +387,29 @@ export default function Reader() {
             >
               <ChevronLeft className="size-4" />
             </button>
+            <label htmlFor="reader-page-number" className="sr-only">
+              Page number
+            </label>
+            <Input
+              id="reader-page-number"
+              type="number"
+              min={1}
+              max={numPages ?? undefined}
+              value={pageInput}
+              onChange={(event) => setPageInput(event.target.value)}
+              onBlur={() => goToPage(pageInput)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  goToPage(pageInput);
+                  event.currentTarget.blur();
+                }
+              }}
+              disabled={!numPages}
+              aria-label="Current page number"
+              className="h-7 w-12 rounded-md border-white/10 bg-white/5 px-1 text-center font-mono text-[11px] tabular-nums"
+            />
             <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-              {numPages ? `${pageNumber} / ${numPages}` : "—"}
+              / {numPages ?? "—"}
             </span>
             <button
               type="button"

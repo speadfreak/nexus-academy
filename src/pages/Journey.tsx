@@ -32,7 +32,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Lock } from "lucide-react";
 import { relativeTime } from "@/lib/dates";
-import { cn } from "@/lib/utils";
 
 const AXIS_COLOR = "var(--muted-foreground)";
 const GRID_COLOR = "var(--border)";

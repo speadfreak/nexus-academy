@@ -50,12 +50,6 @@ async function requireUser(ctx: DbCtx): Promise<Id<"users">> {
   return userId;
 }
 
-function asQuizError(error: unknown, fallback: string): ConvexError<{ message: string; code: string }> {
-  if (error instanceof ConvexError) return error;
-  const message = error instanceof Error ? error.message : fallback;
-  return new ConvexError({ message, code: "ai_error" });
-}
-
 // ---------------------------------------------------------------------------
 // Generation
 // ---------------------------------------------------------------------------

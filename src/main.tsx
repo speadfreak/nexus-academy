@@ -133,7 +133,8 @@ function AppPreloader({ ready }: { ready: boolean }) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background"
-          aria-hidden="true"
+          role="status"
+          aria-label="Loading Nexus Academy"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
@@ -164,6 +165,7 @@ function AppPreloader({ ready }: { ready: boolean }) {
           >
             Nexus Academy
           </motion.p>
+          <span className="sr-only">Loading Nexus Academy…</span>
         </motion.div>
       )}
     </AnimatePresence>
@@ -176,11 +178,15 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
     let finished = false;
+    let firstFrame = 0;
+    let secondFrame = 0;
     const finish = () => {
       if (finished) return;
       finished = true;
       // Let the first real frame paint before fading the overlay.
-      requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
+      firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(() => setReady(true));
+      });
     };
     if (document.readyState === "complete") {
       finish();
@@ -191,6 +197,8 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener("load", finish);
       window.clearTimeout(safety);
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
     };
   }, []);
   return (

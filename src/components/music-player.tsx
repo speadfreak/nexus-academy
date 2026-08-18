@@ -51,8 +51,6 @@ const TRACKS: Track[] = [
   { id: "brown", label: "Brown Noise", hint: "deep rumble, low distraction", category: "Deep Work" },
 ];
 
-const CATEGORY_ORDER: TrackCategory[] = ["Focus", "Calm", "Deep Work"];
-
 interface MusicContextValue {
   playing: boolean;
   track: Track;
@@ -390,15 +388,10 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     (next: number) => {
       setVolumeState(next);
       persist(trackId, next);
-      getEngine().setVolume(next);
+      if (playing) getEngine().setVolume(next);
     },
-    [trackId],
+    [trackId, playing],
   );
-
-  // Keep the engine's volume in sync if the slider changes while paused.
-  useEffect(() => {
-    getEngine().setVolume(volume);
-  }, [volume]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Never autoplay: playing only becomes true via the toggle click. Stop the
   // engine on unmount so audio never leaks after sign-out.
@@ -440,9 +433,6 @@ export function MusicPlayer() {
           "glass-panel flex items-center gap-2.5 rounded-full px-3 py-2 transition-all duration-300",
           !expanded && "cursor-pointer",
         )}
-        onClick={!expanded ? () => setExpanded(true) : undefined}
-        role={!expanded ? "button" : undefined}
-        aria-label={!expanded ? "Expand music player" : undefined}
       >
         {expanded ? (
           <>
@@ -531,6 +521,9 @@ export function MusicPlayer() {
           </button>
         )}
       </div>
+      <span className="sr-only" aria-live="polite">
+        {playing ? `Playing ${track.label}` : "Music paused"}
+      </span>
     </div>
   );
 }
