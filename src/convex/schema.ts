@@ -544,6 +544,19 @@ const schema = defineSchema(
       content: v.string(),
       updatedAt: v.number(),
     }).index("by_user_content", ["userId", "contentId"]),
+
+    // ------------------------------------------------------------------
+    // Admin key management
+    // ------------------------------------------------------------------
+
+    // Encrypted/stored API key values that admins manage through the UI.
+    // Reads fall through to process.env first; values here override.
+    configKeys: defineTable({
+      key: v.string(),       // e.g. "XAI_API_KEY", "R2_ACCOUNT_ID"
+      value: v.string(),     // the secret value (stored server-side, never sent to browser)
+      updatedAt: v.number(),
+      updatedBy: v.id("users"),
+    }).index("by_key", ["key"]),
   },
   {
     schemaValidation: false,

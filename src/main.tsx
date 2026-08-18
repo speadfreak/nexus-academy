@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
+import { useLenis } from "@/hooks/useLenis";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -256,6 +257,7 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
 }
 
 function RouteSyncer() {
+  useLenis();
   const location = useLocation();
   useEffect(() => {
     window.parent.postMessage(

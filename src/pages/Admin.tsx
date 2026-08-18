@@ -137,11 +137,12 @@ const ADMIN_TABS = [
   { id: "dashboard", label: "Dashboard", index: "01", icon: Activity },
   { id: "content", label: "Content", index: "02", icon: FileText },
   { id: "users", label: "Users", index: "03", icon: UserRound },
-  { id: "finance", label: "Finance", index: "04", icon: Wallet },
-  { id: "reports", label: "Reports", index: "05", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "06", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "07", icon: Send },
-  { id: "system", label: "System", index: "08", icon: KeyRound },
+  { id: "keys", label: "Keys", index: "04", icon: KeyRound },
+  { id: "finance", label: "Finance", index: "05", icon: Wallet },
+  { id: "reports", label: "Reports", index: "06", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "07", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "08", icon: Send },
+  { id: "system", label: "System", index: "09", icon: Plug },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -293,6 +294,153 @@ function ChartCard({
         <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
       )}
       <div className="mt-4">{children}</div>
+    </div>
+  );
+}
+
+/* ── Keys tab (API key configuration) ────────────────────────────── */
+
+function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
+  const categories = useQuery(
+    api.configKeys.getKeyStatusesByCategory,
+    adminAccess ? undefined : "skip",
+  );
+  const setKey = useMutation(api.configKeys.setKey);
+  const deleteKey = useMutation(api.configKeys.deleteKey);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [showValues, setShowValues] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const handleSave = async (key: string) => {
+    if (!editValue.trim()) return;
+    setSaving(key);
+    try {
+      await setKey({ key, value: editValue.trim() });
+      toast.success(`${key} saved successfully.`);
+      setEditingKey(null);
+      setEditValue("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save key.");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleDelete = async (key: string) => {
+    try {
+      await deleteKey({ key });
+      toast.success(`${key} removed — will use env var if set.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete key.");
+    }
+  };
+
+  if (categories === undefined)
+    return (
+      <div className="flex h-40 items-center justify-center">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+
+  const configured = categories.reduce(
+    (sum, cat) => sum + cat.keys.filter((k) => k.configured).length,
+    0,
+  );
+  const total = categories.reduce((sum, cat) => sum + cat.keys.length, 0);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      {/* Status banner */}
+      <div className="glass-panel rounded-2xl p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+              <KeyRound className="size-4 text-primary" /> API Keys & Integrations
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Configure all API keys for the platform. Values stored here override environment variables.
+              Never shared with the browser — only admin access can view or modify.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="glass-chip flex items-center gap-1.5 rounded-full px-3 py-1.5 font-mono text-[11px]">
+              <span className="size-2 rounded-full bg-emerald-400" /> {configured}/{total} configured
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Categories */}
+      {categories.map((cat) => (
+        <div key={cat.id} className="glass-panel rounded-2xl p-5">
+          <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            {cat.label} · {cat.keys.filter((k) => k.configured).length}/{cat.keys.length}
+          </p>
+          <div className="flex flex-col gap-2">
+            {cat.keys.map((k) => (
+              <div key={k.key} className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">{k.label}</span>
+                      <Badge className={cn("font-mono text-[9px]", k.configured ? "bg-emerald-400/10 text-emerald-300" : "bg-amber-400/10 text-amber-300")}>
+                        {k.configured ? "configured" : "not set"}
+                      </Badge>
+                      <Badge variant="outline" className="font-mono text-[9px] text-muted-foreground">
+                        {k.source}
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{k.key} · {k.description}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {editingKey === k.key ? (
+                      <>
+                        <Input
+                          type={showValues[k.key] ? "text" : "password"}
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          placeholder="Paste the key value…"
+                          className="h-8 w-64 rounded-lg bg-white/5 font-mono text-xs"
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === "Enter") void handleSave(k.key); if (e.key === "Escape") { setEditingKey(null); setEditValue(""); } }}
+                        />
+                        <Button size="sm" className="h-8 cursor-pointer rounded-lg" onClick={() => void handleSave(k.key)} disabled={saving === k.key || !editValue.trim()}>
+                          {saving === k.key ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />} Save
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 cursor-pointer rounded-lg text-muted-foreground" onClick={() => { setEditingKey(null); setEditValue(""); }}>
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
+                          onClick={() => { setEditingKey(k.key); setEditValue(""); }}
+                        >
+                          {k.configured ? "Update" : "Add key"}
+                        </Button>
+                        {k.configured && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 cursor-pointer rounded-lg text-muted-foreground hover:text-rose-300"
+                            onClick={() => void handleDelete(k.key)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1019,6 +1167,11 @@ export default function Admin() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* ══════ KEYS ══════ */}
+            {tab === "keys" && (
+              <KeysTabContent adminAccess={adminAccess} />
             )}
 
             {/* ══════ FINANCE ══════ */}

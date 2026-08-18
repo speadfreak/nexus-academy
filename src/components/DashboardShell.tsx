@@ -98,75 +98,116 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] gap-6 overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Sidebar (desktop) */}
-      <aside className="glass-panel sticky top-6 hidden h-[calc(100vh-3rem)] w-60 shrink-0 flex-col rounded-2xl p-4 xl:flex">
-        <div className="flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5 px-1 py-2">
-            <img src={logo} alt="Nexus Academy logo" className="size-9 rounded-xl" />
-            <div className="leading-tight">
-              <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
-              <p className="font-mono text-[10px] text-muted-foreground">exam-prep · library</p>
-            </div>
-          </Link>
+      <aside className="glass-panel sticky top-6 hidden h-[calc(100vh-3rem)] w-60 shrink-0 flex-col rounded-2xl p-3 xl:flex">
+        {/* Logo + brand */}
+        <Link to="/" className="group flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-white/5">
+          <img src={logo} alt="Nexus Academy logo" className="size-10 shrink-0 rounded-xl transition-transform group-hover:scale-105" />
+          <div className="min-w-0 leading-tight">
+            <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
+            <p className="font-mono text-[10px] text-muted-foreground">exam-prep · library</p>
+          </div>
           <NotificationBell />
-        </div>
+        </Link>
 
-        <nav className="mt-6 flex flex-1 flex-col gap-1">
-          {navItems.map((item) => {
+        {/* Divider */}
+        <div className="mx-3 my-2 h-px bg-white/[0.06]" />
+
+        {/* Main navigation */}
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
+          {navItems.slice(0, -1).map((item) => {
             const active = location.pathname === item.to;
             return (
               <Link
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
                   active
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.1)]"
                     : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                 )}
                 aria-current={active ? "page" : undefined}
               >
-                <item.icon className="size-4" />
-                {item.label}
+                <item.icon className="size-4 shrink-0" />
+                <span className="truncate">{item.label}</span>
                 {item.premiumActive && (
-                  <span
-                    title="Premium access active"
-                    className="ml-auto size-1.5 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)]"
-                  />
+                  <span title="Premium active" className="ml-auto size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)]" />
                 )}
               </Link>
             );
           })}
         </nav>
 
-        {isAdmin && (
-          <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-primary/5 px-3 py-2 text-[11px] font-medium text-primary">
-            <ShieldCheck className="size-3.5" /> Admin access enabled
-          </p>
-        )}
+        {/* Bottom section: Premium + Admin + Profile */}
+        <div className="mt-auto flex flex-col gap-1.5 pt-2">
+          <div className="mx-3 h-px bg-white/[0.06]" />
 
-        <div className="glass-soft flex items-center gap-2.5 rounded-xl p-2.5">
-          <Link to="/settings" title="Open settings" aria-label="Open settings">
-            <Avatar className="size-9 cursor-pointer">
-              <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
-                {initials || "N"}
-              </AvatarFallback>
-            </Avatar>
-          </Link>
-          <Link to="/settings" className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-xs font-semibold hover:text-primary">
-              {user?.name || "Guest"}
-            </p>
-            <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleSignOut}
-            aria-label="Sign out"
-            className="cursor-pointer text-muted-foreground hover:text-destructive"
-          >
-            <LogOut className="size-4" />
-          </Button>
+          {/* Premium CTA */}
+          {(() => {
+            const premium = navItems[navItems.length - 1];
+            if (!premium) return null;
+            const active = location.pathname === premium.to;
+            return (
+              <Link
+                to={premium.to}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
+                  premium.premiumActive
+                    ? "bg-premium/10 text-premium"
+                    : active
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                )}
+              >
+                <premium.icon className="size-4 shrink-0" />
+                <span className="truncate">{premium.label}</span>
+                {premium.premiumActive && (
+                  <span title="Premium active" className="ml-auto size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)]" />
+                )}
+              </Link>
+            );
+          })()}
+
+          {/* Admin badge */}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className={cn(
+                "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+                location.pathname === "/admin"
+                  ? "bg-primary/10 text-primary"
+                  : "text-primary/70 hover:bg-primary/5 hover:text-primary",
+              )}
+            >
+              <ShieldCheck className="size-4 shrink-0" /> Admin
+            </Link>
+          )}
+
+          {/* Profile card */}
+          <div className="glass-soft flex items-center gap-2.5 rounded-xl p-2.5">
+            <Link to="/settings" title="Open settings">
+              <Avatar className="size-9 cursor-pointer">
+                <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
+                  {initials || "N"}
+                </AvatarFallback>
+              </Avatar>
+            </Link>
+            <Link to="/settings" className="min-w-0 flex-1 leading-tight">
+              <p className="truncate text-xs font-semibold hover:text-primary">
+                {user?.name || "Guest"}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleSignOut}
+              aria-label="Sign out"
+              className="cursor-pointer text-muted-foreground hover:text-destructive"
+            >
+              <LogOut className="size-4" />
+            </Button>
+          </div>
         </div>
       </aside>
 
