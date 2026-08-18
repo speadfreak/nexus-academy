@@ -668,11 +668,11 @@ export default function Admin() {
           onValueChange={(next) =>
             setSearchParams(next === "dashboard" ? {} : { tab: next })
           }
-          className="admin-tabs flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start"
         >
+        <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start">
           {/* Command-center rail: registry-driven dock. Horizontal scroll on
               mobile/tablet, mission-control sidebar on xl+. */}
-          <TabsList className="admin-tabs-list glass-panel flex w-full max-w-full shrink-0 items-center gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:w-60 xl:flex-col xl:items-stretch xl:overflow-visible xl:p-2.5">
+          <TabsList className="admin-tabs-list glass-panel flex w-full max-w-full shrink-0 items-center gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:w-56 xl:flex-col xl:items-stretch xl:overflow-visible xl:p-2.5 xl:sticky xl:top-24 xl:self-start">
             {ADMIN_TABS.map(({ id, label, index, icon: TabIcon }) => (
               <TabsTrigger
                 key={id}
@@ -2151,6 +2151,7 @@ export default function Admin() {
             </div>
           </TabsContent>
           </div>
+        </div>
         </Tabs>
 
         {/* Console footer status bar */}
