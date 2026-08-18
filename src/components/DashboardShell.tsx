@@ -227,7 +227,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               aria-expanded={mobileOpen}
               aria-controls="mobile-navigation"
               aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
-              className="size-8 text-muted-foreground"
+              className="size-10 min-h-10 min-w-10 text-muted-foreground"
             >
               {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
             </Button>
@@ -269,7 +269,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           )}
         </header>
 
-        <main className="min-w-0 flex-1 pb-24">{children}</main>
+        <main className="min-w-0 flex-1 pb-20 sm:pb-24">{children}</main>
       </div>
 
       {/* Persistent study-vibe player — lives at the app root so it survives

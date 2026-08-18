@@ -440,7 +440,7 @@ export function MusicPlayer() {
               type="button"
               onClick={() => cycleTrack(-1)}
               aria-label="Previous track"
-              className="flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+              className="flex size-10 min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
             >
               <ChevronDown className="size-4 rotate-90" />
             </button>
@@ -449,7 +449,7 @@ export function MusicPlayer() {
               type="button"
               onClick={toggle}
               aria-label={playing ? "Pause music" : "Play music"}
-              className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_-4px_var(--primary)] transition-transform hover:scale-105 active:scale-95"
+              className="flex size-10 min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_-4px_var(--primary)] transition-transform hover:scale-105 active:scale-95"
             >
               {playing ? (
                 <Pause className="size-4" />
@@ -462,7 +462,7 @@ export function MusicPlayer() {
               type="button"
               onClick={() => cycleTrack(1)}
               aria-label="Next track"
-              className="flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+              className="flex size-10 min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
             >
               <ChevronUp className="size-4 rotate-90" />
             </button>

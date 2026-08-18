@@ -67,7 +67,7 @@ export function NotificationBell() {
           variant="ghost"
           size="icon"
           aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
-          className="relative size-9 cursor-pointer rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground"
+          className="relative size-10 min-h-10 min-w-10 cursor-pointer rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground"
         >
           <Bell className="size-4" />
           {unread > 0 && (

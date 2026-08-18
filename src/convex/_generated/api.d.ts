@@ -25,6 +25,7 @@ import type * as crons from "../crons.js";
 import type * as dailyChallenge from "../dailyChallenge.js";
 import type * as geminiReader from "../geminiReader.js";
 import type * as github from "../github.js";
+import type * as groupChat from "../groupChat.js";
 import type * as http from "../http.js";
 import type * as journey from "../journey.js";
 import type * as media from "../media.js";
@@ -80,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   dailyChallenge: typeof dailyChallenge;
   geminiReader: typeof geminiReader;
   github: typeof github;
+  groupChat: typeof groupChat;
   http: typeof http;
   journey: typeof journey;
   media: typeof media;
