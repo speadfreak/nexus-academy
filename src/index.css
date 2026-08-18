@@ -235,6 +235,193 @@ body {
 .light .border-white\/20,
 .light .border-white\/25 { border-color: rgb(15 23 42 / 0.1); }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   PRIORITY 1: PREMIUM DESIGN SYSTEM — DEPTH PASS
+   ═══════════════════════════════════════════════════════════════════════
+   Materiality · Typography Rhythm · Color Restraint · Micro-Interactions
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── TYPOGRAPHY SCALE ────────────────────────────────────────────────
+   Every heading/body/label size in the app maps to one of these classes.
+   Use them instead of ad-hoc text-* sizes for obsessive consistency.
+
+   Scale (all Manrope, weight steps):
+     display  → 2.75rem / 1.05 / extrabold  — hero/landing statements
+     h1       → 2rem     / 1.15 / extrabold  — page titles
+     h2       → 1.5rem   / 1.2  / bold       — section headings
+     h3       → 1.125rem / 1.35 / semibold   — card/panel headings
+     body     → 0.9375rem (text-sm) / 1.65   — body copy (reduced from 16px for
+                                                density on dashboard-type views)
+     body-lg  → 1rem     / 1.6  / normal     — long-form reading, tutor chat
+     mono     → 0.75rem  (text-xs) / 1.8     — labels, stat counters, admin console
+     caption  → 0.6875rem (text-[11px]) / 1.5 — timestamps, metadata, footnotes
+   ────────────────────────────────────────────────────────────────── */
+
+.type-display {
+  font-size: 2.75rem;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.type-h1 {
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.type-h2 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.type-h3 {
+  font-size: 1.125rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.type-body {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  font-weight: 400;
+}
+
+.type-body-lg {
+  font-size: 1rem;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+.type-mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.8;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.type-caption {
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* ─── NOISE / GRAIN TEXTURE ───────────────────────────────────────────
+   Adds tactile depth to background surfaces without being visible as
+   "a texture" — the opacity is deliberately very low. Applied via an
+   SVG filter + pseudo-element so it tiles over the entire viewport
+   without affecting layout or pointer events.
+   ────────────────────────────────────────────────────────────────── */
+
+/* SVG noise filter — inline to avoid an extra request */
+.noise-filter {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.028;
+  mix-blend-mode: overlay;
+}
+
+.dark .noise-filter { opacity: 0.035; }
+.light .noise-filter { opacity: 0.022; }
+
+/* ─── MICRO-INTERACTION SYSTEM ────────────────────────────────────────
+   A single, consistent interaction language for every interactive
+   element. Apply one of these classes to buttons, cards, nav items,
+   and any clickable surface. All transitions share the same timing
+   curve for a cohesive feel.
+
+   Timing: 180ms ease-out (hover), 120ms ease-in (press), 200ms ease (focus)
+   Scale:  subtle — nothing wild, premium restraint
+   ────────────────────────────────────────────────────────────────── */
+
+/* Shared transition foundation */
+.interactive-press {
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+  will-change: transform;
+  cursor: pointer;
+}
+
+/* Hover: subtle lift + glow — one level of elevation */
+.interactive-press:hover {
+  transform: translateY(-1px);
+}
+
+/* Active: slight press-down — tactile confirmation */
+.interactive-press:active {
+  transform: translateY(0px) scale(0.985);
+  transition-duration: 100ms;
+}
+
+/* Disabled: no interaction, no animation */
+.interactive-press:disabled,
+.interactive-press[aria-disabled="true"] {
+  transform: none;
+  cursor: default;
+}
+
+/* Card-level hover lift — larger elements get a subtler lift */
+.hover-lift {
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease;
+  will-change: transform;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 25px -5px oklch(0.35 0.14 245 / 0.2),
+    0 4px 10px -3px oklch(0.35 0.14 245 / 0.12);
+}
+
+.light .hover-lift:hover {
+  box-shadow:
+    0 8px 25px -5px rgb(30 58 138 / 0.12),
+    0 4px 10px -3px rgb(30 58 138 / 0.08);
+}
+
+/* Subtle scale-on-hover for small interactive elements (icon buttons, etc.) */
+.hover-scale {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+.hover-scale:active {
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+
+/* Focus ring — consistent across all interactive elements */
+.focus-ring {
+  outline: none;
+}
+
+.focus-ring:focus-visible {
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--primary);
+}
+
+/* Glass panel materiality: the full definition lives inside @layer
+   components below so it does not conflict with the Tailwind cascade.
+   Grain overlay is baked into the layered definition. */
+
 @layer components {
   /* Admin command center: the nested navigation yields its width on narrow
      viewports instead of competing with the learner shell. */
@@ -297,8 +484,10 @@ body {
   }
 
   /* Frosted dark surface: translucent fill, controlled blur, subtle edge
-     highlight via the inset white border line. */
+     highlight via the inset white border line, grain overlay for materiality. */
   .glass-panel {
+    position: relative;
+    overflow: hidden;
     background: linear-gradient(
       180deg,
       rgb(255 255 255 / 0.055),
@@ -312,6 +501,27 @@ body {
       inset 0 0 0 1px rgb(255 255 255 / 0.02),
       0 1px 2px rgb(0 0 0 / 0.4),
       0 20px 50px -24px oklch(0.35 0.14 245 / 0.3);
+  }
+
+  /* Grain overlay — tactile depth without visible texture */
+  .glass-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+    pointer-events: none;
+    z-index: 1;
+    border-radius: inherit;
+  }
+
+  .light .glass-panel::before { opacity: 0.025; }
+
+  /* Ensure content sits above grain */
+  .glass-panel > * {
+    position: relative;
+    z-index: 2;
   }
 
   .glass-soft {

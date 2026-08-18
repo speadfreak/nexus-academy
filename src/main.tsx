@@ -277,7 +277,22 @@ function RouteSyncer() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  return null;
+  return (
+    <>
+      {/* Premium design system: full-viewport noise/grain texture overlay */}
+      <svg className="noise-filter" aria-hidden="true">
+        <filter id="nexus-noise">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.75"
+            numOctaves="4"
+            stitchTiles="stitch"
+          />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#nexus-noise)" />
+      </svg>
+    </>
+  );
 }
 
 
