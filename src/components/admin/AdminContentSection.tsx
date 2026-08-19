@@ -242,7 +242,8 @@ export function AdminContentSection() {
       if (!tempResponse.ok) {
         throw new Error(`Secure upload failed (HTTP ${tempResponse.status}). Please retry.`);
       }
-      const storageId = (await tempResponse.json()) as string;
+      const uploadResult = await tempResponse.json();
+      const storageId = typeof uploadResult === "string" ? uploadResult : uploadResult.storageId;
 
       // Step 2: Server-side transfer to R2 and library finalization.
       toast.info("Saving to library…");
