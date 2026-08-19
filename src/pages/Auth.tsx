@@ -1,7 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { STREAM_LABELS } from "@/convex/constants";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   CardContent,
@@ -23,13 +23,18 @@ import {
   ArrowLeft,
   ArrowRight,
   Atom,
+  BrainCircuit,
   Check,
+  GraduationCap,
   Landmark,
   Loader2,
   Mail,
+  Shield,
+  Trophy,
   UserX,
+  Zap,
 } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -47,23 +52,257 @@ function resolveRedirectAfterAuth(
   return fallback;
 }
 
-// There are exactly two streams a student can be on. English, Mathematics
-// and the SAT are sat by EVERY candidate, so they're listed inside both
-// streams below — never offered as a third "common" choice.
-const SHARED_SUBJECTS = "English · Mathematics · SAT";
+const SHARED_SUBJECTS = "English \u00b7 Mathematics \u00b7 SAT";
 
 const STREAM_OPTIONS = [
   {
     id: "natural",
     icon: Atom,
-    subjects: "Physics · Chemistry · Biology",
+    subjects: "Physics \u00b7 Chemistry \u00b7 Biology",
   },
   {
     id: "social",
     icon: Landmark,
-    subjects: "History · Geography · Economics",
+    subjects: "History \u00b7 Geography \u00b7 Economics",
   },
 ] as const;
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CINEMATIC BACKGROUND LAYER
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function CinematicBackground() {
+  return (
+    <div className="auth-bg pointer-events-none fixed inset-0 overflow-hidden">
+      {/* Deep base gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#060b1a] via-[#0a1128] to-[#0d0a1f]" />
+      
+      {/* Animated aurora nebula */}
+      <div className="aurora-orb aurora-orb-1" />
+      <div className="aurora-orb aurora-orb-2" />
+      <div className="aurora-orb aurora-orb-3" />
+      <div className="aurora-orb aurora-orb-4" />
+      <div className="aurora-orb aurora-orb-5" />
+
+      {/* Subtle grid overlay */}
+      <div className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `linear-gradient(rgba(120,160,255,0.5) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(120,160,255,0.5) 1px, transparent 1px)`,
+          backgroundSize: '60px 60px'
+        }}
+      />
+
+      {/* Vignette */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.6)_100%)]" />
+
+      {/* Noise grain */}
+      <div className="absolute inset-0 opacity-[0.035]"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+          backgroundSize: '200px 200px'
+        }}
+      />
+
+      {/* Floating particles */}
+      <FloatingParticles />
+    </div>
+  );
+}
+
+function FloatingParticles() {
+  const particles = useMemo(() => 
+    Array.from({ length: 40 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: Math.random() * 2.5 + 0.5,
+      duration: Math.random() * 20 + 15,
+      delay: Math.random() * 10,
+      opacity: Math.random() * 0.5 + 0.1,
+    })), []);
+
+  return (
+    <div className="absolute inset-0">
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full bg-blue-400/30"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: p.size,
+            height: p.size,
+          }}
+          animate={{
+            y: [0, -30, 10, -20, 0],
+            x: [0, 15, -10, 5, 0],
+            opacity: [p.opacity, p.opacity * 1.5, p.opacity * 0.8, p.opacity * 1.3, p.opacity],
+          }}
+          transition={{
+            duration: p.duration,
+            repeat: Infinity,
+            delay: p.delay,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LEFT SHOWCASE PANEL (desktop only)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function ShowcasePanel() {
+  return (
+    <div className="relative hidden flex-col items-center justify-center overflow-hidden p-12 lg:flex">
+      {/* Radial glow behind content */}
+      <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-[100px]" />
+      
+      <motion.div
+        initial={{ opacity: 0, x: -40 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        className="relative z-10 max-w-md space-y-8"
+      >
+        {/* Logo + Title */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
+          className="space-y-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="absolute inset-0 animate-pulse rounded-xl bg-primary/20 blur-lg" />
+              <img
+                src={logo}
+                alt="Nexus Academy"
+                width={52}
+                height={52}
+                className="relative rounded-xl"
+              />
+            </div>
+            <span className="type-display text-gradient">Nexus Academy</span>
+          </div>
+          <p className="text-lg leading-relaxed text-blue-200/60">
+            Your AI-powered command center for academic excellence.
+          </p>
+        </motion.div>
+
+        {/* Feature cards */}
+        <div className="space-y-3">
+          {[
+            { icon: BrainCircuit, label: "AI Tutor", desc: "Personalized learning assistant" },
+            { icon: Trophy, label: "Achievements", desc: "Track your academic journey" },
+            { icon: GraduationCap, label: "Smart Study", desc: "Flashcards, quizzes, and notes" },
+            { icon: Zap, label: "Focus Mode", desc: "Pomodoro sessions with analytics" },
+          ].map((feature, i) => (
+            <motion.div
+              key={feature.label}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{
+                delay: 0.4 + i * 0.12,
+                duration: 0.5,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="group flex items-center gap-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 backdrop-blur-sm transition-all duration-300 hover:border-primary/20 hover:bg-white/[0.06]"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                <feature.icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white/90">{feature.label}</p>
+                <p className="text-xs text-white/40">{feature.desc}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Social proof */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1, duration: 0.6 }}
+          className="flex items-center gap-3 pt-2"
+        >
+          <div className="flex -space-x-2">
+            {['bg-blue-500', 'bg-violet-500', 'bg-cyan-500', 'bg-emerald-500'].map((bg, i) => (
+              <div
+                key={i}
+                className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#0a1128] ${bg} text-[10px] font-bold text-white`}
+              >
+                {['A', 'M', 'S', 'K'][i]}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-white/40">
+            <span className="font-semibold text-white/60">2,400+</span> students already learning
+          </p>
+        </motion.div>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ANIMATED GRADIENT BORDER CARD
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function AnimatedBorderCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`relative ${className}`}>
+      {/* Animated gradient border */}
+      <div className="auth-card-border absolute -inset-[1px] rounded-2xl" />
+      
+      {/* Card content */}
+      <div className="relative z-10 overflow-hidden rounded-2xl bg-[#0c1425]/95 backdrop-blur-2xl">
+        {/* Inner top-edge highlight */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-blue-500/[0.03] to-transparent" />
+        
+        {/* Grain */}
+        <div className="absolute inset-0 opacity-[0.02]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+            backgroundSize: '160px 160px'
+          }}
+        />
+        
+        <div className="relative z-10">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SHIMMER BUTTON
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function ShimmerButton({ children, ...props }: React.ComponentProps<typeof Button>) {
+  return (
+    <Button
+      {...props}
+      className={
+        `auth-shimmer-btn relative overflow-hidden bg-primary text-primary-foreground hover:bg-primary/90 ${props.className ?? ""}`
+      }
+    >
+      <span className="relative z-10 flex items-center justify-center gap-2">
+        {children}
+      </span>
+      <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent"
+        style={{ animation: 'shimmer-slide 3s ease-in-out infinite' }}
+      />
+    </Button>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ONBOARDING
+   ═══════════════════════════════════════════════════════════════════════ */
 
 function Onboarding({
   onComplete,
@@ -85,81 +324,113 @@ function Onboarding({
   };
 
   return (
-    <div className="glass-panel w-[min(92vw,440px)] rounded-2xl p-6">
-      <CardHeader className="text-center">
-        <div className="flex justify-center">
-          <img
-            src={logo}
-            alt="Nexus Academy logo"
-            width={64}
-            height={64}
-            className="mb-4 mt-4 rounded-lg"
-          />
-        </div>
-        <CardTitle className="text-xl">Pick your stream</CardTitle>
-        <CardDescription>
-          Your dashboard and AI tutor are organized around the subjects you
-          actually sit. English, Mathematics and the SAT are part of every
-          stream. You can change this later in Settings.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2.5">
-        {STREAM_OPTIONS.map((option) => {
-          const active = selected === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setSelected(option.id)}
-              className={`flex w-full cursor-pointer items-center gap-3 rounded-xl border p-4 text-left transition-colors ${
-                active
-                  ? "border-primary/50 bg-primary/10"
-                  : "border-white/10 bg-white/4 hover:border-white/25"
-              }`}
-            >
-              <div
-                className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
-                  active ? "bg-primary/15 text-primary" : "bg-white/5 text-muted-foreground"
+    <AnimatedBorderCard className="w-[min(92vw,460px)]">
+      <div className="px-8 pb-8 pt-6">
+        <CardHeader className="text-center">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 20 }}
+            className="flex justify-center"
+          >
+            <img
+              src={logo}
+              alt="Nexus Academy logo"
+              width={64}
+              height={64}
+              className="mb-4 mt-2 rounded-xl"
+            />
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, duration: 0.5 }}
+          >
+            <CardTitle className="text-xl">Choose Your Path</CardTitle>
+            <CardDescription className="mt-2">
+              Your dashboard and AI tutor are organized around the subjects you
+              actually sit. English, Mathematics and the SAT are part of every
+              stream.
+            </CardDescription>
+          </motion.div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {STREAM_OPTIONS.map((option, i) => {
+            const active = selected === option.id;
+            return (
+              <motion.button
+                key={option.id}
+                type="button"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 + i * 0.1, duration: 0.4 }}
+                onClick={() => setSelected(option.id)}
+                className={`group flex w-full cursor-pointer items-center gap-4 rounded-xl border p-4 text-left transition-all duration-300 ${
+                  active
+                    ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_-8px_rgba(99,102,241,0.3)]"
+                    : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.05]"
                 }`}
               >
-                <option.icon className="size-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold tracking-tight">
-                  {STREAM_LABELS[option.id]}
-                </p>
-                <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                  {option.subjects}
-                </p>
-                <p className="mt-0.5 font-mono text-[9px] leading-4 text-muted-foreground/70">
-                  + {SHARED_SUBJECTS}{" "}
-                  <span className="text-primary/70">(both streams)</span>
-                </p>
-              </div>
-              {active && <Check className="size-4 shrink-0 text-primary" />}
-            </button>
-          );
-        })}
-      </CardContent>
-      <CardFooter className="flex-col gap-2">
-        <Button
-          type="button"
-          className="w-full rounded-xl"
-          onClick={handleSubmit}
-          disabled={!selected || saving}
-        >
-          {saving ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <>
-              Continue <ArrowRight className="size-4" />
-            </>
-          )}
-        </Button>
-      </CardFooter>
-    </div>
+                <div
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                    active
+                      ? "bg-primary/20 text-primary shadow-[0_0_20px_-4px_rgba(99,102,241,0.4)]"
+                      : "bg-white/[0.04] text-white/40 group-hover:bg-white/[0.08] group-hover:text-white/60"
+                  }`}
+                >
+                  <option.icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold tracking-tight text-white/90">
+                    {STREAM_LABELS[option.id]}
+                  </p>
+                  <p className="mt-0.5 font-mono text-[10px] text-white/40">
+                    {option.subjects}
+                  </p>
+                  <p className="mt-0.5 font-mono text-[9px] leading-4 text-white/25">
+                    + {SHARED_SUBJECTS}{" "}
+                    <span className="text-primary/50">(both streams)</span>
+                  </p>
+                </div>
+                {active && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  >
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="h-3.5 w-3.5" />
+                    </div>
+                  </motion.div>
+                )}
+              </motion.button>
+            );
+          })}
+        </CardContent>
+        <CardFooter className="flex-col gap-3 pt-2">
+          <ShimmerButton
+            type="button"
+            className="w-full rounded-xl py-5 text-sm font-semibold"
+            onClick={handleSubmit}
+            disabled={!selected || saving}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                Begin Your Journey <ArrowRight className="h-4 w-4" />
+              </>
+            )}
+          </ShimmerButton>
+        </CardFooter>
+      </div>
+    </AnimatedBorderCard>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   AUTH PAGE
+   ═══════════════════════════════════════════════════════════════════════ */
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
@@ -178,11 +449,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Once authenticated and the profile has loaded: onboard new users (no
-  // stream yet), otherwise go to the intended destination.
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      if (profile === undefined) return; // profile still loading
+      if (profile === undefined) return;
       if (!profile || !profile.stream) {
         setStep("onboarding");
         return;
@@ -193,9 +462,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
   const convex = useConvex();
 
-  // Resolve "email OR username" to the account's email, then send the code.
-  // This app stores no passwords — the emailed code IS the login — so
-  // "forgot password" is really "send me a code again", which this covers.
   const sendCodeForIdentifier = async (identifier: string) => {
     const resolved = await convex.query(api.profile.resolveLoginIdentifier, {
       identifier,
@@ -235,7 +501,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         const formData = new FormData();
         formData.set("email", step.email);
         await signIn("email-otp", formData);
-        toast.success("A fresh code is on its way — check your inbox.");
+        toast.success("A fresh code is on its way \u2014 check your inbox.");
       } catch (error) {
         setError(
           error instanceof Error
@@ -255,7 +521,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     try {
       const formData = new FormData(event.currentTarget);
       await signIn("email-otp", formData);
-      // Navigation happens in the effect once the profile has loaded.
       setIsLoading(false);
     } catch (error) {
       console.error("OTP verification error:", error);
@@ -273,7 +538,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       if (result.redirect) {
         window.location.assign(result.redirect.toString());
       }
-      // If no redirect was returned (unexpected), the effect takes over.
       setIsLoading(false);
     } catch (error) {
       console.error("Google sign-in error:", error);
@@ -289,7 +553,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     try {
       await signIn("anonymous");
-      // Navigation happens in the effect once the profile has loaded.
     } catch (error) {
       console.error("Guest login error:", error);
       setError(`Failed to sign in as guest: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -302,257 +565,344 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     navigate(redirect);
   };
 
+  /* ─── Stagger animation helpers ───────────────────────────────── */
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.07, delayChildren: 0.1 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20, filter: "blur(4px)" },
+    show: { 
+      opacity: 1, y: 0, filter: "blur(0px)",
+      transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] }
+    }
+  };
+
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden">        {/* Back to site link */}
-        <div className="absolute left-4 top-4 z-10 sm:left-6 sm:top-6">
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm transition-all hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
-          >
-            <ArrowLeft className="size-3.5 transition-transform group-hover:-translate-x-0.5" />
-            Back to site
-          </button>
-        </div>
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#060b1a]">
+      <CinematicBackground />
 
-        {/* Cinematic ambience — grid + glows, never blocks interaction */}
-        <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_-10%,rgba(99,102,241,0.16),transparent)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:44px_44px]" />
-        <div className="absolute bottom-[-10%] left-1/2 h-72 w-[120%] -translate-x-1/2 rounded-[100%] bg-primary/10 blur-3xl" />
+      {/* Back to site link */}
+      <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-6">
+        <motion.button
+          type="button"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.5, duration: 0.5 }}
+          onClick={() => navigate("/")}
+          className="group flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50 backdrop-blur-md transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.08] hover:text-white/80"
+        >
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-x-0.5" />
+          Back to site
+        </motion.button>
       </div>
-      <div className="relative flex flex-1 items-center justify-center px-4 py-10">
-        <div className="flex h-full flex-col items-center justify-center">
-          {step === "onboarding" ? (
-            <Onboarding onComplete={handleOnboardingComplete} />
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-              className="flex w-full justify-center"
-            >
-            <div className="glass-panel w-[min(92vw,380px)] rounded-2xl pb-0">
-              {step === "signIn" ? (
-                <>
-                  <CardHeader className="text-center">
-                    <div className="flex justify-center">
-                      <img
-                        src={logo}
-                        alt="Lock Icon"
-                        width={64}
-                        height={64}
-                        className="mb-4 mt-4 cursor-pointer rounded-lg"
-                        onClick={() => navigate("/")}
-                      />
-                    </div>
-                    <CardTitle className="text-xl">Get Started</CardTitle>
-                    <CardDescription>
-                      Email or username — we&apos;ll email you a code to sign in
-                    </CardDescription>
-                  </CardHeader>
 
-                  {/* Google */}
-                  <CardContent>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full rounded-xl bg-white/5"
-                      onClick={handleGoogle}
-                      disabled={isLoading}
-                    >
-                      <svg className="mr-2 size-4" viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          fill="#4285F4"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52Z"
-                        />
-                      </svg>
-                      Continue with Google
-                    </Button>
+      {/* Main content — split layout */}
+      <div className="relative z-10 flex min-h-screen flex-1">
+        {/* Left showcase (desktop) */}
+        <ShowcasePanel />
 
-                    <div className="my-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                          <span className="w-full border-t" />
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                          <span className="bg-card px-2 text-muted-foreground">
-                            Or
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-
-                  <form onSubmit={handleEmailSubmit}>
-                    <CardContent className="pt-0">
-                      <div className="relative flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            name="identifier"
-                            placeholder="email or username"
-                            type="text"
-                            autoCapitalize="none"
-                            autoCorrect="off"
-                            spellCheck={false}
-                            className="pl-9"
-                            disabled={isLoading}
-                            required
-                          />
-                        </div>
-                        <Button
-                          type="submit"
-                          variant="outline"
-                          size="icon"
-                          disabled={isLoading}
+        {/* Right auth form */}
+        <div className="flex flex-1 items-center justify-center px-4 py-12">
+          <AnimatePresence mode="wait">
+            {step === "onboarding" ? (
+              <motion.div
+                key="onboarding"
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                className="flex w-full justify-center"
+              >
+                <Onboarding onComplete={handleOnboardingComplete} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key={typeof step === "string" ? "signin" : "otp"}
+                initial={{ opacity: 0, y: 30, filter: "blur(6px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                exit={{ opacity: 0, y: -20, filter: "blur(4px)" }}
+                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                className="flex w-full justify-center"
+              >
+                <AnimatedBorderCard className="w-[min(92vw,420px)]">
+                  <div className="px-8 pb-8 pt-6">
+                    <AnimatePresence mode="wait">
+                      {step === "signIn" ? (
+                        <motion.div
+                          key="signin-form"
+                          variants={containerVariants}
+                          initial="hidden"
+                          animate="show"
+                          exit="hidden"
                         >
-                          {isLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <ArrowRight className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                      {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+                          {/* Logo */}
+                          <motion.div variants={itemVariants} className="flex justify-center lg:hidden">
+                            <div className="relative mb-2 mt-2">
+                              <div className="absolute inset-0 animate-pulse rounded-2xl bg-primary/25 blur-xl" />
+                              <img
+                                src={logo}
+                                alt="Nexus Academy"
+                                width={56}
+                                height={56}
+                                className="relative rounded-2xl"
+                              />
+                            </div>
+                          </motion.div>
 
-                      <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-                        Forgot your username or can&apos;t sign in? Enter your email
-                        or username and we&apos;ll email you a code — there are no
-                        passwords to forget.
-                      </p>
+                          {/* Title */}
+                          <motion.div variants={itemVariants} className="text-center">
+                            <h1 className="text-2xl font-extrabold tracking-tight text-white">
+                              Welcome to{" "}
+                              <span className="text-gradient">Nexus</span>
+                            </h1>
+                            <p className="mt-2 text-sm text-white/40">
+                              Sign in to access your learning dashboard
+                            </p>
+                          </motion.div>
 
-                      <div className="mt-4">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full"
-                          onClick={handleGuestLogin}
-                          disabled={isLoading}
+                          {/* Google Button */}
+                          <motion.div variants={itemVariants} className="mt-8">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="group relative w-full overflow-hidden rounded-xl border-white/[0.08] bg-white/[0.04] py-5 text-sm font-medium text-white/70 transition-all duration-300 hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white"
+                              onClick={handleGoogle}
+                              disabled={isLoading}
+                            >
+                              <span className="relative z-10 flex items-center">
+                                <svg className="mr-2.5 h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z" />
+                                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z" />
+                                  <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z" />
+                                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52Z" />
+                                </svg>
+                                Continue with Google
+                              </span>
+                              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.03] to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                            </Button>
+                          </motion.div>
+
+                          {/* Divider */}
+                          <motion.div variants={itemVariants} className="relative my-6">
+                            <div className="absolute inset-0 flex items-center">
+                              <div className="w-full border-t border-white/[0.06]" />
+                            </div>
+                            <div className="relative flex justify-center">
+                              <span className="rounded-full bg-[#0c1425] px-3 text-[10px] uppercase tracking-widest text-white/25">
+                                or continue with email
+                              </span>
+                            </div>
+                          </motion.div>
+
+                          {/* Email Form */}
+                          <motion.form variants={itemVariants} onSubmit={handleEmailSubmit} className="space-y-4">
+                            <div className="relative">
+                              <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
+                              <Input
+                                name="identifier"
+                                placeholder="email or username"
+                                type="text"
+                                autoCapitalize="none"
+                                autoCorrect="off"
+                                spellCheck={false}
+                                className="h-12 rounded-xl border-white/[0.08] bg-white/[0.04] pl-10 text-sm text-white/90 placeholder:text-white/25 transition-all duration-300 focus:border-primary/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-primary/20"
+                                disabled={isLoading}
+                                required
+                              />
+                            </div>
+                            <ShimmerButton
+                              type="submit"
+                              className="w-full rounded-xl py-5 text-sm font-semibold"
+                              disabled={isLoading}
+                            >
+                              {isLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <>
+                                  Send Verification Code <ArrowRight className="h-4 w-4" />
+                                </>
+                              )}
+                            </ShimmerButton>
+                          </motion.form>
+
+                          {/* Error */}
+                          <AnimatePresence>
+                            {error && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -5, height: 0 }}
+                                animate={{ opacity: 1, y: 0, height: "auto" }}
+                                exit={{ opacity: 0, y: -5, height: 0 }}
+                                className="mt-3 overflow-hidden"
+                              >
+                                <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-center text-xs text-red-400">
+                                  {error}
+                                </p>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          {/* Helper text */}
+                          <motion.p variants={itemVariants} className="mt-4 text-center text-[11px] leading-5 text-white/25">
+                            No passwords to forget — we email you a one-time code.
+                          </motion.p>
+
+                          {/* Guest login */}
+                          <motion.div variants={itemVariants} className="mt-4">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="group w-full rounded-xl border-white/[0.06] bg-white/[0.02] py-5 text-sm text-white/40 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.05] hover:text-white/70"
+                              onClick={handleGuestLogin}
+                              disabled={isLoading}
+                            >
+                              <UserX className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+                              Continue as Guest
+                            </Button>
+                          </motion.div>
+                        </motion.div>
+                      ) : (
+                        /* ─── OTP VERIFICATION STEP ────────────────────────── */
+                        <motion.div
+                          key="otp-form"
+                          variants={containerVariants}
+                          initial="hidden"
+                          animate="show"
+                          exit="hidden"
                         >
-                          <UserX className="mr-2 h-4 w-4" />
-                          Continue as Guest
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </form>
-                </>
-              ) : (
-                <>
-                  <CardHeader className="mt-4 text-center">
-                    <CardTitle>Check your email</CardTitle>
-                    <CardDescription>
-                      We&apos;ve sent a code to {step.email}
-                    </CardDescription>
-                  </CardHeader>
-                  <form onSubmit={handleOtpSubmit}>
-                    <CardContent className="pb-4">
-                      <input type="hidden" name="email" value={step.email} />
-                      <input type="hidden" name="code" value={otp} />
+                          {/* Animated mail icon */}
+                          <motion.div variants={itemVariants} className="flex justify-center">
+                            <motion.div
+                              animate={{ y: [0, -6, 0] }}
+                              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                              className="relative mb-4 mt-2"
+                            >
+                              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+                                <Mail className="h-7 w-7 text-primary" />
+                              </div>
+                              <div className="absolute -right-1 -top-1">
+                                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
+                                  <Check className="h-3 w-3" />
+                                </div>
+                              </div>
+                            </motion.div>
+                          </motion.div>
 
-                      <div className="flex justify-center">
-                        <InputOTP
-                          value={otp}
-                          onChange={setOtp}
-                          maxLength={6}
-                          disabled={isLoading}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && otp.length === 6 && !isLoading) {
-                              const form = (e.target as HTMLElement).closest("form");
-                              if (form) form.requestSubmit();
-                            }
-                          }}
-                        >
-                          <InputOTPGroup>
-                            {Array.from({ length: 6 }).map((_, index) => (
-                              <InputOTPSlot key={index} index={index} />
-                            ))}
-                          </InputOTPGroup>
-                        </InputOTP>
-                      </div>
-                      {error && (
-                        <p className="mt-2 text-center text-sm text-red-500">
-                          {error}
-                        </p>
+                          <motion.div variants={itemVariants} className="text-center">
+                            <CardTitle className="text-xl text-white">Check your email</CardTitle>
+                            <CardDescription className="mt-2 text-white/40">
+                              We&apos;ve sent a verification code to
+                            </CardDescription>
+                            <p className="mt-1 text-sm font-medium text-primary">
+                              {step.email}
+                            </p>
+                          </motion.div>
+
+                          <motion.form variants={itemVariants} onSubmit={handleOtpSubmit} className="mt-8 space-y-6">
+                            <input type="hidden" name="email" value={step.email} />
+                            <input type="hidden" name="code" value={otp} />
+
+                            <div className="flex justify-center gap-2">
+                              <InputOTP
+                                value={otp}
+                                onChange={setOtp}
+                                maxLength={6}
+                                disabled={isLoading}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && otp.length === 6 && !isLoading) {
+                                    const form = (e.target as HTMLElement).closest("form");
+                                    if (form) form.requestSubmit();
+                                  }
+                                }}
+                              >
+                                <InputOTPGroup>
+                                  {Array.from({ length: 6 }).map((_, index) => (
+                                    <InputOTPSlot key={index} index={index} />
+                                  ))}
+                                </InputOTPGroup>
+                              </InputOTP>
+                            </div>
+
+                            {/* Error */}
+                            <AnimatePresence>
+                              {error && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -5, height: 0 }}
+                                  animate={{ opacity: 1, y: 0, height: "auto" }}
+                                  exit={{ opacity: 0, y: -5, height: 0 }}
+                                  className="overflow-hidden"
+                                >
+                                  <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-center text-xs text-red-400">
+                                    {error}
+                                  </p>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            <ShimmerButton
+                              type="submit"
+                              className="w-full rounded-xl py-5 text-sm font-semibold"
+                              disabled={isLoading || otp.length !== 6}
+                            >
+                              {isLoading ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Verifying...
+                                </>
+                              ) : (
+                                <>
+                                  Verify Code <ArrowRight className="ml-2 h-4 w-4" />
+                                </>
+                              )}
+                            </ShimmerButton>
+                          </motion.form>
+
+                          <motion.div variants={itemVariants} className="mt-4 text-center text-sm text-white/30">
+                            Didn&apos;t get it?{" "}
+                            <button
+                              type="button"
+                              onClick={() => void handleResendCode()}
+                              disabled={isLoading}
+                              className="text-primary/70 underline-offset-4 transition-colors hover:text-primary disabled:opacity-50"
+                            >
+                              Resend code
+                            </button>{" "}
+                            or{" "}
+                            <button
+                              type="button"
+                              onClick={() => { setStep("signIn"); setError(null); }}
+                              disabled={isLoading}
+                              className="text-white/50 underline-offset-4 transition-colors hover:text-white/70 disabled:opacity-50"
+                            >
+                              try again
+                            </button>
+                          </motion.div>
+                        </motion.div>
                       )}
-                      <p className="mt-4 text-center text-sm text-muted-foreground">
-                        Didn&apos;t receive a code?{" "}
-                        <Button
-                          variant="link"
-                          className="h-auto p-0"
-                          onClick={() => void handleResendCode()}
-                          disabled={isLoading}
-                        >
-                          Resend code
-                        </Button>{" "}
-                        or{" "}
-                        <Button
-                          variant="link"
-                          className="h-auto p-0"
-                          onClick={() => setStep("signIn")}
-                        >
-                          try again
-                        </Button>
-                      </p>
-                    </CardContent>
-                    <CardFooter className="flex-col gap-2">
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={isLoading || otp.length !== 6}
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Verifying...
-                          </>
-                        ) : (
-                          <>
-                            Verify code
-                            <ArrowRight className="ml-2 h-4 w-4" />
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setStep("signIn")}
-                        disabled={isLoading}
-                        className="w-full"
-                      >
-                        Use a different email or username
-                      </Button>
-                    </CardFooter>
-                  </form>
-                </>
-              )}
+                    </AnimatePresence>
 
-              <div className="rounded-b-2xl border-t border-white/10 bg-white/[0.03] px-6 py-4 text-center text-xs text-muted-foreground">
-                Secured by{" "}
-                <a
-                  href="https://freebuff.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline transition-colors hover:text-primary"
-                >
-                  freebuff.com
-                </a>
-              </div>
-            </div>
-            </motion.div>
-          )}
+                    {/* Footer */}
+                    <div className="mt-8 flex items-center justify-center gap-1.5 text-center text-[10px] text-white/20">
+                      <Shield className="h-3 w-3" />
+                      <span>Secured by </span>
+                      <a
+                        href="https://freebuff.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline-offset-2 transition-colors hover:text-white/40"
+                      >
+                        freebuff.com
+                      </a>
+                    </div>
+                  </div>
+                </AnimatedBorderCard>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>

@@ -630,3 +630,159 @@ html.lenis, html.lenis body {
     cursor: pointer;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   AUTH PAGE — CINEMATIC ANIMATIONS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Aurora orbs — slow-moving gradient spheres */
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  will-change: transform;
+}
+
+.aurora-orb-1 {
+  width: 600px;
+  height: 600px;
+  top: -15%;
+  left: -10%;
+  background: radial-gradient(circle, oklch(0.55 0.2 260 / 0.25), transparent 70%);
+  animation: aurora-drift-1 25s ease-in-out infinite;
+}
+
+.aurora-orb-2 {
+  width: 500px;
+  height: 500px;
+  bottom: -20%;
+  right: -10%;
+  background: radial-gradient(circle, oklch(0.6 0.18 280 / 0.2), transparent 70%);
+  animation: aurora-drift-2 30s ease-in-out infinite;
+}
+
+.aurora-orb-3 {
+  width: 350px;
+  height: 350px;
+  top: 40%;
+  left: 50%;
+  background: radial-gradient(circle, oklch(0.5 0.22 230 / 0.15), transparent 70%);
+  animation: aurora-drift-3 20s ease-in-out infinite;
+}
+
+.aurora-orb-4 {
+  width: 250px;
+  height: 250px;
+  top: 10%;
+  right: 25%;
+  background: radial-gradient(circle, oklch(0.65 0.15 200 / 0.12), transparent 70%);
+  animation: aurora-drift-4 18s ease-in-out infinite;
+}
+
+.aurora-orb-5 {
+  width: 200px;
+  height: 200px;
+  bottom: 20%;
+  left: 20%;
+  background: radial-gradient(circle, oklch(0.55 0.2 310 / 0.1), transparent 70%);
+  animation: aurora-drift-5 22s ease-in-out infinite;
+}
+
+@keyframes aurora-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(80px, 40px) scale(1.1); }
+  50% { transform: translate(40px, 80px) scale(0.95); }
+  75% { transform: translate(-30px, 50px) scale(1.05); }
+}
+
+@keyframes aurora-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-60px, -50px) scale(1.08); }
+  50% { transform: translate(-80px, -20px) scale(0.92); }
+  75% { transform: translate(-40px, -70px) scale(1.03); }
+}
+
+@keyframes aurora-drift-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-70px, 30px) scale(1.15); }
+  66% { transform: translate(50px, -40px) scale(0.9); }
+}
+
+@keyframes aurora-drift-4 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  30% { transform: translate(-40px, 60px) scale(1.1); }
+  60% { transform: translate(30px, -30px) scale(0.95); }
+}
+
+@keyframes aurora-drift-5 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  40% { transform: translate(50px, -40px) scale(1.12); }
+  70% { transform: translate(-30px, 20px) scale(0.93); }
+}
+
+/* Animated gradient border for auth card */
+.auth-card-border {
+  border-radius: 1rem;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--card-border-angle, 0deg),
+    oklch(0.55 0.2 260 / 0.3),
+    oklch(0.6 0.18 280 / 0.08),
+    oklch(0.5 0.22 230 / 0.3),
+    oklch(0.65 0.15 200 / 0.08),
+    oklch(0.55 0.2 260 / 0.3)
+  );
+  animation: card-border-spin 6s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+@property --card-border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes card-border-spin {
+  to { --card-border-angle: 360deg; }
+}
+
+/* Fallback for browsers that don't support @property */
+@supports not (background: conic-gradient(from 0deg, red, blue)) {
+  .auth-card-border {
+    background: linear-gradient(135deg, oklch(0.55 0.2 260 / 0.3), oklch(0.5 0.22 230 / 0.1), oklch(0.6 0.18 280 / 0.3));
+    animation: none;
+  }
+}
+
+/* Shimmer button effect */
+.auth-shimmer-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  40% { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Light-mode auth overrides — keep it gorgeous in both themes */
+.light .auth-bg {
+  display: none;
+}
+
+.light .auth-card-border {
+  background: conic-gradient(
+    from var(--card-border-angle, 0deg),
+    oklch(0.52 0.17 255 / 0.4),
+    oklch(0.5 0.12 240 / 0.1),
+    oklch(0.52 0.17 255 / 0.4),
+    oklch(0.5 0.12 240 / 0.1),
+    oklch(0.52 0.17 255 / 0.4)
+  );
+}
+
+.light .aurora-orb { opacity: 0.5; }
