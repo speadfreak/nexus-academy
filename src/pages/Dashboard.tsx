@@ -200,16 +200,16 @@ function BookTile({
             {item.title}
           </h3>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-white/70">
+            <span className="rounded bg-black/30 px-1.5 py-0.5 type-caption font-bold uppercase tracking-wide text-white/70">
               Grade {item.grade}
             </span>
             {item.examYear && (
-              <span className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[9px] font-bold text-white/70">
+              <span className="rounded bg-black/30 px-1.5 py-0.5 type-caption font-bold text-white/70">
                 {item.examYear}
               </span>
             )}
             {item.isPremium && (
-              <span className="flex items-center gap-1 rounded bg-amber-400/20 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-200">
+              <span className="flex items-center gap-1 rounded bg-amber-400/20 px-1.5 py-0.5 type-caption font-bold text-amber-200">
                 {locked ? <Lock className="size-2.5" /> : <Sparkles className="size-2.5" />}
                 Premium
               </span>
@@ -423,11 +423,11 @@ export default function Dashboard() {
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="flex items-center gap-2 type-mono font-bold uppercase tracking-[0.18em] text-primary">
               {profile && (
                 <Avatar className="size-7">
                   <AvatarImage src={profile.avatarUrl ?? undefined} />
-                  <AvatarFallback className="bg-primary/10 text-[10px] font-extrabold text-primary">
+                  <AvatarFallback className="bg-primary/10 type-caption font-extrabold text-primary">
                     {(profile.displayName ?? "N")
                       .split(/\s+/)
                       .filter(Boolean)

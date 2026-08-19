@@ -220,10 +220,10 @@ export default function Tutor() {
           </div>
 
           <div className="mt-4 flex items-center justify-between px-1">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="type-caption font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               conversations
             </span>
-            <span className="font-mono text-[10px] text-muted-foreground/60">
+            <span className="type-caption text-muted-foreground/60">
               {conversations?.length ?? "—"}
             </span>
           </div>
@@ -414,7 +414,7 @@ export default function Tutor() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col items-end gap-1"
               >
-                <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-primary/25 bg-primary/10 px-4 py-3 text-sm leading-6">
+                <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-primary/25 bg-primary/10 px-4 py-3 type-body leading-6">
                   {sending.content}
                 </div>
                 <span className="px-1 type-caption text-muted-foreground/70">

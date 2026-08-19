@@ -238,7 +238,7 @@ export default function Landing() {
             </span>
           </Link>
 
-          <div className="hidden items-center gap-6 font-mono text-xs font-medium text-muted-foreground md:flex">
+          <div className="hidden items-center gap-6 type-mono font-medium text-muted-foreground md:flex">
             <a href="#companion" className="transition-colors hover:text-foreground">
               companion
             </a>
@@ -268,7 +268,7 @@ export default function Landing() {
               ) : (
                 <Sun className="size-3.5 text-amber-500" />
               )}
-              <span className="hidden font-mono text-[10px] font-bold uppercase tracking-wider sm:inline">
+              <span className="hidden type-caption font-bold uppercase tracking-wider sm:inline">
                 {theme === "light" ? "Dark mode" : "Light mode"}
               </span>
             </Button>
@@ -339,7 +339,7 @@ export default function Landing() {
           className="flex flex-col items-start"
         >
           <motion.div variants={fadeUp}>
-            <Badge className="glass-chip gap-2 rounded-full px-3 py-1 font-mono text-[11px] font-semibold text-primary">
+            <Badge className="glass-chip gap-2 rounded-full px-3 py-1 type-caption font-semibold text-primary">
               <span className="relative flex size-1.5">
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
@@ -449,14 +449,14 @@ export default function Landing() {
           <motion.div
             animate={{ y: [0, -8, 0] }}
             transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
-            className="glass-chip absolute -right-3 -top-3 flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-[11px] font-semibold"
+            className="glass-chip absolute -right-3 -top-3 flex items-center gap-2 rounded-full px-3 py-1.5 type-caption font-semibold"
           >
             <BookOpen className="size-3.5 text-primary" /> 09 subjects
           </motion.div>
           <motion.div
             animate={{ y: [0, 8, 0] }}
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
-            className="glass-chip absolute -bottom-4 -left-4 flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-[11px] font-semibold"
+            className="glass-chip absolute -bottom-4 -left-4 flex items-center gap-2 rounded-full px-3 py-1.5 type-caption font-semibold"
           >
             <CalendarDays className="size-3.5 text-primary" /> years of past papers
           </motion.div>
