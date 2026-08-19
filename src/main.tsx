@@ -37,8 +37,11 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 // Simple loading fallback for route transitions
 function RouteLoading() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
+    <div className="flex min-h-screen items-center justify-center bg-background px-6 text-foreground">
+      <div className="text-center">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 font-serif text-2xl font-black text-primary">N</div>
+        <p className="mt-4 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">Loading Nexus Academy</p>
+      </div>
     </div>
   );
 }
@@ -64,7 +67,9 @@ class LazyErrorBoundary extends React.Component<
     this.setState({ hasError: false, message: '' });
     // Bypass browser cache so we get the latest index.html with current
     // chunk hashes — a plain reload may re-fetch the stale cached HTML.
-    window.location.href = window.location.pathname + window.location.search + window.location.hash;
+    const params = new URLSearchParams(window.location.search);
+    params.set("__nexus_retry", String(Date.now()));
+    window.location.replace(`${window.location.pathname}?${params.toString()}${window.location.hash}`);
   };
   render() {
     if (this.state.hasError) {
@@ -240,7 +245,9 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     } else {
       window.addEventListener("load", finish, { once: true });
     }
-    const safety = window.setTimeout(finish, 2500);
+    // Never leave the full-screen loader covering the app if requestAnimationFrame
+    // is paused during a background-tab refresh or a browser restore.
+    const safety = window.setTimeout(() => setReady(true), 2500);
     return () => {
       window.removeEventListener("load", finish);
       window.clearTimeout(safety);
