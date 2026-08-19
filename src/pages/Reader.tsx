@@ -312,7 +312,7 @@ export default function Reader() {
         </Button>
         <div className="min-w-0 flex-1">
           <p className="type-h3 truncate">{item.title}</p>
-          <p className="truncate font-mono text-[10px] text-muted-foreground">
+          <p className="type-caption truncate text-muted-foreground">
             {item.subjectName} · Grade {item.grade}
             {item.examYear ? ` · ${item.examYear}` : ""} ·{" "}
             {CONTENT_TYPE_LABELS[item.contentType as ContentType]}
@@ -366,7 +366,7 @@ export default function Reader() {
             >
               <ZoomOut className="size-3.5" />
             </button>
-            <span className="w-12 text-center font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="w-12 text-center type-mono tabular-nums text-muted-foreground">
               {Math.round(scale * 100)}%
             </span>
             <button
@@ -406,9 +406,9 @@ export default function Reader() {
               }}
               disabled={!numPages}
               aria-label="Current page number"
-              className="h-7 w-12 rounded-md border-white/10 bg-white/5 px-1 text-center font-mono text-[11px] tabular-nums"
+              className="h-7 w-12 rounded-md border-white/10 bg-white/5 px-1 text-center type-mono tabular-nums"
             />
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="type-mono tabular-nums text-muted-foreground">
               / {numPages ?? "—"}
             </span>
             <button
@@ -427,7 +427,7 @@ export default function Reader() {
             {loadingPdf && !pdfUrl && (
               <div className="flex h-full flex-col items-center justify-center gap-3">
                 <Loader2 className="size-6 animate-spin text-primary" />
-                <p className="font-mono text-[11px] text-muted-foreground">opening document…</p>
+                <p className="type-mono text-muted-foreground">opening document…</p>
               </div>
             )}
             {pdfError && (
@@ -528,7 +528,7 @@ export default function Reader() {
               {panelTab === "companion" && (
                 <div id="reader-panel-companion" className="flex h-full flex-col">
                   <div className="flex-1 space-y-3 overflow-y-auto p-3">
-                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 type-mono leading-5 text-muted-foreground">
                       <p className="type-h3 flex items-center gap-1.5 text-foreground">
                         <Sparkles className="size-3 text-primary" /> Grounded in this document
                       </p>
@@ -554,7 +554,7 @@ export default function Reader() {
                       </div>
                     ))}
                     {asking && (
-                      <div className="mr-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <div className="type-mono mr-2 flex items-center gap-2 text-muted-foreground">
                         <Loader2 className="size-3.5 animate-spin text-primary" /> thinking…
                       </div>
                     )}
@@ -589,7 +589,7 @@ export default function Reader() {
 
               {panelTab === "videos" && (
                 <div id="reader-panel-videos" className="space-y-3 p-3">
-                  <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 type-mono leading-5 text-muted-foreground">
                     <p className="type-h3 flex items-center gap-1.5 text-foreground">
                       <Youtube className="size-3 text-primary" /> Topic videos
                     </p>
@@ -599,20 +599,20 @@ export default function Reader() {
                     </p>
                   </div>
                   {searchingVideos && videos === null ? (
-                    <div className="flex items-center gap-2 py-6 text-[11px] text-muted-foreground">
+                    <div className="type-mono flex items-center gap-2 py-6 text-muted-foreground">
                       <Loader2 className="size-3.5 animate-spin text-primary" /> searching…
                     </div>
                   ) : youtubeConfigured === false ? (
                     <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center">
-                      <p className="text-xs text-muted-foreground">
+                      <p className="type-caption text-muted-foreground">
                         Video search needs a <code className="rounded bg-white/10 px-1">YOUTUBE_API_KEY</code> in the Keys tab.
                       </p>
-                      <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">
+                      <p className="type-caption mt-1 text-muted-foreground/70">
                         Google Cloud Console → YouTube Data API v3
                       </p>
                     </div>
                   ) : videos && videos.length === 0 ? (
-                    <p className="py-6 text-center text-xs text-muted-foreground">
+                    <p className="type-caption py-6 text-center text-muted-foreground">
                       No videos found for this topic yet.
                     </p>
                   ) : (
@@ -640,7 +640,7 @@ export default function Reader() {
                           <p className="line-clamp-2 type-caption font-semibold leading-5 text-foreground/90 group-hover:text-primary">
                             {video.title}
                           </p>
-                          <p className="mt-1 flex items-center gap-1 truncate font-mono text-[10px] text-muted-foreground">
+                          <p className="type-caption mt-1 flex items-center gap-1 truncate text-muted-foreground">
                             <ExternalLink className="size-2.5" /> {video.channel}
                           </p>
                         </div>
@@ -672,7 +672,7 @@ export default function Reader() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 cursor-pointer rounded-lg px-2 text-[11px] text-muted-foreground"
+                      className="h-7 cursor-pointer rounded-lg px-2 type-caption text-muted-foreground"
                       onClick={() => {
                         setScratchText("");
                         setScratchResult(null);
@@ -694,7 +694,7 @@ export default function Reader() {
                         if (e.key === "Enter") handleEvaluate();
                       }}
                       placeholder="e.g. (2*3.14*6371)/(24)  or  sqrt(144)"
-                      className="h-8 rounded-lg bg-white/5 font-mono text-[11px]"
+                      className="h-8 rounded-lg bg-white/5 type-mono"
                     />
                     <Button
                       size="sm"
@@ -707,7 +707,7 @@ export default function Reader() {
                   {scratchResult && (
                     <p
                       className={cn(
-                        "mx-3 mt-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[11px]",
+                        "mx-3 mt-1.5 rounded-lg border px-2.5 py-1.5 type-mono",
                         scratchResult.startsWith("⚠")
                           ? "border-rose-400/25 bg-rose-400/5 text-rose-300"
                           : "border-emerald-400/25 bg-emerald-400/5 text-emerald-300",
@@ -727,7 +727,7 @@ export default function Reader() {
                     className="mx-3 mt-2 min-h-0 flex-1 resize-none rounded-xl border border-white/8 bg-white/[0.03] p-3 font-mono text-[12px] leading-5 text-foreground/90 outline-none placeholder:text-muted-foreground/50 focus:border-primary/40"
                   />
                   <div className="flex items-center justify-between gap-2 p-2.5">
-                    <p className="font-mono text-[10px] text-muted-foreground">
+                    <p className="type-caption text-muted-foreground">
                       {scratchSaved ? "saved" : "unsaved changes"}
                     </p>
                     <Button
@@ -755,7 +755,7 @@ export default function Reader() {
       {/* ---- Related resources strip ---- */}
       {relatedItems.length > 0 && (
         <footer className="shrink-0 border-t border-white/8 bg-black/25 px-4 py-3">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="type-mono uppercase tracking-[0.2em] text-muted-foreground">
             related resources · shared topics
           </p>
           <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -771,7 +771,7 @@ export default function Reader() {
                 </span>
                 <span
                   className={cn(
-                    "rounded-md border bg-gradient-to-b px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase",
+                    "type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase",
                     subjectHue(relatedItem.subjectSlug),
                   )}
                 >

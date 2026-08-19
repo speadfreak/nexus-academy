@@ -162,11 +162,11 @@ export default function Notes() {
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="type-mono uppercase tracking-[0.2em] text-primary">
               // sticky notes
             </p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Notes</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h1 className="type-h1 mt-1">Notes</h1>
+            <p className="type-body mt-1 text-muted-foreground">
               Pin what matters. Mark subjects easy or hard — the tutor reads those tags.
             </p>
           </div>
@@ -179,7 +179,7 @@ export default function Notes() {
                 else setSearchParams({});
               }}
             >
-              <SelectTrigger className="h-9 w-44 rounded-xl bg-white/5 font-mono text-xs">
+              <SelectTrigger className="type-caption h-9 w-44 rounded-xl bg-white/5">
                 <SelectValue placeholder="All subjects" />
               </SelectTrigger>
               <SelectContent>
@@ -207,7 +207,7 @@ export default function Notes() {
 
         {/* Quick create */}
         <div className="glass-panel rounded-2xl p-5">
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+          <p className="type-mono uppercase tracking-[0.2em] text-primary">
             // pin a note
           </p>
           <div className="mt-3 flex flex-col gap-3">
@@ -216,14 +216,14 @@ export default function Notes() {
               onChange={(e) => setDraft({ ...draft, content: e.target.value })}
               placeholder="e.g. Newton's second law: F = ma — remember to convert grams to kilograms first…"
               rows={2}
-              className="rounded-xl bg-white/5 font-mono text-sm"
+              className="type-body rounded-xl bg-white/5 font-mono"
             />
             <div className="flex flex-wrap items-center gap-3">
               <Select
                 value={draft.subjectId}
                 onValueChange={(value) => setDraft({ ...draft, subjectId: value })}
               >
-                <SelectTrigger className="h-9 w-44 rounded-xl bg-white/5 font-mono text-xs">
+                <SelectTrigger className="type-caption h-9 w-44 rounded-xl bg-white/5">
                   <SelectValue placeholder="Subject" />
                 </SelectTrigger>
                 <SelectContent>
@@ -240,7 +240,7 @@ export default function Notes() {
                   setDraft({ ...draft, difficulty: value as Difficulty | "none" })
                 }
               >
-                <SelectTrigger className="h-9 w-36 rounded-xl bg-white/5 font-mono text-xs">
+                <SelectTrigger className="type-caption h-9 w-36 rounded-xl bg-white/5">
                   <SelectValue placeholder="Difficulty" />
                 </SelectTrigger>
                 <SelectContent>
@@ -285,10 +285,10 @@ export default function Notes() {
             <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <Plus className="size-6" />
             </div>
-            <h3 className="mt-4 font-bold tracking-tight">
+            <h3 className="type-h3 mt-4">
               {subjectName ? `No notes for ${subjectName} yet` : "No notes yet"}
             </h3>
-            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            <p className="type-body mt-1 max-w-sm text-muted-foreground">
               Pin formulas, exam tricks or reminders. Notes marked{" "}
               <span className="text-rose-300">hard</span> make the tutor slow down on that subject.
             </p>
@@ -309,20 +309,20 @@ export default function Notes() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                     className={cn(
-                      "glass-panel relative mb-4 break-inside-avoid overflow-hidden rounded-2xl p-5 transition-transform duration-300 hover:-translate-y-0.5",
+                      "glass-panel hover-lift relative mb-4 break-inside-avoid overflow-hidden rounded-2xl p-5",
                       colorMeta.tint,
                     )}
                   >
                     <span className={cn("absolute inset-y-0 left-0 w-1", colorMeta.bar)} />
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-mono text-[10px] font-semibold text-muted-foreground">
+                      <p className="type-caption font-semibold text-muted-foreground">
                         {note.subjectName}
                       </p>
                       <div className="flex items-center gap-1">
                         {meta && (
                           <span
                             className={cn(
-                              "rounded-md border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider",
+                              "type-mono rounded-md border px-1.5 py-0.5 uppercase tracking-wider",
                               meta.classes,
                             )}
                           >
@@ -359,7 +359,7 @@ export default function Notes() {
                         </button>
                       </div>
                     </div>
-                    <p className="mt-2.5 whitespace-pre-wrap text-sm leading-6">
+                    <p className="type-body mt-2.5 whitespace-pre-wrap leading-6">
                       {note.content}
                     </p>
                   </motion.div>
@@ -383,7 +383,7 @@ export default function Notes() {
                 value={editing.content}
                 onChange={(e) => setEditing({ ...editing, content: e.target.value })}
                 rows={4}
-                className="rounded-xl bg-white/5 font-mono text-sm"
+                className="type-body rounded-xl bg-white/5 font-mono"
               />
               <div className="flex flex-wrap items-center gap-3">
                 <Select
@@ -392,7 +392,7 @@ export default function Notes() {
                     setEditing({ ...editing, difficulty: value as Difficulty | "none" })
                   }
                 >
-                  <SelectTrigger className="h-9 w-36 rounded-xl bg-white/5 font-mono text-xs">
+                  <SelectTrigger className="type-caption h-9 w-36 rounded-xl bg-white/5">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
