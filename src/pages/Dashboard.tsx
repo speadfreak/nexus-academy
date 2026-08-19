@@ -2,6 +2,7 @@ import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowUp,
   Atom,
   BellRing,
   Bookmark,
@@ -114,6 +115,72 @@ function coverFor(subjectSlug: string) {
       text: "text-slate-200",
       pattern: "rgba(148,163,184,0.03)",
     }
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCROLL-TO-TOP BUTTON — appears after scrolling past the hero
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function ScrollToTopButton() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.button
+          type="button"
+          initial={{ opacity: 0, scale: 0.8, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.8, y: 12 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] as const }}
+          onClick={scrollToTop}
+          aria-label="Scroll to top"
+          className="glass-panel interactive-press fixed bottom-8 right-8 z-40 flex size-11 cursor-pointer items-center justify-center rounded-xl shadow-[0_0_20px_rgba(116,196,255,0.12)] transition-shadow hover:shadow-[0_0_28px_rgba(116,196,255,0.25)]"
+        >
+          <ArrowUp className="size-4 text-primary" />
+        </motion.button>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCROLL PROGRESS BAR — thin glowing line at the top of the page
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function ScrollProgressBar() {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const onScroll = () => {
+      const el = document.documentElement;
+      const scrollTop = el.scrollTop || document.body.scrollTop;
+      const scrollHeight = el.scrollHeight - el.clientHeight;
+      setProgress(scrollHeight > 0 ? scrollTop / scrollHeight : 0);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <motion.div
+      className="fixed inset-x-0 top-0 z-50 h-[2px] origin-left"
+      style={{
+        scaleX: progress,
+        background: "linear-gradient(90deg, oklch(0.65 0.15 240), oklch(0.78 0.14 210), oklch(0.82 0.12 195))",
+        boxShadow: "0 0 12px rgba(116,196,255,0.6), 0 0 4px rgba(116,196,255,0.9)",
+      }}
+    />
   );
 }
 
@@ -998,8 +1065,9 @@ export default function Dashboard() {
         <motion.div
           className="grid grid-cols-2 gap-3 lg:grid-cols-5"
           initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.15 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
         >
           <div className="glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
@@ -1140,8 +1208,9 @@ export default function Dashboard() {
         <motion.div
           className="glass-panel rounded-2xl p-5"
           initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.4 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
         >
           <div className="flex items-center justify-between">
             <span className="type-mono uppercase text-muted-foreground">focus minutes · last 7 days</span>
@@ -1179,15 +1248,23 @@ export default function Dashboard() {
         </motion.div>
 
         {/* ═══ WEEKLY RECAP ═══ */}
-        <WeeklyRecap />
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
+        >
+          <WeeklyRecap />
+        </motion.div>
 
         {/* ═══ DAILY CHALLENGE ═══ */}
         {dailyChallenges !== undefined && dailyChallenges.length > 0 && activeChallenge && (
           <motion.div
             className="glass-panel hover-lift rounded-2xl p-5"
             initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.5 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -1295,8 +1372,9 @@ export default function Dashboard() {
         <motion.div
           className="glass-panel rounded-2xl p-5"
           initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.45 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
         >
           <div className="relative">
             <motion.div
@@ -1538,6 +1616,10 @@ export default function Dashboard() {
         onOpenChange={(next) => setPremiumPrompt((prev) => (prev ? { ...prev, open: next } : prev))}
         reason="premium_content"
       />
+
+      {/* ═══ SCROLL FEATURES ═══ */}
+      <ScrollProgressBar />
+      <ScrollToTopButton />
     </DashboardShell>
   );
 }
