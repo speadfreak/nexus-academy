@@ -17,7 +17,6 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
   const generateUploadUrl = useMutation(api.groupChat.generateUploadUrl);
   const sendAttachment = useMutation(api.groupChat.sendAttachment);
   const sendVoiceNote = useMutation(api.groupChat.sendVoiceNote);
-  const getAttachmentUrl = useQuery(api.groupChat.getAttachmentUrl, "skip");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
