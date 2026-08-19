@@ -19,7 +19,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Document, Page as PdfPage } from "react-pdf";
 import { toast } from "sonner";
-import { pdfjs } from "@/lib/pdf";
 import {
   ArrowLeft,
   Bookmark,
@@ -52,12 +51,6 @@ import {
 } from "@/convex/constants";
 import type { ContentItemWithSubject } from "@/convex/content";
 import { cn } from "@/lib/utils";
-
-// react-pdf needs the worker URL; it's configured once in src/lib/pdf.ts.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
 
 type PanelTab = "companion" | "videos" | "scratchpad";
 
@@ -464,7 +457,12 @@ export default function Reader() {
                 }}
                 onLoadError={(error) => {
                   console.error("[Reader] PDF load failed:", error);
-                  setPdfError("The document could not be rendered in the browser.");
+                  const msg = error?.message || String(error);
+                  if (msg.includes("worker") || msg.includes("Worker")) {
+                    setPdfError("PDF worker failed to load. Try refreshing the page.");
+                  } else {
+                    setPdfError("The document could not be rendered in the browser. Try refreshing or opening in a new tab.");
+                  }
                 }}
                 className="mx-auto flex max-w-fit flex-col items-center gap-3"
               >

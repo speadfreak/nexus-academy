@@ -1,4 +1,6 @@
-import '@vly-ai/integrations';
+// Vly platform telemetry — loaded async so a crash never prevents React
+// from mounting. The result is intentionally discarded.
+void import('@vly-ai/integrations').catch(() => {});
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -246,9 +248,9 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     } else {
       window.addEventListener("load", finish, { once: true });
     }
-    // Never leave the full-screen loader covering the app if requestAnimationFrame
-    // is paused during a background-tab refresh or a browser restore.
-    const safety = window.setTimeout(() => setReady(true), 2500);
+    // Faster safety cap — 800ms is enough for rAF to fire; if it
+    // hasn't, the user has waited long enough.
+    const safety = window.setTimeout(() => setReady(true), 800);
     return () => {
       window.removeEventListener("load", finish);
       window.clearTimeout(safety);

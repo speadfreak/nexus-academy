@@ -3,14 +3,17 @@
 // pdf.js is used in TWO places: the in-app reader (via react-pdf) and the
 // admin upload form's AI classification (text extraction happens HERE in the
 // browser — pdf.js crashes the Convex node analyzer, so it never runs
-// server-side). The worker is served as a static asset by Vite.
+// server-side).
+//
+// Worker source: we use the CDN version keyed to the installed pdfjs-dist
+// version. This is more reliable than Vite's import.meta.url resolution in
+// production, which can break on Render's static hosting.
 
 import * as pdfjs from "pdfjs-dist";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
+// Use cdnjs CDN — always available, no bundling issues.
+// The version is pinned to match package.json.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
 
 /**
  * Extract a plain-text sample from the first pages of a PDF file.
