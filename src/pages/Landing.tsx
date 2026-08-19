@@ -7,7 +7,9 @@ import {
   Brain,
   CalendarDays,
   Check,
+  ChevronUp,
   ClipboardList,
+  Clock,
   Dna,
   FileText,
   FlaskConical,
@@ -28,6 +30,7 @@ import {
   Timer,
   TrendingUp,
 } from "lucide-react";
+import { useState, useEffect as useEff } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
@@ -344,7 +347,7 @@ export default function Landing() {
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
               </span>
-              // ethiopian national exam prep · grades 9–12
+              // EHEEE / ESSLCE exam prep · grades 9–12
             </Badge>
           </motion.div>
 
@@ -362,10 +365,11 @@ export default function Landing() {
             variants={fadeUp}
             className="type-body-lg mt-5 max-w-xl text-muted-foreground"
           >
-            Nexus Academy is the complete content library for the Ethiopian national
-            matric exams — textbooks, past papers, worksheets and study guides across
-            all nine subjects. Sign in, search the catalog, and download exactly what
-            your grade and stream require.
+            Nexus Academy is the complete content library for the EHEEE
+            (Ethiopian Higher Education Entrance Examination, also called ESSLCE) —
+            textbooks, past papers, worksheets and study guides across all nine
+            subjects. Sign in, search the catalog, and download exactly what your
+            grade and stream require.
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center gap-3">
@@ -521,6 +525,46 @@ export default function Landing() {
         </motion.div>
       </section>
 
+      {/* ------- Founder note ------- */}
+      <section className="mx-auto max-w-6xl px-4 py-16">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="glass-panel relative mx-auto max-w-2xl overflow-hidden rounded-3xl px-8 py-10"
+        >
+          <div className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-primary/10 blur-3xl" />
+          <div className="relative">
+            <p className="type-mono uppercase tracking-[0.2em] text-primary">
+              // why I built this
+            </p>
+            <div className="mt-4 type-body-lg leading-relaxed text-foreground/90">
+              <p>
+                I&apos;m Joseph James, 18 years old, Ethiopian. I built Nexus Academy
+                because I watched myself and my classmates struggle to organize four
+                years of curriculum into something that actually felt like exam
+                preparation — not just a pile of PDFs and half-remembered notes.
+              </p>
+              <p className="mt-3">
+                The EHEEE is one of the most consequential exams a young Ethiopian
+                takes. It deserved better than what we had. So I built the tool I
+                wish existed when I was studying for it.
+              </p>
+            </div>
+            <div className="mt-6 flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-full bg-primary/15 type-mono font-bold text-primary">
+                JJ
+              </div>
+              <div>
+                <p className="type-body font-semibold">Joseph James</p>
+                <p className="type-caption text-muted-foreground">founder · developer</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
       {/* ------- Stats ------- */}
       <section className="mx-auto max-w-6xl px-4">
         <motion.div
@@ -546,6 +590,52 @@ export default function Landing() {
           ))}
         </motion.div>
       </section>
+
+      {/* ------- Exam countdown ------- */}
+      {(() => {
+        const now = new Date();
+        const naturalExam = new Date("2026-06-30T08:00:00+03:00");
+        const socialExam = new Date("2026-07-13T08:00:00+03:00");
+        const naturalDays = Math.max(0, Math.ceil((naturalExam.getTime() - now.getTime()) / 86400000));
+        const socialDays = Math.max(0, Math.ceil((socialExam.getTime() - now.getTime()) / 86400000));
+        return (
+          <section className="mx-auto max-w-6xl px-4 py-8">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.5 }}
+              className="glass-panel mx-auto flex flex-col items-center gap-5 rounded-2xl px-6 py-6 sm:flex-row sm:justify-center sm:gap-10"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-300">
+                  <Clock className="size-5" />
+                </div>
+                <div>
+                  <p className="type-body font-semibold">Natural Science EHEEE</p>
+                  <p className="type-mono text-muted-foreground">June 30 – July 10, 2026</p>
+                </div>
+                <div className="ml-2 flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 type-mono font-bold text-emerald-300">
+                  {naturalDays} days
+                </div>
+              </div>
+              <div className="hidden h-8 w-px bg-white/10 sm:block" />
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
+                  <Clock className="size-5" />
+                </div>
+                <div>
+                  <p className="type-body font-semibold">Social Science EHEEE</p>
+                  <p className="type-mono text-muted-foreground">July 13 – July 23, 2026</p>
+                </div>
+                <div className="ml-2 flex items-center gap-1.5 rounded-full bg-amber-400/10 px-3 py-1 type-mono font-bold text-amber-300">
+                  {socialDays} days
+                </div>
+              </div>
+            </motion.div>
+          </section>
+        );
+      })()}
 
       {/* ------- Streams ------- */}
       <section id="streams" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-20">
@@ -686,6 +776,33 @@ export default function Landing() {
         </motion.div>
       </section>
 
+      {/* ------- Try before you sign up ------- */}
+      <section className="mx-auto max-w-6xl px-4 pb-16">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5 }}
+          className="glass-panel mx-auto flex flex-col items-center gap-4 rounded-2xl px-6 py-8 text-center sm:flex-row sm:text-left"
+        >
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <FileText className="size-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="type-h3 font-semibold">Preview a real past paper — no signup required</p>
+            <p className="type-body mt-1 text-muted-foreground">
+              See exactly what Nexus Academy looks like before you create an account.
+              One real EHEEE past exam paper, fully readable, right now.
+            </p>
+          </div>
+          <Button asChild size="lg" variant="outline" className="shrink-0 rounded-xl bg-white/5 interactive-press">
+            <Link to="/read/demo" className="gap-2">
+              <BookOpen className="size-4" /> Try a past paper
+            </Link>
+          </Button>
+        </motion.div>
+      </section>
+
       {/* ------- How it works ------- */}
       <section id="how" className="mx-auto max-w-6xl scroll-mt-24 px-4 pb-20">
         <motion.div
@@ -732,6 +849,56 @@ export default function Landing() {
               <p className="type-body mt-1.5 text-muted-foreground">
                 {step.description}
               </p>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
+
+      {/* ------- FAQ ------- */}
+      <section className="mx-auto max-w-3xl px-4 pb-20">
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-60px" }}
+          className="mx-auto text-center"
+        >
+          <motion.p variants={fadeUp} className="type-mono uppercase tracking-[0.2em] text-primary">
+            // questions
+          </motion.p>
+          <motion.h2 variants={fadeUp} className="type-h1 mt-3">
+            Frequently asked
+          </motion.h2>
+        </motion.div>
+
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-60px" }}
+          className="mt-10 space-y-3"
+        >
+          {[
+            {
+              q: "Is this really free?",
+              a: "Yes. The library, todos, focus timer, streaks, 15 tutor messages a day and a weekly quiz are free. Premium (past exams, unlimited tutoring, AI study plans) starts after a 14-day trial of active study days — not calendar days.",
+            },
+            {
+              q: "Does it work on a slow connection?",
+              a: "The library loads content lists fast even on 2G. Once a PDF is open it renders offline. The tutor and quizzes need a connection, but the app is designed to stay usable on Ethiopian mobile networks.",
+            },
+            {
+              q: "Is my TeleBirr / M-Pesa payment safe?",
+              a: "Payments are processed through your carrier's own secure checkout. Nexus Academy never sees your PIN or card number — we only receive a confirmation token.",
+            },
+            {
+              q: "What happens when my trial ends?",
+              a: "Your free features stay forever: library browsing, todos, focus timer, streaks and limited tutoring. Premium content (past papers, plans, unlimited tutor) pauses until you upgrade.",
+            },
+          ].map((faq, i) => (
+            <motion.div key={i} variants={fadeUp} className="glass-soft rounded-2xl px-6 py-5">
+              <p className="type-h3 font-semibold">{faq.q}</p>
+              <p className="type-body mt-2 text-muted-foreground">{faq.a}</p>
             </motion.div>
           ))}
         </motion.div>
@@ -786,22 +953,80 @@ export default function Landing() {
       </section>
 
       {/* ------- Footer ------- */}
-      <footer className="border-t border-white/8 bg-white/[0.02] backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row">
-          <div className="flex items-center gap-2.5">
-            <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
-            <span className="type-h3 font-extrabold">Nexus Academy</span>
+      <footer className="relative border-t border-white/8 overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-primary/[0.03] to-primary/[0.06]" />
+        <div className="pointer-events-none absolute -left-24 bottom-0 size-64 rounded-full bg-primary/8 blur-3xl" />
+        <div className="pointer-events-none absolute -right-24 bottom-10 size-48 rounded-full bg-sky-400/5 blur-3xl" />
+        <div className="relative mx-auto max-w-6xl px-4 py-14">
+          {/* Signature credit — the standout element */}
+          <div className="flex flex-col items-center text-center">
+            <img src={logo} alt="Nexus Academy logo" className="mb-4 size-12 rounded-2xl" />
+            <p className="type-h2">
+              Nexus Academy
+            </p>
+            <div className="mt-4 flex flex-col items-center gap-1">
+              <p className="type-body-lg italic text-foreground/80">
+                "The exam room shouldn't be a surprise."
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <div className="h-px w-8 bg-gradient-to-r from-transparent to-primary/40" />
+                <p className="type-mono uppercase tracking-[0.25em] text-primary">
+                  Built by Joseph James
+                </p>
+                <div className="h-px w-8 bg-gradient-to-l from-transparent to-primary/40" />
+              </div>
+              <p className="type-caption text-muted-foreground">
+                18-year-old Ethiopian developer · Addis Ababa
+              </p>
+            </div>
           </div>
-          <p className="font-mono text-[11px] text-muted-foreground">
-            © {new Date().getFullYear()} Nexus Academy · Ethiopian national exam prep,
-            grades 9–12
-          </p>
-          <div className="flex items-center gap-4 font-mono text-[11px] text-muted-foreground">
-            <Sparkles className="size-3.5 text-primary" />
-            <span>trial · telebirr · mpesa</span>
+
+          {/* Divider */}
+          <div className="mx-auto my-8 h-px max-w-md bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+          {/* Bottom row */}
+          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <p className="type-caption text-muted-foreground">
+              © {new Date().getFullYear()} Nexus Academy · EHEEE exam prep, grades 9–12
+            </p>
+            <div className="flex items-center gap-4">
+              <span className="type-caption text-muted-foreground">TeleBirr</span>
+              <span className="text-muted-foreground/30">·</span>
+              <span className="type-caption text-muted-foreground">M-Pesa</span>
+              <span className="text-muted-foreground/30">·</span>
+              <span className="flex items-center gap-1 type-caption text-primary/80">
+                <Sparkles className="size-3" /> 14-day trial
+              </span>
+            </div>
           </div>
         </div>
       </footer>
+
+      {/* ------- Back to top ------- */}
+      <BackToTop />
     </div>
+  );
+}
+
+function BackToTop() {
+  const [visible, setVisible] = useState(false);
+  useEff(() => {
+    const onScroll = () => setVisible(window.scrollY > 600);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  if (!visible) return null;
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8 }}
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      aria-label="Back to top"
+      className="fixed bottom-6 right-6 z-50 flex size-11 items-center justify-center rounded-xl bg-primary/90 text-primary-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-primary interactive-press"
+    >
+      <ChevronUp className="size-5" />
+    </motion.button>
   );
 }
