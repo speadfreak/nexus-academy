@@ -602,9 +602,9 @@ const schema = defineSchema(
 
     // Encrypted/stored API key values that admins manage through the UI.
     // Reads fall through to process.env first; values here override.
-    configKeys: defineTable({
-      key: v.string(),       // e.g. "XAI_API_KEY", "R2_ACCOUNT_ID"
-      value: v.string(),     // the secret value (stored server-side, never sent to browser)
+        configKeys: defineTable({
+      key: v.string(),
+      value: v.string(),
       updatedAt: v.number(),
       updatedBy: v.id("users"),
     }).index("by_key", ["key"]),
