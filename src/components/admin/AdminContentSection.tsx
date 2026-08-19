@@ -97,8 +97,8 @@ export function AdminContentSection() {
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const generateUploadUrl = useMutation(api.content.generateUploadUrl);
-  const adminUploadContent = useAction(api.contentAdmin.adminUploadContent);
+  const getPresignedR2UploadUrl = useAction(api.contentAdmin.getPresignedR2UploadUrl);
+  const finalizeUpload = useAction(api.contentAdmin.finalizeUpload);
   const classifyContentText = useAction(api.contentAI.classifyContentText);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<Awaited<
@@ -228,60 +228,41 @@ export function AdminContentSection() {
 
     setUploading(true);
     try {
-      // Step 1: Get presigned upload URL
-      let uploadUrl: string;
-      try {
-        uploadUrl = await generateUploadUrl();
-      } catch (err) {
-        console.error("[upload] generateUploadUrl failed:", err);
-        throw new Error("Could not get an upload URL. Check your connection.");
+      // Step 1: Get presigned R2 upload URL (server generates, browser uploads directly)
+      toast.info("Preparing upload…");
+      const { uploadUrl, fileUrl } = await getPresignedR2UploadUrl({
+        filename: file.name,
+        contentType: file.type || "application/pdf",
+        grade: Number(grade),
+        subjectId: subjectId as never,
+        contentSlug: contentType,
+      });
+
+      // Step 2: Upload file directly from browser to R2
+      toast.info("Uploading to R2…");
+      const response = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/pdf" },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error(`R2 upload failed (HTTP ${response.status}). Check your R2 credentials.`);
       }
 
-      // Step 2: Upload file to Convex temp storage
-      let storageId: string;
-      try {
-        const response = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type || "application/pdf" },
-          body: file,
-        });
-        if (!response.ok) {
-          const body = await response.text().catch(() => "");
-          console.error("[upload] PUT failed:", response.status, body);
-          throw new Error(`File upload failed (HTTP ${response.status}). Try a smaller file.`);
-        }
-        const json = (await response.json()) as { storageId: string };
-        storageId = json.storageId;
-      } catch (err) {
-        if (err instanceof Error && err.message.includes("File upload failed")) throw err;
-        console.error("[upload] fetch to storage failed:", err);
-        throw new Error("Network error during upload. Disable VPN/ad-blocker and retry.");
-      }
-
-      // Step 3: Server-side R2 upload + DB insert
-      try {
-        await adminUploadContent({
+      // Step 3: Confirm on server — insert DB row
+      toast.info("Saving to library…");
+      await finalizeUpload({
         title: title.trim(),
         contentType,
         grade: Number(grade),
         subjectId: subjectId as never,
         examYear: contentType === "past_exam" ? Number(examYear) : undefined,
         isPremium,
-        storageId,
+        fileUrl,
+        fileSizeBytes: file.size,
         filename: file.name,
         topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
       });
-      } catch (err) {
-        console.error("[upload] adminUploadContent failed:", err);
-        const msg =
-          typeof err === "object" && err !== null && "data" in err
-            ? String((err as { data: { message?: string } }).data?.message ?? "")
-            : "";
-        throw new Error(
-          msg || (err instanceof Error ? err.message : "") ||
-          "Server error. Ensure all 5 R2 keys are saved in the Keys tab."
-        );
-      }
 
       toast.success("Content uploaded to the library.");
       setFile(null);

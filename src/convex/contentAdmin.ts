@@ -203,7 +203,7 @@ export const deleteContentItem = action({
       } catch (err) { r2Error = err instanceof Error ? err.message : "R2 delete failed"; }
     }
 
-    await ctx.runMutation(internal.content.deleteContentItem, { contentId: args.contentId });
+    await ctx.runMutation(internal.content.deleteContentRow, { contentId: args.contentId });
     return { success: true, r2Error };
   },
 });
@@ -234,12 +234,13 @@ export const getDownloadUrl = action({
     if (!item) throw new ConvexError({ message: "Not found.", code: "not_found" });
 
     if (item.isPremium) {
-      await requireActiveSubscriptionAction(ctx);
+      await requireActiveSubscriptionAction(ctx, userId);
     }
 
     const overrides = await getR2Overrides(ctx);
     const key = keyFromUrl(item.fileUrl, overrides);
     if (!key) throw new ConvexError({ message: "Cannot generate download URL.", code: "storage" });
-    return getSignedDownloadUrl(key, overrides);
+    const url = await getSignedDownloadUrl(key, overrides);
+    return { url };
   },
 });
