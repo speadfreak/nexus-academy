@@ -311,7 +311,7 @@ export default function Reader() {
           </Link>
         </Button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold tracking-tight">{item.title}</p>
+          <p className="type-h3 truncate">{item.title}</p>
           <p className="truncate font-mono text-[10px] text-muted-foreground">
             {item.subjectName} · Grade {item.grade}
             {item.examYear ? ` · ${item.examYear}` : ""} ·{" "}
@@ -433,8 +433,8 @@ export default function Reader() {
             {pdfError && (
               <div className="mx-auto mt-16 max-w-sm rounded-2xl border border-rose-400/25 bg-rose-400/5 px-6 py-8 text-center">
                 <Lock className="mx-auto size-6 text-rose-300" />
-                <h2 className="mt-3 text-sm font-bold tracking-tight">Could not open this document</h2>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{pdfError}</p>
+                <h2 className="type-h3 mt-3">Could not open this document</h2>
+                <p className="type-caption mt-1 leading-5 text-muted-foreground">{pdfError}</p>
                 <Button asChild size="sm" className="mt-4 rounded-xl">
                   <Link to="/upgrade">See upgrade options</Link>
                 </Button>
@@ -529,7 +529,7 @@ export default function Reader() {
                 <div id="reader-panel-companion" className="flex h-full flex-col">
                   <div className="flex-1 space-y-3 overflow-y-auto p-3">
                     <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
-                      <p className="flex items-center gap-1.5 font-bold text-foreground">
+                      <p className="type-h3 flex items-center gap-1.5 text-foreground">
                         <Sparkles className="size-3 text-primary" /> Grounded in this document
                       </p>
                       <p className="mt-1">
@@ -590,7 +590,7 @@ export default function Reader() {
               {panelTab === "videos" && (
                 <div id="reader-panel-videos" className="space-y-3 p-3">
                   <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
-                    <p className="flex items-center gap-1.5 font-bold text-foreground">
+                    <p className="type-h3 flex items-center gap-1.5 text-foreground">
                       <Youtube className="size-3 text-primary" /> Topic videos
                     </p>
                     <p className="mt-1">
@@ -637,7 +637,7 @@ export default function Reader() {
                           </div>
                         )}
                         <div className="min-w-0">
-                          <p className="line-clamp-2 text-[12px] font-semibold leading-5 text-foreground/90 group-hover:text-primary">
+                          <p className="line-clamp-2 type-caption font-semibold leading-5 text-foreground/90 group-hover:text-primary">
                             {video.title}
                           </p>
                           <p className="mt-1 flex items-center gap-1 truncate font-mono text-[10px] text-muted-foreground">
@@ -666,7 +666,7 @@ export default function Reader() {
               {panelTab === "scratchpad" && (
                 <div id="reader-panel-scratchpad" className="flex h-full flex-col">
                   <div className="flex items-center justify-between px-3 pt-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="type-mono uppercase tracking-[0.18em] text-muted-foreground">
                       workings · auto-saved per document
                     </p>
                     <Button
@@ -766,7 +766,7 @@ export default function Reader() {
                 className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 transition-colors hover:border-primary/30"
               >
                 <MessageSquare className="size-3.5 shrink-0 text-primary" />
-                <span className="max-w-48 truncate text-[11px] font-semibold text-foreground/90">
+                <span className="type-caption max-w-48 truncate font-semibold text-foreground/90">
                   {relatedItem.title}
                 </span>
                 <span
