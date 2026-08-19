@@ -51,6 +51,10 @@ const TRACKS: Track[] = [
   { id: "brown", label: "Brown Noise", hint: "deep rumble, low distraction", category: "Deep Work" },
   { id: "birds", label: "Morning Birds", hint: "gentle dawn chorus", category: "Energize" },
   { id: "hum", label: "Soft Hum", hint: "low sine drone for winding down", category: "Wind-down" },
+  { id: "ocean", label: "Ocean Drift", hint: "slow waves and wide space", category: "Calm" },
+  { id: "lofi", label: "Study Pulse", hint: "gentle rhythmic focus bed", category: "Focus" },
+  { id: "fire", label: "Quiet Fireplace", hint: "low crackle and warm air", category: "Wind-down" },
+  { id: "morning", label: "Morning Lift", hint: "bright harmonics for a fresh start", category: "Energize" },
 ];
 
 interface MusicContextValue {
@@ -269,6 +273,23 @@ class AmbientEngine {
       cricket.start();
       this.nodes.push(cricket, cricketGain);
       this.addLfo(22, 0.0038, cricketGain.gain);
+    } else if (trackId === "ocean") {
+      const source = ctx.createBufferSource();
+      source.buffer = this.noiseBuffer(ctx); source.loop = true;
+      const filter = ctx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 420; filter.Q.value = 0.8;
+      const gain = ctx.createGain(); gain.gain.value = 0.32;
+      source.connect(filter); filter.connect(gain); gain.connect(out); source.start();
+      this.source = source; this.nodes.push(filter, gain); this.addLfo(0.08, 0.18, gain.gain);
+    } else if (trackId === "fire") {
+      const source = ctx.createBufferSource(); source.buffer = this.noiseBuffer(ctx); source.loop = true;
+      const filter = ctx.createBiquadFilter(); filter.type = "bandpass"; filter.frequency.value = 260; filter.Q.value = 0.55;
+      const gain = ctx.createGain(); gain.gain.value = 0.18; source.connect(filter); filter.connect(gain); gain.connect(out); source.start();
+      this.source = source; this.nodes.push(filter, gain); this.addLfo(3.2, 0.12, gain.gain);
+    } else if (trackId === "lofi" || trackId === "morning") {
+      const gain = ctx.createGain(); gain.gain.value = 0.055; gain.connect(out);
+      const notes = trackId === "lofi" ? [146.83, 174.61, 220, 261.63] : [261.63, 329.63, 392, 523.25];
+      for (const freq of notes) { const osc = ctx.createOscillator(); osc.type = "triangle"; osc.frequency.value = freq; osc.detune.value = (Math.random()-0.5)*4; osc.connect(gain); osc.start(); this.nodes.push(osc); }
+      this.addLfo(trackId === "lofi" ? 0.16 : 0.08, 0.025, gain.gain);
     } else {
       // binaural-style — two close sines (200 + 204 Hz) create a soft
       // 4 Hz beating tone; panned slightly for a headphone-friendly width.
