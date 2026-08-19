@@ -609,7 +609,6 @@ const schema = defineSchema(
       updatedBy: v.id("users"),
     }).index("by_key", ["key"]),
   },
-  },
 );
 
 export default schema;
