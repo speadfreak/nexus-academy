@@ -1123,8 +1123,8 @@ export default function Dashboard() {
                   style={isActive ? {
                     backgroundColor: `${cover.accent}15`,
                     color: cover.accent,
-                    ringColor: `${cover.accent}30`,
                     boxShadow: `0 0 20px ${cover.accent}15`,
+                    outline: `1px solid ${cover.accent}30`,
                   } : undefined}
                   whileTap={{ scale: 0.96 }}
                 >
