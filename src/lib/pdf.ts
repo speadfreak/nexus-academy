@@ -1,13 +1,12 @@
-// Shared pdf.js setup for the frontend.
+// pdf.js setup for ADMIN text extraction only.
 //
-// pdf.js is used in TWO places: the in-app reader (via react-pdf) and the
-// admin upload form's AI classification (text extraction happens HERE in the
-// browser — pdf.js crashes the Convex node analyzer, so it never runs
-// server-side).
+// ⚠ IMPORTANT: The in-app reader (react-pdf) has its OWN pdfjs-dist (v5.x)
+//    bundled internally. Its worker is configured in Reader.tsx using the
+//    pdfjs instance exported BY react-pdf — NOT this file.
 //
-// Worker source: we use the CDN version keyed to the installed pdfjs-dist
-// version. This is more reliable than Vite's import.meta.url resolution in
-// production, which can break on Render's static hosting.
+// This file configures the TOP-LEVEL pdfjs-dist (v6.x) used only by the
+// admin upload form's AI classification (text extraction in browser).
+// pdf.js crashes the Convex node analyzer, so it never runs server-side.
 
 import * as pdfjs from "pdfjs-dist";
 

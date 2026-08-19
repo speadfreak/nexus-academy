@@ -1,29 +1,22 @@
 // In-app reader — /read/:contentId
 //
-// The real reading experience: PDF rendered in-browser with react-pdf (page
-// navigation + zoom), a collapsible side panel with the AI reading companion
-// (Gemini-preferred, Grok fallback), YouTube topic videos, and a persisted
-// math/physics scratchpad (mathjs). A "related resources" strip surfaces the
-// topic-correlation links created by the admin AI classification flow.
-//
-// Safety/UX notes:
-// - Videos are never embedded or autoplayed — they open in a new tab.
-// - The scratchpad is per (user, content item) and persists across visits.
-// - Premium PDFs go through the same server-gated signed-URL action as the
-//   library download button; free files use their public URL directly.
+// Cinematic PDF reader with AI companion, YouTube videos, scratchpad.
+// PDF worker: react-pdf v10 bundles pdfjs-dist@5.x internally. We MUST import
+// pdfjs from react-pdf (not the top-level package) and point the worker at
+// a CDN URL — the relative 'pdf.worker.mjs' path react-pdf sets by default
+// breaks on Render's static hosting.
 
 import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { evaluate } from "mathjs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { Document, Page as PdfPage } from "react-pdf";
+import { Document, Page as PdfPage, pdfjs } from "react-pdf";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   Bookmark,
   BookmarkCheck,
-  Layers,
   Bot,
   Calculator,
   ChevronLeft,
@@ -42,6 +35,9 @@ import {
   Youtube,
   ZoomIn,
   ZoomOut,
+  BookOpen,
+  RotateCcw,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +48,13 @@ import {
 import type { ContentItemWithSubject } from "@/convex/content";
 import { cn } from "@/lib/utils";
 
+// ─── PDF Worker Fix ─────────────────────────────────────────────────────
+// react-pdf bundles its own pdfjs-dist (v5.4.296). The relative path
+// 'pdf.worker.mjs' it sets by default doesn't resolve in production on
+// Render. Override with the matching CDN version.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+
+// ─── Helpers ────────────────────────────────────────────────────────────
 type PanelTab = "companion" | "videos" | "scratchpad";
 
 function subjectHue(subjectSlug: string): string {
@@ -107,6 +110,7 @@ export default function Reader() {
   const [pageInput, setPageInput] = useState("1");
   const [scale, setScale] = useState(1);
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const [pageAnimating, setPageAnimating] = useState(false);
   const readerItemId = reader?.item?._id;
 
   useEffect(() => {
@@ -248,6 +252,16 @@ export default function Reader() {
     setPageInput(String(next));
   };
 
+  const handlePageChange = useCallback((direction: "prev" | "next") => {
+    setPageAnimating(true);
+    setTimeout(() => setPageAnimating(false), 200);
+    if (direction === "prev") {
+      setPageNumber((p) => Math.max(1, p - 1));
+    } else {
+      setPageNumber((p) => (numPages ? Math.min(numPages, p + 1) : p + 1));
+    }
+  }, [numPages]);
+
   const handleEvaluate = () => {
     try {
       const result = evaluate(scratchInput);
@@ -267,27 +281,41 @@ export default function Reader() {
 
   const relatedItems = useMemo(() => related ?? [], [related]);
 
+  // ─── Loading state ────────────────────────────────────────────────────
   if (reader === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-[#080c14]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="absolute -inset-4 animate-spin rounded-full border-2 border-transparent border-t-primary/60" style={{ animationDuration: '2s' }} />
+            <div className="absolute -inset-8 animate-spin rounded-full border border-transparent border-t-primary/20" style={{ animationDuration: '3s', animationDirection: 'reverse' }} />
+            <BookOpen className="size-8 text-primary" />
+          </div>
+          <p className="type-mono text-sm tracking-widest text-muted-foreground uppercase">Loading reader…</p>
+        </div>
       </div>
     );
   }
 
+  // ─── Not found ────────────────────────────────────────────────────────
   if (!item) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-        <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-          <Lock className="size-6" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#080c14] px-6 text-center">
+        <div className="relative">
+          <div className="absolute -inset-6 rounded-2xl bg-gradient-to-br from-rose-500/20 to-amber-500/20 blur-xl" />
+          <div className="relative flex size-20 items-center justify-center rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl">
+            <Lock className="size-8 text-rose-400" />
+          </div>
         </div>
         <div>
-          <h1 className="type-h1">Document not available</h1>
-          <p className="type-body mt-1 text-muted-foreground">
+          <h1 className="type-h1 bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+            Document not available
+          </h1>
+          <p className="type-body mt-2 text-muted-foreground">
             It may have been removed, or you need to sign in to read it.
           </p>
         </div>
-        <Button asChild variant="outline" className="rounded-xl">
+        <Button asChild variant="outline" className="rounded-xl border-white/10 bg-white/5">
           <Link to="/dashboard">
             <ArrowLeft className="size-4" /> Back to the library
           </Link>
@@ -296,32 +324,48 @@ export default function Reader() {
     );
   }
 
+  // ─── Main reader ──────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen flex-col bg-background">
-      {/* ---- Chrome bar ---- */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/8 bg-black/30 px-3 backdrop-blur sm:px-4">
-        <Button asChild variant="ghost" size="icon" className="size-9 shrink-0 rounded-lg text-muted-foreground">
+    <div className="flex h-screen flex-col bg-[#080c14] overflow-hidden">
+      {/* ═══ TOP CHROME BAR ═══ */}
+      <header className="relative flex h-14 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-black/40 px-3 backdrop-blur-2xl sm:px-5 z-30">
+        {/* Subtle top glow line */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+
+        <Button asChild variant="ghost" size="icon" className="size-9 shrink-0 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200">
           <Link to="/dashboard" aria-label="Back to the library">
             <ArrowLeft className="size-4" />
           </Link>
         </Button>
+
         <div className="min-w-0 flex-1">
-          <p className="type-h3 truncate">{item.title}</p>
-          <p className="type-caption truncate text-muted-foreground">
-            {item.subjectName} · Grade {item.grade}
-            {item.examYear ? ` · ${item.examYear}` : ""} ·{" "}
-            {CONTENT_TYPE_LABELS[item.contentType as ContentType]}
-            {item.fileSizeBytes ? ` · ${formatBytes(item.fileSizeBytes)}` : ""}
-          </p>
+          <p className="type-h3 truncate text-foreground">{item.title}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="type-caption text-muted-foreground">{item.subjectName}</span>
+            <span className="size-1 rounded-full bg-white/20" />
+            <span className="type-caption text-muted-foreground">Grade {item.grade}</span>
+            {item.examYear && (<>
+              <span className="size-1 rounded-full bg-white/20" />
+              <span className="type-caption text-muted-foreground">{item.examYear}</span>
+            </>)}
+            <span className="size-1 rounded-full bg-white/20" />
+            <span className={cn("type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase text-[10px]", subjectHue(item.subjectSlug ?? ""))}>
+              {CONTENT_TYPE_LABELS[item.contentType as ContentType]}
+            </span>
+            {item.fileSizeBytes && (<>
+              <span className="size-1 rounded-full bg-white/20" />
+              <span className="type-caption text-muted-foreground/60">{formatBytes(item.fileSizeBytes)}</span>
+            </>)}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+
+        <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
-            className="size-9 rounded-lg text-muted-foreground"
+            className="size-9 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200"
             onClick={() => void toggleBookmark({ contentId: item._id })}
             aria-label={reader?.bookmarked ? "Remove bookmark" : "Bookmark this document"}
-            title={reader?.bookmarked ? "Remove bookmark" : "Save to reading list"}
           >
             {reader?.bookmarked ? (
               <BookmarkCheck className="size-4 text-primary" />
@@ -330,7 +374,7 @@ export default function Reader() {
             )}
           </Button>
           {pdfUrl && (
-            <Button asChild variant="ghost" size="icon" className="size-9 rounded-lg text-muted-foreground">
+            <Button asChild variant="ghost" size="icon" className="size-9 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200">
               <a href={pdfUrl} target="_blank" rel="noopener noreferrer" aria-label="Download PDF">
                 <Download className="size-4" />
               </a>
@@ -340,18 +384,23 @@ export default function Reader() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-9 rounded-lg text-muted-foreground"
+              className="size-9 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200"
               onClick={() => navigate(`/flashcards?subject=${item.subjectId}&content=${item._id}`)}
-              aria-label="Make flashcards from this document"
-              title="Make flashcards"
+              aria-label="Make flashcards"
             >
-              <Layers className="size-4" />
+              <FileText className="size-4" />
             </Button>
           )}
+          <div className="mx-1 h-5 w-px bg-white/10" />
           <Button
             variant="ghost"
             size="icon"
-            className="size-9 rounded-lg text-muted-foreground"
+            className={cn(
+              "size-9 rounded-xl transition-all duration-200",
+              panelOpen
+                ? "bg-primary/10 text-primary hover:bg-primary/15"
+                : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+            )}
             onClick={() => setPanelOpen((open) => !open)}
             aria-label={panelOpen ? "Hide side panel" : "Show side panel"}
           >
@@ -361,436 +410,541 @@ export default function Reader() {
       </header>
 
       <div className="relative flex min-h-0 flex-1">
-        {/* ---- PDF viewer ---- */}
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.05),transparent_60%)]">
-          {/* Page toolbar */}
-          <div className="flex h-11 shrink-0 items-center justify-center gap-1.5 border-b border-white/5 bg-black/20 px-3">
-            <button
-              type="button"
-              onClick={() => setScale((s) => Math.max(0.6, Math.round((s - 0.15) * 100) / 100))}
-              className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-              aria-label="Zoom out"
-            >
-              <ZoomOut className="size-3.5" />
-            </button>
-            <span className="w-12 text-center type-mono tabular-nums text-muted-foreground">
-              {Math.round(scale * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => setScale((s) => Math.min(2.2, Math.round((s + 0.15) * 100) / 100))}
-              className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-              aria-label="Zoom in"
-            >
-              <ZoomIn className="size-3.5" />
-            </button>
-            <div className="mx-2 h-4 w-px bg-white/10" />
-            <button
-              type="button"
-              onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-              disabled={pageNumber <= 1}
-              className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground disabled:cursor-default disabled:opacity-30"
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <label htmlFor="reader-page-number" className="sr-only">
-              Page number
-            </label>
-            <Input
-              id="reader-page-number"
-              type="number"
-              min={1}
-              max={numPages ?? undefined}
-              value={pageInput}
-              onChange={(event) => setPageInput(event.target.value)}
-              onBlur={() => goToPage(pageInput)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  goToPage(pageInput);
-                  event.currentTarget.blur();
-                }
-              }}
-              disabled={!numPages}
-              aria-label="Current page number"
-              className="h-7 w-12 rounded-md border-white/10 bg-white/5 px-1 text-center type-mono tabular-nums"
-            />
-            <span className="type-mono tabular-nums text-muted-foreground">
-              / {numPages ?? "—"}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPageNumber((p) => (numPages ? Math.min(numPages, p + 1) : p + 1))}
-              disabled={numPages !== null && pageNumber >= numPages}
-              className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground disabled:cursor-default disabled:opacity-30"
-              aria-label="Next page"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
+        {/* ═══ PDF VIEWER ═══ */}
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Ambient background */}
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(56,189,248,0.03),transparent_60%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_80%_100%,rgba(168,85,247,0.02),transparent_50%)]" />
+          {/* Subtle dot grid */}
+          <div className="pointer-events-none absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, white 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
 
-          {/* PDF body */}
-          <div className="flex-1 overflow-auto p-4 sm:p-6">
-            {loadingPdf && !pdfUrl && (
-              <div className="flex h-full flex-col items-center justify-center gap-3">
-                <Loader2 className="size-6 animate-spin text-primary" />
-                <p className="type-mono text-muted-foreground">opening document…</p>
-              </div>
-            )}
-            {pdfError && (
-              <div className="mx-auto mt-16 max-w-sm rounded-2xl border border-rose-400/25 bg-rose-400/5 px-6 py-8 text-center">
-                <Lock className="mx-auto size-6 text-rose-300" />
-                <h2 className="type-h3 mt-3">Could not open this document</h2>
-                <p className="type-caption mt-1 leading-5 text-muted-foreground">{pdfError}</p>
-                <Button asChild size="sm" className="mt-4 rounded-xl">
-                  <Link to="/upgrade">See upgrade options</Link>
-                </Button>
-              </div>
-            )}
-            {pdfUrl && !pdfError && (
-              <Document
-                file={pdfUrl}
-                onLoadSuccess={({ numPages: pages }) => {
-                  setNumPages(pages);
-                  setPageNumber(1);
-                  setPageInput("1");
-                }}
-                onLoadError={(error) => {
-                  console.error("[Reader] PDF load failed:", error);
-                  const msg = error?.message || String(error);
-                  if (msg.includes("worker") || msg.includes("Worker")) {
-                    setPdfError("PDF worker failed to load. Try refreshing the page.");
-                  } else {
-                    setPdfError("The document could not be rendered in the browser. Try refreshing or opening in a new tab.");
+          {/* ─── Page toolbar ─── */}
+          <div className="relative flex h-12 shrink-0 items-center justify-center gap-1 border-b border-white/[0.04] bg-black/30 backdrop-blur-xl px-3 z-10">
+            <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-1.5 py-1">
+              <button
+                type="button"
+                onClick={() => setScale((s) => Math.max(0.5, Math.round((s - 0.15) * 100) / 100))}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground active:scale-90"
+                aria-label="Zoom out"
+              >
+                <ZoomOut className="size-3.5" />
+              </button>
+              <span className="w-11 text-center type-mono text-xs tabular-nums text-muted-foreground/80">
+                {Math.round(scale * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setScale((s) => Math.min(2.5, Math.round((s + 0.15) * 100) / 100))}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground active:scale-90"
+                aria-label="Zoom in"
+              >
+                <ZoomIn className="size-3.5" />
+              </button>
+            </div>
+
+            <div className="mx-3 h-5 w-px bg-white/[0.08]" />
+
+            <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-1.5 py-1">
+              <button
+                type="button"
+                onClick={() => handlePageChange("prev")}
+                disabled={pageNumber <= 1}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground disabled:cursor-default disabled:opacity-20 active:scale-90"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <label htmlFor="reader-page-number" className="sr-only">Page number</label>
+              <Input
+                id="reader-page-number"
+                type="number"
+                min={1}
+                max={numPages ?? undefined}
+                value={pageInput}
+                onChange={(event) => setPageInput(event.target.value)}
+                onBlur={() => goToPage(pageInput)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    goToPage(pageInput);
+                    event.currentTarget.blur();
                   }
                 }}
-                className="mx-auto flex max-w-fit flex-col items-center gap-3"
+                disabled={!numPages}
+                className="h-8 w-11 rounded-lg border-white/[0.08] bg-transparent px-1 text-center type-mono text-xs tabular-nums text-foreground/90 focus:border-primary/40 focus:ring-0"
+              />
+              <span className="type-mono text-xs tabular-nums text-muted-foreground/60">/ {numPages ?? "—"}</span>
+              <button
+                type="button"
+                onClick={() => handlePageChange("next")}
+                disabled={numPages !== null && pageNumber >= numPages}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground disabled:cursor-default disabled:opacity-20 active:scale-90"
+                aria-label="Next page"
               >
-                <div className="overflow-hidden rounded-lg shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10">
-                  <PdfPage
-                    pageNumber={pageNumber}
-                    scale={scale}
-                    renderTextLayer
-                    renderAnnotationLayer
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+
+            {numPages && numPages > 1 && (
+              <>
+                <div className="mx-3 h-5 w-px bg-white/[0.08]" />
+                {/* Mini page progress bar */}
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="h-1 w-24 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
+                      style={{ width: `${(pageNumber / numPages) * 100}%` }}
+                    />
+                  </div>
+                  <span className="type-mono text-[10px] tabular-nums text-muted-foreground/50">
+                    {Math.round((pageNumber / numPages) * 100)}%
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ─── PDF body ─── */}
+          <div className="relative flex-1 overflow-auto" id="pdf-scroll-area">
+            <div className="relative mx-auto flex min-h-full max-w-fit flex-col items-center gap-4 p-4 sm:p-8">
+              {/* Loading state */}
+              {loadingPdf && !pdfUrl && (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-6">
+                  <div className="relative">
+                    {/* Cinematic loading orb */}
+                    <div className="absolute -inset-8 rounded-full bg-primary/5 blur-2xl animate-pulse" />
+                    <div className="absolute -inset-4 rounded-full border border-primary/10 animate-spin" style={{ animationDuration: '4s' }} />
+                    <div className="relative flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
+                      <Loader2 className="size-6 animate-spin text-primary" />
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="type-mono text-sm tracking-widest text-muted-foreground/80 uppercase">
+                      Opening document
+                    </p>
+                    <div className="mt-3 mx-auto h-0.5 w-32 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-transparent via-primary to-transparent animate-[shimmer-slide_1.5s_ease-in-out_infinite]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error state — cinematic */}
+              {pdfError && (
+                <div className="mx-auto mt-20 flex flex-col items-center gap-6">
+                  <div className="relative">
+                    <div className="absolute -inset-8 rounded-full bg-rose-500/10 blur-2xl" />
+                    <div className="relative flex size-20 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.03] backdrop-blur-xl">
+                      <Lock className="size-8 text-rose-400/80" />
+                    </div>
+                  </div>
+                  <div className="text-center max-w-md">
+                    <h2 className="type-h2 bg-gradient-to-r from-rose-300 to-rose-400/70 bg-clip-text text-transparent">
+                      Could not open this document
+                    </h2>
+                    <p className="type-body mt-2 text-muted-foreground/70 leading-relaxed">{pdfError}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
+                      onClick={() => window.location.reload()}
+                    >
+                      <RotateCcw className="size-3.5" /> Refresh page
+                    </Button>
+                    <Button asChild size="sm" className="rounded-xl">
+                      <Link to="/upgrade">See upgrade options</Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* PDF document */}
+              {pdfUrl && !pdfError && (
+                <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
+                  <Document
+                    file={pdfUrl}
+                    onLoadSuccess={({ numPages: pages }) => {
+                      setNumPages(pages);
+                      setPageNumber(1);
+                      setPageInput("1");
+                    }}
+                    onLoadError={(error) => {
+                      console.error("[Reader] PDF load failed:", error);
+                      const msg = error?.message || String(error);
+                      if (msg.includes("worker") || msg.includes("Worker")) {
+                        setPdfError("PDF worker failed to load. Try refreshing the page.");
+                      } else {
+                        setPdfError("The document could not be rendered. Try refreshing or opening in a new tab.");
+                      }
+                    }}
                     loading={
-                      <div className="flex size-40 items-center justify-center">
-                        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                      <div className="flex flex-col items-center justify-center gap-4 py-20">
+                        <div className="relative">
+                          <div className="absolute -inset-6 rounded-2xl bg-primary/5 blur-xl animate-pulse" />
+                          <Loader2 className="relative size-8 animate-spin text-primary" />
+                        </div>
+                        <p className="type-mono text-xs tracking-widest text-muted-foreground/60 uppercase">Rendering pages…</p>
                       </div>
                     }
-                  />
+                    className="flex flex-col items-center gap-4"
+                  >
+                    <div className="group relative overflow-hidden rounded-lg shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)] transition-shadow duration-300 hover:shadow-[0_30px_100px_-20px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)]">
+                      <PdfPage
+                        pageNumber={pageNumber}
+                        scale={scale}
+                        renderTextLayer
+                        renderAnnotationLayer
+                        loading={
+                          <div className="flex size-48 items-center justify-center bg-white/[0.02]">
+                            <div className="flex flex-col items-center gap-3">
+                              <Loader2 className="size-5 animate-spin text-muted-foreground/50" />
+                              <p className="type-mono text-[10px] tracking-widest text-muted-foreground/40 uppercase">Page {pageNumber}</p>
+                            </div>
+                          </div>
+                        }
+                      />
+                    </div>
+                  </Document>
                 </div>
-              </Document>
-            )}
+              )}
+            </div>
           </div>
         </main>
 
-        {/* ---- Side panel ---- */}
+        {/* ═══ SIDE PANEL ═══ */}
         {panelOpen && (
           <>
+            {/* Mobile backdrop */}
             <button
               type="button"
               aria-label="Close reader panel"
-              className="absolute inset-0 z-10 bg-black/45 sm:hidden"
+              className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm sm:hidden"
               onClick={() => setPanelOpen(false)}
             />
             <aside
               role="dialog"
               aria-modal="true"
               aria-labelledby="reader-panel-title"
-              className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-white/8 bg-background shadow-2xl sm:static sm:z-auto sm:w-96 sm:bg-black/20 sm:shadow-none"
+              className="relative z-20 flex w-full flex-col border-l border-white/[0.06] bg-[#0a0e17]/95 backdrop-blur-2xl shadow-[-20px_0_60px_-20px_rgba(0,0,0,0.5)] sm:static sm:z-auto sm:w-[380px] sm:shadow-none"
             >
-            <div className="flex shrink-0 items-center gap-1 border-b border-white/8 px-2 py-2">
-              <span id="reader-panel-title" className="sr-only">Reader tools</span>
-              {(
-                [
-                  { id: "companion", label: "AI companion", icon: Bot },
-                  { id: "videos", label: "Videos", icon: Youtube },
-                  { id: "scratchpad", label: "Scratchpad", icon: Calculator },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setPanelTab(tab.id)}
-                  role="tab"
-                  aria-selected={panelTab === tab.id}
-                  aria-controls={`reader-panel-${tab.id}`}
-                  className={cn(
-                    "interactive-press flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 type-caption font-bold",
-                    panelTab === tab.id
-                      ? "bg-primary/15 text-primary"
-                      : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                  )}
-                >
-                  <tab.icon className="size-3.5" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                </button>
-              ))}
-              <button
-                type="button"
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/5 hover:text-foreground sm:hidden"
-                onClick={() => setPanelOpen(false)}
-                aria-label="Close reader tools"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
+              {/* Panel glow line */}
+              <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent sm:hidden" />
 
-            <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel">
-              {panelTab === "companion" && (
-                <div id="reader-panel-companion" className="flex h-full flex-col">
-                  <div className="flex-1 space-y-3 overflow-y-auto p-3">
-                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 type-mono leading-5 text-muted-foreground">
-                      <p className="type-h3 flex items-center gap-1.5 text-foreground">
-                        <Sparkles className="size-3 text-primary" /> Grounded in this document
-                      </p>
-                      <p className="mt-1">
-                        Ask anything about {item.title}. The companion knows this item&apos;s
-                        subject, grade and linked topics. Free students get a fair daily
-                        message allowance; premium is unlimited.
-                      </p>
-                    </div>
-                    {messages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={cn(
-                          "rounded-xl px-3 py-2.5 text-[13px] leading-6",
-                          message.role === "user"
-                            ? "ml-8 bg-primary/10 text-foreground"
-                            : "mr-2 border border-white/8 bg-white/[0.03] text-foreground/90",
-                        )}
-                      >
-                        <p className={cn("whitespace-pre-wrap", message.role === "assistant" && "text-[12.5px]")}>
-                          {message.content}
+              {/* Tab bar */}
+              <div className="relative flex shrink-0 items-center gap-1 border-b border-white/[0.06] px-2 py-2">
+                <span id="reader-panel-title" className="sr-only">Reader tools</span>
+                {(
+                  [
+                    { id: "companion" as const, label: "AI", icon: Bot, desc: "Companion" },
+                    { id: "videos" as const, label: "Videos", icon: Youtube, desc: "Videos" },
+                    { id: "scratchpad" as const, label: "Calc", icon: Calculator, desc: "Scratchpad" },
+                  ]
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setPanelTab(tab.id)}
+                    role="tab"
+                    aria-selected={panelTab === tab.id}
+                    aria-controls={`reader-panel-${tab.id}`}
+                    title={tab.desc}
+                    className={cn(
+                      "interactive-press relative flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 type-caption font-semibold transition-all duration-200",
+                      panelTab === tab.id
+                        ? "text-primary"
+                        : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-white/[0.03]",
+                    )}
+                  >
+                    {panelTab === tab.id && (
+                      <div className="absolute inset-x-2 -bottom-[9px] h-0.5 rounded-full bg-primary/60" />
+                    )}
+                    <tab.icon className="size-3.5" />
+                    <span className="hidden sm:inline">{tab.label}</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground/60 hover:bg-white/5 hover:text-foreground sm:hidden transition-all"
+                  onClick={() => setPanelOpen(false)}
+                  aria-label="Close reader tools"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Tab content */}
+              <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel">
+                {/* ── AI Companion ── */}
+                {panelTab === "companion" && (
+                  <div id="reader-panel-companion" className="flex h-full flex-col">
+                    <div className="flex-1 space-y-3 overflow-y-auto p-3">
+                      {/* Info card */}
+                      <div className="relative overflow-hidden rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] to-transparent p-3.5">
+                        <div className="absolute -top-6 -right-6 size-20 rounded-full bg-primary/5 blur-2xl" />
+                        <p className="type-h3 flex items-center gap-2 text-foreground relative">
+                          <Sparkles className="size-3.5 text-primary" /> AI Reading Companion
+                        </p>
+                        <p className="type-caption mt-2 leading-relaxed text-muted-foreground/80 relative">
+                          Ask anything about <span className="text-foreground/80 font-medium">{item.title}</span>. The companion
+                          knows this item&apos;s subject, grade and linked topics.
                         </p>
                       </div>
-                    ))}
-                    {asking && (
-                      <div className="type-mono mr-2 flex items-center gap-2 text-muted-foreground">
-                        <Loader2 className="size-3.5 animate-spin text-primary" /> thinking…
-                      </div>
-                    )}
-                    <div ref={chatEndRef} />
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 border-t border-white/8 p-2.5">
-                    <label htmlFor="reader-question" className="sr-only">
-                      Ask the reading companion
-                    </label>
-                    <Input
-                      id="reader-question"
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void handleAsk();
-                      }}
-                      placeholder="Ask about what you're reading…"
-                      className="h-9 rounded-xl bg-white/5 text-[13px]"
-                    />
-                    <Button
-                      size="icon"
-                      className="size-9 shrink-0 cursor-pointer rounded-xl"
-                      onClick={() => void handleAsk()}
-                      disabled={asking || !question.trim()}
-                      aria-label="Ask the reading companion"
-                    >
-                      <Send className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
 
-              {panelTab === "videos" && (
-                <div id="reader-panel-videos" className="space-y-3 p-3">
-                  <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 type-mono leading-5 text-muted-foreground">
-                    <p className="type-h3 flex items-center gap-1.5 text-foreground">
-                      <Youtube className="size-3 text-primary" /> Topic videos
-                    </p>
-                    <p className="mt-1">
-                      Videos matched to {item.subjectName} · Grade {item.grade}. Opens in a new
-                      tab — never embedded, so your attention stays yours.
-                    </p>
-                  </div>
-                  {searchingVideos && videos === null ? (
-                    <div className="type-mono flex items-center gap-2 py-6 text-muted-foreground">
-                      <Loader2 className="size-3.5 animate-spin text-primary" /> searching…
-                    </div>
-                  ) : youtubeConfigured === false ? (
-                    <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center">
-                      <p className="type-caption text-muted-foreground">
-                        Video search needs a <code className="rounded bg-white/10 px-1">YOUTUBE_API_KEY</code> in the Keys tab.
-                      </p>
-                      <p className="type-caption mt-1 text-muted-foreground/70">
-                        Google Cloud Console → YouTube Data API v3
-                      </p>
-                    </div>
-                  ) : videos && videos.length === 0 ? (
-                    <p className="type-caption py-6 text-center text-muted-foreground">
-                      No videos found for this topic yet.
-                    </p>
-                  ) : (
-                    videos?.map((video) => (
-                      <a
-                        key={video.id}
-                        href={`https://www.youtube.com/watch?v=${video.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group flex cursor-pointer gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] p-2 transition-colors hover:border-primary/30"
-                      >
-                        {video.thumbnail ? (
-                          <img
-                            src={video.thumbnail}
-                            alt={`${video.title} thumbnail`}
-                            loading="lazy"
-                            className="h-16 w-24 shrink-0 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                            <Youtube className="size-5" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="line-clamp-2 type-caption font-semibold leading-5 text-foreground/90 group-hover:text-primary">
-                            {video.title}
-                          </p>
-                          <p className="type-caption mt-1 flex items-center gap-1 truncate text-muted-foreground">
-                            <ExternalLink className="size-2.5" /> {video.channel}
+                      {/* Messages */}
+                      {messages.map((message, index) => (
+                        <div
+                          key={index}
+                          className={cn(
+                            "rounded-xl px-3.5 py-2.5 text-[13px] leading-6 transition-all duration-200",
+                            message.role === "user"
+                              ? "ml-6 bg-primary/[0.08] border border-primary/10 text-foreground"
+                              : "mr-1 border border-white/[0.06] bg-white/[0.02] text-foreground/85",
+                          )}
+                        >
+                          <p className={cn("whitespace-pre-wrap", message.role === "assistant" && "text-[12.5px] leading-[1.7]")}>
+                            {message.content}
                           </p>
                         </div>
-                      </a>
-                    ))
-                  )}
-                  {videos && videos.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full cursor-pointer rounded-xl text-muted-foreground"
-                      onClick={() => {
-                        setVideos(null);
-                        setSearchingVideos(false);
-                      }}
-                    >
-                      <RefreshCw className="size-3.5" /> Search again
-                    </Button>
-                  )}
-                </div>
-              )}
+                      ))}
 
-              {panelTab === "scratchpad" && (
-                <div id="reader-panel-scratchpad" className="flex h-full flex-col">
-                  <div className="flex items-center justify-between px-3 pt-2.5">
-                    <p className="type-mono uppercase tracking-[0.18em] text-muted-foreground">
-                      workings · auto-saved per document
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 cursor-pointer rounded-lg px-2 type-caption text-muted-foreground"
-                      onClick={() => {
-                        setScratchText("");
-                        setScratchResult(null);
-                        setScratchSaved(false);
-                      }}
-                    >
-                      Clear
-                    </Button>
-                  </div>
-                  <div className="flex gap-2 px-3 pt-2">
-                    <label htmlFor="scratch-expression" className="sr-only">
-                      Expression to evaluate
-                    </label>
-                    <Input
-                      id="scratch-expression"
-                      value={scratchInput}
-                      onChange={(e) => setScratchInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleEvaluate();
-                      }}
-                      placeholder="e.g. (2*3.14*6371)/(24)  or  sqrt(144)"
-                      className="h-8 rounded-lg bg-white/5 type-mono"
-                    />
-                    <Button
-                      size="sm"
-                      className="h-8 shrink-0 cursor-pointer rounded-lg"
-                      onClick={handleEvaluate}
-                    >
-                      <Calculator className="size-3.5" /> =
-                    </Button>
-                  </div>
-                  {scratchResult && (
-                    <p
-                      className={cn(
-                        "mx-3 mt-1.5 rounded-lg border px-2.5 py-1.5 type-mono",
-                        scratchResult.startsWith("⚠")
-                          ? "border-rose-400/25 bg-rose-400/5 text-rose-300"
-                          : "border-emerald-400/25 bg-emerald-400/5 text-emerald-300",
+                      {asking && (
+                        <div className="type-mono mr-1 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-muted-foreground/60">
+                          <div className="flex gap-1">
+                            <div className="size-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="size-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="size-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+                          </div>
+                          <span className="ml-1">thinking…</span>
+                        </div>
                       )}
-                    >
-                      {scratchResult}
-                    </p>
-                  )}
-                  <textarea
-                    aria-label="Scratchpad notes"
-                    value={scratchText}
-                    onChange={(e) => {
-                      setScratchText(e.target.value);
-                      setScratchSaved(false);
-                    }}
-                    placeholder="Write workings, formulas, summaries…"
-                    className="mx-3 mt-2 min-h-0 flex-1 resize-none rounded-xl border border-white/8 bg-white/[0.03] p-3 font-mono text-[12px] leading-5 text-foreground/90 outline-none placeholder:text-muted-foreground/50 focus:border-primary/40"
-                  />
-                  <div className="flex items-center justify-between gap-2 p-2.5">
-                    <p className="type-caption text-muted-foreground">
-                      {scratchSaved ? "saved" : "unsaved changes"}
-                    </p>
-                    <Button
-                      size="sm"
-                      className="h-8 cursor-pointer rounded-lg"
-                      onClick={() => void handleSaveScratch()}
-                      disabled={scratchSaved || savingScratch}
-                    >
-                      {savingScratch ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : scratchSaved ? (
-                        <BookmarkCheck className="size-3.5" />
-                      ) : null}
-                      {savingScratch ? "Saving…" : scratchSaved ? "Saved" : "Save notes"}
-                    </Button>
+                      <div ref={chatEndRef} />
+                    </div>
+
+                    {/* Chat input */}
+                    <div className="relative shrink-0 border-t border-white/[0.06] p-3">
+                      <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-1.5 transition-all duration-200 focus-within:border-primary/30 focus-within:bg-white/[0.05]">
+                        <label htmlFor="reader-question" className="sr-only">Ask the reading companion</label>
+                        <Input
+                          id="reader-question"
+                          value={question}
+                          onChange={(e) => setQuestion(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") void handleAsk(); }}
+                          placeholder="Ask about what you're reading…"
+                          className="h-8 flex-1 rounded-lg border-0 bg-transparent px-2 text-[13px] shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/40"
+                        />
+                        <Button
+                          size="icon"
+                          className="size-8 shrink-0 cursor-pointer rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-all duration-200"
+                          onClick={() => void handleAsk()}
+                          disabled={asking || !question.trim()}
+                          aria-label="Send"
+                        >
+                          <Send className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+
+                {/* ── Videos ── */}
+                {panelTab === "videos" && (
+                  <div id="reader-panel-videos" className="space-y-3 p-3">
+                    <div className="relative overflow-hidden rounded-xl border border-rose-500/15 bg-gradient-to-br from-rose-500/[0.05] to-transparent p-3.5">
+                      <div className="absolute -top-4 -right-4 size-16 rounded-full bg-rose-500/5 blur-xl" />
+                      <p className="type-h3 flex items-center gap-2 text-foreground relative">
+                        <Youtube className="size-3.5 text-rose-400" /> Topic Videos
+                      </p>
+                      <p className="type-caption mt-2 leading-relaxed text-muted-foreground/80 relative">
+                        Videos matched to <span className="text-foreground/80 font-medium">{item.subjectName} · Grade {item.grade}</span>. Opens in a new tab.
+                      </p>
+                    </div>
+
+                    {searchingVideos && videos === null ? (
+                      <div className="type-mono flex items-center gap-2 py-8 justify-center text-muted-foreground/60">
+                        <Loader2 className="size-4 animate-spin text-rose-400" /> searching…
+                      </div>
+                    ) : youtubeConfigured === false ? (
+                      <div className="rounded-xl border border-dashed border-white/[0.08] px-4 py-8 text-center">
+                        <p className="type-caption text-muted-foreground/60">
+                          Video search needs a <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-foreground/70">YOUTUBE_API_KEY</code>
+                        </p>
+                      </div>
+                    ) : videos && videos.length === 0 ? (
+                      <p className="type-caption py-8 text-center text-muted-foreground/50">
+                        No videos found for this topic yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {videos?.map((video) => (
+                          <a
+                            key={video.id}
+                            href={`https://www.youtube.com/watch?v=${video.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group flex cursor-pointer gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 transition-all duration-200 hover:border-rose-400/20 hover:bg-white/[0.04]"
+                          >
+                            {video.thumbnail ? (
+                              <img
+                                src={video.thumbnail}
+                                alt={`${video.title} thumbnail`}
+                                loading="lazy"
+                                className="h-[60px] w-[100px] shrink-0 rounded-lg object-cover ring-1 ring-white/[0.06]"
+                              />
+                            ) : (
+                              <div className="flex h-[60px] w-[100px] shrink-0 items-center justify-center rounded-lg bg-rose-400/[0.08] ring-1 ring-white/[0.06]">
+                                <Youtube className="size-5 text-rose-400/60" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/80 group-hover:text-foreground transition-colors">
+                                {video.title}
+                              </p>
+                              <p className="type-caption mt-1.5 flex items-center gap-1 text-muted-foreground/50">
+                                <ExternalLink className="size-2.5" /> {video.channel}
+                              </p>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {videos && videos.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full cursor-pointer rounded-xl text-muted-foreground/60 hover:text-foreground"
+                        onClick={() => { setVideos(null); setSearchingVideos(false); }}
+                      >
+                        <RefreshCw className="size-3.5" /> Search again
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Scratchpad ── */}
+                {panelTab === "scratchpad" && (
+                  <div id="reader-panel-scratchpad" className="flex h-full flex-col">
+                    <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                      <div className="flex items-center gap-2">
+                        <div className="size-1.5 rounded-full bg-emerald-400/60" />
+                        <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60">
+                          Workings · auto-saved
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 cursor-pointer rounded-lg px-2 type-caption text-muted-foreground/50 hover:text-foreground"
+                        onClick={() => { setScratchText(""); setScratchResult(null); setScratchSaved(false); }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+
+                    <div className="flex gap-2 px-3 pt-2">
+                      <label htmlFor="scratch-expression" className="sr-only">Expression to evaluate</label>
+                      <div className="flex flex-1 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 transition-all duration-200 focus-within:border-emerald-400/30">
+                        <Input
+                          id="scratch-expression"
+                          value={scratchInput}
+                          onChange={(e) => setScratchInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleEvaluate(); }}
+                          placeholder="e.g. sqrt(144) or (2*3.14*6371)/(24)"
+                          className="h-7 flex-1 rounded-lg border-0 bg-transparent px-0 type-mono text-xs shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/30"
+                        />
+                        <Button
+                          size="sm"
+                          className="h-7 shrink-0 cursor-pointer rounded-lg bg-emerald-400/10 text-emerald-400 hover:bg-emerald-400/20 border-0 px-2"
+                          onClick={handleEvaluate}
+                        >
+                          <Calculator className="size-3" /> =
+                        </Button>
+                      </div>
+                    </div>
+
+                    {scratchResult && (
+                      <div className="mx-3 mt-2">
+                        <p
+                          className={cn(
+                            "rounded-lg border px-3 py-2 type-mono text-xs transition-all duration-200",
+                            scratchResult.startsWith("⚠")
+                              ? "border-rose-400/20 bg-rose-400/[0.05] text-rose-300"
+                              : "border-emerald-400/20 bg-emerald-400/[0.05] text-emerald-300",
+                          )}
+                        >
+                          {scratchResult}
+                        </p>
+                      </div>
+                    )}
+
+                    <textarea
+                      aria-label="Scratchpad notes"
+                      value={scratchText}
+                      onChange={(e) => { setScratchText(e.target.value); setScratchSaved(false); }}
+                      placeholder="Write workings, formulas, summaries…"
+                      className="mx-3 mt-2.5 min-h-0 flex-1 resize-none rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 font-mono text-[12px] leading-[1.7] text-foreground/85 outline-none placeholder:text-muted-foreground/30 transition-all duration-200 focus:border-primary/30"
+                    />
+
+                    <div className="flex items-center justify-between gap-2 p-3">
+                      <p className={cn("type-caption transition-colors", scratchSaved ? "text-emerald-400/50" : "text-amber-400/60")}>
+                        {scratchSaved ? "● saved" : "○ unsaved changes"}
+                      </p>
+                      <Button
+                        size="sm"
+                        className="h-8 cursor-pointer rounded-xl"
+                        onClick={() => void handleSaveScratch()}
+                        disabled={scratchSaved || savingScratch}
+                      >
+                        {savingScratch ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : scratchSaved ? (
+                          <BookmarkCheck className="size-3.5" />
+                        ) : null}
+                        {savingScratch ? "Saving…" : scratchSaved ? "Saved" : "Save notes"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </aside>
           </>
         )}
       </div>
 
-      {/* ---- Related resources strip ---- */}
+      {/* ═══ RELATED RESOURCES STRIP ═══ */}
       {relatedItems.length > 0 && (
-        <footer className="shrink-0 border-t border-white/8 bg-black/25 px-4 py-3">
-          <p className="type-mono uppercase tracking-[0.2em] text-muted-foreground">
-            related resources · shared topics
-          </p>
-          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-            {relatedItems.map((relatedItem: { _id: string; title: string; contentType: string; subjectSlug: string }) => (
-              <Link
-                key={relatedItem._id}
-                to={`/read/${relatedItem._id}`}
-                className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 transition-colors hover:border-primary/30"
-              >
-                <MessageSquare className="size-3.5 shrink-0 text-primary" />
-                <span className="type-caption max-w-48 truncate font-semibold text-foreground/90">
-                  {relatedItem.title}
-                </span>
-                <span
-                  className={cn(
-                    "type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase",
-                    subjectHue(relatedItem.subjectSlug),
-                  )}
+        <footer className="relative shrink-0 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl z-20">
+          {/* Top glow line */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+          <div className="px-4 py-3 sm:px-5">
+            <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/40 mb-2.5">
+              related resources · shared topics
+            </p>
+            <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+              {relatedItems.map((relatedItem: { _id: string; title: string; contentType: string; subjectSlug: string }) => (
+                <Link
+                  key={relatedItem._id}
+                  to={`/read/${relatedItem._id}`}
+                  className="group flex shrink-0 cursor-pointer items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 transition-all duration-200 hover:border-primary/20 hover:bg-white/[0.04]"
                 >
-                  {relatedItem.subjectSlug}
-                </span>
-              </Link>
-            ))}
+                  <div className="flex size-7 items-center justify-center rounded-lg bg-primary/[0.08]">
+                    <MessageSquare className="size-3.5 text-primary/70 group-hover:text-primary transition-colors" />
+                  </div>
+                  <span className="type-caption max-w-48 truncate font-semibold text-foreground/70 group-hover:text-foreground/90 transition-colors">
+                    {relatedItem.title}
+                  </span>
+                  <span
+                    className={cn(
+                      "type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase text-[9px]",
+                      subjectHue(relatedItem.subjectSlug),
+                    )}
+                  >
+                    {relatedItem.subjectSlug}
+                  </span>
+                </Link>
+              ))}
+            </div>
           </div>
         </footer>
       )}
