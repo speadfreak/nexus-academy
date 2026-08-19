@@ -113,6 +113,27 @@ export async function getSignedDownloadUrl(key: string, overrides?: R2ConfigOver
   );
 }
 
+/** Generate a presigned PUT URL for direct browser→R2 upload. The browser
+ * uploads the file bytes straight to R2, bypassing Convex temp storage.
+ * Returns { uploadUrl, key, fileUrl } where fileUrl is the final public URL. */
+export async function getPresignedUploadUrl(
+  key: string,
+  contentType: string,
+  overrides?: R2ConfigOverrides,
+): Promise<{ uploadUrl: string; key: string; fileUrl: string }> {
+  const client = getClient(overrides);
+  const uploadUrl = await getSignedUrl(
+    client,
+    new PutObjectCommand({
+      Bucket: getBucket(overrides),
+      Key: key,
+      ContentType: contentType,
+    }),
+    { expiresIn: 60 * 10 }, // 10 minutes
+  );
+  return { uploadUrl, key, fileUrl: publicUrlForKey(key, overrides) };
+}
+
 /** Delete an object from R2 (admin content management). */
 export async function deleteFile(key: string, overrides?: R2ConfigOverrides): Promise<void> {
   const client = getClient(overrides);

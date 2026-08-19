@@ -16,40 +16,20 @@ import {
   deleteFile,
   getR2Config,
   type R2Config,
+  getPresignedUploadUrl,
   getSignedDownloadUrl,
   keyFromUrl,
+  publicUrlForKey,
   uploadFile,
   type R2ConfigOverrides,
 } from "./r2";
 
 type ActionErrorData = { message: string; code: string };
 
-type UploadedContent = {
-  id: Id<"contentItems">;
-  title: string;
-  contentType: ContentType;
-  grade: number;
-  subjectId: Id<"subjects">;
-  examYear: number | null;
-  fileUrl: string;
-  fileSizeBytes: number;
-  isPremium: boolean;
-  createdAt: number;
-  subjectName: string;
-  subjectSlug: string;
-  subjectStream: string;
-};
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Build R2 overrides by merging process.env (Convex environment) with the
- * configKeys DB table (admin Keys tab). DB values take priority because they
- * are the user-managed source of truth in Freebuff-hosted deployments where
- * process.env is not directly available to the user.
- */
 async function getR2Overrides(ctx: any): Promise<R2ConfigOverrides> {
   const stored = await ctx.runQuery(internal.configKeys.getR2KeyValues);
   return {
@@ -62,26 +42,11 @@ async function getR2Overrides(ctx: any): Promise<R2ConfigOverrides> {
 }
 
 function sanitizeFilename(name: string): string {
-  const base = name
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toLowerCase();
+  const base = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
   return base || "file";
 }
 
-/**
- * Human-browsable R2 key layout:
- *   {stream}/{grade}/{subject-slug}/{content-type}/{filename}
- * e.g. natural/11/physics/past-exam/2023-physics-national-exam.pdf
- */
-function buildKey(
-  stream: string,
-  grade: number,
-  subjectSlug: string,
-  contentType: ContentType,
-  filename: string,
-): string {
+function buildKey(stream: string, grade: number, subjectSlug: string, contentType: ContentType, filename: string): string {
   return `${stream}/${grade}/${subjectSlug}/${CONTENT_TYPE_SLUGS[contentType]}/${sanitizeFilename(filename)}`;
 }
 
@@ -97,10 +62,34 @@ function asConvexError(error: unknown, fallback: string): ConvexError<ActionErro
 }
 
 // ---------------------------------------------------------------------------
-// Admin upload: validate -> R2 -> DB row
+// Direct-to-R2 presigned upload URL
 // ---------------------------------------------------------------------------
 
-export const adminUploadContent = action({
+export const getPresignedR2UploadUrl = action({
+  args: {
+    filename: v.string(),
+    contentType: v.string(),
+    grade: v.number(),
+    subjectId: v.id("subjects"),
+    contentSlug: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ uploadUrl: string; key: string; fileUrl: string }> => {
+    await requireAdminAction(ctx);
+    const subject: Doc<"subjects"> | null = await ctx.runQuery(internal.content.getSubjectById, { subjectId: args.subjectId });
+    if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
+    const overrides = await getR2Overrides(ctx);
+    const config = getR2Config(overrides);
+    if (!config.configured) throw new ConvexError({ message: `R2 not configured: ${config.missing.join(", ")}`, code: "storage_not_configured" });
+    const key = buildKey(subject.stream, args.grade, subject.slug, args.contentSlug as ContentType, args.filename);
+    return getPresignedUploadUrl(key, args.contentType, overrides);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Finalize upload: insert DB row after browser→R2 direct upload
+// ---------------------------------------------------------------------------
+
+export const finalizeUpload = action({
   args: {
     title: v.string(),
     contentType: contentTypeValidator,
@@ -108,258 +97,119 @@ export const adminUploadContent = action({
     subjectId: v.id("subjects"),
     examYear: v.optional(v.number()),
     isPremium: v.boolean(),
-    storageId: v.string(), // Id of the blob in Convex temp storage
+    fileUrl: v.string(),
+    fileSizeBytes: v.number(),
     filename: v.string(),
-    // Optional AI-suggested topic candidates (already reviewed by the admin
-    // in the upload form) — created/linked as contentTopics after insert.
     topicCandidates: v.optional(v.array(v.string())),
   },
-  handler: async (ctx, args): Promise<UploadedContent> => {
+  handler: async (ctx, args) => {
     const adminUser = await requireAdminAction(ctx);
-    const uploadStart = Date.now();
+    const subject: Doc<"subjects"> | null = await ctx.runQuery(internal.content.getSubjectById, { subjectId: args.subjectId });
+    if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
 
-    // --- Validation -----------------------------------------------------
-    const title = args.title.trim();
-    if (!title) {
-      throw new ConvexError({ message: "Title is required.", code: "invalid" });
-    }
-    if (!Number.isInteger(args.grade) || args.grade < 9 || args.grade > 12) {
-      throw new ConvexError({
-        message: "Grade must be one of 9, 10, 11, 12.",
-        code: "invalid",
-      });
-    }
-    if (args.examYear !== undefined && args.contentType !== "past_exam") {
-      throw new ConvexError({
-        message: "exam_year is only allowed when content_type is past_exam.",
-        code: "invalid",
-      });
+    const createdId: Id<"contentItems"> = await ctx.runMutation(internal.content.insertContentItem, {
+      title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
+      examYear: args.examYear, fileUrl: args.fileUrl, fileSizeBytes: args.fileSizeBytes, uploadedBy: adminUser._id, isPremium: args.isPremium,
+    });
+
+    if (args.topicCandidates && args.topicCandidates.length > 0) {
+      await ctx.runMutation(internal.content.linkContentTopics, { contentId: createdId, subjectId: args.subjectId, grade: args.grade, topicNames: args.topicCandidates });
     }
 
-    const subject: Doc<"subjects"> | null = await ctx.runQuery(
-      internal.content.getSubjectById,
-      { subjectId: args.subjectId },
-    );
-    if (!subject) {
-      throw new ConvexError({ message: "Subject not found.", code: "invalid" });
-    }
+    await logEventAction(ctx, {
+      eventType: "content_event", source: "contentAdmin.upload", status: "success", userId: adminUser._id,
+      metadata: { contentId: createdId, contentType: args.contentType, grade: args.grade, fileSizeBytes: args.fileSizeBytes, topics: args.topicCandidates?.length ?? 0 },
+      durationMs: 0,
+    });
 
-    // --- Read file bytes from Convex temp storage -----------------------
-    const storageId = args.storageId as Id<"_storage">;
-    const stored = await ctx.storage.get(storageId);
-    if (!stored) {
-      throw new ConvexError({
-        message: "Upload failed: file not found in temporary storage.",
-        code: "storage",
-      });
-    }
-    const arrayBuffer =
-      typeof Blob !== "undefined" && stored instanceof Blob
-        ? await stored.arrayBuffer()
-        : (stored as unknown as ArrayBuffer);
-    const bytes = new Uint8Array(arrayBuffer);
-
-    // --- Upload to R2, then persist the DB row --------------------------
-    try {
-      // Check both env vars and the admin Keys tab (configKeys table)
-      const r2Overrides = await getR2Overrides(ctx);
-      const r2 = getR2Config(r2Overrides);
-      if (!r2.configured) {
-        throw new ConvexError({
-          message: `R2 storage is not configured yet. Add these keys in the project's Keys/API keys tab: ${r2.missing.join(", ")}`,
-          code: "storage_not_configured",
-        });
-      }
-
-      const key = buildKey(
-        subject.stream,
-        args.grade,
-        subject.slug,
-        args.contentType,
-        args.filename,
-      );
-      const fileUrl = await uploadFile(
-        key,
-        bytes,
-        contentTypeForFilename(args.filename),
-        r2Overrides,
-      );
-      // Temp blob is no longer needed now that the file lives in R2.
-      await ctx.storage.delete(storageId);
-
-      const createdId: Id<"contentItems"> = await ctx.runMutation(
-        internal.content.insertContentItem,
-        {
-          title,
-          contentType: args.contentType,
-          grade: args.grade,
-          subjectId: args.subjectId,
-          examYear: args.examYear,
-          fileUrl,
-          fileSizeBytes: bytes.byteLength,
-          uploadedBy: adminUser._id,
-          isPremium: args.isPremium,
-        },
-      );
-
-      // AI topic candidates -> real topics rows + contentTopics links.
-      if (args.topicCandidates && args.topicCandidates.length > 0) {
-        await ctx.runMutation(internal.content.linkContentTopics, {
-          contentId: createdId,
-          subjectId: args.subjectId,
-          grade: args.grade,
-          topicNames: args.topicCandidates,
-        });
-      }
-
-      await logEventAction(ctx, {
-        eventType: "content_event",
-        source: "contentAdmin.upload",
-        status: "success",
-        userId: adminUser._id,
-        metadata: {
-          contentId: createdId,
-          contentType: args.contentType,
-          grade: args.grade,
-          fileSizeBytes: bytes.byteLength,
-          topics: args.topicCandidates?.length ?? 0,
-        },
-        durationMs: Date.now() - uploadStart,
-      });
-
-      // Optional Telegram auto-post (explicit admin toggle, defaults OFF).
-      // Fire-and-forget: a broadcast failure must never fail the upload.
-      await ctx
-        .runAction(internal.telegramActions.postNewContent, {
-          title,
-          contentType: args.contentType,
-          grade: args.grade,
-          subjectName: subject.name,
-          contentId: createdId,
-        })
-        .catch(() => {});
-
-      return {
-        id: createdId,
-        title,
-        contentType: args.contentType,
-        grade: args.grade,
-        subjectId: args.subjectId,
-        examYear: args.examYear ?? null,
-        fileUrl,
-        fileSizeBytes: bytes.byteLength,
-        isPremium: args.isPremium,
-        createdAt: Date.now(),
-        subjectName: subject.name,
-        subjectSlug: subject.slug,
-        subjectStream: subject.stream,
-      };
-    } catch (error) {
-      // Never leave an orphan blob in temp storage.
-      try {
-        await ctx.storage.delete(storageId);
-      } catch {
-        // ignore cleanup failure
-      }
-
-      await logEventAction(ctx, {
-        eventType: "error",
-        source: "contentAdmin.upload",
-        status: "error",
-        userId: adminUser._id,
-        metadata: {
-          filename: args.filename,
-          message: error instanceof Error ? error.message : "unknown",
-        },
-        durationMs: Date.now() - uploadStart,
-      });
-      throw asConvexError(error, "Upload failed. Check the R2 configuration.");
-    }
+    await ctx.runAction(internal.telegramActions.postNewContent, { title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectName: subject.name, contentId: createdId }).catch(() => {});
+    return { success: true as const };
   },
 });
 
 // ---------------------------------------------------------------------------
-// Admin delete: R2 object + DB row
+// Original upload flow: browser→Convex temp→R2 (kept as fallback)
+// ---------------------------------------------------------------------------
+
+export const generateUploadUrl = action({
+  args: {},
+  handler: async (ctx) => { return await ctx.storage.generateUploadUrl(); },
+});
+
+export const adminUploadContent = action({
+  args: {
+    title: v.string(), contentType: contentTypeValidator, grade: v.number(), subjectId: v.id("subjects"),
+    examYear: v.optional(v.number()), isPremium: v.boolean(), storageId: v.string(), filename: v.string(),
+    topicCandidates: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const adminUser = await requireAdminAction(ctx);
+    const subject: Doc<"subjects"> | null = await ctx.runQuery(internal.content.getSubjectById, { subjectId: args.subjectId });
+    if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
+
+    const storageId = args.storageId as Id<"_storage">;
+    const stored = await ctx.storage.get(storageId);
+    if (!stored) throw new ConvexError({ message: "File not found in temp storage.", code: "storage" });
+    const arrayBuffer = typeof Blob !== "undefined" && stored instanceof Blob ? await stored.arrayBuffer() : (stored as unknown as ArrayBuffer);
+    const bytes = new Uint8Array(arrayBuffer);
+
+    try {
+      const r2Overrides = await getR2Overrides(ctx);
+      const config = getR2Config(r2Overrides);
+      if (!config.configured) throw new ConvexError({ message: `R2 not configured: ${config.missing.join(", ")}`, code: "storage_not_configured" });
+
+      const key = buildKey(subject.stream, args.grade, subject.slug, args.contentType, args.filename);
+      const fileUrl = await uploadFile(key, bytes, contentTypeForFilename(args.filename), r2Overrides);
+      await ctx.storage.delete(storageId);
+
+      const createdId = await ctx.runMutation(internal.content.insertContentItem, {
+        title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
+        examYear: args.examYear, fileUrl, fileSizeBytes: bytes.byteLength, uploadedBy: adminUser._id, isPremium: args.isPremium,
+      });
+
+      if (args.topicCandidates && args.topicCandidates.length > 0) {
+        await ctx.runMutation(internal.content.linkContentTopics, { contentId: createdId, subjectId: args.subjectId, grade: args.grade, topicNames: args.topicCandidates });
+      }
+
+      await logEventAction(ctx, {
+        eventType: "content_event", source: "contentAdmin.upload", status: "success", userId: adminUser._id,
+        metadata: { contentId: createdId, contentType: args.contentType, grade: args.grade, fileSizeBytes: bytes.byteLength, topics: args.topicCandidates?.length ?? 0 },
+        durationMs: 0,
+      });
+
+      await ctx.runAction(internal.telegramActions.postNewContent, { title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectName: subject.name, contentId: createdId }).catch(() => {});
+      return { success: true as const };
+    } catch (error) { throw asConvexError(error, "Upload failed"); }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Delete content item + R2 file
 // ---------------------------------------------------------------------------
 
 export const deleteContentItem = action({
   args: { contentId: v.id("contentItems") },
-  handler: async (ctx, { contentId }) => {
+  handler: async (ctx, args) => {
     await requireAdminAction(ctx);
-
-    const item: Doc<"contentItems"> | null = await ctx.runQuery(
-      internal.content.getContentItemById,
-      { contentId },
-    );
-    if (!item) {
-      throw new ConvexError({ message: "Content item not found.", code: "not_found" });
-    }
+    const item: Doc<"contentItems"> | null = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
+    if (!item) throw new ConvexError({ message: "Content item not found.", code: "not_found" });
 
     let r2Error: string | null = null;
-    try {
-      const r2Overrides = await getR2Overrides(ctx);
-      const key = keyFromUrl(item.fileUrl, r2Overrides);
-      if (key) await deleteFile(key, r2Overrides);
-    } catch (error) {
-      r2Error =
-        error instanceof Error
-          ? `R2 deletion failed (${error.message}). The database row was still removed.`
-          : "R2 deletion failed. The database row was still removed.";
+    if (item.fileUrl) {
+      try {
+        const overrides = await getR2Overrides(ctx);
+        const key = keyFromUrl(item.fileUrl, overrides);
+        if (key) await deleteFile(key, overrides);
+      } catch (err) { r2Error = err instanceof Error ? err.message : "R2 delete failed"; }
     }
 
-    await ctx.runMutation(internal.content.deleteContentRow, { contentId });
-    return { ok: true, r2Error };
+    await ctx.runMutation(internal.content.deleteContentItem, { contentId: args.contentId });
+    return { success: true, r2Error };
   },
 });
 
 // ---------------------------------------------------------------------------
-// Download URL: direct for free content, signed (time-limited) for premium
-// ---------------------------------------------------------------------------
-
-export const getDownloadUrl = action({
-  args: { contentId: v.id("contentItems") },
-  handler: async (ctx, { contentId }): Promise<{ url: string }> => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new ConvexError({ message: "Sign in required to download.", code: "unauthorized" });
-    }
-
-    const item: Doc<"contentItems"> | null = await ctx.runQuery(
-      internal.content.getContentItemById,
-      { contentId },
-    );
-    if (!item) {
-      throw new ConvexError({ message: "Content item not found.", code: "not_found" });
-    }
-
-    if (!item.isPremium) {
-      return { url: item.fileUrl };
-    }
-
-    // Premium downloads require trial or active subscription access. The
-    // reason tells the client to show the contextual "premium_content"
-    // prompt instead of a generic paywall.
-    await requireActiveSubscriptionAction(ctx, userId, "premium_content");
-
-    try {
-      const r2Overrides = await getR2Overrides(ctx);
-      const key = keyFromUrl(item.fileUrl, r2Overrides);
-      if (!key) {
-        throw new Error("Could not resolve the R2 object key for this item.");
-      }
-      const url = await getSignedDownloadUrl(key, r2Overrides);
-      return { url };
-    } catch (error) {
-      throw asConvexError(
-        error,
-        "R2 storage is not configured. Add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME and R2_PUBLIC_URL in the Keys tab.",
-      );
-    }
-  },
-});
-
-// ---------------------------------------------------------------------------
-// R2 configuration status (shown on the admin page)
+// R2 status
 // ---------------------------------------------------------------------------
 
 export const getR2Status = action({
@@ -367,5 +217,29 @@ export const getR2Status = action({
   handler: async (ctx): Promise<R2Config> => {
     const overrides = await getR2Overrides(ctx);
     return getR2Config(overrides);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Signed download URL (premium content gating)
+// ---------------------------------------------------------------------------
+
+export const getDownloadUrl = action({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const item: Doc<"contentItems"> | null = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
+    if (!item) throw new ConvexError({ message: "Not found.", code: "not_found" });
+
+    if (item.isPremium) {
+      await requireActiveSubscriptionAction(ctx);
+    }
+
+    const overrides = await getR2Overrides(ctx);
+    const key = keyFromUrl(item.fileUrl, overrides);
+    if (!key) throw new ConvexError({ message: "Cannot generate download URL.", code: "storage" });
+    return getSignedDownloadUrl(key, overrides);
   },
 });
