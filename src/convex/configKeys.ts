@@ -68,7 +68,7 @@ export const getKeyStatuses = query({
       const dbEntry = storedMap.get(meta.key);
       return {
         ...meta,
-        configured: Boolean(dbEntry?.value),
+        configured: Boolean(dbEntry?.value) || Boolean(process.env[meta.key]),
         source: (dbEntry?.value ? "database" : "env") as "database" | "env",
         updatedAt: dbEntry?.updatedAt ?? null,
       };
@@ -90,7 +90,7 @@ export const getKeyStatusesByCategory = query({
       const dbEntry = storedMap.get(meta.key);
       cats.get(meta.category)!.keys.push({
         ...meta,
-        configured: Boolean(dbEntry?.value),
+        configured: Boolean(dbEntry?.value) || Boolean(process.env[meta.key]),
         source: (dbEntry?.value ? "database" : "env") as "database" | "env",
         updatedAt: dbEntry?.updatedAt ?? null,
       });
