@@ -1,5 +1,4 @@
 // Admin content pipeline. Runs in the Convex Node.js runtime ("use node")
-// because it talks to Cloudflare R2 (AWS SDK) and reads process.env.
 "use node";
 
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -25,10 +24,6 @@ import {
 } from "./r2";
 
 type ActionErrorData = { message: string; code: string };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 async function getR2Overrides(ctx: any): Promise<R2ConfigOverrides> {
   const stored = await ctx.runQuery(internal.configKeys.getR2KeyValues);
@@ -57,8 +52,7 @@ function contentTypeForFilename(filename: string): string {
 
 function asConvexError(error: unknown, fallback: string): ConvexError<ActionErrorData> {
   if (error instanceof ConvexError) return error;
-  const message = error instanceof Error ? error.message : fallback;
-  return new ConvexError({ message, code: "upload_failed" });
+  return new ConvexError({ message: error instanceof Error ? error.message : fallback, code: "upload_failed" });
 }
 
 // ---------------------------------------------------------------------------
@@ -67,11 +61,8 @@ function asConvexError(error: unknown, fallback: string): ConvexError<ActionErro
 
 export const getPresignedR2UploadUrl = action({
   args: {
-    filename: v.string(),
-    contentType: v.string(),
-    grade: v.number(),
-    subjectId: v.id("subjects"),
-    contentSlug: v.string(),
+    filename: v.string(), contentType: v.string(), grade: v.number(),
+    subjectId: v.id("subjects"), contentSlug: v.string(),
   },
   handler: async (ctx, args): Promise<{ uploadUrl: string; key: string; fileUrl: string }> => {
     await requireAdminAction(ctx);
@@ -91,29 +82,25 @@ export const getPresignedR2UploadUrl = action({
 
 export const finalizeUpload = action({
   args: {
-    title: v.string(),
-    contentType: contentTypeValidator,
-    grade: v.number(),
-    subjectId: v.id("subjects"),
-    examYear: v.optional(v.number()),
-    isPremium: v.boolean(),
-    fileUrl: v.string(),
-    fileSizeBytes: v.number(),
-    filename: v.string(),
-    topicCandidates: v.optional(v.array(v.string())),
+    title: v.string(), contentType: contentTypeValidator, grade: v.number(), subjectId: v.id("subjects"),
+    examYear: v.optional(v.number()), isPremium: v.boolean(), fileUrl: v.string(),
+    fileSizeBytes: v.number(), filename: v.string(), topicCandidates: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const adminUser = await requireAdminAction(ctx);
     const subject: Doc<"subjects"> | null = await ctx.runQuery(internal.content.getSubjectById, { subjectId: args.subjectId });
     if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
 
-    const createdId: Id<"contentItems"> = await ctx.runMutation(internal.content.insertContentItem, {
+    const createdId = await ctx.runMutation(internal.content.insertContentItem, {
       title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
-      examYear: args.examYear, fileUrl: args.fileUrl, fileSizeBytes: args.fileSizeBytes, uploadedBy: adminUser._id, isPremium: args.isPremium,
+      examYear: args.examYear, fileUrl: args.fileUrl, fileSizeBytes: args.fileSizeBytes,
+      uploadedBy: adminUser._id, isPremium: args.isPremium,
     });
 
     if (args.topicCandidates && args.topicCandidates.length > 0) {
-      await ctx.runMutation(internal.content.linkContentTopics, { contentId: createdId, subjectId: args.subjectId, grade: args.grade, topicNames: args.topicCandidates });
+      await ctx.runMutation(internal.content.linkContentTopics, {
+        contentId: createdId, subjectId: args.subjectId, grade: args.grade, topicNames: args.topicCandidates,
+      });
     }
 
     await logEventAction(ctx, {
@@ -122,18 +109,21 @@ export const finalizeUpload = action({
       durationMs: 0,
     });
 
-    await ctx.runAction(internal.telegramActions.postNewContent, { title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectName: subject.name, contentId: createdId }).catch(() => {});
+    await ctx.runAction(internal.telegramActions.postNewContent, {
+      title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectName: subject.name, contentId: createdId,
+    }).catch(() => {});
+
     return { success: true as const };
   },
 });
 
 // ---------------------------------------------------------------------------
-// Original upload flow: browser→Convex temp→R2 (kept as fallback)
+// Original upload: browser→Convex temp→R2 (kept as fallback)
 // ---------------------------------------------------------------------------
 
 export const generateUploadUrl = action({
   args: {},
-  handler: async (ctx) => { return await ctx.storage.generateUploadUrl(); },
+  handler: async (ctx) => ctx.storage.generateUploadUrl(),
 });
 
 export const adminUploadContent = action({
@@ -154,12 +144,12 @@ export const adminUploadContent = action({
     const bytes = new Uint8Array(arrayBuffer);
 
     try {
-      const r2Overrides = await getR2Overrides(ctx);
-      const config = getR2Config(r2Overrides);
+      const overrides = await getR2Overrides(ctx);
+      const config = getR2Config(overrides);
       if (!config.configured) throw new ConvexError({ message: `R2 not configured: ${config.missing.join(", ")}`, code: "storage_not_configured" });
 
       const key = buildKey(subject.stream, args.grade, subject.slug, args.contentType, args.filename);
-      const fileUrl = await uploadFile(key, bytes, contentTypeForFilename(args.filename), r2Overrides);
+      const fileUrl = await uploadFile(key, bytes, contentTypeForFilename(args.filename), overrides);
       await ctx.storage.delete(storageId);
 
       const createdId = await ctx.runMutation(internal.content.insertContentItem, {
@@ -168,7 +158,9 @@ export const adminUploadContent = action({
       });
 
       if (args.topicCandidates && args.topicCandidates.length > 0) {
-        await ctx.runMutation(internal.content.linkContentTopics, { contentId: createdId, subjectId: args.subjectId, grade: args.grade, topicNames: args.topicCandidates });
+        await ctx.runMutation(internal.content.linkContentTopics, {
+          contentId: createdId, subjectId: args.subjectId, grade: args.grade, topicNames: args.topicCandidates,
+        });
       }
 
       await logEventAction(ctx, {
@@ -177,7 +169,10 @@ export const adminUploadContent = action({
         durationMs: 0,
       });
 
-      await ctx.runAction(internal.telegramActions.postNewContent, { title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectName: subject.name, contentId: createdId }).catch(() => {});
+      await ctx.runAction(internal.telegramActions.postNewContent, {
+        title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectName: subject.name, contentId: createdId,
+      }).catch(() => {});
+
       return { success: true as const };
     } catch (error) { throw asConvexError(error, "Upload failed"); }
   },
@@ -209,18 +204,6 @@ export const deleteContentItem = action({
 });
 
 // ---------------------------------------------------------------------------
-// R2 status
-// ---------------------------------------------------------------------------
-
-export const getR2Status = action({
-  args: {},
-  handler: async (ctx): Promise<R2Config> => {
-    const overrides = await getR2Overrides(ctx);
-    return getR2Config(overrides);
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Signed download URL (premium content gating)
 // ---------------------------------------------------------------------------
 
@@ -242,5 +225,17 @@ export const getDownloadUrl = action({
     if (!key) throw new ConvexError({ message: "Cannot generate download URL.", code: "storage" });
     const url = await getSignedDownloadUrl(key, overrides);
     return { url };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// R2 configuration status
+// ---------------------------------------------------------------------------
+
+export const getR2Status = action({
+  args: {},
+  handler: async (ctx): Promise<R2Config> => {
+    const overrides = await getR2Overrides(ctx);
+    return getR2Config(overrides);
   },
 });
