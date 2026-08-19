@@ -209,7 +209,8 @@ export const deleteContentItem = action({
 
 export const getDownloadUrl = action({
   args: { contentId: v.id("contentItems") },
-  handler: async (ctx, args) => {
+  returns: v.object({ url: v.string() }),
+  handler: async (ctx, args): Promise<{ url: string }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
 
@@ -220,11 +221,9 @@ export const getDownloadUrl = action({
       await requireActiveSubscriptionAction(ctx, userId);
     }
 
-    const overrides = await getR2Overrides(ctx);
-    const key = keyFromUrl(item.fileUrl, overrides);
-    if (!key) throw new ConvexError({ message: "Cannot generate download URL.", code: "storage" });
-    const url = await getSignedDownloadUrl(key, overrides);
-    return { url };
+    // Return the public R2 URL directly — signed URLs cause CORS issues
+    // with browser PDF readers (react-pdf / pdf.js).
+    return { url: item.fileUrl };
   },
 });
 
