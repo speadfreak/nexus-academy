@@ -27,6 +27,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { ReportBlockMenu } from "@/components/ReportBlockMenu";
+import { GroupChatPanel } from "@/components/GroupChatPanel";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -435,6 +436,14 @@ export default function Groups() {
             </div>
           )}
         </div>
+      )}
+
+      {selectedGroup && (
+        <GroupChatPanel
+          groupId={selectedGroup.groupId as Id<"studyGroups">}
+          groupName={selectedGroup.name}
+          onStartRoom={() => setRoomDialogOpen(true)}
+        />
       )}
 
       {/* Member roster with per-person safety actions */}
