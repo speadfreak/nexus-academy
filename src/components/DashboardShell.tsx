@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Users,
   X,
+  Layers,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -71,6 +72,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     { to: "/journey", label: "Journey", icon: TrendingUp },
     { to: "/calendar", label: "Calendar", icon: CalendarDays },
     { to: "/notes", label: "Notes", icon: NotebookPen },
+    { to: "/flashcards", label: "Flashcards", icon: Layers },
     { to: "/achievements", label: "Achievements", icon: Award },
     { to: "/groups", label: "Groups", icon: Users },
     { to: "/settings", label: "Settings", icon: Settings },

@@ -97,7 +97,7 @@ const schema = defineSchema(
     // Tutor chat threads, scoped optionally to a subject and/or a content item.
     conversations: defineTable({
       userId: v.id("users"),
-      title: v.string(),
+      title: v.optional(v.string()),
       subjectId: v.optional(v.id("subjects")),
       contentId: v.optional(v.id("contentItems")),
       createdAt: v.number(),

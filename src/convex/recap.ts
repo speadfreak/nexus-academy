@@ -5,8 +5,8 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import {
   action,
+  internalMutation,
   internalQuery,
-  mutation,
   type ActionCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -48,6 +48,11 @@ export const getRecentQuizAttempts = internalQuery({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect()
       .then((attempts) => attempts.filter((a) => a.completedAt >= since)),
+});
+
+export const getQuizById = internalQuery({
+  args: { quizId: v.id("quizzes") },
+  handler: async (ctx, { quizId }) => (await ctx.db.get(quizId)) ?? null,
 });
 
 export const getSubjectById = internalQuery({
@@ -164,9 +169,10 @@ export const generateRecap = action({
       });
       const last = attempts[0];
       if (last) {
-        const subject = await ctx.runQuery(internal.recap.getSubjectById, {
-          subjectId: last.subjectId ?? (last as unknown as { subjectId?: Id<"subjects"> }).subjectId,
-        });
+        const quiz = await ctx.runQuery(internal.recap.getQuizById, { quizId: last.quizId });
+        const subject = quiz ? await ctx.runQuery(internal.recap.getSubjectById, {
+          subjectId: quiz.subjectId,
+        }) : null;
         const score = Math.round((last.score / last.totalQuestions) * 100);
         dataSummary =
           `Most recent quiz:\n` +
@@ -230,7 +236,7 @@ export const generateRecap = action({
 // Mutation: store recap
 // ---------------------------------------------------------------------------
 
-export const insertRecap = mutation({
+export const insertRecap = internalMutation({
   args: {
     userId: v.id("users"),
     type: v.union(

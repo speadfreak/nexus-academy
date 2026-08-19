@@ -16,7 +16,7 @@ import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { evaluate } from "mathjs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { Document, Page as PdfPage } from "react-pdf";
 import { toast } from "sonner";
 import { pdfjs } from "@/lib/pdf";
@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   Bookmark,
   BookmarkCheck,
+  Layers,
   Bot,
   Calculator,
   ChevronLeft,
@@ -87,6 +88,7 @@ interface ChatMessage {
 
 export default function Reader() {
   const { contentId } = useParams<{ contentId: string }>();
+  const navigate = useNavigate();
   const reader = useQuery(api.content.getReaderContent, {
     contentId: contentId as never,
   });
@@ -339,6 +341,18 @@ export default function Reader() {
               <a href={pdfUrl} target="_blank" rel="noopener noreferrer" aria-label="Download PDF">
                 <Download className="size-4" />
               </a>
+            </Button>
+          )}
+          {item.subjectId && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-lg text-muted-foreground"
+              onClick={() => navigate(`/flashcards?subject=${item.subjectId}&content=${item._id}`)}
+              aria-label="Make flashcards from this document"
+              title="Make flashcards"
+            >
+              <Layers className="size-4" />
             </Button>
           )}
           <Button

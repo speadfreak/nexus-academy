@@ -409,6 +409,50 @@ function BookSkeleton({ index }: { index: number }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   WEEKLY RECAP CARD
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function WeeklyRecap() {
+  const [recapText, setRecapText] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const generateRecap = useAction(api.recap.generateRecap);
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    try {
+      const result = await generateRecap({ type: "weekly" });
+      if (result.text) setRecapText(result.text);
+    } catch {
+      // silent — recap is nice-to-have
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="glass-panel rounded-2xl p-5">
+      <div className="flex items-center justify-between">
+        <span className="type-mono uppercase text-muted-foreground">this week</span>
+        <Sparkles className="size-3.5 text-primary/60" />
+      </div>
+      {recapText ? (
+        <p className="type-body mt-3 leading-relaxed text-muted-foreground">{recapText}</p>
+      ) : (
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={loading}
+          className="interactive-press mt-3 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 font-mono text-[11px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+          {loading ? "Generating…" : "Get weekly recap"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    MAIN DASHBOARD
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -894,6 +938,9 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+
+        {/* ═══ WEEKLY RECAP ═══ */}
+        <WeeklyRecap />
 
         {/* ═══ DAILY CHALLENGE ═══ */}
         {dailyChallenges !== undefined && dailyChallenges.length > 0 && activeChallenge && (

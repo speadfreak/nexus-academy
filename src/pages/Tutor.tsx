@@ -9,9 +9,10 @@ import {
   MessageSquarePlus,
   MessageSquareText,
   Sparkles,
+  Layers,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +89,7 @@ function Bubble({ message }: { message: MessageDoc }) {
 
 export default function Tutor() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const subjects = useQuery(api.subjects.getAll);
   const conversations = useQuery(api.ai.listConversations);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
@@ -240,7 +242,7 @@ export default function Tutor() {
                 Start a chat to begin.
               </p>
             ) : (
-              conversations.map((conversation: { _id: string; title: string; subjectName: string | null; subjectId?: string; updatedAt: number }) => {
+              conversations.map((conversation: { _id: string; title?: string; subjectName: string | null; subjectId?: string; updatedAt: number }) => {
                 const active = conversation._id === (selectedId as never);
                 return (
                   <button
@@ -305,9 +307,27 @@ export default function Tutor() {
                 )}
               </div>
             </div>
-            <Badge className="hidden shrink-0 gap-1.5 bg-primary/10 font-mono text-[10px] text-primary sm:flex">
-              <Sparkles className="size-3" /> grok-4.6 · national exam tutor
-            </Badge>
+            <div className="hidden items-center gap-2 sm:flex">
+              {activeConversation?.subjectId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 rounded-lg font-mono text-[10px] text-muted-foreground hover:text-primary"
+                  onClick={() => {
+                    const convId = selectedId;
+                    const subjId = activeConversation.subjectId;
+                    if (convId && subjId) {
+                      navigate(`/flashcards?subject=${subjId}&conversation=${convId}`);
+                    }
+                  }}
+                >
+                  <Layers className="size-3" /> Make flashcards
+                </Button>
+              )}
+              <Badge className="gap-1.5 bg-primary/10 font-mono text-[10px] text-primary">
+                <Sparkles className="size-3" /> grok-4.6 · national exam tutor
+              </Badge>
+            </div>
           </div>
 
           {/* Mobile controls (rail is desktop-only) */}
@@ -346,9 +366,9 @@ export default function Tutor() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="new">+ New chat</SelectItem>
-                {conversations?.map((conversation: { _id: string; title: string }) => (
+                {conversations?.map((conversation: { _id: string; title?: string }) => (
                   <SelectItem key={conversation._id} value={conversation._id as string}>
-                    {conversation.title}
+                    {conversation.title ?? "Untitled chat"}
                   </SelectItem>
                 ))}
               </SelectContent>

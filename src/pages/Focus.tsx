@@ -1,6 +1,6 @@
 import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
-import { motion } from "framer-motion";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Flame,
   History,
@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Sparkles,
   Timer,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -48,6 +49,8 @@ export default function Focus() {
   const subjects = useQuery(api.subjects.getAll);
   const history = useQuery(api.studySessions.getHistory);
   const logSession = useMutation(api.studySessions.logSession);
+  const generateRecap = useAction(api.recap.generateRecap);
+  const [recapText, setRecapText] = useState<string | null>(null);
 
   const [subjectId, setSubjectId] = useState("");
   const [minutes, setMinutes] = useState(25);
@@ -118,6 +121,10 @@ export default function Focus() {
         }
         setStatus("idle");
         setRemaining(minutes * 60);
+        // Generate a study recap from real data
+        generateRecap({ type: "focus_session" })
+          .then((r) => { if (r.text) setRecapText(r.text); })
+          .catch(() => {}); // silent — recap is nice-to-have
         // Optional quick check — never forced.
         setQuizPromptOpen(true);
       })
@@ -397,6 +404,32 @@ export default function Focus() {
           </div>
         </div>
       </div>
+
+      {/* AI recap card — appears after session completes */}
+      <AnimatePresence>
+        {recapText && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mx-auto w-full max-w-2xl glass-panel flex items-start gap-3 rounded-2xl p-5"
+          >
+            <Sparkles className="size-5 shrink-0 text-primary mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary mb-1">
+                // study recap
+              </p>
+              <p className="type-body leading-relaxed text-muted-foreground">{recapText}</p>
+            </div>
+            <button
+              onClick={() => setRecapText(null)}
+              className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
+            >
+              <XCircle className="size-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Optional quick-check prompt after a completed session */}
       <Dialog open={quizPromptOpen} onOpenChange={setQuizPromptOpen}>

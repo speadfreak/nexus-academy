@@ -24,6 +24,7 @@ const Plans = lazy(() => import("./pages/Plans.tsx"));
 const Journey = lazy(() => import("./pages/Journey.tsx"));
 const CalendarPage = lazy(() => import("./pages/Calendar.tsx"));
 const Notes = lazy(() => import("./pages/Notes.tsx"));
+const Flashcards = lazy(() => import("./pages/Flashcards.tsx"));
 const Achievements = lazy(() => import("./pages/Achievements.tsx"));
 const Groups = lazy(() => import("./pages/Groups.tsx"));
 const Room = lazy(() => import("./pages/Room.tsx"));
@@ -370,6 +371,14 @@ createRoot(document.getElementById("root")!).render(
                       element={
                         <RequireAuth>
                           <Notes />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/flashcards"
+                      element={
+                        <RequireAuth>
+                          <Flashcards />
                         </RequireAuth>
                       }
                     />

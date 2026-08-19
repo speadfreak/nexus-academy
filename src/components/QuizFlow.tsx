@@ -83,6 +83,8 @@ export function QuizFlow({
   const [answers, setAnswers] = useState<number[]>([]);
   const [answered, setAnswered] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [recapText, setRecapText] = useState<string | null>(null);
+  const generateRecap = useAction(api.recap.generateRecap);
 
   const selectedSubject = useMemo(
     () => subjects?.find((s) => s._id === (subjectId as never)),
@@ -171,6 +173,10 @@ export function QuizFlow({
       for (const achievement of result.newAchievements) {
         toast.success(`Achievement unlocked: ${achievement.name}`);
       }
+      // Generate a quiz recap from real data
+      generateRecap({ type: "quiz" })
+        .then((r) => { if (r.text) setRecapText(r.text); })
+        .catch(() => {});
     } catch (error) {
       toast.error(errorMessage(error, "Could not submit your answers."));
     } finally {
@@ -187,6 +193,7 @@ export function QuizFlow({
       setCurrent(0);
       setAnswers([]);
       setAnswered(false);
+      setRecapText(null);
     }, 250);
   };
 
@@ -443,6 +450,18 @@ export function QuizFlow({
                   </div>
                 ))}
               </div>
+
+              {recapText && (
+                <div className="glass-soft flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                  <Sparkles className="size-4 shrink-0 text-primary mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary mb-1">
+                      // recap
+                    </p>
+                    <p className="type-body leading-relaxed text-muted-foreground">{recapText}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <Button
