@@ -97,8 +97,10 @@ export function AdminContentSection() {
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const getPresignedR2UploadUrl = useAction(api.contentAdmin.getPresignedR2UploadUrl);
-  const finalizeUpload = useAction(api.contentAdmin.finalizeUpload);
+  // Upload through Convex first, then let the server relay bytes to R2. This avoids
+  // browser-to-R2 CORS failures (the old presigned PUT surfaced as generic “Failed to fetch”).
+  const generateUploadUrl = useAction(api.contentAdmin.generateUploadUrl);
+  const adminUploadContent = useAction(api.contentAdmin.adminUploadContent);
   const classifyContentText = useAction(api.contentAI.classifyContentText);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<Awaited<
@@ -228,38 +230,30 @@ export function AdminContentSection() {
 
     setUploading(true);
     try {
-      // Step 1: Get presigned R2 upload URL (server generates, browser uploads directly)
-      toast.info("Preparing upload…");
-      const { uploadUrl, fileUrl } = await getPresignedR2UploadUrl({
-        filename: file.name,
-        contentType: file.type || "application/pdf",
-        grade: Number(grade),
-        subjectId: subjectId as never,
-        contentSlug: contentType,
-      });
-
-      // Step 2: Upload file directly from browser to R2
-      toast.info("Uploading to R2…");
-      const response = await fetch(uploadUrl, {
-        method: "PUT",
+      // Step 1: Upload to Convex's authenticated temporary storage.
+      // The server then writes to R2, so the browser never needs R2 CORS permission.
+      toast.info("Preparing secure upload…");
+      const uploadUrl = await generateUploadUrl();
+      const tempResponse = await fetch(uploadUrl, {
+        method: "POST",
         headers: { "Content-Type": file.type || "application/pdf" },
         body: file,
       });
-      if (!response.ok) {
-        throw new Error(`R2 upload failed (HTTP ${response.status}). Check your R2 credentials.`);
+      if (!tempResponse.ok) {
+        throw new Error(`Secure upload failed (HTTP ${tempResponse.status}). Please retry.`);
       }
+      const storageId = (await tempResponse.json()) as string;
 
-      // Step 3: Confirm on server — insert DB row
+      // Step 2: Server-side transfer to R2 and library finalization.
       toast.info("Saving to library…");
-      await finalizeUpload({
+      await adminUploadContent({
         title: title.trim(),
         contentType,
         grade: Number(grade),
         subjectId: subjectId as never,
         examYear: contentType === "past_exam" ? Number(examYear) : undefined,
         isPremium,
-        fileUrl,
-        fileSizeBytes: file.size,
+        storageId,
         filename: file.name,
         topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
       });
