@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TrackId = "rain" | "focus" | "breeze" | "white" | "brown" | "night" | "binaural" | "birds" | "hum";
+type TrackId = "rain" | "focus" | "breeze" | "white" | "brown" | "night" | "binaural" | "birds" | "hum" | "ocean" | "lofi" | "fire" | "morning";
 
 type TrackCategory = "Focus" | "Calm" | "Deep Work" | "Energize" | "Wind-down";
 
