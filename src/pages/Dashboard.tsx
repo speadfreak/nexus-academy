@@ -37,7 +37,6 @@ import {
   Trophy,
   X,
   XCircle,
-  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -268,6 +267,11 @@ function BookTile({
             }}
           />
 
+          {/* Shimmer light sweep on hover */}
+          <div
+            className="pointer-events-none absolute -top-1/2 -left-full h-[200%] w-1/3 -rotate-12 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-[left] duration-1000 ease-out group-hover:left-[150%]"
+          />
+
           {/* Spine highlight */}
           <span className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-white/30 via-white/15 to-white/5" />
           <span className="pointer-events-none absolute inset-y-0 left-[12px] w-px bg-white/8" />
@@ -399,7 +403,7 @@ function BookTile({
    LOADING SKELETON
    ═══════════════════════════════════════════════════════════════════════ */
 
-function BookSkeleton({ index }: { index: number }) {
+function BookSkeleton() {
   return (
     <div className="flex flex-col gap-3">
       <div className="glass-panel aspect-[3/4] w-full animate-pulse rounded-2xl" />
@@ -453,6 +457,117 @@ function WeeklyRecap() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   ANIMATED HERO MESH — Breathing dot grid with accent lines
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function HeroMeshGrid() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      {/* Technical grid with radial fade mask */}
+      <div
+        className="absolute inset-0 opacity-[0.05]"
+        style={{
+          backgroundImage: `linear-gradient(rgba(116,196,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(116,196,255,0.5) 1px, transparent 1px)`,
+          backgroundSize: '28px 28px',
+          maskImage: 'radial-gradient(ellipse 90% 80% at 65% 35%, black 15%, transparent 65%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 90% 80% at 65% 35%, black 15%, transparent 65%)',
+        }}
+      />
+      {/* Animated horizontal accent lines */}
+      <motion.div
+        className="absolute left-0 right-0 top-[38%] h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent"
+        initial={{ scaleX: 0, opacity: 0 }}
+        animate={{ scaleX: 1, opacity: 1 }}
+        transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] as const, delay: 0.2 }}
+      />
+      <motion.div
+        className="absolute bottom-[22%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/12 to-transparent"
+        initial={{ scaleX: 0, opacity: 0 }}
+        animate={{ scaleX: 1, opacity: 1 }}
+        transition={{ duration: 2.2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.5 }}
+      />
+      {/* Animated vertical accent line */}
+      <motion.div
+        className="absolute left-[45%] top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary/10 to-transparent"
+        initial={{ scaleY: 0, opacity: 0 }}
+        animate={{ scaleY: 1, opacity: 1 }}
+        transition={{ duration: 2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.4 }}
+      />
+      {/* Floating ambient orbs */}
+      <motion.div
+        className="absolute -right-6 top-1/3 size-48 -translate-y-1/2 rounded-full bg-primary/[0.06]"
+        style={{ filter: 'blur(40px)' }}
+        animate={{ x: [0, 20, 0], y: [0, -15, 0], scale: [1, 1.15, 1] }}
+        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute -left-4 bottom-1/4 size-32 rounded-full bg-primary/[0.04]"
+        style={{ filter: 'blur(30px)' }}
+        animate={{ x: [0, -12, 0], y: [0, 10, 0], scale: [1, 1.1, 1] }}
+        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+      />
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   XP PROGRESS BAR — Level indicator with glowing fill
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function XPProgressBar({ currentLevel, totalXp, xpToNext }: { currentLevel: number; totalXp: number; xpToNext: number }) {
+  const xpForLevel = Math.max(1, (currentLevel + 1) * 80 + 20);
+  const xpEarned = Math.max(0, xpForLevel - xpToNext);
+  const progress = Math.min(100, Math.max(3, (xpEarned / xpForLevel) * 100));
+
+  return (
+    <motion.div
+      className="glass-panel flex flex-1 items-center gap-4 rounded-2xl p-4"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.3 }}
+    >
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Trophy className="size-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="type-h3 text-gradient">Level {currentLevel}</span>
+          <span className="type-mono text-muted-foreground">
+            <span className="font-bold text-foreground/80">{totalXp.toLocaleString()}</span> XP
+          </span>
+        </div>
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/5">
+          <motion.div
+            className="relative h-full overflow-hidden rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1] as const, delay: 0.6 }}
+          >
+            <div
+              className="absolute inset-0"
+              style={{
+                background: 'linear-gradient(90deg, oklch(0.65 0.15 240), oklch(0.78 0.14 210), oklch(0.82 0.12 195))',
+                boxShadow: '0 0 16px rgba(116,196,255,0.5), 0 0 4px rgba(116,196,255,0.8)',
+              }}
+            />
+            <motion.div
+              className="absolute inset-0"
+              style={{
+                background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
+                backgroundSize: '200% 100%',
+              }}
+              animate={{ backgroundPosition: ['100% 0%', '-100% 0%'] }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+            />
+          </motion.div>
+        </div>
+        <p className="type-caption mt-1.5 text-muted-foreground">{xpToNext.toLocaleString()} XP to next level</p>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    MAIN DASHBOARD
    ═══════════════════════════════════════════════════════════════════════ */
 
@@ -463,6 +578,7 @@ export default function Dashboard() {
   const [contentType, setContentType] = useState("");
   const [examYear, setExamYear] = useState("");
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [quizSubjectId, setQuizSubjectId] = useState<string>("");
   const [quizOpen, setQuizOpen] = useState(false);
   const navigate = useNavigate();
@@ -532,7 +648,7 @@ export default function Dashboard() {
   const streak = useQuery(api.studySessions.getStreak);
   const todos = useQuery(api.todos.list);
   const todayKey = localDateKey();
-  const weekDays = useMemo(() => lastNDayWindows(7), [todayKey]);
+  const weekDays = useMemo(() => lastNDayWindows(7), []);
   const weekActivity = useQuery(api.studySessions.getWeekActivity, {
     days: weekDays as never,
   });
@@ -637,61 +753,110 @@ export default function Dashboard() {
     <DashboardShell>
       <div className="flex flex-col gap-6">
         {/* ═══ CINEMATIC HERO / GREETING ═══ */}
-        <div className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8">
+        <motion.div
+          className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8"
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as const }}
+        >
           {/* Ambient glow */}
           <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-16 -left-16 size-48 rounded-full bg-primary/5 blur-3xl" />
+          <HeroMeshGrid />
 
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="flex items-center gap-2.5 type-mono font-bold uppercase tracking-[0.18em] text-primary">
+              <motion.p
+                className="flex items-center gap-2.5 type-mono font-bold uppercase tracking-[0.18em] text-primary"
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
+              >
                 {profile && (
-                  <Avatar className="size-8 ring-2 ring-primary/20">
-                    <AvatarImage src={profile.avatarUrl ?? undefined} />
-                    <AvatarFallback className="bg-primary/15 type-caption font-extrabold text-primary">
-                      {(profile.displayName ?? "N")
-                        .split(/\s+/)
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .map((part) => part[0]?.toUpperCase() ?? "")
-                        .join("") || "N"}
-                    </AvatarFallback>
-                  </Avatar>
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as const, delay: 0.15 }}
+                  >
+                    <Avatar className="size-8 ring-2 ring-primary/20">
+                      <AvatarImage src={profile.avatarUrl ?? undefined} />
+                      <AvatarFallback className="bg-primary/15 type-caption font-extrabold text-primary">
+                        {(profile.displayName ?? "N")
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((part) => part[0]?.toUpperCase() ?? "")
+                          .join("") || "N"}
+                      </AvatarFallback>
+                    </Avatar>
+                  </motion.div>
                 )}
                 <span>
                   {timeOfDayGreeting()}
                   {profile?.displayName ? `, ${profile.displayName.split(/\s+/)[0]}` : ""}
                 </span>
-              </p>
-              <h1 className="type-display mt-2">
+              </motion.p>
+              <motion.h1
+                className="type-display relative mt-2 text-gradient"
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] as const, delay: 0.1 }}
+              >
                 The Library
-              </h1>
-              <p className="type-body mt-1.5 max-w-lg text-muted-foreground">
+                {/* Animated scan line sweep */}
+                <motion.div
+                  className="absolute bottom-1 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+                  initial={{ scaleX: 0, opacity: 0 }}
+                  animate={{ scaleX: 1, opacity: 1 }}
+                  transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.5 }}
+                />
+              </motion.h1>
+              <motion.p
+                className="type-body mt-1.5 max-w-lg text-muted-foreground"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.2 }}
+              >
                 Textbooks, past exams, worksheets and guides for grades 9–12.
                 {totalContent > 0 && (
                   <span className="ml-1 font-semibold text-foreground/70">
                     {totalContent} resource{totalContent !== 1 ? "s" : ""} available.
                   </span>
                 )}
-              </p>
+              </motion.p>
 
               {/* Stream breakdown pills */}
               {streamBreakdown && totalContent > 0 && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {streamBreakdown.natural > 0 && (
-                    <span className="flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 type-caption font-semibold text-emerald-300">
+                    <motion.span
+                      className="flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 type-caption font-semibold text-emerald-300"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as const, delay: 0.35 }}
+                    >
                       <Leaf className="size-3" /> {streamBreakdown.natural} Natural
-                    </span>
+                    </motion.span>
                   )}
                   {streamBreakdown.social > 0 && (
-                    <span className="flex items-center gap-1.5 rounded-full bg-amber-400/10 px-3 py-1 type-caption font-semibold text-amber-300">
+                    <motion.span
+                      className="flex items-center gap-1.5 rounded-full bg-amber-400/10 px-3 py-1 type-caption font-semibold text-amber-300"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as const, delay: 0.42 }}
+                    >
                       <Globe2 className="size-3" /> {streamBreakdown.social} Social
-                    </span>
+                    </motion.span>
                   )}
                   {streamBreakdown.common > 0 && (
-                    <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 type-caption font-semibold text-primary">
+                    <motion.span
+                      className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 type-caption font-semibold text-primary"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as const, delay: 0.49 }}
+                    >
                       <BookOpen className="size-3" /> {streamBreakdown.common} Common
-                    </span>
+                    </motion.span>
                   )}
                 </div>
               )}
@@ -708,13 +873,14 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* ═══ DAILY QUOTE ═══ */}
         {quote && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.3 }}
             className="glass-panel flex items-start gap-4 rounded-2xl px-5 py-4"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -829,13 +995,23 @@ export default function Dashboard() {
         </AnimatePresence>
 
         {/* ═══ STATS ROW ═══ */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <motion.div
+          className="grid grid-cols-2 gap-3 lg:grid-cols-5"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.15 }}
+        >
           <div className="glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <span className="type-mono uppercase text-muted-foreground">streak</span>
-              <div className="flex size-8 items-center justify-center rounded-xl bg-orange-400/10 text-orange-300">
+              <motion.div
+                className="flex size-8 items-center justify-center rounded-xl bg-orange-400/10 text-orange-300"
+                animate={{ scale: [1, 1.18, 1] }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                style={{ filter: 'drop-shadow(0 0 8px rgba(251,146,60,0.5))' }}
+              >
                 <Flame className="size-4" />
-              </div>
+              </motion.div>
             </div>
             <p className="type-h2 mt-2 flex items-baseline gap-1.5 tabular-nums text-gradient">
               <StatNumber value={streak?.currentStreak ?? 0} />
@@ -903,10 +1079,70 @@ export default function Dashboard() {
               {level?.xpToNext ?? 0} xp to next
             </p>
           </Link>
+        </motion.div>
+
+        {/* ═══ XP PROGRESS + SUBJECT QUICK TABS ═══ */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
+          <XPProgressBar
+            currentLevel={level?.currentLevel ?? 1}
+            totalXp={level?.totalXp ?? 0}
+            xpToNext={level?.xpToNext ?? 0}
+          />
+          <div className="flex flex-1 items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+            <motion.button
+              type="button"
+              onClick={() => setSubjectSlug("")}
+              className={cn(
+                "interactive-press shrink-0 rounded-xl px-4 py-2.5 type-caption font-bold transition-all duration-200",
+                subjectSlug === ""
+                  ? "bg-primary/15 text-primary shadow-[0_0_20px_rgba(116,196,255,0.15)] ring-1 ring-primary/25"
+                  : "bg-white/5 text-muted-foreground hover:bg-white/8 hover:text-foreground",
+              )}
+              whileTap={{ scale: 0.96 }}
+            >
+              All
+            </motion.button>
+            {subjects?.map((subject, i) => {
+              const cover = coverFor(subject.slug);
+              const GlyphIcon = SUBJECT_GLYPHS[subject.slug];
+              const isActive = subjectSlug === subject.slug;
+              return (
+                <motion.button
+                  key={subject._id}
+                  type="button"
+                  onClick={() => setSubjectSlug(subject.slug)}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] as const, delay: i * 0.03 }}
+                  className={cn(
+                    "interactive-press flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2.5 type-caption font-bold transition-all duration-200",
+                    isActive
+                      ? "ring-1"
+                      : "bg-white/5 text-muted-foreground hover:bg-white/8 hover:text-foreground",
+                  )}
+                  style={isActive ? {
+                    backgroundColor: `${cover.accent}15`,
+                    color: cover.accent,
+                    ringColor: `${cover.accent}30`,
+                    boxShadow: `0 0 20px ${cover.accent}15`,
+                  } : undefined}
+                  whileTap={{ scale: 0.96 }}
+                >
+                  {GlyphIcon && <GlyphIcon className="size-3" style={isActive ? { color: cover.accent } : undefined} />}
+                  {subject.name}
+                </motion.button>
+              );
+            })}
+          </div>
         </div>
 
         {/* ═══ WEEK ACTIVITY STRIP ═══ */}
-        <div className="glass-panel rounded-2xl p-5">
+        <motion.div
+          className="glass-panel rounded-2xl p-5"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.4 }}
+        >
           <div className="flex items-center justify-between">
             <span className="type-mono uppercase text-muted-foreground">focus minutes · last 7 days</span>
             <Flame className="size-3.5 text-primary/60" />
@@ -918,14 +1154,17 @@ export default function Dashboard() {
               const isToday = day.date === todayKey;
               return (
                 <div key={day.date} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5" title={`${day.date} · ${day.hours} h`}>
-                  <div
+                  <motion.div
                     className={cn(
-                      "w-full rounded-t-lg transition-all duration-300",
+                      "w-full rounded-t-lg",
                       day.seconds > 0
                         ? "bg-gradient-to-t from-primary/50 to-primary"
                         : "bg-white/5",
                     )}
-                    style={{ height: `${height}%` }}
+                    initial={{ height: 0 }}
+                    animate={{ height: `${height}%` }}
+                    transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] as const, delay: 0.6 }}
+                    style={day.seconds > 0 ? { boxShadow: '0 0 12px rgba(116,196,255,0.25)' } : undefined}
                   />
                   <span className={cn(
                     "type-caption uppercase",
@@ -937,14 +1176,19 @@ export default function Dashboard() {
               );
             })}
           </div>
-        </div>
+        </motion.div>
 
         {/* ═══ WEEKLY RECAP ═══ */}
         <WeeklyRecap />
 
         {/* ═══ DAILY CHALLENGE ═══ */}
         {dailyChallenges !== undefined && dailyChallenges.length > 0 && activeChallenge && (
-          <div className="glass-panel hover-lift rounded-2xl p-5">
+          <motion.div
+            className="glass-panel hover-lift rounded-2xl p-5"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.5 }}
+          >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <span className="type-mono uppercase text-muted-foreground">
@@ -1044,18 +1288,37 @@ export default function Dashboard() {
                 Generating today's question…
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* ═══ SEARCH + FILTERS ═══ */}
-        <div className="glass-panel rounded-2xl p-5">
+        <motion.div
+          className="glass-panel rounded-2xl p-5"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.45 }}
+        >
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <motion.div
+              className="pointer-events-none absolute -inset-px rounded-xl"
+              style={{ background: 'linear-gradient(135deg, rgba(116,196,255,0.18), rgba(116,196,255,0.04), rgba(116,196,255,0.18))', borderRadius: '0.75rem' }}
+              animate={{ opacity: searchFocused ? 1 : 0, scale: searchFocused ? 1.02 : 1 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] as const }}
+            />
+            <motion.div
+              animate={{ color: searchFocused ? 'oklch(0.74 0.15 232)' : undefined }}
+              transition={{ duration: 0.2 }}
+              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted-foreground"
+            >
+              <Search className={cn("size-4", searchFocused && "drop-shadow-[0_0_6px_rgba(116,196,255,0.6)]")} />
+            </motion.div>
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder='Search titles and subjects — e.g. "physics past exam"'
-              className="h-11 rounded-xl bg-white/5 pl-9 pr-9 type-body"
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder='Search the library — "physics past exam", "grade 10 chemistry"'
+              className="relative z-[2] h-11 rounded-xl border-white/10 bg-white/5 pl-9 pr-9 type-body transition-shadow duration-300 focus-visible:shadow-[0_0_28px_rgba(116,196,255,0.15)]"
             />
             {searchQuery && (
               <button
@@ -1176,24 +1439,29 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {hasFilters && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-fit cursor-pointer rounded-xl text-muted-foreground interactive-press"
-            onClick={resetFilters}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
           >
-            <RotateCcw className="size-3.5" /> Reset filters
-          </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-fit cursor-pointer rounded-xl text-muted-foreground interactive-press"
+              onClick={resetFilters}
+            >
+              <RotateCcw className="size-3.5" /> Reset filters
+            </Button>
+          </motion.div>
         )}
 
         {/* ═══ CONTENT GALLERY ═══ */}
         {content === undefined ? (
           <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <BookSkeleton key={index} index={index} />
+            {Array.from({ length: 8 }).map((_, i) => (
+              <BookSkeleton key={i} />
             ))}
           </div>
         ) : (visibleContent ?? []).length === 0 ? (
