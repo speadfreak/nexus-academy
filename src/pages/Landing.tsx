@@ -971,7 +971,7 @@ export default function Landing() {
               <div className="mt-3 flex items-center gap-3">
                 <div className="h-px w-8 bg-gradient-to-r from-transparent to-primary/40" />
                 <p className="type-mono uppercase tracking-[0.25em] text-primary">
-                  Built by Joseph James
+                  Developed by Joseph James
                 </p>
                 <div className="h-px w-8 bg-gradient-to-l from-transparent to-primary/40" />
               </div>

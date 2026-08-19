@@ -104,6 +104,7 @@ export default function Reader() {
 
   // --- PDF viewing state -------------------------------------------------
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -113,14 +114,19 @@ export default function Reader() {
   const [pageAnimating, setPageAnimating] = useState(false);
   const readerItemId = reader?.item?._id;
 
+  // Fetch PDF as ArrayBuffer to bypass CORS issues with pdfjs.
+  // R2 public URLs can still block cross-origin fetches that pdfjs does
+  // internally. By fetching ourselves and passing raw bytes, we avoid that.
   useEffect(() => {
     if (!readerItemId) {
       setPdfUrl(null);
+      setPdfData(null);
       return;
     }
     let cancelled = false;
     setPdfError(null);
     setPdfUrl(null);
+    setPdfData(null);
     setNumPages(null);
     setPageNumber(1);
     setPageInput("1");
@@ -128,14 +134,19 @@ export default function Reader() {
     const load = async () => {
       try {
         const { url } = await getDownloadUrl({ contentId: readerItemId });
-        if (!cancelled) setPdfUrl(url);
+        if (cancelled) return;
+        setPdfUrl(url);
+        // Fetch the PDF bytes ourselves so pdfjs gets raw data, not a URL
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const buffer = await res.arrayBuffer();
+        if (!cancelled) setPdfData(buffer);
       } catch (error) {
         if (!cancelled) {
-          setPdfError(
-            error instanceof Error
-              ? error.message
-              : "Could not open this document. It may be premium content.",
-          );
+          const msg = error instanceof Error ? error.message : String(error);
+          console.error("[Reader] PDF fetch failed:", msg);
+          // If fetch fails, still keep the URL so user can open in new tab
+          setPdfError(msg);
         }
       } finally {
         if (!cancelled) setLoadingPdf(false);
@@ -528,7 +539,7 @@ export default function Reader() {
                 </div>
               )}
 
-              {/* Error state — cinematic */}
+              {/* Error state — cinematic + real error + fallback */}
               {pdfError && (
                 <div className="mx-auto mt-20 flex flex-col items-center gap-6">
                   <div className="relative">
@@ -543,27 +554,31 @@ export default function Reader() {
                     </h2>
                     <p className="type-body mt-2 text-muted-foreground/70 leading-relaxed">{pdfError}</p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-center gap-3">
                     <Button
                       variant="outline"
                       size="sm"
                       className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
                       onClick={() => window.location.reload()}
                     >
-                      <RotateCcw className="size-3.5" /> Refresh page
+                      <RotateCcw className="size-3.5" /> Refresh
                     </Button>
-                    <Button asChild size="sm" className="rounded-xl">
-                      <Link to="/upgrade">See upgrade options</Link>
-                    </Button>
+                    {pdfUrl && (
+                      <Button asChild size="sm" className="rounded-xl">
+                        <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="size-3.5" /> Open in new tab
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* PDF document */}
-              {pdfUrl && !pdfError && (
+              {pdfData && !pdfError && (
                 <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
                   <Document
-                    file={pdfUrl}
+                    file={{ data: pdfData }}
                     onLoadSuccess={({ numPages: pages }) => {
                       setNumPages(pages);
                       setPageNumber(1);

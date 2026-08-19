@@ -38,6 +38,29 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close mobile menu on click outside
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+        setMobileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [mobileOpen]);
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [mobileOpen]);
 
   // First activity of any authenticated session: create the trial subscription
   // if needed and count the active day. Both are idempotent server-side, so
@@ -98,9 +121,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     .join("");
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] gap-6 overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* Sidebar (desktop) */}
-      <aside className="glass-panel sticky top-6 hidden h-[calc(100vh-3rem)] w-60 shrink-0 flex-col rounded-2xl p-3 xl:flex">
+    <div className="mx-auto flex items-start min-h-[100dvh] min-w-0 w-full max-w-[1600px] gap-6 overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+      {/* Sidebar (desktop) — sticky works because parent has items-start */}
+      <aside className="glass-panel sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100vh-3rem)]">
         {/* Logo + brand */}
         <Link to="/" className="group flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-white/5">
           <img src={logo} alt="Nexus Academy logo" className="size-10 shrink-0 rounded-xl transition-transform group-hover:scale-105" />
@@ -237,7 +260,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           {mobileOpen && (
             <div
               id="mobile-navigation"
-              className="absolute inset-x-0 top-[calc(100%+0.5rem)] z-50 rounded-2xl border border-white/10 bg-background/95 p-2 shadow-2xl backdrop-blur-xl"
+              ref={mobileMenuRef}
+              className="absolute inset-x-0 top-[calc(100%+0.5rem)] z-50 max-h-[75vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/98 p-2 shadow-2xl backdrop-blur-xl"
             >
               <nav aria-label="Mobile navigation" className="grid gap-1">
                 {navItems.map((item) => {
@@ -271,7 +295,19 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           )}
         </header>
 
-        <main className="min-w-0 flex-1 pb-20 sm:pb-24">{children}</main>
+        <main className="min-w-0 flex-1 pb-20 sm:pb-28">{children}</main>
+
+        {/* ═══ FOOTER ═══ */}
+        <footer className="pb-2 pt-4 text-center">
+          <div className="mx-auto flex items-center justify-center gap-2">
+            <div className="h-px w-8 bg-gradient-to-r from-transparent to-white/10" />
+            <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50">
+              Developed by{" "}
+              <span className="font-bold text-foreground/60">JOSEPH JAMES</span>
+            </p>
+            <div className="h-px w-8 bg-gradient-to-l from-transparent to-white/10" />
+          </div>
+        </footer>
       </div>
 
       {/* Persistent study-vibe player — lives at the app root so it survives
