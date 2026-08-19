@@ -5,7 +5,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { action } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdminAction } from "./admin";
 import { requireActiveSubscriptionAction } from "./subscriptions";
@@ -51,7 +51,7 @@ type UploadedContent = {
  * process.env is not directly available to the user.
  */
 async function getR2Overrides(ctx: any): Promise<R2ConfigOverrides> {
-  const stored = await ctx.runQuery(internal.configKeys.getR2KeyValues);
+  const stored = await ctx.runQuery(api.configKeys.getR2KeyValues);
   return {
     R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID || stored.R2_ACCOUNT_ID || undefined,
     R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || stored.R2_ACCESS_KEY_ID || undefined,

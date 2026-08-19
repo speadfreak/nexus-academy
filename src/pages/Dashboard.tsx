@@ -156,7 +156,7 @@ function BookTile({
       <button
         type="button"
         onClick={() => onOpen(item)}
-        className="relative flex aspect-[3/4] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-xl text-left ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.7)] hover:ring-primary/40"
+        className="hover-lift relative flex aspect-[3/4] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-xl text-left ring-1 ring-white/10 hover:ring-primary/40"
         style={{
           background: `linear-gradient(160deg, ${cover.from} 0%, ${cover.to} 100%)`,
         }}
@@ -196,7 +196,7 @@ function BookTile({
 
         {/* Bottom: title + meta */}
         <div className="px-3 pb-3 pl-4">
-          <h3 className={`line-clamp-3 text-[13px] font-bold leading-5 tracking-tight ${cover.text}`}>
+          <h3 className={`line-clamp-3 type-caption leading-5 font-bold tracking-tight ${cover.text}`}>
             {item.title}
           </h3>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -442,10 +442,10 @@ export default function Dashboard() {
                 {profile?.displayName ? `, ${profile.displayName.split(/\s+/)[0]}` : ""}
               </span>
             </p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
+            <h1 className="type-h1 mt-1">
               The Library
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="type-body mt-1 text-muted-foreground">
               Textbooks, past exams, worksheets and guides for grades 9–12.
             </p>
           </div>
@@ -465,12 +465,12 @@ export default function Dashboard() {
               <Quote className="size-3.5" />
             </div>
             <div className="min-w-0">
-              <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="type-mono uppercase tracking-[0.2em] text-muted-foreground">
                 // today
               </p>
-              <p className="mt-1 text-sm leading-6 text-foreground/90">{quote.text}</p>
+              <p className="type-body-lg mt-1 text-foreground/90">{quote.text}</p>
               {quote.author && (
-                <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                <p className="type-caption mt-0.5 text-muted-foreground">
                   — {quote.author}
                 </p>
               )}
@@ -492,11 +492,11 @@ export default function Dashboard() {
                   <Crown className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold tracking-tight">
+                  <p className="type-h3">
                     Free trial — {subscription.trialDaysRemaining} active day
                     {subscription.trialDaysRemaining === 1 ? "" : "s"} left
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">
+                  <p className="type-body truncate text-muted-foreground">
                     Days you actually study count toward the 14-day trial. Premium
                     unlocks past exams, plans and unlimited tutoring.
                   </p>
@@ -520,8 +520,8 @@ export default function Dashboard() {
                     <Crown className="size-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-bold tracking-tight">Your free trial has ended</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="type-h3">Your free trial has ended</p>
+                    <p className="type-body text-muted-foreground">
                       Premium downloads and study plans are paused until you upgrade.
                     </p>
                   </div>
@@ -548,8 +548,8 @@ export default function Dashboard() {
                   <BellRing className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold tracking-tight">Keep your streak alive</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="type-h3">Keep your streak alive</p>
+                  <p className="type-body text-muted-foreground">
                     You haven&apos;t logged a study session today — a 25-minute focus
                     session is all it takes.
                   </p>
@@ -574,77 +574,66 @@ export default function Dashboard() {
 
         {/* Stats row */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <div className="glass-panel rounded-2xl p-4">
+          <div className="glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">streak</span>
+              <span className="type-mono uppercase text-muted-foreground">streak</span>
               <Flame className="size-4 text-primary" />
             </div>
-            <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
-                <StatNumber value={streak?.currentStreak ?? 0} />
-              </span>
-              <span className="font-mono text-[10px] text-muted-foreground">days</span>
+            <p className="type-h2 mt-2 flex items-baseline gap-1.5 tabular-nums text-gradient">
+              <StatNumber value={streak?.currentStreak ?? 0} />
+              <span className="type-caption text-muted-foreground">days</span>
             </p>
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground">longest {streak?.longestStreak ?? 0}</p>
+            <p className="type-caption mt-1 text-muted-foreground">longest {streak?.longestStreak ?? 0}</p>
           </div>
-          <div className="glass-panel rounded-2xl p-4">
+          <div className="glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">studied</span>
+              <span className="type-mono uppercase text-muted-foreground">studied</span>
               <Timer className="size-4 text-primary" />
             </div>
-            <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
-                <StatNumber value={streak?.totalHoursStudied ?? 0} decimals={1} />
-              </span>
-              <span className="font-mono text-[10px] text-muted-foreground">hours</span>
+            <p className="type-h2 mt-2 flex items-baseline gap-1.5 tabular-nums text-gradient">
+              <StatNumber value={streak?.totalHoursStudied ?? 0} decimals={1} />
+              <span className="type-caption text-muted-foreground">hours</span>
             </p>
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground">all time</p>
+            <p className="type-caption mt-1 text-muted-foreground">all time</p>
           </div>
-          <div className="glass-panel rounded-2xl p-4">
+          <div className="glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">this week</span>
+              <span className="type-mono uppercase text-muted-foreground">this week</span>
               <CalendarDays className="size-4 text-primary" />
             </div>
-            <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
-                <StatNumber value={weekHours} decimals={1} />
-              </span>
-              <span className="font-mono text-[10px] text-muted-foreground">hours</span>
+            <p className="type-h2 mt-2 flex items-baseline gap-1.5 tabular-nums text-gradient">
+              <StatNumber value={weekHours} decimals={1} />
+              <span className="type-caption text-muted-foreground">hours</span>
             </p>
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground">last 7 days</p>
+            <p className="type-caption mt-1 text-muted-foreground">last 7 days</p>
           </div>
-          <Link to="/todos" className="glass-panel group rounded-2xl p-4 transition-colors hover:border-primary/30">
+          <Link to="/todos" className="glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">todos</span>
+              <span className="type-mono uppercase text-muted-foreground">todos</span>
               <Sparkles className="size-4 text-primary" />
             </div>
-            <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
-                <StatNumber value={pendingTodoCount} />
-              </span>
-              <span className="font-mono text-[10px] text-muted-foreground">open</span>
+            <p className="type-h2 mt-2 flex items-baseline gap-1.5 tabular-nums text-gradient">
+              <StatNumber value={pendingTodoCount} />
+              <span className="type-caption text-muted-foreground">open</span>
             </p>
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground group-hover:text-primary">manage tasks</p>
+            <p className="type-caption mt-1 text-muted-foreground group-hover:text-primary">manage tasks</p>
           </Link>
-          <Link to="/achievements" className="glass-panel group rounded-2xl p-4 transition-colors hover:border-primary/30">
+          <Link to="/achievements" className="glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">level</span>
+              <span className="type-mono uppercase text-muted-foreground">level</span>
               <Zap className="size-4 text-primary" />
             </div>
-            <p className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
-                <StatNumber value={level?.currentLevel ?? 1} />
-              </span>
-              <span className="font-mono text-[10px] text-muted-foreground">· {level?.totalXp ?? 0} xp</span>
+            <p className="type-h2 mt-2 flex items-baseline gap-1.5 tabular-nums text-gradient">
+              <StatNumber value={level?.currentLevel ?? 1} />
+              <span className="type-caption text-muted-foreground">· {level?.totalXp ?? 0} xp</span>
             </p>
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground group-hover:text-primary">{level?.xpToNext ?? 0} xp to next</p>
+            <p className="type-caption mt-1 text-muted-foreground group-hover:text-primary">{level?.xpToNext ?? 0} xp to next</p>
           </Link>
         </div>
 
         {/* Week activity strip */}
         <div className="glass-panel rounded-2xl p-4">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">focus minutes · last 7 days</span>
+          <div className="flex items-center justify-between">              <span className="type-mono uppercase text-muted-foreground">focus minutes · last 7 days</span>
             <Flame className="size-3.5 text-primary/60" />
           </div>
           <div className="mt-3 flex h-20 items-end gap-2">
@@ -662,7 +651,7 @@ export default function Dashboard() {
                     )}
                     style={{ height: `${height}%` }}
                   />
-                  <span className="font-mono text-[9px] uppercase text-muted-foreground">{label}</span>
+                  <span className="type-caption uppercase text-muted-foreground">{label}</span>
                 </div>
               );
             })}
@@ -672,17 +661,17 @@ export default function Dashboard() {
         {/* Daily challenge — one AI question per subject per day. Free, quick,
             and XP is only earned for a correct answer. */}
         {dailyChallenges !== undefined && dailyChallenges.length > 0 && activeChallenge && (
-          <div className="glass-panel rounded-2xl p-5">
+          <div className="glass-panel hover-lift rounded-2xl p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <span className="type-mono uppercase text-muted-foreground">
                   daily challenge · one shot per subject
                 </span>
-                <p className="mt-1 text-sm font-bold leading-6 tracking-tight">
+                <p className="type-body-lg mt-1 font-semibold">
                   {activeChallenge.question ?? "Preparing today's question…"}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 font-mono text-[10px] font-bold text-primary">
+              <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 type-mono font-bold text-primary">
                 <Target className="size-3" /> +10 XP on a correct answer
               </div>
             </div>
@@ -695,7 +684,7 @@ export default function Dashboard() {
                   type="button"
                   onClick={() => setChallengeSubjectId(challenge.subjectId as string)}
                   className={cn(
-                    "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors",
+                    "interactive-press flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 type-caption font-semibold",
                     activeChallenge.subjectId === challenge.subjectId
                       ? "bg-primary/15 text-primary"
                       : "bg-white/5 text-muted-foreground hover:text-foreground",
@@ -724,7 +713,7 @@ export default function Dashboard() {
                       onClick={() => void handleChallengePick(index)}
                       disabled={answered || challengeSubmitting}
                       className={cn(
-                        "flex w-full cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default",
+                        "interactive-press flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left type-body disabled:cursor-default",
                         selected
                           ? "border-primary/50 bg-primary/10"
                           : answered
@@ -732,7 +721,7 @@ export default function Dashboard() {
                             : "border-white/10 bg-white/5 hover:border-primary/40 hover:text-foreground",
                       )}
                     >
-                      <span className="font-mono text-[11px] text-muted-foreground">
+                      <span className="type-caption text-muted-foreground">
                         {String.fromCharCode(65 + index)}
                       </span>
                       <span className="flex-1">{option}</span>
@@ -746,13 +735,13 @@ export default function Dashboard() {
                 {activeChallenge.answered && activeChallenge.explanation && (
                   <div
                     className={cn(
-                      "mt-1 rounded-xl border px-4 py-3 text-sm leading-6",
+                      "mt-1 rounded-xl border px-4 py-3 type-body leading-6",
                       activeChallenge.answeredCorrectly
                         ? "border-emerald-400/25 bg-emerald-400/5"
                         : "border-rose-400/25 bg-rose-400/5",
                     )}
                   >
-                    <p className="flex items-center gap-2 font-semibold">
+                    <p className="type-h3 flex items-center gap-2">
                       {activeChallenge.answeredCorrectly ? (
                         <>
                           <CheckCircle2 className="size-4 text-emerald-300" /> Correct — well done.
@@ -763,12 +752,12 @@ export default function Dashboard() {
                         </>
                       )}
                     </p>
-                    <p className="mt-1 text-muted-foreground">{activeChallenge.explanation}</p>
+                    <p className="type-body mt-1 text-muted-foreground">{activeChallenge.explanation}</p>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="type-body mt-4 flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="size-4 animate-spin text-primary" />
                 Generating today's question…
               </div>
@@ -776,15 +765,14 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Search + filters */}
-        <div className="glass-panel rounded-2xl p-4">
+        {/* Search + filters */}          <div className="glass-panel rounded-2xl p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search titles and subjects — e.g. “physics past exam”"
-              className="h-10 rounded-xl bg-white/5 pl-9 pr-9 font-mono text-sm"
+              className="h-10 rounded-xl bg-white/5 pl-9 pr-9 type-body"
             />
             {searchQuery && (
               <button
@@ -803,7 +791,7 @@ export default function Dashboard() {
               type="button"
               onClick={() => setBookmarkedOnly((value) => !value)}
               className={cn(
-                "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors",
+                "interactive-press flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 type-caption font-semibold",
                 bookmarkedOnly
                   ? "bg-primary/15 text-primary"
                   : "bg-white/5 text-muted-foreground hover:text-foreground",
@@ -822,7 +810,7 @@ export default function Dashboard() {
               ) : null}
             </button>
             {(bookmarkIds?.length ?? 0) > 0 && !bookmarkedOnly && (
-              <span className="font-mono text-[10px] text-muted-foreground">
+              <span className="type-caption text-muted-foreground">
                 {bookmarkIds?.length} saved
               </span>
             )}
@@ -830,7 +818,7 @@ export default function Dashboard() {
 
           <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Grade</span>
+            <span className="type-caption font-semibold text-muted-foreground">Grade</span>
             <Select value={grade} onValueChange={(v) => setGrade(v === "all" ? "" : v)}>
               <SelectTrigger className="h-9 rounded-xl bg-white/5">
                 <SelectValue placeholder="All grades" />
@@ -847,7 +835,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Subject</span>
+            <span className="type-caption font-semibold text-muted-foreground">Subject</span>
             <Select value={subjectSlug} onValueChange={(v) => setSubjectSlug(v === "all" ? "" : v)}>
               <SelectTrigger className="h-9 rounded-xl bg-white/5">
                 <SelectValue placeholder="All subjects" />
@@ -864,7 +852,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Type</span>
+            <span className="type-caption font-semibold text-muted-foreground">Type</span>
             <Select value={contentType} onValueChange={(v) => setContentType(v === "all" ? "" : v)}>
               <SelectTrigger className="h-9 rounded-xl bg-white/5">
                 <SelectValue placeholder="All types" />
@@ -881,7 +869,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">
+            <span className="type-caption font-semibold text-muted-foreground">
               Exam year {contentType && contentType !== "past_exam" ? "· n/a" : ""}
             </span>
             {contentType === "" || contentType === "past_exam" ? (
@@ -899,7 +887,7 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             ) : (
-              <div className="flex h-9 items-center rounded-xl border border-dashed border-border bg-white/5 px-3 text-xs text-muted-foreground">
+              <div className="type-caption flex h-9 items-center rounded-xl border border-dashed border-border bg-white/5 px-3 text-muted-foreground">
                 Only for past exams
               </div>
             )}
@@ -942,8 +930,8 @@ export default function Dashboard() {
             <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <FileSearch className="size-6" />
             </div>
-            <h3 className="mt-4 font-bold tracking-tight">No content here yet</h3>
-            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            <h3 className="type-h3 mt-4">No content here yet</h3>
+            <p className="type-body mt-1 max-w-sm text-muted-foreground">
               {bookmarkedOnly
                 ? "Nothing saved to your reading list yet — tap the bookmark on any book to start one."
                 : hasFilters

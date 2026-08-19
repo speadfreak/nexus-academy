@@ -231,7 +231,7 @@ export default function Landing() {
           <Link to="/" className="flex items-center gap-2.5">
             <img src={logo} alt="Nexus Academy logo" className="size-9 rounded-xl" />
             <span className="flex items-baseline gap-2">
-              <span className="text-base font-extrabold tracking-tight">Nexus Academy</span>
+              <span className="type-h3 font-extrabold">Nexus Academy</span>
               <span className="hidden font-mono text-[10px] font-medium text-muted-foreground sm:inline">
                 v1.0
               </span>
@@ -350,7 +350,7 @@ export default function Landing() {
 
           <motion.h1
             variants={fadeUp}
-            className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl"
+            className="type-display mt-5"
           >
             Every subject.
             <br />
@@ -360,7 +360,7 @@ export default function Landing() {
 
           <motion.p
             variants={fadeUp}
-            className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg"
+            className="type-body-lg mt-5 max-w-xl text-muted-foreground"
           >
             Nexus Academy is the complete content library for the Ethiopian national
             matric exams — textbooks, past papers, worksheets and study guides across
@@ -381,7 +381,7 @@ export default function Landing() {
 
           <motion.div
             variants={fadeUp}
-            className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-xs text-muted-foreground"
+            className="type-mono mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-muted-foreground"
           >
             <span className="flex items-center gap-1.5">
               <Check className="size-4 text-primary" /> 09 subjects indexed
@@ -474,13 +474,13 @@ export default function Landing() {
         >
           <motion.p
             variants={fadeUp}
-            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+            className="type-mono uppercase tracking-[0.2em] text-primary"
           >
             // the companion
           </motion.p>
           <motion.h2
             variants={fadeUp}
-            className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl"
+            className="type-h1 mt-3"
           >
             More than a library.{" "}
             <span className="text-gradient">A study system.</span>
@@ -502,7 +502,7 @@ export default function Landing() {
             <motion.div
               key={feature.tag}
               variants={fadeUp}
-              className="glass-panel group rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30"
+              className="glass-panel hover-lift group rounded-2xl p-6 transition-all duration-300 hover:border-primary/30"
             >
               <div className="flex items-center justify-between">
                 <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.74_0.15_232_/_0.25)]">
@@ -512,8 +512,8 @@ export default function Landing() {
                   {feature.tag}
                 </span>
               </div>
-              <h3 className="mt-4 font-bold tracking-tight">{feature.title}</h3>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              <h3 className="type-h3 mt-4">{feature.title}</h3>
+              <p className="type-body mt-1.5 text-muted-foreground">
                 {feature.description}
               </p>
             </motion.div>
@@ -536,10 +536,10 @@ export default function Landing() {
               variants={fadeUp}
               className="flex flex-col items-center text-center"
             >
-              <span className="font-mono text-3xl font-bold tracking-tight text-gradient">
+              <span className="type-h2 text-gradient">
                 {stat.value}
               </span>
-              <span className="mt-1 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              <span className="type-mono mt-1 uppercase text-muted-foreground">
                 {stat.label}
               </span>
             </motion.div>
@@ -558,13 +558,13 @@ export default function Landing() {
         >
           <motion.p
             variants={fadeUp}
-            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+            className="type-mono uppercase tracking-[0.2em] text-primary"
           >
             // the two streams
           </motion.p>
           <motion.h2
             variants={fadeUp}
-            className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl"
+            className="type-h1 mt-3"
           >
             Two streams, one national exam
           </motion.h2>
@@ -586,7 +586,7 @@ export default function Landing() {
             <motion.div
               key={stream.stream}
               variants={fadeUp}
-              className="glass-panel group rounded-2xl p-6 transition-transform duration-300 hover:-translate-y-1"
+              className="glass-panel hover-lift group rounded-2xl p-6 transition-all duration-300"
             >
               <div className="flex items-center justify-between">
                 <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.74_0.15_232_/_0.25)]">
@@ -596,15 +596,15 @@ export default function Landing() {
                   {stream.slug}
                 </span>
               </div>
-              <h3 className="mt-4 text-lg font-bold tracking-tight">{stream.name}</h3>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              <h3 className="type-h2 mt-4">{stream.name}</h3>
+              <p className="type-body mt-1.5 text-muted-foreground">
                 {stream.description}
               </p>
               <ul className="mt-4 space-y-2.5 border-t border-white/8 pt-4">
                 {stream.subjects.map((subject) => (
                   <li
                     key={subject.name}
-                    className="flex items-center justify-between gap-2 text-sm font-medium"
+                    className="type-body flex items-center justify-between gap-2 font-medium"
                   >
                     <span className="flex items-center gap-2.5">
                       <subject.icon className="size-4 text-primary/70" />
@@ -636,13 +636,13 @@ export default function Landing() {
         >
           <motion.p
             variants={fadeUp}
-            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+            className="type-mono uppercase tracking-[0.2em] text-primary"
           >
             // the library
           </motion.p>
           <motion.h2
             variants={fadeUp}
-            className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl"
+            className="type-h1 mt-3"
           >
             Five resource types, one search
           </motion.h2>
@@ -663,7 +663,7 @@ export default function Landing() {
             <motion.div
               key={type.type}
               variants={fadeUp}
-              className={`glass-soft group rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.05] ${
+              className={`glass-soft hover-lift group rounded-2xl p-5 transition-all duration-300 hover:bg-white/[0.05] ${
                 index === 4 ? "sm:col-span-2 lg:col-span-1" : ""
               }`}
             >
@@ -672,13 +672,13 @@ export default function Landing() {
                   <type.icon className="size-5" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-bold tracking-tight">{type.name}</h3>
+                  <h3 className="type-h3">{type.name}</h3>
                   <p className="font-mono text-[10px] text-muted-foreground">
                     type/{type.type}
                   </p>
                 </div>
               </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              <p className="type-body mt-3 text-muted-foreground">
                 {type.description}
               </p>
             </motion.div>
@@ -697,13 +697,13 @@ export default function Landing() {
         >
           <motion.p
             variants={fadeUp}
-            className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary"
+            className="type-mono uppercase tracking-[0.2em] text-primary"
           >
             // how it works
           </motion.p>
           <motion.h2
             variants={fadeUp}
-            className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl"
+            className="type-h1 mt-3"
           >
             From sign-in to exam room in three steps
           </motion.h2>
@@ -722,14 +722,14 @@ export default function Landing() {
               variants={fadeUp}
               className="glass-panel relative rounded-2xl p-6"
             >
-              <span className="absolute right-5 top-4 font-mono text-3xl font-bold text-gradient opacity-70">
+              <span className="type-h2 absolute right-5 top-4 text-gradient opacity-70">
                 {step.step}
               </span>
               <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <step.icon className="size-5" />
               </div>
-              <h3 className="mt-4 font-bold tracking-tight">{step.title}</h3>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              <h3 className="type-h3 mt-4">{step.title}</h3>
+              <p className="type-body mt-1.5 text-muted-foreground">
                 {step.description}
               </p>
             </motion.div>
@@ -749,10 +749,10 @@ export default function Landing() {
           <div className="pointer-events-none absolute -left-20 -top-24 size-72 rounded-full bg-primary/15 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -right-16 size-72 rounded-full bg-sky-400/10 blur-3xl" />
           <div className="relative">
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
+            <p className="type-mono uppercase tracking-[0.2em] text-primary">
               // get started
             </p>
-            <h2 className="mx-auto mt-3 max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">
+            <h2 className="type-h1 mx-auto mt-3 max-w-2xl">
               Ready to walk into the exam room{" "}
               <span className="text-gradient">prepared?</span>
             </h2>
@@ -790,7 +790,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row">
           <div className="flex items-center gap-2.5">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
-            <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
+            <span className="type-h3 font-extrabold">Nexus Academy</span>
           </div>
           <p className="font-mono text-[11px] text-muted-foreground">
             © {new Date().getFullYear()} Nexus Academy · Ethiopian national exam prep,

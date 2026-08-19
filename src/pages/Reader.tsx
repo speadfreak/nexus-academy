@@ -287,8 +287,8 @@ export default function Reader() {
           <Lock className="size-6" />
         </div>
         <div>
-          <h1 className="text-lg font-extrabold tracking-tight">Document not available</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="type-h1">Document not available</h1>
+          <p className="type-body mt-1 text-muted-foreground">
             It may have been removed, or you need to sign in to read it.
           </p>
         </div>
@@ -504,7 +504,7 @@ export default function Reader() {
                   aria-selected={panelTab === tab.id}
                   aria-controls={`reader-panel-${tab.id}`}
                   className={cn(
-                    "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-bold transition-colors",
+                    "interactive-press flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 type-caption font-bold",
                     panelTab === tab.id
                       ? "bg-primary/15 text-primary"
                       : "text-muted-foreground hover:bg-white/5 hover:text-foreground",

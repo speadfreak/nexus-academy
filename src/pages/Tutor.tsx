@@ -71,7 +71,7 @@ function Bubble({ message }: { message: MessageDoc }) {
     >
       <div
         className={cn(
-          "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm leading-6",
+          "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 type-body leading-6",
           isUser
             ? "rounded-br-md border border-primary/25 bg-primary/10 text-foreground"
             : "glass-soft rounded-bl-md text-foreground",
@@ -79,7 +79,7 @@ function Bubble({ message }: { message: MessageDoc }) {
       >
         {message.content}
       </div>
-      <span className="px-1 font-mono text-[10px] text-muted-foreground/70">
+      <span className="px-1 type-caption text-muted-foreground/70">
         {isUser ? "you" : "grok-4.6"} · {clockTime(message.createdAt)}
       </span>
     </motion.div>
@@ -201,11 +201,11 @@ export default function Tutor() {
           </Button>
 
           <div className="mt-3 flex flex-col gap-1.5">
-            <span className="px-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="type-mono px-1 uppercase text-muted-foreground">
               scope
             </span>
             <Select value={scopeSubjectId} onValueChange={setScopeSubjectId}>
-              <SelectTrigger className="h-9 rounded-xl bg-white/5 font-mono text-xs">
+              <SelectTrigger className="type-caption h-9 rounded-xl bg-white/5">
                 <SelectValue placeholder="All subjects" />
               </SelectTrigger>
               <SelectContent>
@@ -234,7 +234,7 @@ export default function Tutor() {
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               </div>
             ) : conversations.length === 0 ? (
-              <p className="px-1 py-6 text-center font-mono text-[11px] leading-5 text-muted-foreground">
+              <p className="type-mono px-1 py-6 text-center leading-5 text-muted-foreground">
                 No conversations yet.
                 <br />
                 Start a chat to begin.
@@ -261,11 +261,11 @@ export default function Tutor() {
                         : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                     )}
                   >
-                    <p className="flex items-center gap-2 truncate text-[13px] font-semibold">
+                    <p className="type-caption flex items-center gap-2 truncate font-semibold">
                       <MessageSquareText className="size-3.5 shrink-0" />
                       <span className="truncate">{conversation.title}</span>
                     </p>
-                    <p className="mt-0.5 flex items-center justify-between font-mono text-[10px] text-muted-foreground/70">
+                    <p className="mt-0.5 flex items-center justify-between type-caption text-muted-foreground/70">
                       <span className="truncate">
                         {conversation.subjectName ?? "general"}
                       </span>
@@ -289,7 +289,7 @@ export default function Tutor() {
                 <Bot className="size-4" />
               </div>
               <div className="min-w-0 leading-tight">
-                <p className="truncate text-sm font-bold tracking-tight">
+                <p className="type-h3 truncate">
                   {activeConversation?.title ?? "New chat"}
                 </p>
                 <p className="truncate font-mono text-[10px] text-muted-foreground">
@@ -313,7 +313,7 @@ export default function Tutor() {
           {/* Mobile controls (rail is desktop-only) */}
           <div className="flex items-center gap-2 border-b border-white/8 px-4 py-2.5 lg:hidden">
             <Select value={scopeSubjectId} onValueChange={setScopeSubjectId}>
-              <SelectTrigger className="h-9 w-32 shrink-0 rounded-lg bg-white/5 font-mono text-[11px]">
+              <SelectTrigger className="h-9 w-32 shrink-0 rounded-lg bg-white/5 type-mono">
                 <SelectValue placeholder="Scope…" />
               </SelectTrigger>
               <SelectContent>
@@ -341,7 +341,7 @@ export default function Tutor() {
                 if (match?.subjectId) setScopeSubjectId(match.subjectId as string);
               }}
             >
-              <SelectTrigger className="h-9 flex-1 rounded-lg bg-white/5 font-mono text-[11px]">
+              <SelectTrigger className="h-9 flex-1 rounded-lg bg-white/5 type-mono">
                 <SelectValue placeholder="Select a chat…" />
               </SelectTrigger>
               <SelectContent>
@@ -369,13 +369,13 @@ export default function Tutor() {
             {selectedId === null ? (
               <div className="flex h-full flex-col items-center justify-center gap-6">
                 <div className="text-center">
-                  <p className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
+                  <p className="type-mono uppercase tracking-[0.2em] text-primary">
                     // nexus tutor
                   </p>
-                  <h2 className="mt-2 text-xl font-extrabold tracking-tight">
+                  <h2 className="type-h1 mt-2">
                     {scopeSubject ? `Ask about ${scopeSubject.name}` : "Ask anything, exam-style"}
                   </h2>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                  <p className="type-body mt-1 max-w-md text-muted-foreground">
                     A precise tutor for the Ethiopian national exams — grades 9–12,
                     grounded in your stream&apos;s syllabus.
                   </p>
@@ -417,7 +417,7 @@ export default function Tutor() {
                 <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-primary/25 bg-primary/10 px-4 py-3 text-sm leading-6">
                   {sending.content}
                 </div>
-                <span className="px-1 font-mono text-[10px] text-muted-foreground/70">
+                <span className="px-1 type-caption text-muted-foreground/70">
                   you · sending…
                 </span>
               </motion.div>
@@ -432,7 +432,7 @@ export default function Tutor() {
               >
                 <div className="glass-soft relative overflow-hidden rounded-2xl rounded-bl-md px-4 py-3">
                   <div className="scan-line" aria-hidden="true" />
-                  <span className="font-mono text-[11px] text-muted-foreground">
+                  <span className="type-mono text-muted-foreground">
                     <span className="text-primary">▌</span> grok-4.6 is thinking…
                   </span>
                 </div>
@@ -469,7 +469,7 @@ export default function Tutor() {
                 }}
                 placeholder="Ask the tutor anything about your exams…"
                 disabled={isAwaiting}
-                className="h-10 flex-1 rounded-xl bg-white/5 font-mono text-sm"
+                className="type-body h-10 flex-1 rounded-xl bg-white/5 font-mono"
               />
               <Button
                 size="icon"
