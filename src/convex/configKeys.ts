@@ -6,7 +6,7 @@
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 
 // ── Known integrations registry ──────────────────────────────────────
@@ -129,8 +129,9 @@ export const deleteKey = mutation({
   },
 });
 
-/** Get the actual values of known R2 keys (internal, for actions). */
-export const getR2KeyValues = query({
+/** Get the actual values of known R2 keys (internal, for actions).
+ * NOT a public query — secrets must never be exposed to the browser. */
+export const getR2KeyValues = internalQuery({
   args: {},
   handler: async (ctx) => {
     const stored = await ctx.db.query("configKeys").collect();

@@ -193,6 +193,10 @@ export function AdminContentSection() {
       toast.error("Only PDF files are supported for now.");
       return;
     }
+    if (next && next.size > 50 * 1024 * 1024) {
+      toast.error("File too large — maximum 50 MB.");
+      return;
+    }
     setFile(next);
   };
 
@@ -224,18 +228,39 @@ export function AdminContentSection() {
 
     setUploading(true);
     try {
-      const uploadUrl = await generateUploadUrl();
-      const response = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/pdf" },
-        body: file,
-      });
-      if (!response.ok) {
-        throw new Error("Could not stage the file. Please try again.");
+      // Step 1: Get presigned upload URL
+      let uploadUrl: string;
+      try {
+        uploadUrl = await generateUploadUrl();
+      } catch (err) {
+        console.error("[upload] generateUploadUrl failed:", err);
+        throw new Error("Could not get an upload URL. Check your connection.");
       }
-      const { storageId } = (await response.json()) as { storageId: string };
 
-      await adminUploadContent({
+      // Step 2: Upload file to Convex temp storage
+      let storageId: string;
+      try {
+        const response = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/pdf" },
+          body: file,
+        });
+        if (!response.ok) {
+          const body = await response.text().catch(() => "");
+          console.error("[upload] PUT failed:", response.status, body);
+          throw new Error(`File upload failed (HTTP ${response.status}). Try a smaller file.`);
+        }
+        const json = (await response.json()) as { storageId: string };
+        storageId = json.storageId;
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("File upload failed")) throw err;
+        console.error("[upload] fetch to storage failed:", err);
+        throw new Error("Network error during upload. Disable VPN/ad-blocker and retry.");
+      }
+
+      // Step 3: Server-side R2 upload + DB insert
+      try {
+        await adminUploadContent({
         title: title.trim(),
         contentType,
         grade: Number(grade),
@@ -246,6 +271,17 @@ export function AdminContentSection() {
         filename: file.name,
         topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
       });
+      } catch (err) {
+        console.error("[upload] adminUploadContent failed:", err);
+        const msg =
+          typeof err === "object" && err !== null && "data" in err
+            ? String((err as { data: { message?: string } }).data?.message ?? "")
+            : "";
+        throw new Error(
+          msg || (err instanceof Error ? err.message : "") ||
+          "Server error. Ensure all 5 R2 keys are saved in the Keys tab."
+        );
+      }
 
       toast.success("Content uploaded to the library.");
       setFile(null);
