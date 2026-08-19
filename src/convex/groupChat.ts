@@ -87,6 +87,30 @@ export const getUnreadCount = query({
   },
 });
 
+/** Create a short-lived Convex upload URL for a group attachment. */
+export const generateUploadUrl = mutation({
+  args: { groupId: v.id("studyGroups") },
+  handler: async (ctx, { groupId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const role: string | null = await ctx.runQuery(internal.studyGroups.getGroupRole, { groupId, userId });
+    if (!role) throw new Error("Not a member of this group");
+    return ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Resolve an attachment only for members of its group. */
+export const getAttachmentUrl = query({
+  args: { groupId: v.id("studyGroups"), storageId: v.string() },
+  handler: async (ctx, { groupId, storageId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const role: string | null = await ctx.runQuery(internal.studyGroups.getGroupRole, { groupId, userId });
+    if (!role) return null;
+    return ctx.storage.getUrl(storageId as Id("_storage"));
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
