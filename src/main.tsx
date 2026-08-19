@@ -61,10 +61,10 @@ class LazyErrorBoundary extends React.Component<
     console.error('[LazyErrorBoundary]', err);
   }
   retry = () => {
-    // Clear the error state — React.lazy will re-attempt the import.
-    // Force a re-render by toggling the key on the parent <Suspense>.
     this.setState({ hasError: false, message: '' });
-    window.location.reload();
+    // Bypass browser cache so we get the latest index.html with current
+    // chunk hashes — a plain reload may re-fetch the stale cached HTML.
+    window.location.href = window.location.pathname + window.location.search + window.location.hash;
   };
   render() {
     if (this.state.hasError) {
@@ -277,22 +277,7 @@ function RouteSyncer() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  return (
-    <>
-      {/* Premium design system: full-viewport noise/grain texture overlay */}
-      <svg className="noise-filter" aria-hidden="true">
-        <filter id="nexus-noise">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.75"
-            numOctaves="4"
-            stitchTiles="stitch"
-          />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#nexus-noise)" />
-      </svg>
-    </>
-  );
+  return null;
 }
 
 
