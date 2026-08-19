@@ -107,7 +107,7 @@ export const getAttachmentUrl = query({
     if (!userId) return null;
     const role: string | null = await ctx.runQuery(internal.studyGroups.getGroupRole, { groupId, userId });
     if (!role) return null;
-    return ctx.storage.getUrl(storageId as Id("_storage"));
+    return ctx.storage.getUrl(storageId as Id<"_storage">);
   },
 });
 
