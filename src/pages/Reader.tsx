@@ -106,6 +106,7 @@ export default function Reader() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [useUrlFallback, setUseUrlFallback] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageInput, setPageInput] = useState("1");
@@ -136,17 +137,32 @@ export default function Reader() {
         const { url } = await getDownloadUrl({ contentId: readerItemId });
         if (cancelled) return;
         setPdfUrl(url);
-        // Fetch the PDF bytes ourselves so pdfjs gets raw data, not a URL
+        // Fetch the PDF bytes ourselves so pdfjs gets raw data, not a URL.
+        // R2 URLs can have CORS issues; fetching server-side avoids that.
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         const buffer = await res.arrayBuffer();
-        if (!cancelled) setPdfData(buffer);
+        if (!cancelled) {
+          // Validate PDF magic bytes
+          const view = new Uint8Array(buffer);
+          if (view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46) {
+            setPdfData(buffer);
+          } else {
+            // Not valid PDF data — fall back to URL-based rendering
+            console.warn("[Reader] Fetched data is not a valid PDF (magic bytes mismatch), falling back to URL");
+            setUseUrlFallback(true);
+          }
+        }
       } catch (error) {
         if (!cancelled) {
           const msg = error instanceof Error ? error.message : String(error);
           console.error("[Reader] PDF fetch failed:", msg);
-          // If fetch fails, still keep the URL so user can open in new tab
-          setPdfError(msg);
+          // Detect premium gate errors and show upgrade prompt
+          if (msg.includes("Premium") || msg.includes("premium") || msg.includes("trial")) {
+            setPdfError("premium_required");
+          } else {
+            setPdfError(msg);
+          }
         }
       } finally {
         if (!cancelled) setLoadingPdf(false);
@@ -539,46 +555,71 @@ export default function Reader() {
                 </div>
               )}
 
-              {/* Error state — cinematic + real error + fallback */}
+              {/* Error state — cinematic + real error + fallback */ }
               {pdfError && (
                 <div className="mx-auto mt-20 flex flex-col items-center gap-6">
                   <div className="relative">
                     <div className="absolute -inset-8 rounded-full bg-rose-500/10 blur-2xl" />
                     <div className="relative flex size-20 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.03] backdrop-blur-xl">
-                      <Lock className="size-8 text-rose-400/80" />
+                      {pdfError === "premium_required" ? (
+                        <Crown className="size-8 text-amber-400/80" />
+                      ) : (
+                        <Lock className="size-8 text-rose-400/80" />
+                      )}
                     </div>
                   </div>
                   <div className="text-center max-w-md">
-                    <h2 className="type-h2 bg-gradient-to-r from-rose-300 to-rose-400/70 bg-clip-text text-transparent">
-                      Could not open this document
+                    <h2 className={cn(
+                      "type-h2 bg-clip-text text-transparent",
+                      pdfError === "premium_required"
+                        ? "from-amber-300 to-amber-400/70"
+                        : "from-rose-300 to-rose-400/70"
+                    )}>
+                      {pdfError === "premium_required"
+                        ? "Premium Content"
+                        : "Could not open this document"}
                     </h2>
-                    <p className="type-body mt-2 text-muted-foreground/70 leading-relaxed">{pdfError}</p>
+                    <p className="type-body mt-2 text-muted-foreground/70 leading-relaxed">
+                      {pdfError === "premium_required"
+                        ? "This content requires a premium subscription. Upgrade to access all textbooks, past papers, and study materials."
+                        : pdfError}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
-                      onClick={() => window.location.reload()}
-                    >
-                      <RotateCcw className="size-3.5" /> Refresh
-                    </Button>
-                    {pdfUrl && (
-                      <Button asChild size="sm" className="rounded-xl">
-                        <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="size-3.5" /> Open in new tab
-                        </a>
+                    {pdfError === "premium_required" ? (
+                      <Button asChild size="sm" className="rounded-xl bg-premium text-background hover:bg-premium/90">
+                        <Link to="/upgrade">
+                          <Crown className="size-3.5" /> Upgrade to Premium
+                        </Link>
                       </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
+                          onClick={() => window.location.reload()}
+                        >
+                          <RotateCcw className="size-3.5" /> Refresh
+                        </Button>
+                        {pdfUrl && (
+                          <Button asChild size="sm" className="rounded-xl">
+                            <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="size-3.5" /> Open in new tab
+                            </a>
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* PDF document */}
-              {pdfData && !pdfError && (
+              {/* PDF document — try ArrayBuffer first, fallback to URL */}
+              {(pdfData || (pdfUrl && useUrlFallback)) && !pdfError && (
                 <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
                   <Document
-                    file={{ data: pdfData }}
+                    file={pdfData ? { data: pdfData } : { url: pdfUrl! }}
                     onLoadSuccess={({ numPages: pages }) => {
                       setNumPages(pages);
                       setPageNumber(1);
@@ -589,6 +630,11 @@ export default function Reader() {
                       const msg = error?.message || String(error);
                       if (msg.includes("worker") || msg.includes("Worker")) {
                         setPdfError("PDF worker failed to load. Try refreshing the page.");
+                      } else if (pdfData && !useUrlFallback) {
+                        // ArrayBuffer rendering failed — try URL fallback
+                        console.warn("[Reader] ArrayBuffer render failed, trying URL fallback");
+                        setPdfData(null);
+                        setUseUrlFallback(true);
                       } else {
                         setPdfError("The document could not be rendered. Try refreshing or opening in a new tab.");
                       }
