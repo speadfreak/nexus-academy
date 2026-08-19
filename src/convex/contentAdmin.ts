@@ -44,6 +44,23 @@ type UploadedContent = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Build R2 overrides by merging process.env (Convex environment) with the
+ * configKeys DB table (admin Keys tab). DB values take priority because they
+ * are the user-managed source of truth in Freebuff-hosted deployments where
+ * process.env is not directly available to the user.
+ */
+async function getR2Overrides(ctx: any): Promise<R2ConfigOverrides> {
+  const stored = await ctx.runQuery(internal.configKeys.getR2KeyValues);
+  return {
+    R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID || stored.R2_ACCOUNT_ID || undefined,
+    R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || stored.R2_ACCESS_KEY_ID || undefined,
+    R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || stored.R2_SECRET_ACCESS_KEY || undefined,
+    R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || stored.R2_BUCKET_NAME || undefined,
+    R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || stored.R2_PUBLIC_URL || undefined,
+  };
+}
+
 function sanitizeFilename(name: string): string {
   const base = name
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
@@ -145,13 +162,7 @@ export const adminUploadContent = action({
     // --- Upload to R2, then persist the DB row --------------------------
     try {
       // Check both env vars and the admin Keys tab (configKeys table)
-      const r2Overrides: R2ConfigOverrides = {
-        R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
-        R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
-        R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
-        R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
-        R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
-      };
+      const r2Overrides = await getR2Overrides(ctx);
       const r2 = getR2Config(r2Overrides);
       if (!r2.configured) {
         throw new ConvexError({
@@ -286,13 +297,7 @@ export const deleteContentItem = action({
 
     let r2Error: string | null = null;
     try {
-      const r2Overrides: R2ConfigOverrides = {
-        R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
-        R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
-        R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
-        R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
-        R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
-      };
+      const r2Overrides = await getR2Overrides(ctx);
       const key = keyFromUrl(item.fileUrl, r2Overrides);
       if (key) await deleteFile(key, r2Overrides);
     } catch (error) {
@@ -337,13 +342,7 @@ export const getDownloadUrl = action({
     await requireActiveSubscriptionAction(ctx, userId, "premium_content");
 
     try {
-      const r2Overrides: R2ConfigOverrides = {
-        R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
-        R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
-        R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
-        R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
-        R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
-      };
+      const r2Overrides = await getR2Overrides(ctx);
       const key = keyFromUrl(item.fileUrl, r2Overrides);
       if (!key) {
         throw new Error("Could not resolve the R2 object key for this item.");
@@ -366,6 +365,7 @@ export const getDownloadUrl = action({
 export const getR2Status = action({
   args: {},
   handler: async (ctx): Promise<R2Config> => {
-    return getR2Config();
+    const overrides = await getR2Overrides(ctx);
+    return getR2Config(overrides);
   },
 });
