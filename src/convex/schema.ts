@@ -563,6 +563,40 @@ const schema = defineSchema(
     }).index("by_user_content", ["userId", "contentId"]),
 
     // ------------------------------------------------------------------
+    // Flashcards
+    // ------------------------------------------------------------------
+
+    flashcardDecks: defineTable({
+      userId: v.id("users"),
+      subjectId: v.id("subjects"),
+      contentId: v.optional(v.id("contentItems")),
+      sourceType: v.union(v.literal("content"), v.literal("conversation"), v.literal("topic")),
+      title: v.string(),
+      cardCount: v.number(),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    flashcards: defineTable({
+      deckId: v.id("flashcardDecks"),
+      front: v.string(),
+      back: v.string(),
+      timesReviewed: v.number(),
+      lastResult: v.optional(v.union(v.literal("got_it"), v.literal("review_again"))),
+      nextReviewWeight: v.number(),
+    }).index("by_deck", ["deckId"]),
+
+    // ------------------------------------------------------------------
+    // Study session recaps
+    // ------------------------------------------------------------------
+
+    recaps: defineTable({
+      userId: v.id("users"),
+      type: v.union(v.literal("focus_session"), v.literal("quiz"), v.literal("weekly")),
+      text: v.string(),
+      createdAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    // ------------------------------------------------------------------
     // Admin key management
     // ------------------------------------------------------------------
 
@@ -575,8 +609,6 @@ const schema = defineSchema(
       updatedBy: v.id("users"),
     }).index("by_key", ["key"]),
   },
-  {
-    schemaValidation: false,
   },
 );
 
