@@ -786,3 +786,78 @@ html.lenis, html.lenis body {
 }
 
 .light .aurora-orb { opacity: 0.5; }
+
+/* ─── PREMIUM FOOTER ──────────────────────────────────────────────── */
+
+/* Animated gradient line above the footer */
+.footer-gradient-line {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.74 0.15 232 / 0.08) 15%,
+    oklch(0.74 0.15 232 / 0.45) 50%,
+    oklch(0.74 0.15 232 / 0.08) 85%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: footer-gradient-shift 4s ease-in-out infinite;
+}
+
+@keyframes footer-gradient-shift {
+  0%, 100% { background-position: 100% 0; }
+  50% { background-position: 0% 0; }
+}
+
+/* Glow pulse on the developer name — uses filter: drop-shadow so it works
+   with the text-gradient (color: transparent) approach. */
+.footer-dev-glow {
+  filter: drop-shadow(0 0 16px oklch(0.74 0.15 232 / 0.35))
+          drop-shadow(0 0 32px oklch(0.74 0.15 232 / 0.15));
+  animation: footer-glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes footer-glow-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 16px oklch(0.74 0.15 232 / 0.35))
+            drop-shadow(0 0 32px oklch(0.74 0.15 232 / 0.15));
+  }
+  50% {
+    filter: drop-shadow(0 0 22px oklch(0.74 0.15 232 / 0.5))
+            drop-shadow(0 0 44px oklch(0.74 0.15 232 / 0.25));
+  }
+}
+
+/* Shimmer sweep across the developer name */
+.footer-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.footer-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 38%,
+    oklch(0.92 0.04 195 / 0.15) 50%,
+    transparent 62%,
+    transparent 100%
+  );
+  background-size: 250% 100%;
+  animation: footer-shimmer-sweep 5s ease-in-out infinite;
+}
+
+@keyframes footer-shimmer-sweep {
+  0% { background-position: 150% 0; }
+  100% { background-position: -150% 0; }
+}
+
+/* Faint dot pattern behind the footer */
+.footer-dots {
+  background-image: radial-gradient(oklch(0.74 0.15 232 / 0.06) 1px, transparent 1px);
+  background-size: 12px 12px;
+}

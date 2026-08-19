@@ -1,12 +1,19 @@
-// Vly platform telemetry — loaded async so a crash never prevents React
-// from mounting. The result is intentionally discarded.
-void import('@vly-ai/integrations').catch(() => {});
+// ═══════════════════════════════════════════════════════════════════════
+// main.tsx — Nexus Academy entry point
+//
+// CRITICAL: Do NOT add static imports to Vly platform tooling here.
+// Any module that can fail at load-time (snapdom, vly-ai, etc.) MUST be
+// imported lazily via React.lazy() so a failure cannot prevent React
+// from mounting.  The previous static import of VlyToolbar caused
+// @zumer/snapdom to be evaluated at module scope — if that threw,
+// the entire app went blank with no recovery.
+// ═══════════════════════════════════════════════════════════════════════
+
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
 import { useLenis } from "@/hooks/useLenis";
-import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -14,6 +21,32 @@ import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
+
+// ─── VlyToolbar: LAZY with error recovery ────────────────────────────
+// Must be lazy — it statically imports @zumer/snapdom which can throw at
+// module evaluation time in some production environments.  If the import
+// fails we return a no-op component so the rest of the app is unaffected.
+const VlyToolbar = lazy(() =>
+  import("../vly-toolbar-readonly.tsx").catch(() => ({
+    default: () => null,
+  })),
+);
+
+// ─── Convex client: safe construction ────────────────────────────────
+// VITE_CONVEX_URL is always set on Render (render.yaml); the guard is
+// for local dev without a .env file.
+let convex: ConvexReactClient;
+try {
+  convex = new ConvexReactClient(
+    (import.meta as unknown as Record<string, Record<string, string>>).env
+      ?.VITE_CONVEX_URL as string,
+  );
+} catch (e) {
+  console.error("[Nexus] Failed to create Convex client:", e);
+  // Placeholder that won't crash render — auth queries will return
+  // undefined and RequireAuth will redirect to /auth.
+  convex = null as unknown as ConvexReactClient;
+}
 
 // Lazy load route components for better code splitting
 const Landing = lazy(() => import("./pages/Landing.tsx"));
@@ -50,36 +83,37 @@ function RouteLoading() {
 }
 
 /** Error boundary that catches lazy-load / chunk-fetch failures and offers a
- *  retry button instead of a dead page.  Without this, a transient CDN hiccup
- *  on Render/Cloudflare makes the entire route unusable until a hard refresh. */
+ *  retry button instead of a dead page. */
 class LazyErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string }
 > {
-  state = { hasError: false, message: '' };
+  state = { hasError: false, message: "" };
   static getDerivedStateFromError(error: Error) {
     return {
       hasError: true,
-      message: error?.message || 'Failed to load this page.',
+      message: error?.message || "Failed to load this page.",
     };
   }
   componentDidCatch(err: Error) {
-    console.error('[LazyErrorBoundary]', err);
+    console.error("[LazyErrorBoundary]", err);
   }
   retry = () => {
-    this.setState({ hasError: false, message: '' });
-    // Bypass browser cache so we get the latest index.html with current
-    // chunk hashes — a plain reload may re-fetch the stale cached HTML.
+    this.setState({ hasError: false, message: "" });
     const params = new URLSearchParams(window.location.search);
     params.set("__nexus_retry", String(Date.now()));
-    window.location.replace(`${window.location.pathname}?${params.toString()}${window.location.hash}`);
+    window.location.replace(
+      `${window.location.pathname}?${params.toString()}${window.location.hash}`,
+    );
   };
   render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background p-6">
           <div className="max-w-md text-center glass-panel rounded-2xl p-8">
-            <p className="text-sm font-semibold text-foreground">Page failed to load</p>
+            <p className="text-sm font-semibold text-foreground">
+              Page failed to load
+            </p>
             <p className="mt-2 text-xs text-muted-foreground break-words">
               {this.state.message}
             </p>
@@ -97,8 +131,7 @@ class LazyErrorBoundary extends React.Component<
   }
 }
 
-/** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
- *  crashing the whole app (e.g. hook errors in WebContainer environment). */
+/** Silent error boundary — if VlyToolbar crashes it renders nothing. */
 class ToolbarErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -115,7 +148,7 @@ class ToolbarErrorBoundary extends React.Component<
   }
 }
 
-/** Hard guard so runtime errors never leave the preview as a blank page. */
+/** Hard guard so runtime errors never leave the app as a blank page. */
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string; stack: string }
@@ -129,14 +162,14 @@ class RootErrorBoundary extends React.Component<
     };
   }
   componentDidCatch(err: Error) {
-    console.error("[WebContainer preview] Root crash:", err);
+    console.error("[Nexus] Root crash:", err);
   }
   render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
           <div className="max-w-lg text-center">
-            <p className="text-sm font-semibold">Preview runtime error</p>
+            <p className="text-sm font-semibold">Something went wrong</p>
             <p className="mt-2 text-xs text-muted-foreground break-words">
               {this.state.message}
             </p>
@@ -145,6 +178,12 @@ class RootErrorBoundary extends React.Component<
                 {this.state.stack}
               </pre>
             )}
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              Reload
+            </button>
           </div>
         </div>
       );
@@ -153,11 +192,7 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
-
-
-
-/** Smooth fade/slide between routes — keyed by pathname, respects reduced motion. */
+/** Smooth fade/slide between routes */
 function PageTransition({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const prefersReduced =
@@ -176,9 +211,7 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Branded preloader — a quick, intentional moment tied to real load
- *  completion (window load + first painted frame), with a hard safety cap so
- *  a slow asset can never trap the user. Not an artificial timer. */
+/** Branded preloader */
 function AppPreloader({ ready }: { ready: boolean }) {
   return (
     <AnimatePresence>
@@ -227,8 +260,7 @@ function AppPreloader({ ready }: { ready: boolean }) {
   );
 }
 
-/** Holds the preloader until the app is genuinely ready: window load fired
- *  AND the first content has painted. Falls back to a 2.5s safety cap. */
+/** Holds the preloader until the app is genuinely ready. */
 function PreloaderGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
@@ -238,7 +270,6 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     const finish = () => {
       if (finished) return;
       finished = true;
-      // Let the first real frame paint before fading the overlay.
       firstFrame = requestAnimationFrame(() => {
         secondFrame = requestAnimationFrame(() => setReady(true));
       });
@@ -248,8 +279,6 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     } else {
       window.addEventListener("load", finish, { once: true });
     }
-    // Faster safety cap — 800ms is enough for rAF to fire; if it
-    // hasn't, the user has waited long enough.
     const safety = window.setTimeout(() => setReady(true), 800);
     return () => {
       window.removeEventListener("load", finish);
@@ -290,175 +319,189 @@ function RouteSyncer() {
   return null;
 }
 
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <RootErrorBoundary>
-      <ToolbarErrorBoundary>
-        <VlyToolbar />
-      </ToolbarErrorBoundary>
-      <ConvexAuthProvider client={convex}>
-        <ThemeProvider>
-          <MusicProvider>
-            <PreloaderGate>
-              <BrowserRouter>
-                <RouteSyncer />
-              <Suspense fallback={<RouteLoading />}>
-                <LazyErrorBoundary>
-                <PageTransition>
-                  <Routes>
-                    <Route path="/" element={<Landing />} />
-                    <Route
-                      path="/auth"
-                      element={<AuthPage redirectAfterAuth="/dashboard" />}
-                    />
-                    <Route
-                      path="/dashboard"
-                      element={
-                        <RequireAuth>
-                          <Dashboard />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/tutor"
-                      element={
-                        <RequireAuth>
-                          <Tutor />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/todos"
-                      element={
-                        <RequireAuth>
-                          <Todos />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/focus"
-                      element={
-                        <RequireAuth>
-                          <Focus />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/plans"
-                      element={
-                        <RequireAuth>
-                          <Plans />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/journey"
-                      element={
-                        <RequireAuth>
-                          <Journey />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/calendar"
-                      element={
-                        <RequireAuth>
-                          <CalendarPage />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/notes"
-                      element={
-                        <RequireAuth>
-                          <Notes />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/flashcards"
-                      element={
-                        <RequireAuth>
-                          <Flashcards />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/achievements"
-                      element={
-                        <RequireAuth>
-                          <Achievements />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/groups"
-                      element={
-                        <RequireAuth>
-                          <Groups />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/rooms/:roomId"
-                      element={
-                        <RequireAuth>
-                          <Room />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/read/:contentId"
-                      element={
-                        <RequireAuth>
-                          <Reader />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/settings"
-                      element={
-                        <RequireAuth>
-                          <Settings />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/upgrade"
-                      element={
-                        <RequireAuth>
-                          <Upgrade />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/admin"
-                      element={
-                        <RequireAuth>
-                          <Admin />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/admin/content-upload"
-                      element={
-                        <RequireAuth>
-                          <AdminContentUpload />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </PageTransition>
-                </LazyErrorBoundary>
-              </Suspense>
-              </BrowserRouter>
-            </PreloaderGate>
-            <Toaster />
-          </MusicProvider>
-        </ThemeProvider>
-      </ConvexAuthProvider>
-    </RootErrorBoundary>
-  </StrictMode>,
-);
+// ─── Mount ────────────────────────────────────────────────────────────
+// Wrap in a self-executing async function so we can use top-level
+// await-style patterns without blocking the module.
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  createRoot(rootEl).render(
+    <StrictMode>
+      <RootErrorBoundary>
+        {/* VlyToolbar: lazy-loaded, wrapped in both Suspense (for chunk
+            loading) and ToolbarErrorBoundary (for render crashes). If
+            either fails, the app is unaffected. */}
+        <Suspense fallback={null}>
+          <ToolbarErrorBoundary>
+            <VlyToolbar />
+          </ToolbarErrorBoundary>
+        </Suspense>
+        <ConvexAuthProvider client={convex}>
+          <ThemeProvider>
+            <MusicProvider>
+              <PreloaderGate>
+                <BrowserRouter>
+                  <RouteSyncer />
+                  <Suspense fallback={<RouteLoading />}>
+                    <LazyErrorBoundary>
+                      <PageTransition>
+                        <Routes>
+                          <Route path="/" element={<Landing />} />
+                          <Route
+                            path="/auth"
+                            element={<AuthPage redirectAfterAuth="/dashboard" />}
+                          />
+                          <Route
+                            path="/dashboard"
+                            element={
+                              <RequireAuth>
+                                <Dashboard />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/tutor"
+                            element={
+                              <RequireAuth>
+                                <Tutor />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/todos"
+                            element={
+                              <RequireAuth>
+                                <Todos />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/focus"
+                            element={
+                              <RequireAuth>
+                                <Focus />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/plans"
+                            element={
+                              <RequireAuth>
+                                <Plans />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/journey"
+                            element={
+                              <RequireAuth>
+                                <Journey />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/calendar"
+                            element={
+                              <RequireAuth>
+                                <CalendarPage />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/notes"
+                            element={
+                              <RequireAuth>
+                                <Notes />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/flashcards"
+                            element={
+                              <RequireAuth>
+                                <Flashcards />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/achievements"
+                            element={
+                              <RequireAuth>
+                                <Achievements />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/groups"
+                            element={
+                              <RequireAuth>
+                                <Groups />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/rooms/:roomId"
+                            element={
+                              <RequireAuth>
+                                <Room />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/read/:contentId"
+                            element={
+                              <RequireAuth>
+                                <Reader />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/settings"
+                            element={
+                              <RequireAuth>
+                                <Settings />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/upgrade"
+                            element={
+                              <RequireAuth>
+                                <Upgrade />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/admin"
+                            element={
+                              <RequireAuth>
+                                <Admin />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/admin/content-upload"
+                            element={
+                              <RequireAuth>
+                                <AdminContentUpload />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route path="*" element={<NotFound />} />
+                        </Routes>
+                      </PageTransition>
+                    </LazyErrorBoundary>
+                  </Suspense>
+                </BrowserRouter>
+              </PreloaderGate>
+              <Toaster />
+            </MusicProvider>
+          </ThemeProvider>
+        </ConvexAuthProvider>
+      </RootErrorBoundary>
+    </StrictMode>,
+  );
+} else {
+  // If #root doesn't exist, something is very wrong with index.html.
+  document.body.textContent =
+    "Nexus Academy failed to start. Please hard-refresh the page (Ctrl+Shift+R).";
+}

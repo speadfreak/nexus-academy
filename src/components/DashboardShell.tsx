@@ -121,7 +121,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     .join("");
 
   return (
-    <div className="mx-auto flex items-start min-h-[100dvh] min-w-0 w-full max-w-[1600px] gap-6 overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="mx-auto flex items-start min-h-[100dvh] min-w-0 w-full max-w-[1600px] gap-6 overflow-x-clip px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Sidebar (desktop) — sticky works because parent has items-start */}
       <aside className="glass-panel sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100vh-3rem)]">
         {/* Logo + brand */}
@@ -237,7 +237,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Mobile top bar */}
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
+      <div className="flex min-w-0 flex-1 flex-col self-stretch gap-4">
         <header className="glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
@@ -298,14 +298,28 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         <main className="min-w-0 flex-1 pb-20 sm:pb-28">{children}</main>
 
         {/* ═══ FOOTER ═══ */}
-        <footer className="pb-2 pt-4 text-center">
-          <div className="mx-auto flex items-center justify-center gap-2">
-            <div className="h-px w-8 bg-gradient-to-r from-transparent to-white/10" />
-            <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/50">
-              Developed by{" "}
-              <span className="font-bold text-foreground/60">JOSEPH JAMES</span>
+        <footer className="mt-auto pb-3 pt-2">
+          {/* Animated gradient border line */}
+          <div className="footer-gradient-line mx-auto max-w-xs rounded-full" />
+
+          {/* Footer content with faint dot pattern */}
+          <div className="footer-dots relative flex flex-col items-center gap-1.5 pt-3">
+            {/* Developed-by line */}
+            <div className="flex items-center gap-2">
+              <span className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/40">
+                Developed by
+              </span>
+              <span className="footer-dev-glow">
+                <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">
+                  JOSEPH JAMES
+                </span>
+              </span>
+            </div>
+
+            {/* Copyright metadata */}
+            <p className="type-caption text-muted-foreground/30">
+              © 2025 Nexus Academy
             </p>
-            <div className="h-px w-8 bg-gradient-to-l from-transparent to-white/10" />
           </div>
         </footer>
       </div>

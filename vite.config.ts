@@ -1,4 +1,3 @@
-import { vlyPlugin } from "@vly-ai/integrations";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -8,7 +7,6 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [
     react(),
-    vlyPlugin(),
     tailwindcss(),
     // Strip `crossorigin` from built <script> tags.  Cloudflare CDN (fronting
     // Render) does not always return Access-Control-Allow-Origin for JS assets,
