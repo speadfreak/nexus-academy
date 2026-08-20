@@ -13,12 +13,15 @@ import {
   CheckCircle2,
   ChevronRight,
   Crown,
+  ExternalLink,
   FileText,
   Flag,
   Flame,
   Github,
   Globe,
+  Info,
   KeyRound,
+  Lightbulb,
   Loader2,
   Lock,
   Plug,
@@ -318,7 +321,6 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
   const deleteKey = useMutation(api.configKeys.deleteKey);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [showValues, setShowValues] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<string | null>(null);
 
   const handleSave = async (key: string) => {
@@ -326,7 +328,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
     setSaving(key);
     try {
       await setKey({ key, value: editValue.trim() });
-      toast.success(`${key} saved successfully.`);
+      toast.success(`${key} saved — AI features powered up!`);
       setEditingKey(null);
       setEditValue("");
     } catch (error) {
@@ -357,6 +359,10 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
     0,
   );
   const total = categories.reduce((sum, cat) => sum + cat.keys.length, 0);
+  const aiCategory = categories.find((c) => c.id === "ai");
+  const aiConfigured = aiCategory ? aiCategory.keys.filter((k) => k.configured).length : 0;
+  const aiTotal = aiCategory?.keys.length ?? 0;
+  const aiNotConfigured = aiTotal - aiConfigured;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -368,17 +374,89 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
               <KeyRound className="size-4 text-primary" /> API Keys & Integrations
             </h2>
             <p className="text-sm text-muted-foreground">
-              Configure all API keys for the platform. Values stored here override environment variables.
-              Never shared with the browser — only admin access can view or modify.
+              Configure API keys here. Keys are stored securely in the database — never exposed to the browser.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="glass-chip flex items-center gap-1.5 rounded-full px-3 py-1.5 font-mono text-[11px]">
-              <span className="size-2 rounded-full bg-emerald-400" /> {configured}/{total} configured
+              <span className={cn("size-2 rounded-full", configured === total ? "bg-emerald-400" : "bg-amber-400")} /> {configured}/{total} configured
             </span>
           </div>
         </div>
       </div>
+
+      {/* Quick setup guide — shown when any AI keys are missing */}
+      {aiNotConfigured > 0 && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/[0.06] p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15">
+              <Lightbulb className="size-4 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold">Quick Setup — Get Your AI Keys ({aiConfigured}/{aiTotal} done)</h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                You need API keys from the providers below. These are <strong className="text-foreground">free</strong> to create —
+                sign up, copy the key, and paste it in. No Convex account needed!
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                {(!aiCategory?.keys.find((k) => k.key === "XAI_API_KEY")?.configured) && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
+                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">1</Badge>
+                    <span className="text-sm font-semibold">Grok (xAI)</span>
+                    <span className="text-[12px] text-muted-foreground">— Powers the AI tutor chat</span>
+                    <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
+                      Get Key <ExternalLink className="size-3" />
+                    </a>
+                  </div>
+                )}
+                {(!aiCategory?.keys.find((k) => k.key === "GEMINI_API_KEY")?.configured) && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
+                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">2</Badge>
+                    <span className="text-sm font-semibold">Google Gemini</span>
+                    <span className="text-[12px] text-muted-foreground">— Powers the PDF reader AI</span>
+                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
+                      Get Key <ExternalLink className="size-3" />
+                    </a>
+                  </div>
+                )}
+                {(!aiCategory?.keys.find((k) => k.key === "YOUTUBE_API_KEY")?.configured) && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
+                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">3</Badge>
+                    <span className="text-sm font-semibold">YouTube Data API</span>
+                    <span className="text-[12px] text-muted-foreground">— Shows related videos in reader</span>
+                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
+                      Get Key <ExternalLink className="size-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-white/[0.03] px-3 py-2">
+                <Info className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  <strong>Steps:</strong> (1) Click &quot;Get Key&quot; to open the provider&apos;s website.
+                  (2) Sign up / sign in. (3) Create an API key. (4) Copy it. (5) Come back here,
+                  click &quot;Add key&quot; below, and paste it in. That&apos;s it — no Convex dashboard needed!
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* All configured — success banner */}
+      {aiConfigured === aiTotal && aiTotal > 0 && (
+        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
+              <CheckCircle2 className="size-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-emerald-300">All AI providers configured!</p>
+              <p className="text-[12px] text-muted-foreground">The AI tutor, reader AI, and YouTube features are ready to use.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Categories */}
       {categories.map((cat) => (
@@ -406,10 +484,10 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
                     {editingKey === k.key ? (
                       <>
                         <Input
-                          type={showValues[k.key] ? "text" : "password"}
+                          type="password"
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
-                          placeholder="Paste the key value…"
+                          placeholder="Paste the key value here..."
                           className="h-8 w-64 rounded-lg bg-white/5 font-mono text-xs"
                           autoFocus
                           onKeyDown={(e) => { if (e.key === "Enter") void handleSave(k.key); if (e.key === "Escape") { setEditingKey(null); setEditValue(""); } }}
@@ -423,6 +501,11 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
                       </>
                     ) : (
                       <>
+                        {k.helpUrl && !k.configured && (
+                          <a href={k.helpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground">
+                            Get Key <ExternalLink className="size-3" />
+                          </a>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"

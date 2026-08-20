@@ -33,6 +33,11 @@ interface PlanWeek {
   focusHours: number;
 }
 
+/** Resolve an API key: database (admin panel) first, then env var fallback. */
+async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
+  return ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName });
+}
+
 /** Ask Grok for the raw plan JSON. Throws a clear error if not configured. */
 async function requestPlanJson(
   ctx: ActionCtx,
@@ -41,9 +46,10 @@ async function requestPlanJson(
   topicNames: string[],
   targetExamDate?: number,
 ): Promise<string> {
-  if (!process.env.XAI_API_KEY) {
+  const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
+  if (!xaiKey) {
     throw new ConvexError({
-      message: "AI tutor is not configured yet — add XAI_API_KEY in the Keys tab.",
+      message: "Study plan AI is not configured. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up, copy your API key, and paste it here.",
       code: "ai_not_configured",
     });
   }
@@ -56,7 +62,7 @@ async function requestPlanJson(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+      Authorization: `Bearer ${xaiKey}`,
     },
     body: JSON.stringify({
       model: AI_MODEL,

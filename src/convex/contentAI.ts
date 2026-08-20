@@ -94,7 +94,7 @@ export const classifyContentText = action({
         subjectSlug: null,
         examYear: null,
         topics: [],
-        note: "Add XAI_API_KEY in the Keys tab to enable AI classification.",
+        note: "Go to Admin → Keys tab and add your Grok (xAI) API key to enable AI classification.",
       };
     }
 

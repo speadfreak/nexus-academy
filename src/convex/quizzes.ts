@@ -54,6 +54,11 @@ async function requireUser(ctx: DbCtx): Promise<Id<"users">> {
 // Generation
 // ---------------------------------------------------------------------------
 
+/** Resolve an API key: database (admin panel) first, then env var fallback. */
+async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
+  return ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName });
+}
+
 export async function requestQuestions(
   ctx: ActionCtx,
   subjectName: string,
@@ -61,9 +66,10 @@ export async function requestQuestions(
   topicNames: string[],
   count: number,
 ): Promise<string> {
-  if (!process.env.XAI_API_KEY) {
+  const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
+  if (!xaiKey) {
     throw new ConvexError({
-      message: "Quiz generation is not configured yet — add XAI_API_KEY in the Keys tab.",
+      message: "Quiz AI is not configured. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up, copy your API key, and paste it here.",
       code: "ai_not_configured",
     });
   }
@@ -71,7 +77,7 @@ export async function requestQuestions(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+      Authorization: `Bearer ${xaiKey}`,
     },
     body: JSON.stringify({
       model: AI_MODEL,

@@ -400,8 +400,8 @@ export const testIntegrationConnection = action({
 
     try {
       if (integration === "xai") {
-        const key = process.env.XAI_API_KEY;
-        if (!key) return { configured: false, ok: false, detail: "XAI_API_KEY missing" };
+        const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "XAI_API_KEY" }) ?? process.env.XAI_API_KEY;
+        if (!key) return { configured: false, ok: false, detail: "XAI_API_KEY not set — add it in the Keys tab" };
         const response = await fetch("https://api.x.ai/v1/models", {
           headers: { Authorization: `Bearer ${key}` },
         });
@@ -429,8 +429,8 @@ export const testIntegrationConnection = action({
       }
 
       if (integration === "gemini") {
-        const key = process.env.GEMINI_API_KEY;
-        if (!key) return { configured: false, ok: false, detail: "GEMINI_API_KEY missing" };
+        const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "GEMINI_API_KEY" }) ?? process.env.GEMINI_API_KEY;
+        if (!key) return { configured: false, ok: false, detail: "GEMINI_API_KEY not set — add it in the Keys tab" };
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
         );

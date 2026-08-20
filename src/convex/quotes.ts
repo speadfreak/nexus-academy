@@ -54,12 +54,14 @@ function fallbackForDate(dateKey: string): { text: string; author?: string } {
   return FALLBACK_QUOTES[dayOfYear(dateKey) % FALLBACK_QUOTES.length]!;
 }
 
-async function requestQuoteFromAI(): Promise<{ text: string; author?: string }> {
+async function requestQuoteFromAI(ctx: any): Promise<{ text: string; author?: string }> {
+  const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "XAI_API_KEY" }) ?? process.env.XAI_API_KEY;
+  if (!key) throw new Error("XAI_API_KEY not set");
   const response = await fetch(API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+      Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
       model: AI_MODEL,
@@ -126,9 +128,10 @@ export const generateTodaysQuoteAction = internalAction({
     if (existing) return { ok: true, reused: true };
 
     let quote: { text: string; author?: string };
-    if (process.env.XAI_API_KEY) {
+    const hasKey = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "XAI_API_KEY" });
+    if (hasKey || process.env.XAI_API_KEY) {
       try {
-        quote = await requestQuoteFromAI();
+        quote = await requestQuoteFromAI(ctx);
       } catch {
         quote = fallbackForDate(date);
       }

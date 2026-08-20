@@ -12,9 +12,9 @@ import type { Doc } from "./_generated/dataModel";
 // ── Known integrations registry ──────────────────────────────────────
 
 export const INTEGRATION_KEYS = [
-  { key: "XAI_API_KEY", label: "Grok (xAI)", category: "ai", description: "AI tutor + content classification" },
-  { key: "GEMINI_API_KEY", label: "Google Gemini", category: "ai", description: "Reader AI companion" },
-  { key: "YOUTUBE_API_KEY", label: "YouTube Data API", category: "ai", description: "Related videos in reader" },
+  { key: "XAI_API_KEY", label: "Grok (xAI)", category: "ai", description: "AI tutor + content classification", helpUrl: "https://console.x.ai/", helpLabel: "console.x.ai" },
+  { key: "GEMINI_API_KEY", label: "Google Gemini", category: "ai", description: "Reader AI companion", helpUrl: "https://aistudio.google.com/apikey", helpLabel: "aistudio.google.com" },
+  { key: "YOUTUBE_API_KEY", label: "YouTube Data API", category: "ai", description: "Related videos in reader", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console" },
   { key: "R2_ACCOUNT_ID", label: "R2 Account ID", category: "storage", description: "Cloudflare R2 bucket access" },
   { key: "R2_ACCESS_KEY_ID", label: "R2 Access Key", category: "storage", description: "Cloudflare R2 credentials" },
   { key: "R2_SECRET_ACCESS_KEY", label: "R2 Secret Key", category: "storage", description: "Cloudflare R2 credentials" },

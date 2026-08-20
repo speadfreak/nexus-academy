@@ -425,7 +425,7 @@ export const sendMessage = action({
         userId,
       });
       throw new ConvexError({
-        message: "AI tutor is not configured yet — add XAI_API_KEY in the Keys tab.",
+        message: "AI tutor is not configured yet. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up at console.x.ai, copy your API key, and paste it here.",
         code: "ai_not_configured",
       });
     }

@@ -52,6 +52,11 @@ export const getConversationMessages = internalQuery({
 // AI generation
 // ---------------------------------------------------------------------------
 
+/** Resolve an API key: database (admin panel) first, then env var fallback. */
+async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
+  return ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName });
+}
+
 async function requestFlashcards(
   ctx: ActionCtx,
   subjectName: string,
@@ -59,9 +64,10 @@ async function requestFlashcards(
   sourceText: string,
   count: number,
 ): Promise<string> {
-  if (!process.env.XAI_API_KEY) {
+  const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
+  if (!xaiKey) {
     throw new ConvexError({
-      message: "Flashcard generation requires XAI_API_KEY in the Keys tab.",
+      message: "Flashcard AI is not configured. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up, copy your API key, and paste it here.",
       code: "ai_not_configured",
     });
   }
@@ -70,7 +76,7 @@ async function requestFlashcards(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+      Authorization: `Bearer ${xaiKey}`,
     },
     body: JSON.stringify({
       model: AI_MODEL,

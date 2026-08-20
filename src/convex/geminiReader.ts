@@ -114,7 +114,7 @@ ${trimmed}`;
     if (!geminiKey && !grokKey) {
       throw new ConvexError({
         message:
-          "The reading companion is not configured yet — add GEMINI_API_KEY (preferred) or XAI_API_KEY in the Keys tab.",
+          "The reading companion is not configured yet. Go to Admin → Keys tab, click \"Get Key\" next to Google Gemini (or Grok), sign up, copy your API key, and paste it here.",
         code: "ai_not_configured",
       });
     }
