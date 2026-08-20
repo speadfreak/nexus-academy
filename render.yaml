@@ -1,7 +1,7 @@
 # Render blueprint — Nexus Academy frontend (static site).
 #
 # The app is a Vite/React SPA. The Convex backend is deployed separately
-# (hosted at https://hearty-seahorse-455.convex.cloud). Render only builds
+# (hosted at https://flexible-bloodhound-758.convex.cloud). Render only builds
 # and serves the static frontend from ./dist.
 #
 # AI keys (XAI_API_KEY, GEMINI_API_KEY, YOUTUBE_API_KEY) and other secrets
@@ -30,7 +30,7 @@ services:
         value: 22.14.0
       # The Convex backend URL this frontend talks to.
       - key: VITE_CONVEX_URL
-        value: https://hearty-seahorse-455.convex.cloud
+        value: https://flexible-bloodhound-758.convex.cloud
       # Optional Vly platform telemetry (error reporting). Safe to leave
       # unset — the app no-ops without them.
       - key: VITE_VLY_APP_ID
