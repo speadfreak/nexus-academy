@@ -39,6 +39,8 @@ import {
   Crown,
   RotateCcw,
   FileText,
+  Maximize2,
+  Width,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +66,7 @@ try {
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 type PanelTab = "companion" | "videos" | "scratchpad";
+type IframeZoomMode = "fit-width" | "fit-page" | "100" | "125" | "150" | "200";
 
 function subjectHue(subjectSlug: string): string {
   const hues: Record<string, string> = {
@@ -119,7 +122,8 @@ export default function Reader() {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageInput, setPageInput] = useState("1");
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(1.4);
+  const [iframeZoom, setIframeZoom] = useState<IframeZoomMode>("fit-width");
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [pageAnimating, setPageAnimating] = useState(false);
   const readerItemId = reader?.item?._id;
@@ -463,8 +467,28 @@ export default function Reader() {
           {/* Subtle dot grid */}
           <div className="pointer-events-none absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, white 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
 
-          {/* ─── Page toolbar ─── */}
+          {/* ─── Page toolbar (react-pdf mode only) ─── */}
+          {!useIframeFallback && (
           <div className="relative flex h-12 shrink-0 items-center justify-center gap-1 border-b border-white/[0.04] bg-black/30 backdrop-blur-xl px-3 z-10">
+            {/* Zoom presets */}
+            <div className="hidden sm:flex items-center gap-1 mr-2">
+              {([0.8, 1, 1.4, 2] as const).map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setScale(preset)}
+                  className={cn(
+                    "h-7 rounded-lg px-2 text-[11px] font-medium transition-all duration-150 active:scale-95",
+                    Math.abs(scale - preset) < 0.01
+                      ? "bg-primary/15 text-primary border border-primary/25"
+                      : "text-muted-foreground/70 hover:bg-white/[0.06] hover:text-foreground border border-transparent"
+                  )}
+                >
+                  {Math.round(preset * 100)}%
+                </button>
+              ))}
+            </div>
+            <div className="mx-2 h-5 w-px bg-white/[0.08]" />
             <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-1.5 py-1">
               <button
                 type="button"
@@ -479,7 +503,7 @@ export default function Reader() {
               </span>
               <button
                 type="button"
-                onClick={() => setScale((s) => Math.min(2.5, Math.round((s + 0.15) * 100) / 100))}
+                onClick={() => setScale((s) => Math.min(3, Math.round((s + 0.15) * 100) / 100))}
                 className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground active:scale-90"
                 aria-label="Zoom in"
               >
@@ -547,10 +571,54 @@ export default function Reader() {
               </>
             )}
           </div>
+          )}
 
           {/* ─── PDF body ─── */}
-          <div className="relative flex-1 overflow-auto" id="pdf-scroll-area">
-            <div className="relative mx-auto flex min-h-full max-w-fit flex-col items-center gap-4 p-4 sm:p-8">
+          <div className="relative flex-1 overflow-hidden" id="pdf-scroll-area">
+            {/* ══ IFRAME MODE — full-width, outside max-w-fit ══ */}
+            {useIframeFallback && pdfUrl && !pdfError ? (
+              <div className="flex h-full flex-col">
+                {/* Iframe zoom toolbar */}
+                <div className="relative flex shrink-0 items-center justify-center gap-1.5 border-b border-white/[0.04] bg-black/30 backdrop-blur-xl px-3 py-2 z-10">
+                  <span className="type-caption text-[10px] tracking-widest text-muted-foreground/50 uppercase mr-2">Native viewer</span>
+                  {(
+                    [
+                      { id: "fit-width" as const, label: "Fit Width", icon: Width },
+                      { id: "fit-page" as const, label: "Fit Page", icon: Maximize2 },
+                      { id: "100" as const, label: "100%" },
+                      { id: "125" as const, label: "125%" },
+                      { id: "150" as const, label: "150%" },
+                      { id: "200" as const, label: "200%" },
+                    ] as const
+                  ).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setIframeZoom(preset.id)}
+                      className={cn(
+                        "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-all duration-150 active:scale-95",
+                        iframeZoom === preset.id
+                          ? "bg-primary/15 text-primary border border-primary/25"
+                          : "text-muted-foreground/70 hover:bg-white/[0.06] hover:text-foreground border border-transparent"
+                      )}
+                    >
+                      {preset.icon && <preset.icon className="size-3" />}
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Iframe — takes FULL available height and width */}
+                <iframe
+                  key={`${pdfUrl}#${iframeZoom}`}
+                  src={`${pdfUrl}#${iframeZoom === "fit-width" ? "view=FitW&toolbar=1&navpanes=0" : iframeZoom === "fit-page" ? "view=FitH&toolbar=1&navpanes=0" : `zoom=${iframeZoom}&toolbar=1&navpanes=0`}`}
+                  title={item?.title || "PDF document"}
+                  className="flex-1 w-full border-0 bg-white/5"
+                  style={{ minHeight: 0 }}
+                />
+              </div>
+            ) : (
+            /* ══ REACT-PDF MODE — inside max-w-fit for centered pages ══ */
+            <div className="relative mx-auto flex h-full min-h-full max-w-fit flex-col items-center gap-4 p-4 sm:p-8 overflow-y-auto">
               {/* Loading state */}
               {loadingPdf && !pdfUrl && (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-6">
@@ -694,20 +762,8 @@ export default function Reader() {
                 </div>
               )}
 
-              {/* Iframe fallback — browsers handle embedded PDFs natively, no CORS */}
-              {useIframeFallback && pdfUrl && !pdfError && (
-                <div className="-mx-4 -my-4 w-[calc(100%+2rem)] sm:-mx-8 sm:-my-8 sm:w-[calc(100%+4rem)] flex flex-col items-center gap-3">
-                  <p className="type-mono text-[10px] tracking-widest text-muted-foreground/50 uppercase">
-                    Native viewer mode
-                  </p>
-                  <iframe
-                    src={pdfUrl}
-                    title={item?.title || "PDF document"}
-                    className="h-[92vh] w-full rounded-lg border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9)]"
-                  />
-                </div>
-              )}
             </div>
+            )}
           </div>
         </main>
 

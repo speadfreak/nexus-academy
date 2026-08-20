@@ -503,7 +503,33 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.length]);
 
-  /* ---- upload helpers (same logic, upload bug fix kept) ---- */
+  /* ---- upload helpers ---- */
+
+  /**
+   * Convex file upload returns `{ storageId: string }` but the shape can
+   * vary (nested objects, extra wrapping). This helper drills down to the
+   * actual string ID no matter what.
+   */
+  const extractStorageId = (raw: unknown): string => {
+    // 1. Direct string
+    if (typeof raw === "string") return raw;
+    // 2. Object with .storageId
+    if (raw && typeof raw === "object") {
+      let current: unknown = raw;
+      // Drill up to 3 levels deep looking for a string `.storageId`
+      for (let depth = 0; depth < 3; depth++) {
+        if (typeof current === "string") return current;
+        if (current && typeof current === "object" && "storageId" in current) {
+          current = (current as Record<string, unknown>).storageId;
+        } else {
+          break;
+        }
+      }
+      if (typeof current === "string") return current;
+    }
+    console.error("[GroupChat] Could not extract storageId from:", raw);
+    throw new Error("Upload response did not contain a valid storage ID");
+  };
 
   const upload = async (blob: Blob, name: string, type: "file" | "image") => {
     const url = await generateUploadUrl({ groupId });
@@ -516,10 +542,7 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
     });
     if (!response.ok) throw new Error("Attachment upload failed");
     const uploadResult = await response.json();
-    const storageId =
-      typeof uploadResult === "string"
-        ? uploadResult
-        : (uploadResult as { storageId: string }).storageId;
+    const storageId = extractStorageId(uploadResult);
     await sendAttachment({
       groupId,
       attachmentStorageId: storageId,
@@ -583,10 +606,7 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
           });
           if (!response.ok) throw new Error("Voice note upload failed");
           const uploadResult = await response.json();
-          const storageId =
-            typeof uploadResult === "string"
-              ? uploadResult
-              : (uploadResult as { storageId: string }).storageId;
+          const storageId = extractStorageId(uploadResult);
           await sendVoiceNote({
             groupId,
             attachmentStorageId: storageId,
