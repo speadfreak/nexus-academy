@@ -8,7 +8,7 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen,
   Copy,
@@ -166,11 +166,12 @@ export default function Groups() {
   return (
     <DashboardShell>
       <div className="flex flex-col gap-6">
-        <div>
+        <div className="relative">
+          <div className="pointer-events-none absolute -top-10 -left-10 size-40 rounded-full bg-primary/10 blur-[80px]" />
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
             social · opt-in
           </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
+          <h1 className="mt-1 text-gradient text-2xl font-extrabold tracking-tight sm:text-3xl">
             Study groups
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
@@ -178,6 +179,24 @@ export default function Groups() {
             invite code, and the weekly leaderboard ranks XP — one honest
             aggregate of every study action.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <div className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1">
+              <Users className="size-3 text-primary" />
+              <span className="font-mono text-xs font-bold">{myGroups?.length ?? 0} groups</span>
+            </div>
+            <div className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1">
+              <span className="font-mono text-xs font-bold">{myGroups?.reduce((sum, g) => sum + g.memberCount, 0) ?? 0} members</span>
+            </div>
+            {selectedGroup && (activeRooms?.length ?? 0) > 0 && (
+              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1">
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+                </span>
+                <span className="font-mono text-xs font-bold text-emerald-400">{activeRooms?.length ?? 0} live</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -218,28 +237,48 @@ export default function Groups() {
                 </div>
               ) : (
                 myGroups.map((group) => (
-                  <button
+                  <motion.button
                     key={group.groupId}
                     type="button"
                     onClick={() => setSelectedId(group.groupId as string)}
+                    whileHover={{ scale: 1.01, y: -1 }}
+                    whileTap={{ scale: 0.98 }}
                     className={cn(
                       "flex cursor-pointer flex-col gap-1 rounded-xl px-3 py-3 text-left transition-colors",
                       selectedGroup?.groupId === group.groupId
-                        ? "bg-primary/10"
+                        ? "border-l-2 border-l-primary bg-primary/10 shadow-[0_0_20px_-4px_var(--primary)]"
                         : "hover:bg-white/5",
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-bold tracking-tight">{group.name}</p>
-                      {group.role === "owner" && (
-                        <Crown className="size-3.5 shrink-0 text-amber-300" />
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {group.memberCount > 1 && (
+                          <div className="flex -space-x-1">
+                            {Array.from({ length: Math.min(group.memberCount, 3) }).map((_, i) => (
+                              <span
+                                key={i}
+                                className="inline-block size-4 rounded-full border border-background bg-primary/20"
+                                style={{ zIndex: 3 - i }}
+                              />
+                            ))}
+                            {group.memberCount > 3 && (
+                              <span className="inline-flex size-4 items-center justify-center rounded-full border border-background bg-primary/30 text-[8px] font-bold text-primary">
+                                +
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {group.role === "owner" && (
+                          <Crown className="size-3.5 shrink-0 text-amber-300" />
+                        )}
+                      </div>
                     </div>
                     <p className="font-mono text-[10px] text-muted-foreground">
                       {group.subjectFocusName ?? "All subjects"} · {group.memberCount} member
                       {group.memberCount === 1 ? "" : "s"}
                     </p>
-                  </button>
+                  </motion.button>
                 ))
               )}
             </div>
@@ -303,6 +342,13 @@ export default function Groups() {
                           member.isMe
                             ? "border-primary/30 bg-primary/10"
                             : "border-white/5 bg-white/[0.02]",
+                          index === 0
+                            ? "shadow-[0_0_24px_-4px_oklch(0.75_0.15_85)]"
+                            : index === 1
+                              ? "shadow-[0_0_16px_-4px_oklch(0.7_0.01_250)]"
+                              : index === 2
+                                ? "shadow-[0_0_16px_-4px_oklch(0.7_0.12_60)]"
+                                : "",
                         )}
                       >
                         <div
@@ -338,7 +384,10 @@ export default function Groups() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="flex items-center justify-end gap-1 font-mono text-sm font-extrabold tabular-nums text-primary">
+                          <p className={cn(
+                            "flex items-center justify-end gap-1 font-mono font-extrabold tabular-nums text-primary",
+                            index < 3 ? "text-base" : "text-sm",
+                          )}>
                             <Trophy className="size-3.5" /> {member.xpThisWeek}
                           </p>
                           <p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
@@ -414,7 +463,7 @@ export default function Groups() {
                 >
                   <div className="relative flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <MonitorPlay className="size-4" />
-                    <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-400" />
+                    <span className="absolute -right-0.5 -top-0.5 size-2.5 animate-ping rounded-full border-2 border-background bg-emerald-400" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{room.name}</p>

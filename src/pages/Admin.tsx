@@ -5,7 +5,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -23,6 +23,8 @@ import {
   Lock,
   Plug,
   Plus,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   Send,
@@ -146,6 +148,13 @@ const ADMIN_TABS = [
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
+
+const ADMIN_TAB_GROUPS = [
+  { label: "OVERVIEW", ids: ["dashboard"] as const },
+  { label: "CONTENT", ids: ["content"] as const },
+  { label: "MANAGEMENT", ids: ["users", "keys", "finance"] as const },
+  { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system"] as const },
+] as const;
 
 /* ── Small helpers ──────────────────────────────────────────────────── */
 
@@ -483,6 +492,7 @@ export default function Admin() {
   } | null>(null);
   const [acting, setActing] = useState(false);
   const [userQuery, setUserQuery] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   /* ── System ── */
   const system = useQuery(
@@ -891,18 +901,17 @@ export default function Admin() {
 
         {/* ── Main layout: sidebar + content ── */}
         <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:gap-6">
-          {/* Sidebar nav */}
-          <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:w-56 xl:flex-col xl:overflow-x-visible xl:overflow-y-auto xl:p-2.5 xl:sticky xl:top-24 xl:self-start">
-            {ADMIN_TABS.map(({ id, label, index, icon: TabIcon }) => (
+          {/* ── Mobile: horizontal scrollable tab bar (< xl) ── */}
+          <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:hidden">
+            {ADMIN_TABS.map(({ id, label, icon: TabIcon }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setTab(id)}
                 className={cn(
-                  "group flex shrink-0 cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs font-medium transition-all sm:text-sm",
-                  "xl:w-full xl:justify-start",
+                  "interactive-press hover-lift group flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs font-medium transition-all sm:text-sm",
                   tab === id
-                    ? "bg-primary/15 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.18),0_8px_24px_-18px_rgba(112,196,255,0.8)]"
+                    ? "border-l-2 border-l-primary bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.18),0_8px_24px_-18px_rgba(112,196,255,0.8)]"
                     : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                 )}
               >
@@ -917,11 +926,135 @@ export default function Admin() {
                   <TabIcon className="size-4" />
                 </span>
                 <span>{label}</span>
-                <span className="ml-auto hidden font-mono text-[9px] text-muted-foreground/50 xl:inline">
-                  {index}
-                </span>
               </button>
             ))}
+          </nav>
+
+          {/* ── Desktop: vertical grouped sidebar (>= xl) ── */}
+          <nav className="glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" style={{ width: sidebarCollapsed ? '4rem' : '14rem' }}>
+            {/* Collapse toggle at top */}
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((p) => !p)}
+              className={cn(
+                "interactive-press mb-2 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-white/5 hover:text-foreground",
+              )}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+              <AnimatePresence mode="wait">
+                {!sidebarCollapsed && (
+                  <motion.span
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: 'auto' }}
+                    exit={{ opacity: 0, width: 0 }}
+                    className="overflow-hidden whitespace-nowrap"
+                  >
+                    Collapse
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </button>
+
+            {/* Grouped tabs */}
+            {ADMIN_TAB_GROUPS.map((group, gi) => (
+              <div key={group.label} className={cn(gi > 0 && "mt-2 border-t border-white/[0.06] pt-2")}>
+                <AnimatePresence mode="wait">
+                  {!sidebarCollapsed && (
+                    <motion.p
+                      key="label"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="type-caption type-mono mb-1.5 px-3 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/50"
+                    >
+                      {group.label}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+                {group.ids.map((tabId) => {
+                  const found = ADMIN_TABS.find((t) => t.id === tabId);
+                  if (!found) return null;
+                  const { id, label, index, icon: TabIcon } = found;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setTab(id)}
+                      className={cn(
+                        "interactive-press hover-lift group flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all",
+                        "justify-center",
+                        tab === id
+                          ? "border-l-2 border-l-primary bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                          tab === id
+                            ? "bg-primary/15 text-primary"
+                            : "bg-white/5 text-muted-foreground group-hover:text-primary",
+                        )}
+                      >
+                        <TabIcon className="size-4" />
+                      </span>
+                      <AnimatePresence mode="wait">
+                        {!sidebarCollapsed && (
+                          <motion.span
+                            initial={{ opacity: 0, width: 0 }}
+                            animate={{ opacity: 1, width: 'auto' }}
+                            exit={{ opacity: 0, width: 0 }}
+                            className="overflow-hidden whitespace-nowrap"
+                          >
+                            {label}
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                      <AnimatePresence mode="wait">
+                        {!sidebarCollapsed && (
+                          <motion.span
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="type-mono ml-auto text-[9px] text-muted-foreground/50"
+                          >
+                            {index}
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+
+            {/* Bottom: clock + collapse toggle */}
+            <div className="mt-auto border-t border-white/[0.06] pt-2">
+              <div className="flex items-center justify-center px-3 py-2">
+                <LiveClock />
+              </div>
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((p) => !p)}
+                className={cn(
+                  "interactive-press flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground transition-all hover:bg-white/5 hover:text-foreground",
+                )}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+                <AnimatePresence mode="wait">
+                  {!sidebarCollapsed && (
+                    <motion.span
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: 'auto' }}
+                      exit={{ opacity: 0, width: 0 }}
+                      className="overflow-hidden whitespace-nowrap"
+                    >
+                      Collapse
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </button>
+            </div>
           </nav>
 
           {/* Content area */}
