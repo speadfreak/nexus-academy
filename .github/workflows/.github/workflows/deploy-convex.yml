@@ -1,0 +1,26 @@
+name: Deploy Convex backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/convex/**"
+      - "convex.json"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/deploy-convex.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+
+      - run: bunx convex deploy
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
