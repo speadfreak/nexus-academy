@@ -30,7 +30,7 @@ const MAX_ANSWER_TOKENS = 900;
 
 /** Resolve an API key: database (admin panel) first, then env var fallback. */
 async function resolveKey(ctx: any, keyName: string): Promise<string | undefined> {
-  return ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName });
+  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
 }
 
 function asReaderError(error: unknown, fallback: string): ConvexError<{ message: string; code: string }> {

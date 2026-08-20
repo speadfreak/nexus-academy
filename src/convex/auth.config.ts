@@ -8,14 +8,22 @@ import type { AuthConfig } from "convex/server";
 const freebuffIssuer =
   process.env.VLY_CONVEX_AUTH_ISSUER ?? "https://freebuff.com";
 
+// CONVEX_SITE_URL is auto-set by Convex to the deployment URL (e.g.
+// https://flexible-bloodhound-758.convex.cloud). If for some reason it
+// isn't available, the entire auth module will not work, so we log a
+// clear warning.
+const siteUrl = process.env.CONVEX_SITE_URL;
+if (!siteUrl) {
+  console.error(
+    "[auth.config] CONVEX_SITE_URL is not set. Convex Auth requires it. " +
+      "Set it in your Convex deployment env vars.",
+  );
+}
+
 export default {
   providers: [
-    // Google OAuth is configured via the Google() provider factory in
-    // src/convex/auth.ts (clientId/clientSecret come from the Keys tab). The
-    // deployment auth config below only handles token issuers — see the
-    // comments on each entry.
-    // Standard Convex Auth provider for this project's own sign-in ("Get
-    // Started" email/guest, see src/convex/auth.ts). The deployment
+    // Standard Convex Auth provider for this project's own sign-in (email-otp
+    // and anonymous/guest — see src/convex/auth.ts). The deployment
     // self-issues JWTs (iss = CONVEX_SITE_URL, no `kid` header) validated
     // via OIDC discovery at `${domain}/.well-known/openid-configuration`,
     // served by auth.addHttpRoutes() in convex/http.ts. Do NOT convert this
@@ -23,7 +31,7 @@ export default {
     // `kid` header, so sign-in would silently never confirm and RequireAuth
     // would loop back to /auth forever.
     {
-      domain: process.env.CONVEX_SITE_URL!,
+      domain: siteUrl!,
       applicationID: "convex",
     },
     {
