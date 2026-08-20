@@ -1,18 +1,15 @@
 # Render blueprint — Nexus Academy frontend (static site).
 #
-# The app is a Vite/React SPA whose backend is Convex (hosted at
-# https://hearty-seahorse-455.convex.cloud). Render only serves the static
-# build; ALL backend keys (XAI_API_KEY, R2_*, TELEBIRR_*, MPESA_*, LIVEKIT_*,
-# GOOGLE_*, GITHUB_TOKEN) live in the Convex dashboard's environment
-# variables — never here and never in the repo.
+# The app is a Vite/React SPA. The Convex backend is deployed separately
+# (hosted at https://hearty-seahorse-455.convex.cloud). Render only builds
+# and serves the static frontend from ./dist.
 #
-# How to deploy:
-#   1. Push this repo to GitHub (already connected: speadfreak/nexus-academy).
-#   2. In Render: New + -> Blueprint -> pick the repo.
-#   3. Render reads render.yaml, creates the static site, runs the build
-#      below and serves ./dist. The SPA rewrite makes /dashboard, /admin,
-#      /rooms/:id etc. work on direct refresh.
-#   4. Optional: point a custom domain at it in the Render dashboard.
+# AI keys (XAI_API_KEY, GEMINI_API_KEY, YOUTUBE_API_KEY) and other secrets
+# are stored in the database via the admin panel (Keys tab) — not as env vars.
+#
+# IMPORTANT: Convex functions are deployed SEPARATELY from the frontend.
+# When you change files in src/convex/, run `npx convex deploy` LOCALLY to
+# push those changes to Convex cloud. The Render build does NOT do this.
 
 services:
   - type: web
@@ -21,9 +18,9 @@ services:
     buildCommand: |
       set -e
       if command -v bun >/dev/null 2>&1; then
-        bun install && npx convex deploy && bun run build
+        bun install && bun run build
       else
-        npm install --no-audit --no-fund && npx convex deploy && npm run build
+        npm install --no-audit --no-fund && npm run build
       fi
     staticPublishPath: ./dist
     envVars:
@@ -31,9 +28,7 @@ services:
       # image doesn't fall back to an old default.
       - key: NODE_VERSION
         value: 22.14.0
-      # REQUIRED — the Convex backend this frontend talks to. The dev
-      # deployment URL is fine for testing; use the production deployment
-      # URL once one exists (bunx convex deploy in the Convex CLI).
+      # The Convex backend URL this frontend talks to.
       - key: VITE_CONVEX_URL
         value: https://hearty-seahorse-455.convex.cloud
       # Optional Vly platform telemetry (error reporting). Safe to leave
