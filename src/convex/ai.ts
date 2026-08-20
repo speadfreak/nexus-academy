@@ -28,6 +28,11 @@ const API_URL = "https://api.x.ai/v1/chat/completions";
 const HISTORY_LIMIT = 15;
 const MAX_TOKENS = 1024;
 
+/** Resolve an API key: database (admin panel) first, then env var fallback. */
+async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
+  return ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName });
+}
+
 type AiErrorData = { message: string; code: string };
 
 function asAiError(error: unknown, fallback: string): ConvexError<AiErrorData> {
@@ -411,7 +416,8 @@ export const sendMessage = action({
       .map((message) => ({ role: message.role, content: message.content }));
 
     // --- Call Grok -------------------------------------------------------
-    if (!process.env.XAI_API_KEY) {
+    const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
+    if (!xaiKey) {
       await logEventAction(ctx, {
         eventType: "error",
         source: "ai.sendMessage.not_configured",
@@ -441,7 +447,7 @@ export const sendMessage = action({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+          Authorization: `Bearer ${xaiKey}`,
         },
         body: JSON.stringify({
           model: AI_MODEL,

@@ -28,6 +28,11 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const GROK_MODEL = process.env.AI_MODEL || "grok-4.6";
 const MAX_ANSWER_TOKENS = 900;
 
+/** Resolve an API key: database (admin panel) first, then env var fallback. */
+async function resolveKey(ctx: any, keyName: string): Promise<string | undefined> {
+  return ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName });
+}
+
 function asReaderError(error: unknown, fallback: string): ConvexError<{ message: string; code: string }> {
   if (error instanceof ConvexError) return error;
   const message = error instanceof Error ? error.message : fallback;
@@ -103,8 +108,8 @@ Their question about what they're reading:
 ${trimmed}`;
 
     const startedAt = Date.now();
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const grokKey = process.env.XAI_API_KEY;
+    const geminiKey = await resolveKey(ctx, "GEMINI_API_KEY");
+    const grokKey = await resolveKey(ctx, "XAI_API_KEY");
 
     if (!geminiKey && !grokKey) {
       throw new ConvexError({

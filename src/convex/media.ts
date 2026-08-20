@@ -11,6 +11,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { logEventAction } from "./systemEvents";
 
 export interface YouTubeVideo {
@@ -33,10 +34,12 @@ export const searchYouTubeVideos = action({
     }
     const trimmed = query.trim();
     if (!trimmed) {
-      return { configured: Boolean(process.env.YOUTUBE_API_KEY), videos: [] };
+      const hasKey = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "YOUTUBE_API_KEY" });
+      return { configured: Boolean(hasKey || process.env.YOUTUBE_API_KEY), videos: [] };
     }
 
-    const key = process.env.YOUTUBE_API_KEY;
+    const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "YOUTUBE_API_KEY" })
+      ?? process.env.YOUTUBE_API_KEY;
     if (!key) {
       return { configured: false, videos: [] };
     }

@@ -804,10 +804,15 @@ export const getIntegrationStatus = query({
         }
       }
 
+      const dbKeyEntry = await ctx.db
+        .query("configKeys")
+        .withIndex("by_key", (q) => q.eq("key", def.envKey))
+        .first();
+
       rows.push({
         id: def.id,
         label: def.label,
-        configured: Boolean(process.env[def.envKey]),
+        configured: Boolean(dbKeyEntry?.value || process.env[def.envKey]),
         calls24h: calls,
         errors24h: errors,
         errorRate: calls > 0 ? errors / calls : 0,

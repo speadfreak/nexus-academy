@@ -81,7 +81,9 @@ export const classifyContentText = action({
       };
     }
 
-    if (!process.env.XAI_API_KEY) {
+    const xaiKey = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "XAI_API_KEY" });
+
+    if (!xaiKey) {
       return {
         analyzed: false,
         sampleChars: sample.trim().length,
@@ -142,7 +144,7 @@ Return ONLY strict JSON, no commentary, with this exact shape:
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+          Authorization: `Bearer ${xaiKey}`,
         },
         body: JSON.stringify({
           model: AI_MODEL,

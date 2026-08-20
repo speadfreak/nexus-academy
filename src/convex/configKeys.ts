@@ -146,6 +146,37 @@ export const getR2KeyValues = internalQuery({
   },
 });
 
+/**
+ * Generic internal query: resolve a config key value.
+ * Checks the configKeys database table first, then falls back to process.env.
+ * Used by AI actions so that keys pasted in the admin panel actually work.
+ */
+export const resolveConfigValue = internalQuery({
+  args: { key: v.string() },
+  handler: async (ctx, { key }): Promise<string | undefined> => {
+    const dbEntry = await ctx.db
+      .query("configKeys")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .first();
+    if (dbEntry?.value) return dbEntry.value;
+    return process.env[key] || undefined;
+  },
+});
+
+/** Batch-resolve multiple config keys in one round-trip (internal, for actions). */
+export const resolveConfigValues = internalQuery({
+  args: { keys: v.array(v.string()) },
+  handler: async (ctx, { keys }): Promise<Record<string, string | undefined>> => {
+    const stored = await ctx.db.query("configKeys").collect();
+    const storedMap = new Map(stored.map((r) => [r.key, r.value]));
+    const result: Record<string, string | undefined> = {};
+    for (const key of keys) {
+      result[key] = storedMap.get(key) || process.env[key] || undefined;
+    }
+    return result;
+  },
+});
+
 /** Get the actual value of a key (admin-only, for testing connections). */
 export const getKeyValue = query({
   args: { key: v.string() },
