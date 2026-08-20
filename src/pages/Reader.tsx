@@ -696,14 +696,14 @@ export default function Reader() {
 
               {/* Iframe fallback — browsers handle embedded PDFs natively, no CORS */}
               {useIframeFallback && pdfUrl && !pdfError && (
-                <div className="flex w-full flex-col items-center gap-4">
+                <div className="-mx-4 -my-4 w-[calc(100%+2rem)] sm:-mx-8 sm:-my-8 sm:w-[calc(100%+4rem)] flex flex-col items-center gap-3">
                   <p className="type-mono text-[10px] tracking-widest text-muted-foreground/50 uppercase">
                     Native viewer mode
                   </p>
                   <iframe
                     src={pdfUrl}
                     title={item?.title || "PDF document"}
-                    className="h-[85vh] w-full min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9)]"
+                    className="h-[92vh] w-full rounded-lg border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9)]"
                   />
                 </div>
               )}
