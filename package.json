@@ -48,7 +48,7 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@studio-freight/lenis": "^1.0.42",
-    "@tailwindcss/vite": "^4.1.17",
+    "@tailwindcss/vite": "^4.3.3",
     "@vly-ai/integrations": "^0.6.12",
     "@zumer/snapdom": "^2.0.1",
     "axios": "^1.13.2",
