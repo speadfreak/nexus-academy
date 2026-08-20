@@ -12,7 +12,9 @@ const freebuffIssuer =
 // https://flexible-bloodhound-758.convex.cloud). If for some reason it
 // isn't available, the entire auth module will not work, so we log a
 // clear warning.
-const siteUrl = process.env.CONVEX_SITE_URL;
+const siteUrl =
+  process.env.CONVEX_SITE_URL ??
+  "https://flexible-bloodhound-758.convex.cloud";
 if (!siteUrl) {
   console.error(
     "[auth.config] CONVEX_SITE_URL is not set. Convex Auth requires it. " +
