@@ -21,9 +21,9 @@ services:
     buildCommand: |
       set -e
       if command -v bun >/dev/null 2>&1; then
-        bun install && bun run build
+        bun install && npx convex deploy && bun run build
       else
-        npm install --no-audit --no-fund && npm run build
+        npm install --no-audit --no-fund && npx convex deploy && npm run build
       fi
     staticPublishPath: ./dist
     envVars:
