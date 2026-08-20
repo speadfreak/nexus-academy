@@ -822,3 +822,27 @@ export const getIntegrationStatus = query({
     return rows;
   },
 });
+
+// ------------------------------------------------------------------
+// Auth rate-limit helpers
+// ------------------------------------------------------------------
+
+/** Clear sign-in rate limits for a specific email (or all). */
+export const clearAuthRateLimits = mutation({
+  args: { email: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    if (args.email) {
+      const existing = await ctx.db
+        .query("authRateLimits")
+        .withIndex("identifier", (q) => q.eq("identifier", args.email.toLowerCase()))
+        .unique();
+      if (existing) await ctx.db.delete(existing._id);
+      return { cleared: true, email: args.email };
+    }
+    // Clear all rate limits
+    const all = await ctx.db.query("authRateLimits").collect();
+    for (const r of all) await ctx.db.delete(r._id);
+    return { cleared: true, count: all.length };
+  },
+});

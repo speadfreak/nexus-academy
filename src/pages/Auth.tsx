@@ -524,7 +524,19 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       setIsLoading(false);
     } catch (error) {
       console.error("OTP verification error:", error);
-      setError("The verification code you entered is incorrect.");
+      const msg = error instanceof Error ? error.message : String(error);
+      // Show the actual Convex error so we can diagnose issues.
+      // Common causes: expired code, rate-limited email, or wrong code.
+      if (msg.includes("rate") || msg.includes("too many") || msg.includes("Rate")) {
+        setError("Too many failed attempts — please wait a minute and request a new code.");
+      } else if (msg.includes("expire") || msg.includes("Expired")) {
+        setError("This code has expired. Please request a new one.");
+      } else if (msg.includes("Could not verify") || msg.includes("Invalid verification")) {
+        setError("The verification code you entered is incorrect.");
+      } else {
+        // Surface the real error for debugging (server-side issues like missing env vars)
+        setError(msg || "The verification code you entered is incorrect.");
+      }
       setIsLoading(false);
       setOtp("");
     }
