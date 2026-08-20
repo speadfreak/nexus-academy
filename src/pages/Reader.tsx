@@ -40,7 +40,7 @@ import {
   RotateCcw,
   FileText,
   Maximize2,
-  Width,
+  Scan,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -583,12 +583,12 @@ export default function Reader() {
                   <span className="type-caption text-[10px] tracking-widest text-muted-foreground/50 uppercase mr-2">Native viewer</span>
                   {(
                     [
-                      { id: "fit-width" as const, label: "Fit Width", icon: Width },
+                      { id: "fit-width" as const, label: "Fit Width", icon: Scan },
                       { id: "fit-page" as const, label: "Fit Page", icon: Maximize2 },
-                      { id: "100" as const, label: "100%" },
-                      { id: "125" as const, label: "125%" },
-                      { id: "150" as const, label: "150%" },
-                      { id: "200" as const, label: "200%" },
+                      { id: "100" as const, label: "100%", icon: null },
+                      { id: "125" as const, label: "125%", icon: null },
+                      { id: "150" as const, label: "150%", icon: null },
+                      { id: "200" as const, label: "200%", icon: null },
                     ] as const
                   ).map((preset) => (
                     <button
