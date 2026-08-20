@@ -323,6 +323,16 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
 
+  // ── Backend version probe ─────────────────────────────────────────
+  // If this query fails (function not found), the Convex backend is
+  // running old code that doesn't read keys from the database.
+  const backendVersion = useQuery(api.configKeys.getBackendVersion);
+  const backendOutdated = backendVersion === undefined
+    ? false // still loading
+    : backendVersion === null
+      ? true // function doesn't exist = old backend
+      : (backendVersion as any).version < 2;
+
   const handleSave = async (key: string) => {
     if (!editValue.trim()) return;
     setSaving(key);
@@ -444,7 +454,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
       )}
 
       {/* All configured — success banner */}
-      {aiConfigured === aiTotal && aiTotal > 0 && (
+      {aiConfigured === aiTotal && aiTotal > 0 && !backendOutdated && (
         <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
           <div className="flex items-center gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
@@ -453,6 +463,40 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
             <div>
               <p className="text-sm font-bold text-emerald-300">All AI providers configured!</p>
               <p className="text-[12px] text-muted-foreground">The AI tutor, reader AI, and YouTube features are ready to use.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BACKEND OUTDATED WARNING ──────────────────────────────── */}
+      {backendOutdated && configured > 0 && (
+        <div className="rounded-2xl border border-red-400/30 bg-red-400/[0.08] p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-red-400/15">
+              <AlertTriangle className="size-5 text-red-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-red-300">Backend needs updating — your keys won't work yet</h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                Your API keys are saved in the database, but the Convex backend is running
+                <strong className="text-foreground"> older code</strong> that doesn't read from the database yet.
+                You need to deploy the latest Convex functions from your computer.
+              </p>
+              <div className="mt-3 rounded-xl border border-white/5 bg-black/20 p-4 font-mono text-[12px] leading-loose">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Run these commands on your computer:</p>
+                <code className="block text-emerald-300">cd nexus-academy</code>
+                <code className="block text-emerald-300">git pull</code>
+                <code className="block text-emerald-300">npx convex dev</code>
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                <code className="rounded bg-white/5 px-1.5 py-0.5">npx convex dev</code> will push the latest AI functions to
+                your Convex deployment. Once you see &quot;Connected&quot; in the terminal, your
+                keys will start working immediately. Leave it running or press Ctrl+C after it connects.
+              </p>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                If you get a login prompt, visit <strong className="text-foreground">convex.dev</strong>, sign in with your
+                GitHub/Google account, then come back and run the command again.
+              </p>
             </div>
           </div>
         </div>

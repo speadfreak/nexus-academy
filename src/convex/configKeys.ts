@@ -187,3 +187,18 @@ export const getKeyValue = query({
     return { value: null, source: null };
   },
 });
+
+/**
+ * Backend version probe — the frontend calls this to detect whether the
+ * latest Convex functions are deployed. Bump `version` whenever you make a
+ * change that the frontend needs to know about (e.g. new DB-based key
+ * resolution). If this function doesn't exist on the deployment, the
+ * frontend knows the backend is outdated.
+ */
+export const getBackendVersion = query({
+  args: {},
+  handler: () => ({
+    version: 2,
+    features: ["db_key_resolution", "configKeys_table", "resolveConfigValue"],
+  }),
+});
