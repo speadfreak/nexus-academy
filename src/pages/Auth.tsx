@@ -468,7 +468,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     });
     const formData = new FormData();
     formData.set("email", resolved.email);
-    await signIn("email-otp", formData);
+    await signIn("email", formData);
     return resolved;
   };
 
@@ -500,7 +500,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       try {
         const formData = new FormData();
         formData.set("email", step.email);
-        await signIn("email-otp", formData);
+        await signIn("email", formData);
         toast.success("A fresh code is on its way \u2014 check your inbox.");
       } catch (error) {
         setError(
@@ -520,7 +520,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     try {
       const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
+      // Set the code at submit time as well as through the hidden input.
+      // This avoids submitting a stale hidden value if React has not
+      // committed the final InputOTP keystroke yet.
+      formData.set("code", otp.replace(/\D/g, "").slice(0, 6));
+      await signIn("email", formData);
       setIsLoading(false);
     } catch (error) {
       console.error("OTP verification error:", error);
@@ -563,10 +567,33 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      await signIn("anonymous");
+      // Convex Auth actions can briefly lose their websocket while the
+      // browser is reconnecting. Retry only that transient case; provider
+      // and configuration errors should still surface immediately.
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await signIn("anonymous");
+          return;
+        } catch (error) {
+          lastError = error;
+          const message = error instanceof Error ? error.message : String(error);
+          if (!/connection lost|network|websocket|timed out/i.test(message) || attempt === 1) {
+            throw error;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        }
+      }
+      throw lastError;
     } catch (error) {
       console.error("Guest login error:", error);
-      setError(`Failed to sign in as guest: ${error instanceof Error ? error.message : "Unknown error"}`);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setError(
+        /connection lost|network|websocket|timed out/i.test(message)
+          ? "The connection was interrupted while signing you in. Please try again."
+          : `Failed to sign in as guest: ${message}`,
+      );
+    } finally {
       setIsLoading(false);
     }
   };
