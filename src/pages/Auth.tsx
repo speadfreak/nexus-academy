@@ -590,7 +590,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setError(
         /connection lost|network|websocket|timed out/i.test(message)
-          ? "The connection was interrupted while signing you in. Please try again."
+          ? "Convex could not complete guest sign-in. The backend needs its latest auth functions deployed. Please try again after the deployment finishes."
           : `Failed to sign in as guest: ${message}`,
       );
     } finally {
