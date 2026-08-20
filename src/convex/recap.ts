@@ -66,7 +66,7 @@ export const getSubjectById = internalQuery({
 
 /** Resolve an API key: database (admin panel) first, then env var fallback. */
 async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
-  return ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName });
+  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
 }
 
 async function requestRecap(
