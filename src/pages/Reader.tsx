@@ -36,6 +36,7 @@ import {
   ZoomIn,
   ZoomOut,
   BookOpen,
+  Crown,
   RotateCcw,
   FileText,
 } from "lucide-react";
@@ -52,7 +53,14 @@ import { cn } from "@/lib/utils";
 // react-pdf bundles its own pdfjs-dist (v5.4.296). The relative path
 // 'pdf.worker.mjs' it sets by default doesn't resolve in production on
 // Render. Override with the matching CDN version.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+// Use a same-origin worker copy (public/pdf.worker.min.mjs) to avoid CORS/
+// version-mismatch issues with CDN-hosted workers on Render.
+// Falls back to the CDN if the local file is missing (dev mode).
+try {
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+} catch {
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 type PanelTab = "companion" | "videos" | "scratchpad";

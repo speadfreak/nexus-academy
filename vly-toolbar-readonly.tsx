@@ -4,7 +4,20 @@ import React, { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MousePointer, ExternalLink, AlertTriangle } from "lucide-react";
 
-import { snapdom } from "@zumer/snapdom";
+// @zumer/snapdom loaded lazily to prevent module-eval crashes on production deploys
+let _snapdom: { toCanvas: (el: HTMLElement, opts?: { fast?: boolean }) => Promise<HTMLCanvasElement> } | null = null;
+async function getSnapdom() {
+  if (!_snapdom) {
+    try {
+      const mod = await import("@zumer/snapdom");
+      _snapdom = mod.snapdom;
+    } catch (err) {
+      console.warn("[VlyToolbar] @zumer/snapdom unavailable:", err);
+      return null;
+    }
+  }
+  return _snapdom;
+}
 
 // FiberNode and ComponentInfo interfaces
 export interface FiberNode {
@@ -301,10 +314,17 @@ export const VlyToolbar: React.FC = () => {
     try {
       // Optionally, preload resources for best results
       // await preCache(el);
-      const canvas = await snapdom.toCanvas(el, { fast: true });
-      imageDataUrl = canvas.toDataURL("image/png");
-    } catch (e) {
-      console.error("Failed to snapshot element", e);
+      const sd = await getSnapdom();
+      if (sd) {
+        try {
+          const canvas = await sd.toCanvas(el, { fast: true });
+          imageDataUrl = canvas.toDataURL("image/png");
+        } catch (e) {
+          console.error("Failed to snapshot element", e);
+        }
+      }
+    } catch {
+      // snapshot unavailable — proceed without image
     }
 
     window.parent.postMessage(

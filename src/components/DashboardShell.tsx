@@ -121,9 +121,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     .join("");
 
   return (
-    <div className="mx-auto flex items-start min-h-[100dvh] min-w-0 w-full max-w-[1600px] gap-6 overflow-x-clip px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* Sidebar (desktop) — sticky works because parent has items-start */}
-      <aside className="glass-panel sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100vh-3rem)]">
+    <div className="mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+      {/* Sidebar (desktop) — sticky + overflow-visible override on glass-panel */}
+      <aside className="glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] w-60 shrink-0 !overflow-y-auto !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
         {/* Logo + brand */}
         <Link to="/" className="group flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-white/5">
           <img src={logo} alt="Nexus Academy logo" className="size-10 shrink-0 rounded-xl transition-transform group-hover:scale-105" />
@@ -236,8 +236,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile top bar */}
-      <div className="flex min-w-0 flex-1 flex-col self-stretch gap-4">
+      {/* Main content area */}
+      <div className="flex min-w-0 flex-1 flex-col gap-4 self-stretch">
         <header className="glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
