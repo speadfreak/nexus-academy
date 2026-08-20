@@ -33,13 +33,17 @@ const VlyToolbar = lazy(() =>
 );
 
 // ─── Convex client: safe construction ────────────────────────────────
-// VITE_CONVEX_URL is always set on Render (render.yaml); the guard is
-// for local dev without a .env file.
+// Render can retain an older build-time value after a Blueprint update.
+// Normalize the former dev deployment so auth and the backend workflow always
+// target the same production Convex deployment.
 let convex: ConvexReactClient;
 try {
   convex = new ConvexReactClient(
     (import.meta as unknown as Record<string, Record<string, string>>).env
-      ?.VITE_CONVEX_URL as string,
+      ?.VITE_CONVEX_URL?.replace(
+      "hearty-seahorse-455.convex.cloud",
+      "flexible-bloodhound-758.convex.cloud",
+    ) || "https://flexible-bloodhound-758.convex.cloud",
   );
 } catch (e) {
   console.error("[Nexus] Failed to create Convex client:", e);
