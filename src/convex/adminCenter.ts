@@ -835,7 +835,7 @@ export const clearAuthRateLimits = mutation({
     if (args.email) {
       const existing = await ctx.db
         .query("authRateLimits")
-        .withIndex("identifier", (q) => q.eq("identifier", args.email.toLowerCase()))
+        .withIndex("identifier", (q) => q.eq("identifier", args.email!.toLowerCase()))
         .unique();
       if (existing) await ctx.db.delete(existing._id);
       return { cleared: true, email: args.email };
