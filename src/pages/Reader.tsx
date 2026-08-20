@@ -115,6 +115,7 @@ export default function Reader() {
   const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [useUrlFallback, setUseUrlFallback] = useState(false);
+  const [useIframeFallback, setUseIframeFallback] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageInput, setPageInput] = useState("1");
@@ -136,6 +137,8 @@ export default function Reader() {
     setPdfError(null);
     setPdfUrl(null);
     setPdfData(null);
+    setUseUrlFallback(false);
+    setUseIframeFallback(false);
     setNumPages(null);
     setPageNumber(1);
     setPageInput("1");
@@ -145,26 +148,33 @@ export default function Reader() {
         const { url } = await getDownloadUrl({ contentId: readerItemId });
         if (cancelled) return;
         setPdfUrl(url);
-        // Fetch the PDF bytes ourselves so pdfjs gets raw data, not a URL.
-        // R2 URLs can have CORS issues; fetching server-side avoids that.
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        const buffer = await res.arrayBuffer();
-        if (!cancelled) {
-          // Validate PDF magic bytes
-          const view = new Uint8Array(buffer);
-          if (view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46) {
-            setPdfData(buffer);
-          } else {
-            // Not valid PDF data — fall back to URL-based rendering
-            console.warn("[Reader] Fetched data is not a valid PDF (magic bytes mismatch), falling back to URL");
-            setUseUrlFallback(true);
+
+        // Try ArrayBuffer first (avoids CORS issues pdfjs has with cross-origin URLs).
+        // If the fetch itself fails (CORS / network), fall back to passing the URL
+        // directly to react-pdf — pdfjs will fetch it with its own loader.
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          const buffer = await res.arrayBuffer();
+          if (!cancelled) {
+            // Validate PDF magic bytes
+            const view = new Uint8Array(buffer);
+            if (view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46) {
+              setPdfData(buffer);
+            } else {
+              console.warn("[Reader] Fetched data is not a valid PDF, falling back to URL");
+              setUseUrlFallback(true);
+            }
           }
+        } catch (fetchErr) {
+          // ArrayBuffer fetch failed (CORS, network, etc.) — fall back to URL
+          console.warn("[Reader] ArrayBuffer fetch failed, falling back to URL:", fetchErr);
+          if (!cancelled) setUseUrlFallback(true);
         }
       } catch (error) {
         if (!cancelled) {
           const msg = error instanceof Error ? error.message : String(error);
-          console.error("[Reader] PDF fetch failed:", msg);
+          console.error("[Reader] PDF load failed:", msg);
           // Detect premium gate errors and show upgrade prompt
           if (msg.includes("Premium") || msg.includes("premium") || msg.includes("trial")) {
             setPdfError("premium_required");
@@ -643,6 +653,12 @@ export default function Reader() {
                         console.warn("[Reader] ArrayBuffer render failed, trying URL fallback");
                         setPdfData(null);
                         setUseUrlFallback(true);
+                      } else if (pdfUrl && !useIframeFallback) {
+                        // URL fallback also failed — use iframe as last resort
+                        // (browsers handle embedded PDFs natively, bypassing CORS)
+                        console.warn("[Reader] URL render failed, falling back to iframe");
+                        setUseUrlFallback(false);
+                        setUseIframeFallback(true);
                       } else {
                         setPdfError("The document could not be rendered. Try refreshing or opening in a new tab.");
                       }
@@ -675,6 +691,20 @@ export default function Reader() {
                       />
                     </div>
                   </Document>
+                </div>
+              )}
+
+              {/* Iframe fallback — browsers handle embedded PDFs natively, no CORS */}
+              {useIframeFallback && pdfUrl && !pdfError && (
+                <div className="flex w-full flex-col items-center gap-4">
+                  <p className="type-mono text-[10px] tracking-widest text-muted-foreground/50 uppercase">
+                    Native viewer mode
+                  </p>
+                  <iframe
+                    src={pdfUrl}
+                    title={item?.title || "PDF document"}
+                    className="h-[85vh] w-full min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9)]"
+                  />
                 </div>
               )}
             </div>
