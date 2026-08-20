@@ -7,8 +7,11 @@ export function useAuth() {
   const user = useQuery(api.users.currentUser);
   const { signIn, signOut } = useAuthActions();
 
-  // Derive isLoading directly from the dependencies instead of managing separate state
-  const isLoading = isAuthLoading || user === undefined;
+  // Only treat as loading while Convex Auth is still determining the
+  // session.  Once `isAuthLoading` settles, we consider loading done even
+  // if the `currentUser` query hasn't returned yet (it returns null for
+  // anonymous / signed-out users anyway).
+  const isLoading = isAuthLoading;
 
   return {
     isLoading,

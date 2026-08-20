@@ -275,7 +275,7 @@ export default function Landing() {
                 {theme === "light" ? "Dark mode" : "Light mode"}
               </span>
             </Button>
-            {isLoading ? null : isAuthenticated ? (
+            {isAuthenticated ? (
               <>
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
                   <Link to="/dashboard">
