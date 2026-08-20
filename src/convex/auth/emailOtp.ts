@@ -3,6 +3,7 @@ import axios from "axios";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
 export const emailOtp = Email({
+  id: "email-otp",
   maxAge: 60 * 15, // 15 minutes
   // This function can be asynchronous
   async generateVerificationToken() {
