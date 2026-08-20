@@ -323,15 +323,23 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
 
-  // ── Backend version probe ─────────────────────────────────────────
-  // If this query fails (function not found), the Convex backend is
-  // running old code that doesn't read keys from the database.
-  const backendVersion = useQuery(api.configKeys.getBackendVersion);
-  const backendOutdated = backendVersion === undefined
-    ? false // still loading
-    : backendVersion === null
-      ? true // function doesn't exist = old backend
-      : (backendVersion as any).version < 2;
+  // ── Backend version probe (error-safe) ───────────────────────────
+  // Uses imperative query so a missing function doesn't crash the page.
+  const convex = useConvex();
+  const [backendOutdated, setBackendOutdated] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!adminAccess) return;
+    let cancelled = false;
+    convex
+      .query(api.configKeys.getBackendVersion)
+      .then((data) => {
+        if (!cancelled) setBackendOutdated((data as any)?.version < 2);
+      })
+      .catch(() => {
+        if (!cancelled) setBackendOutdated(true);
+      });
+    return () => { cancelled = true; };
+  }, [convex, adminAccess]);
 
   const handleSave = async (key: string) => {
     if (!editValue.trim()) return;
@@ -454,7 +462,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
       )}
 
       {/* All configured — success banner */}
-      {aiConfigured === aiTotal && aiTotal > 0 && !backendOutdated && (
+      {aiConfigured === aiTotal && aiTotal > 0 && backendOutdated !== true && (
         <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
           <div className="flex items-center gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
@@ -469,7 +477,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
       )}
 
       {/* ── BACKEND OUTDATED WARNING ──────────────────────────────── */}
-      {backendOutdated && configured > 0 && (
+      {backendOutdated === true && configured > 0 && (
         <div className="rounded-2xl border border-red-400/30 bg-red-400/[0.08] p-5">
           <div className="flex items-start gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-red-400/15">
