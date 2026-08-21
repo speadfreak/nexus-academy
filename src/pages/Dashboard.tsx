@@ -972,15 +972,54 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Quick action buttons */}
-            <div className="flex shrink-0 items-center gap-2">
-              {isAdmin && (
-                <Button asChild variant="outline" size="sm" className="rounded-xl bg-white/5 interactive-press">
-                  <Link to="/admin">
-                    <Sparkles className="size-4" /> Admin
-                  </Link>
-                </Button>
-              )}
+            {/* Hub command deck */}
+            <div className="hub-command-deck w-full max-w-sm shrink-0 rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl">
+              <div className="flex items-center justify-between">
+                <span className="type-mono uppercase tracking-[0.18em] text-primary/80">Hub pulse</span>
+                <span className="flex items-center gap-1.5 type-mono text-[10px] text-emerald-300">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> LIVE CATALOG
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
+                  <p className="type-mono text-muted-foreground">RESOURCES</p>
+                  <p className="mt-1 type-h2 text-primary">{totalContent}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
+                  <p className="type-mono text-muted-foreground">SAVED</p>
+                  <p className="mt-1 type-h2 text-emerald-300">{bookmarkIds?.length ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
+                  <p className="type-mono text-muted-foreground">STREAMS</p>
+                  <p className="mt-1 type-h2 text-amber-300">{subjects?.length ?? 0}</p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {[
+                  ["All resources", ""],
+                  ["Textbooks", "textbook"],
+                  ["Past exams", "past_exam"],
+                ].map(([label, value]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => { setContentType(value); setExamYear(""); }}
+                    className={cn(
+                      "rounded-lg border px-2.5 py-1.5 type-caption font-semibold transition",
+                      contentType === value
+                        ? "border-primary/40 bg-primary/15 text-primary"
+                        : "border-white/10 bg-white/[0.04] text-muted-foreground hover:border-primary/30 hover:text-foreground",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+                {isAdmin && (
+                  <Button asChild variant="ghost" size="sm" className="ml-auto h-7 rounded-lg px-2 text-muted-foreground hover:text-primary">
+                    <Link to="/admin"><Sparkles className="mr-1 size-3" /> Manage</Link>
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </motion.div>
