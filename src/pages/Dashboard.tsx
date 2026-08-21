@@ -919,6 +919,22 @@ export default function Dashboard() {
                 )}
               </motion.p>
 
+              <button
+                type="button"
+                onClick={() => document.getElementById("library-search")?.focus()}
+                className="mt-5 flex w-full max-w-xl items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left shadow-[0_10px_30px_-18px_rgba(56,189,248,0.7)] transition hover:border-primary/40 hover:bg-black/30"
+              >
+                <Search className="size-4 shrink-0 text-primary" />
+                <span className="type-caption flex-1 text-muted-foreground">Search the national learning library…</span>
+                <kbd className="hidden rounded-md border border-white/10 bg-white/5 px-2 py-1 type-mono text-muted-foreground/70 sm:inline">/</kbd>
+              </button>
+              <div className="mt-4 flex items-center gap-2">
+                <span className="h-1.5 w-10 rounded-full bg-[#168b49]" />
+                <span className="h-1.5 w-10 rounded-full bg-[#f5c542]" />
+                <span className="h-1.5 w-10 rounded-full bg-[#c83b3b]" />
+                <span className="ml-1 type-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">Built for Ethiopian students</span>
+              </div>
+
               {/* Stream breakdown pills */}
               {streamBreakdown && totalContent > 0 && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1418,6 +1434,7 @@ export default function Dashboard() {
               <Search className={cn("size-4", searchFocused && "drop-shadow-[0_0_6px_rgba(116,196,255,0.6)]")} />
             </motion.div>
             <Input
+                id="library-search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
