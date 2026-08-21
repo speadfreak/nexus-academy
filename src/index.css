@@ -1043,6 +1043,172 @@ html.lenis, html.lenis body {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   STUDENT DASHBOARD — cinematic learning cockpit
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.student-dashboard {
+  position: relative;
+}
+
+.student-dashboard::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -6rem -10rem auto;
+  height: 32rem;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 15% 16%, rgb(56 189 248 / 0.12), transparent 38%),
+    radial-gradient(ellipse at 85% 10%, rgb(129 140 248 / 0.1), transparent 38%);
+  filter: blur(22px);
+}
+
+.student-sidebar {
+  background:
+    linear-gradient(180deg, rgb(18 32 54 / 0.88), rgb(9 17 32 / 0.76)),
+    linear-gradient(135deg, rgb(56 189 248 / 0.08), transparent 38%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    inset 0 0 26px rgb(56 189 248 / 0.04),
+    0 24px 60px -34px rgb(29 112 202 / 0.65);
+}
+
+.student-sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.6;
+  background:
+    linear-gradient(rgb(112 196 255 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(112 196 255 / 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+
+.student-sidebar > * {
+  position: relative;
+  z-index: 1;
+}
+
+.student-nav-active {
+  position: relative;
+  box-shadow:
+    inset 0 0 0 1px rgb(112 196 255 / 0.16),
+    0 8px 24px -18px rgb(112 196 255 / 0.9);
+}
+
+.student-nav-active::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 22%;
+  height: 56%;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 12px 2px rgb(112 196 255 / 0.8);
+}
+
+.student-profile-card {
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.025)),
+    radial-gradient(circle at 0 100%, rgb(56 189 248 / 0.12), transparent 45%);
+  border-color: rgb(112 196 255 / 0.14);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 10px 24px -18px rgb(56 189 248 / 0.7);
+}
+
+.student-mobile-drawer {
+  background:
+    linear-gradient(180deg, rgb(16 29 49 / 0.98), rgb(8 15 29 / 0.98)),
+    radial-gradient(circle at 100% 0, rgb(56 189 248 / 0.16), transparent 42%);
+  box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.75), inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.student-hero {
+  min-height: 15rem;
+  isolation: isolate;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.018) 55%),
+    radial-gradient(ellipse at 90% 10%, rgb(56 189 248 / 0.17), transparent 42%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 26px 70px -38px rgb(56 189 248 / 0.55);
+}
+
+.student-hero::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  border: 1px solid rgb(255 255 255 / 0.04);
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgb(255 255 255 / 0.06), transparent 30%, transparent 70%, rgb(129 140 248 / 0.08));
+}
+
+.student-stat-card {
+  min-height: 8.5rem;
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.018) 65%),
+    radial-gradient(circle at 100% 0, rgb(56 189 248 / 0.08), transparent 45%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07);
+}
+
+.student-stat-card:hover {
+  border-color: rgb(112 196 255 / 0.24);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 14px 34px -24px rgb(56 189 248 / 0.7);
+}
+
+.student-stat-streak {
+  background:
+    linear-gradient(145deg, rgb(251 146 60 / 0.09), rgb(255 255 255 / 0.018) 65%),
+    radial-gradient(circle at 100% 0, rgb(251 146 60 / 0.15), transparent 45%);
+}
+
+.student-stat-level {
+  background:
+    linear-gradient(145deg, rgb(251 191 36 / 0.1), rgb(255 255 255 / 0.018) 65%),
+    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.16), transparent 45%);
+}
+
+.student-focus-panel {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.065), rgb(255 255 255 / 0.018)),
+    repeating-linear-gradient(90deg, transparent 0 54px, rgb(112 196 255 / 0.035) 55px);
+}
+
+.student-focus-panel [title] {
+  position: relative;
+}
+
+.student-challenge {
+  background:
+    linear-gradient(135deg, rgb(56 189 248 / 0.1), rgb(255 255 255 / 0.025) 48%, rgb(129 140 248 / 0.07)),
+    radial-gradient(circle at 90% 0, rgb(56 189 248 / 0.14), transparent 35%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 20px 50px -32px rgb(56 189 248 / 0.65);
+}
+
+@media (max-width: 639px) {
+  .student-hero {
+    min-height: 0;
+  }
+
+  .student-stat-card {
+    min-height: 7.5rem;
+    padding: 0.875rem;
+  }
+
+  .student-focus-panel,
+  .student-challenge {
+    padding: 1rem;
+  }
+}
+
 /* Group chat message animations */
 @keyframes nexus-bounce {
   0%, 80%, 100% { transform: translateY(0); }
