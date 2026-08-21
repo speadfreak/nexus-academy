@@ -1,5 +1,5 @@
 // Study session recap — generates encouraging, data-grounded summaries
-// from real user activity using Grok. No premium gate — available to all users.
+// from real user activity using Gemini. No premium gate — available to all users.
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
@@ -11,9 +11,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-
-const API_URL = "https://api.x.ai/v1/chat/completions";
-const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
+import { callGemini } from "./gemini";
 
 // ---------------------------------------------------------------------------
 // Internal data queries
@@ -64,67 +62,6 @@ export const getSubjectById = internalQuery({
 // AI recap generation
 // ---------------------------------------------------------------------------
 
-/** Resolve an API key: database (admin panel) first, then env var fallback. */
-async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
-  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
-}
-
-async function requestRecap(
-  ctx: ActionCtx,
-  type: string,
-  dataSummary: string,
-): Promise<string> {
-  const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
-  if (!xaiKey) {
-    throw new ConvexError({
-      message: "Recap AI is not configured. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up, copy your API key, and paste it here.",
-      code: "ai_not_configured",
-    });
-  }
-
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${xaiKey}`,
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You write short, encouraging study recaps for Ethiopian students (grades 9-12). " +
-            "Use real numbers from their activity. Never fabricate data — if there's no comparison " +
-            "data, say something honest and encouraging about starting out. " +
-            "Keep it to 2-3 sentences. Be specific but concise. " +
-            "Use a warm, motivating tone — like a good tutor checking in.",
-        },
-        {
-          role: "user",
-          content: `Generate a ${type.replace("_", " ")} study recap:\n\n${dataSummary}`,
-        },
-      ],
-      max_tokens: 256,
-      temperature: 0.6,
-    }),
-  });
-
-  if (!response.ok) {
-    const raw = await response.text().catch(() => "");
-    throw new Error(`Grok API error ${response.status}: ${raw.slice(0, 300)}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  return data.choices?.[0]?.message?.content?.trim() ?? "";
-}
-
-// ---------------------------------------------------------------------------
-// Action: generate recap
-// ---------------------------------------------------------------------------
-
 export const generateRecap = action({
   args: {
     type: v.union(
@@ -144,10 +81,9 @@ export const generateRecap = action({
     let recapText = "";
 
     if (args.type === "focus_session") {
-      // Last session's details
       const sessions = await ctx.runQuery(internal.recap.getRecentSessions, {
         userId,
-        since: now - 2 * 60 * 60 * 1000, // last 2 hours
+        since: now - 2 * 60 * 60 * 1000,
       });
       const last = sessions[0];
       if (last) {
@@ -171,7 +107,7 @@ export const generateRecap = action({
     } else if (args.type === "quiz") {
       const attempts = await ctx.runQuery(internal.recap.getRecentQuizAttempts, {
         userId,
-        since: now - 24 * 60 * 60 * 1000, // last 24 hours
+        since: now - 24 * 60 * 60 * 1000,
       });
       const last = attempts[0];
       if (last) {
@@ -192,7 +128,6 @@ export const generateRecap = action({
           `- Current streak: ${streak?.currentStreak ?? 0} days`;
       }
     } else {
-      // Weekly recap
       const sessions = await ctx.runQuery(internal.recap.getRecentSessions, {
         userId,
         since: now - 7 * 24 * 60 * 60 * 1000,
@@ -223,10 +158,18 @@ export const generateRecap = action({
         `- Longest streak: ${streak?.longestStreak ?? 0} days`;
     }
 
-    // Generate the recap text
-    recapText = await requestRecap(ctx, args.type, dataSummary);
+    recapText = await callGemini(ctx, {
+      systemPrompt:
+        "You write short, encouraging study recaps for Ethiopian students (grades 9-12). " +
+        "Use real numbers from their activity. Never fabricate data — if there's no comparison " +
+        "data, say something honest and encouraging about starting out. " +
+        "Keep it to 2-3 sentences. Be specific but concise. " +
+        "Use a warm, motivating tone — like a good tutor checking in.",
+      userMessage: `Generate a ${args.type.replace("_", " ")} study recap:\n\n${dataSummary}`,
+      maxTokens: 256,
+      temperature: 0.6,
+    });
 
-    // Store the recap
     const recapId = await ctx.runMutation(internal.recap.insertRecap, {
       userId,
       type: args.type,
@@ -237,10 +180,6 @@ export const generateRecap = action({
     return { text: recapText, recapId };
   },
 });
-
-// ---------------------------------------------------------------------------
-// Mutation: store recap
-// ---------------------------------------------------------------------------
 
 export const insertRecap = internalMutation({
   args: {

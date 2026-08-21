@@ -1,6 +1,6 @@
 // AI-generated weekly study plans.
 //
-// generatePlan asks Grok (xAI) to sequence a subject's syllabus topics into a
+// generatePlan asks Gemini to sequence a subject's syllabus topics into a
 // week-by-week plan, validates the returned JSON (retrying once), maps topic
 // names back to real topic ids, and stores the plan as JSON on a studyPlans
 // row. Only one active plan per subject/user.
@@ -21,24 +21,16 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireActiveSubscriptionAction } from "./subscriptions";
 import { XP_VALUES } from "./constants";
 import { addisDateKey } from "./reminders";
+import { callGemini } from "./gemini";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
-const API_URL = "https://api.x.ai/v1/chat/completions";
-
 interface PlanWeek {
   week: number;
-  topics: string[]; // topic names as returned by the model
+  topics: string[];
   focusHours: number;
 }
 
-/** Resolve an API key: database (admin panel) first, then env var fallback. */
-async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
-  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
-}
-
-/** Ask Grok for the raw plan JSON. Throws a clear error if not configured. */
 async function requestPlanJson(
   ctx: ActionCtx,
   subjectName: string,
@@ -46,61 +38,27 @@ async function requestPlanJson(
   topicNames: string[],
   targetExamDate?: number,
 ): Promise<string> {
-  const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
-  if (!xaiKey) {
-    throw new ConvexError({
-      message: "Study plan AI is not configured. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up, copy your API key, and paste it here.",
-      code: "ai_not_configured",
-    });
-  }
-
   const targetLine = targetExamDate
     ? `\nThe student's target exam date is ${new Date(targetExamDate).toISOString().slice(0, 10)}; fit the plan before then.`
     : "";
 
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${xaiKey}`,
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a study-plan generator for the Ethiopian national exams (ESLCE), grades 9-12. " +
-            "You respond ONLY with valid JSON and nothing else.",
-        },
-        {
-          role: "user",
-          content:
-            `Build a week-by-week study plan for ${subjectName} (${stream} stream).` +
-            targetLine +
-            "\nSequence the topics below, weighting exam-critical topics first. " +
-            "Use between 4 and 8 weeks, 1 to 3 topics per week, 1 to 4 focus hours per week.\n" +
-            "Respond with a JSON array only, no markdown, in exactly this shape:\n" +
-            '[{"week": 1, "topics": ["Topic name", "Topic name"], "focusHours": 3}]\n' +
-            `Topics to schedule: ${topicNames.join(", ")}`,
-        },
-      ],
-      max_tokens: 2048,
-      temperature: 0.3,
-    }),
+  return await callGemini(ctx, {
+    systemPrompt:
+      "You are a study-plan generator for the Ethiopian national exams (ESLCE), grades 9-12. " +
+      "You respond ONLY with valid JSON and nothing else.",
+    userMessage:
+      `Build a week-by-week study plan for ${subjectName} (${stream} stream).` +
+      targetLine +
+      "\nSequence the topics below, weighting exam-critical topics first. " +
+      "Use between 4 and 8 weeks, 1 to 3 topics per week, 1 to 4 focus hours per week.\n" +
+      "Respond with a JSON array only, no markdown, in exactly this shape:\n" +
+      '[{"week": 1, "topics": ["Topic name", "Topic name"], "focusHours": 3}]\n' +
+      `Topics to schedule: ${topicNames.join(", ")}`,
+    maxTokens: 2048,
+    temperature: 0.3,
   });
-
-  if (!response.ok) {
-    const raw = await response.text().catch(() => "");
-    throw new Error(`Grok API error ${response.status}: ${raw.slice(0, 300)}`);
-  }
-  const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
-  if (!content) throw new Error("Grok returned an empty plan response.");
-  return content;
 }
 
-/** Parse and validate the model's JSON, with one retry for malformed output. */
 async function parsePlanWithRetry(
   ctx: ActionCtx,
   subjectName: string,
@@ -134,7 +92,6 @@ async function parsePlanWithRetry(
     } catch (error) {
       lastError = error instanceof Error ? error.message : "Unknown parsing error.";
       if (attempt === 0) {
-        // Single retry with a stricter instruction.
         try {
           const raw = await requestPlanJson(ctx, subjectName, stream, topicNames, targetExamDate);
           const parsed: unknown = JSON.parse(
@@ -163,7 +120,6 @@ export const generatePlan = action({
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     }
-    // Plans are a premium feature (available during the trial).
     await requireActiveSubscriptionAction(ctx, userId, "premium_plans");
 
     const subject = await ctx.runQuery(internal.ai.getSubjectById, {
@@ -192,7 +148,6 @@ export const generatePlan = action({
       args.targetExamDate,
     );
 
-    // Map topic names back to real ids; drop anything the model invented.
     const nameToId = new Map(topics.map((topic) => [topic.name.toLowerCase(), topic._id]));
     const weeksWithIds = weeks.map((week) => ({
       week: week.week,
@@ -202,8 +157,6 @@ export const generatePlan = action({
       focusHours: week.focusHours,
     }));
 
-    // Deactivate any previous active plan for this subject, then store the new
-    // one — atomically in a single internal mutation (actions can't touch db).
     const planId = await ctx.runMutation(internal.studyPlans.storePlan, {
       userId,
       subjectId: args.subjectId,
@@ -214,7 +167,6 @@ export const generatePlan = action({
   },
 });
 
-/** Internal (action-only) atomic store: deactivates old plans, inserts new. */
 export const storePlan = internalMutation({
   args: {
     userId: v.id("users"),
@@ -242,7 +194,6 @@ export const storePlan = internalMutation({
       completedWeeks: [],
     });
 
-    // Mirror the plan's weeks onto the calendar as study blocks.
     await ctx.runMutation(internal.calendar.createPlanEvents, {
       userId: args.userId,
       subjectId: args.subjectId,
@@ -277,7 +228,6 @@ export const getActivePlan = query({
       weeks = [];
     }
 
-    // Join real topic names for display.
     const topicCache = new Map<Id<"topics">, Doc<"topics">>();
     const subject = await ctx.db.get(subjectId);
     const weeksWithNames = [];
@@ -329,23 +279,17 @@ export const markWeekComplete = mutation({
       : [...completed, args.week];
     await ctx.db.patch(plan._id, { completedWeeks: next });
 
-    // XP only when a week actually completes (un-completing earns nothing).
     if (!wasCompleted) {
       await ctx.runMutation(internal.xp.awardXp, {
         userId,
         amount: XP_VALUES.plan_week_complete,
         reason: "plan_week_complete",
       });
-      // Idempotent sweep — plan_complete unlocks when every week is done.
       await ctx.runMutation(internal.achievements.checkAndAward, { userId });
     }
     return { ok: true, completedWeeks: next };
   },
 });
-
-// ---------------------------------------------------------------------------
-// Plan-week-due notifications (cron)
-// ---------------------------------------------------------------------------
 
 export const listActivePlans = internalQuery({
   args: {},
@@ -356,13 +300,6 @@ export const listActivePlans = internalQuery({
       .collect(),
 });
 
-/**
- * Daily cron: for each active plan, a week's study block "comes due" on the
- * week's start date (generatedAt + (week-1) * 7 days, Addis calendar day). If
- * that day is today and the week isn't completed yet, drop an in-app
- * notification — a gentle nudge visible when the student opens the app, never
- * an external ping. Runs once daily, so no double-notify guard is needed.
- */
 export const notifyDuePlanWeeks = internalAction({
   args: {},
   handler: async (ctx): Promise<{ checked: number; notified: number }> => {

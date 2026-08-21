@@ -1,6 +1,6 @@
 // Quiz / examination engine.
 //
-// generateQuiz asks Grok to write a personalized quiz grounded in the
+// generateQuiz asks Gemini to write a personalized quiz grounded in the
 // subject's real syllabus topics (same grounding pattern as ai.ts and
 // studyPlans.ts), validates the JSON (retry once), and stores the questions
 // on a quizzes row owned by the generating user.
@@ -29,9 +29,7 @@ import {
   FREE_QUIZ_WINDOW_DAYS,
   XP_VALUES,
 } from "./constants";
-
-const API_URL = "https://api.x.ai/v1/chat/completions";
-const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
+import { callGemini } from "./gemini";
 
 export interface QuizQuestion {
   question: string;
@@ -54,11 +52,6 @@ async function requireUser(ctx: DbCtx): Promise<Id<"users">> {
 // Generation
 // ---------------------------------------------------------------------------
 
-/** Resolve an API key: database (admin panel) first, then env var fallback. */
-async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
-  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
-}
-
 export async function requestQuestions(
   ctx: ActionCtx,
   subjectName: string,
@@ -66,56 +59,26 @@ export async function requestQuestions(
   topicNames: string[],
   count: number,
 ): Promise<string> {
-  const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
-  if (!xaiKey) {
-    throw new ConvexError({
-      message: "Quiz AI is not configured. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up, copy your API key, and paste it here.",
-      code: "ai_not_configured",
-    });
-  }
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${xaiKey}`,
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You write multiple-choice exam questions for the Ethiopian national exams " +
-            "(ESLCE), grades 9-12. Questions must be precise, exam-realistic, and match " +
-            "the official syllabus. Respond ONLY with valid JSON and nothing else.",
-        },
-        {
-          role: "user",
-          content:
-            `Write exactly ${count} multiple-choice questions for ${subjectName} (${stream} stream). ` +
-            "Sequence them from easier to harder. Each question must have exactly 4 options " +
-            "with exactly one correct answer, plus a short explanation of why it's correct. " +
-            "Ground every question in the topics below; do not invent topics outside the list.\n" +
-            "Respond with a JSON array only, no markdown, in exactly this shape:\n" +
-            '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
-            `Topics to cover: ${topicNames.join(", ")}`,
-        },
-      ],
-      max_tokens: 4096,
-      temperature: 0.4,
-    }),
-  });
+  const systemPrompt =
+    "You write multiple-choice exam questions for the Ethiopian national exams " +
+    "(ESLCE), grades 9-12. Questions must be precise, exam-realistic, and match " +
+    "the official syllabus. Respond ONLY with valid JSON and nothing else.";
 
-  if (!response.ok) {
-    const raw = await response.text().catch(() => "");
-    throw new Error(`Grok API error ${response.status}: ${raw.slice(0, 300)}`);
-  }
-  const data = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
-  if (!content) throw new Error("Grok returned an empty quiz response.");
-  return content;
+  const userMessage =
+    `Write exactly ${count} multiple-choice questions for ${subjectName} (${stream} stream). ` +
+    "Sequence them from easier to harder. Each question must have exactly 4 options " +
+    "with exactly one correct answer, plus a short explanation of why it's correct. " +
+    "Ground every question in the topics below; do not invent topics outside the list.\n" +
+    "Respond with a JSON array only, no markdown, in exactly this shape:\n" +
+    '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
+    `Topics to cover: ${topicNames.join(", ")}`;
+
+  return await callGemini(ctx, {
+    systemPrompt,
+    userMessage,
+    maxTokens: 4096,
+    temperature: 0.4,
+  });
 }
 
 export function parseAndValidate(raw: string, expectedCount: number): QuizQuestion[] {
@@ -166,9 +129,6 @@ export const generateQuiz = action({
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     }
-    // Free tier gets a fair allowance: one quiz per subject per week, so
-    // students see real value before deciding to upgrade. Premium (trial or
-    // paid) is unlimited. The weekly window matches the entitlement query.
     const premium = await getPremiumAccess(ctx, userId);
     if (!premium) {
       const weekStart = Date.now() - FREE_QUIZ_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -194,8 +154,6 @@ export const generateQuiz = action({
       throw new ConvexError({ message: "Subject not found.", code: "invalid" });
     }
 
-    // ActionCtx.runQuery is deliberately untyped (any) — annotate the rows so
-    // downstream callbacks stay type-safe.
     const topics: Doc<"topics">[] = await ctx.runQuery(
       internal.ai.listTopicsBySubject,
       { subjectId: args.subjectId },
@@ -245,11 +203,6 @@ export const generateQuiz = action({
   },
 });
 
-/**
- * How many quizzes this user has generated for a subject within the last
- * FREE_QUIZ_WINDOW_DAYS — used to enforce the free-tier weekly allowance
- * (one per subject per week) before a single token is spent.
- */
 export const countQuizzesForSubjectSince = internalQuery({
   args: {
     userId: v.id("users"),
@@ -284,10 +237,6 @@ export const insertQuiz = internalMutation({
       createdAt: Date.now(),
     }),
 });
-
-// ---------------------------------------------------------------------------
-// Attempts — server-side scoring only
-// ---------------------------------------------------------------------------
 
 export interface SubmitAttemptResult {
   score: number;
@@ -329,8 +278,6 @@ export const submitAttempt = mutation({
       throw new ConvexError({ message: "Quiz data is corrupted.", code: "internal" });
     }
 
-    // Score from the stored questions — never from anything the client sent
-    // beyond the raw answer indices (validated + clamped here).
     const results = questions.map((question, index) => {
       const raw = answers[index];
       const answered =
@@ -359,8 +306,6 @@ export const submitAttempt = mutation({
       completedAt: Date.now(),
     });
 
-    // XP is earned through the real action of completing a quiz: base + per
-    // correct answer. Awarded server-side, never grantable by a client call.
     const xpAmount =
       XP_VALUES.quiz_complete_base + XP_VALUES.quiz_complete_per_correct * score;
     const award = await ctx.runMutation(internal.xp.awardXp, {
@@ -368,7 +313,6 @@ export const submitAttempt = mutation({
       amount: xpAmount,
       reason: "quiz_complete",
     });
-    // Idempotent sweep — first quiz + perfect-paper achievements.
     const newly = await ctx.runMutation(internal.achievements.checkAndAward, { userId });
 
     return {
@@ -388,11 +332,6 @@ export const submitAttempt = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Reads
-// ---------------------------------------------------------------------------
-
-/** Full questions for an owned quiz (used if the client reloads mid-quiz). */
 export const getQuiz = query({
   args: { quizId: v.id("quizzes") },
   handler: async (ctx, { quizId }) => {
@@ -417,7 +356,6 @@ export const getQuiz = query({
   },
 });
 
-/** The user's past attempts with subject context, newest first. */
 export const getQuizHistory = query({
   args: {},
   handler: async (ctx) => {

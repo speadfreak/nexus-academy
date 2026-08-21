@@ -1,12 +1,10 @@
-// AI tutor — powered by the Grok (xAI) chat completions API.
+// AI tutor — powered by Google Gemini.
 //
 // Called from a Convex action because actions are the only Convex function
 // type that can make external HTTP calls. The API key is read from
 // process.env (set it in the Keys / API keys tab, never hardcode it):
-//   XAI_API_KEY   your xAI API key (https://console.x.ai)
-//   AI_MODEL      optional — defaults to grok-4.6
-//
-// Endpoint: https://api.x.ai/v1/chat/completions (OpenAI-compatible).
+//   GEMINI_API_KEY   your Google AI Studio key (https://aistudio.google.com/apikey)
+//   AI_MODEL        optional — defaults to gemini-2.0-flash
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
@@ -22,11 +20,9 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
+import { callGemini, getModelName } from "./gemini";
 
-const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
-const API_URL = "https://api.x.ai/v1/chat/completions";
 const HISTORY_LIMIT = 15;
-const MAX_TOKENS = 1024;
 
 /** Resolve an API key: database (admin panel) first, then env var fallback. */
 async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
@@ -313,11 +309,6 @@ export const sendMessage = action({
     }
 
     // --- Free-tier daily cap ---------------------------------------------
-    // Free accounts get a fair number of messages per day — enough to get
-    // real help, never a teaser. Premium (trial or paid) is unlimited. The
-    // cap is checked BEFORE the message is persisted, so rejected sends
-    // don't consume the quota. Uses a rolling 24h window so no client
-    // timezone math is needed server-side.
     const premium = await getPremiumAccess(ctx, userId);
     if (!premium) {
       const since = Date.now() - 24 * 60 * 60 * 1000;
@@ -363,14 +354,13 @@ export const sendMessage = action({
     } else {
       let subjectId = args.subjectId;
       if (args.contentId) {
-        const content = await ctx.runQuery(internal.content.getContentItemById, {
+        const contentItem = await ctx.runQuery(internal.content.getContentItemById, {
           contentId: args.contentId,
         });
-        if (!content) {
+        if (!contentItem) {
           throw new ConvexError({ message: "Content item not found.", code: "invalid" });
         }
-        // Scope to the document's subject unless the client already scoped one.
-        subjectId = subjectId ?? content.subjectId;
+        subjectId = subjectId ?? contentItem.subjectId;
       }
       if (subjectId) {
         const subject = await ctx.runQuery(internal.ai.getSubjectById, {
@@ -406,30 +396,15 @@ export const sendMessage = action({
     });
 
     // --- Pull bounded history for context -------------------------------
-    // ActionCtx.runQuery is deliberately untyped (any) — annotate the rows.
     const historyRows: Doc<"messages">[] = await ctx.runQuery(
       internal.ai.getMessagesByConversation,
       { conversationId },
     );
     const history = historyRows
       .slice(-HISTORY_LIMIT)
-      .map((message) => ({ role: message.role, content: message.content }));
+      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content }));
 
-    // --- Call Grok -------------------------------------------------------
-    const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
-    if (!xaiKey) {
-      await logEventAction(ctx, {
-        eventType: "error",
-        source: "ai.sendMessage.not_configured",
-        status: "error",
-        userId,
-      });
-      throw new ConvexError({
-        message: "AI tutor is not configured yet. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up at console.x.ai, copy your API key, and paste it here.",
-        code: "ai_not_configured",
-      });
-    }
-
+    // --- Call Gemini ------------------------------------------------------
     const conversation = await ctx.runQuery(internal.ai.getConversationById, {
       conversationId,
     });
@@ -443,53 +418,31 @@ export const sendMessage = action({
     let reply: string;
     const aiStart = Date.now();
     try {
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${xaiKey}`,
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          messages: [{ role: "system", content: systemPrompt }, ...history],
-          max_tokens: MAX_TOKENS,
-          temperature: 0.5,
-        }),
+      reply = await callGemini(ctx, {
+        systemPrompt,
+        userMessage: content,
+        history,
+        maxTokens: 1024,
+        temperature: 0.5,
       });
-
-      if (!response.ok) {
-        const raw = await response.text().catch(() => "");
-        const detail = raw.slice(0, 300);
-        throw new Error(
-          `Grok API error ${response.status}${detail ? `: ${detail}` : ""}`,
-        );
-      }
-
-      const data = (await response.json()) as {
-        choices?: { message?: { content?: string } }[];
-      };
-      reply = data.choices?.[0]?.message?.content?.trim() ?? "";
-      if (!reply) {
-        throw new Error("Grok returned an empty response.");
-      }
       await logEventAction(ctx, {
         eventType: "api_call",
-        source: "ai.sendMessage.grok",
+        source: "ai.sendMessage.gemini",
         status: "success",
         userId,
-        metadata: { model: AI_MODEL, conversationId },
+        metadata: { model: getModelName(), conversationId },
         durationMs: Date.now() - aiStart,
       });
     } catch (error) {
       await logEventAction(ctx, {
         eventType: "error",
-        source: "ai.sendMessage.grok",
+        source: "ai.sendMessage.gemini",
         status: "error",
         userId,
         metadata: { message: error instanceof Error ? error.message : "unknown" },
         durationMs: Date.now() - aiStart,
       });
-      throw asAiError(error, "The AI tutor could not reach the Grok API. Try again.");
+      throw asAiError(error, "The AI tutor could not reach Gemini. Try again.");
     }
 
     // --- Persist the assistant reply ------------------------------------
@@ -559,12 +512,12 @@ export const listConversations = query({
       }
       let contentTitle: string | null = null;
       if (conversation.contentId) {
-        let content = contentCache.get(conversation.contentId);
-        if (!content) {
-          content = (await ctx.db.get(conversation.contentId)) ?? undefined;
-          if (content) contentCache.set(conversation.contentId, content);
+        let contentItem = contentCache.get(conversation.contentId);
+        if (!contentItem) {
+          contentItem = (await ctx.db.get(conversation.contentId)) ?? undefined;
+          if (contentItem) contentCache.set(conversation.contentId, contentItem);
         }
-        contentTitle = content?.title ?? null;
+        contentTitle = contentItem?.title ?? null;
       }
       result.push({
         ...conversation,

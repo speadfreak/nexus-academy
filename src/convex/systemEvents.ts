@@ -399,35 +399,6 @@ export const testIntegrationConnection = action({
     }
 
     try {
-      if (integration === "xai") {
-        const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "XAI_API_KEY" }) ?? process.env.XAI_API_KEY;
-        if (!key) return { configured: false, ok: false, detail: "XAI_API_KEY not set — add it in the Keys tab" };
-        const response = await fetch("https://api.x.ai/v1/models", {
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        if (!response.ok) {
-          return {
-            configured: true,
-            ok: false,
-            detail: `xAI rejected the key (HTTP ${response.status})`,
-          };
-        }
-        const data = (await response.json()) as { data?: { id: string }[] };
-        const models = data.data?.map((model) => model.id).slice(0, 3) ?? [];
-        await logEventAction(ctx, {
-          eventType: "api_call",
-          source: "admin.testIntegration.xai",
-          status: "success",
-          userId,
-          durationMs: Date.now() - start,
-        });
-        return {
-          configured: true,
-          ok: true,
-          detail: `Key authenticates — ${models.length} models visible (${models.join(", ")})`,
-        };
-      }
-
       if (integration === "gemini") {
         const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "GEMINI_API_KEY" }) ?? process.env.GEMINI_API_KEY;
         if (!key) return { configured: false, ok: false, detail: "GEMINI_API_KEY not set — add it in the Keys tab" };

@@ -1,16 +1,11 @@
 // Reader AI companion — the "ask about what you're reading" assistant on the
 // /read/:contentId page.
 //
-// PROVIDER STRATEGY (Priority B1): the requested guided-learning behavior is
-// Google Gemini, so this action prefers GEMINI_API_KEY (Google AI Studio —
-// free tier). Until that key is added, it falls back to the existing Grok
-// key (XAI_API_KEY) so the feature works today and switches providers the
-// moment the Gemini key lands — zero code changes, config-away.
+// Uses Google Gemini (same provider as the rest of the platform).
 //
 // Required env vars (Keys / API keys tab):
-//   GEMINI_API_KEY   optional — Google AI Studio key (free tier at aistudio.google.com)
-//   GEMINI_MODEL     optional — defaults to gemini-2.0-flash
-//   XAI_API_KEY      fallback provider when GEMINI_API_KEY is absent
+//   GEMINI_API_KEY   Google AI Studio key (free tier at aistudio.google.com)
+//   AI_MODEL        optional — defaults to gemini-2.0-flash
 //
 // Daily cap: shares the same free-tier tutor limit (15 messages / rolling
 // 24h) so free students get a fair amount of reading help and premium is
@@ -23,15 +18,9 @@ import { internal } from "./_generated/api";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
+import { callGemini, getModelName } from "./gemini";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-const GROK_MODEL = process.env.AI_MODEL || "grok-4.6";
 const MAX_ANSWER_TOKENS = 900;
-
-/** Resolve an API key: database (admin panel) first, then env var fallback. */
-async function resolveKey(ctx: any, keyName: string): Promise<string | undefined> {
-  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
-}
 
 function asReaderError(error: unknown, fallback: string): ConvexError<{ message: string; code: string }> {
   if (error instanceof ConvexError) return error;
@@ -57,8 +46,6 @@ export const askReaderQuestion = action({
       throw new ConvexError({ message: "Question is too long (max 2,000 characters).", code: "invalid" });
     }
 
-    // Same fair daily cap as the tutor — free students get real help, never
-    // a teaser; premium is unlimited.
     const premium = await getPremiumAccess(ctx, userId);
     if (!premium) {
       const since = Date.now() - 24 * 60 * 60 * 1000;
@@ -73,7 +60,6 @@ export const askReaderQuestion = action({
       }
     }
 
-    // --- Ground the assistant in this specific document ------------------
     const content = await ctx.runQuery(internal.content.getContentItemById, { contentId });
     if (!content) {
       throw new ConvexError({ message: "Content item not found.", code: "not_found" });
@@ -108,78 +94,21 @@ Their question about what they're reading:
 ${trimmed}`;
 
     const startedAt = Date.now();
-    const geminiKey = await resolveKey(ctx, "GEMINI_API_KEY");
-    const grokKey = await resolveKey(ctx, "XAI_API_KEY");
-
-    if (!geminiKey && !grokKey) {
-      throw new ConvexError({
-        message:
-          "The reading companion is not configured yet. Go to Admin → Keys tab, click \"Get Key\" next to Google Gemini (or Grok), sign up, copy your API key, and paste it here.",
-        code: "ai_not_configured",
-      });
-    }
-
     let reply: string;
-    let provider: string;
     try {
-      if (geminiKey) {
-        provider = "gemini";
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(geminiKey)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-              generationConfig: { maxOutputTokens: MAX_ANSWER_TOKENS, temperature: 0.5 },
-            }),
-          },
-        );
-        if (!response.ok) {
-          const raw = await response.text().catch(() => "");
-          throw new Error(`Gemini API error ${response.status}${raw ? `: ${raw.slice(0, 200)}` : ""}`);
-        }
-        const data = (await response.json()) as {
-          candidates?: { content?: { parts?: { text?: string }[] } }[];
-        };
-        reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
-        if (!reply) throw new Error("Gemini returned an empty response.");
-      } else {
-        provider = "grok";
-        const response = await fetch("https://api.x.ai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${grokKey}`,
-          },
-          body: JSON.stringify({
-            model: GROK_MODEL,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            max_tokens: MAX_ANSWER_TOKENS,
-            temperature: 0.5,
-          }),
-        });
-        if (!response.ok) {
-          const raw = await response.text().catch(() => "");
-          throw new Error(`Grok API error ${response.status}${raw ? `: ${raw.slice(0, 200)}` : ""}`);
-        }
-        const data = (await response.json()) as {
-          choices?: { message?: { content?: string } }[];
-        };
-        reply = data.choices?.[0]?.message?.content?.trim() ?? "";
-        if (!reply) throw new Error("Grok returned an empty response.");
-      }
+      reply = await callGemini(ctx, {
+        systemPrompt,
+        userMessage: userPrompt,
+        maxTokens: MAX_ANSWER_TOKENS,
+        temperature: 0.5,
+      });
 
       await logEventAction(ctx, {
         eventType: "api_call",
         source: "geminiReader.ask",
         status: "success",
         userId,
-        metadata: { provider, contentId, model: geminiKey ? GEMINI_MODEL : GROK_MODEL },
+        metadata: { provider: "gemini", contentId, model: getModelName() },
         durationMs: Date.now() - startedAt,
       });
     } catch (error) {
@@ -188,12 +117,12 @@ ${trimmed}`;
         source: "geminiReader.ask",
         status: "error",
         userId,
-        metadata: { provider: geminiKey ? "gemini" : "grok", message: error instanceof Error ? error.message : "unknown" },
+        metadata: { provider: "gemini", message: error instanceof Error ? error.message : "unknown" },
         durationMs: Date.now() - startedAt,
       });
-      throw asReaderError(error, "The reading companion could not reach the AI provider. Try again.");
+      throw asReaderError(error, "The reading companion could not reach Gemini. Try again.");
     }
 
-    return { reply, provider };
+    return { reply, provider: "gemini" };
   },
 });

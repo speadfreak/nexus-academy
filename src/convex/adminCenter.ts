@@ -651,7 +651,7 @@ export const getFinanceOverview = query({
 // ---------------------------------------------------------------------------
 
 const ENV_KEYS = [
-  "XAI_API_KEY",
+  "GEMINI_API_KEY",
   "AI_MODEL",
   "R2_ACCOUNT_ID",
   "R2_ACCESS_KEY_ID",
@@ -690,13 +690,13 @@ export const getSystemStatus = query({
 
 const INTEGRATION_DEFS = [
   {
-    id: "xai",
-    label: "Grok (xAI tutor)",
-    envKey: "XAI_API_KEY",
+    id: "gemini",
+    label: "Gemini (primary AI)",
+    envKey: "GEMINI_API_KEY",
     sourcePrefix: "ai.",
   },
   {
-    id: "gemini",
+    id: "geminiReader",
     label: "Gemini (reader)",
     envKey: "GEMINI_API_KEY",
     sourcePrefix: "geminiReader.",

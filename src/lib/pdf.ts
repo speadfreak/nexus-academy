@@ -16,7 +16,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pd
 
 /**
  * Extract a plain-text sample from the first pages of a PDF file.
- * Used by the admin "Analyze with AI" flow before the Grok classifier.
+ * Used by the admin "Analyze with AI" flow before the Gemini classifier.
  */
 export async function extractPdfText(
   file: File,

@@ -81,7 +81,7 @@ function Bubble({ message }: { message: MessageDoc }) {
         {message.content}
       </div>
       <span className="px-1 type-caption text-muted-foreground/70">
-        {isUser ? "you" : "grok-4.6"} · {clockTime(message.createdAt)}
+        {isUser ? "you" : "Gemini"} · {clockTime(message.createdAt)}
       </span>
     </motion.div>
   );
@@ -325,7 +325,7 @@ export default function Tutor() {
                 </Button>
               )}
               <Badge className="gap-1.5 bg-primary/10 font-mono text-[10px] text-primary">
-                <Sparkles className="size-3" /> grok-4.6 · national exam tutor
+                <Sparkles className="size-3" /> Gemini · national exam tutor
               </Badge>
             </div>
           </div>
@@ -453,7 +453,7 @@ export default function Tutor() {
                 <div className="glass-soft relative overflow-hidden rounded-2xl rounded-bl-md px-4 py-3">
                   <div className="scan-line" aria-hidden="true" />
                   <span className="type-mono text-muted-foreground">
-                    <span className="text-primary">▌</span> grok-4.6 is thinking…
+                    <span className="text-primary">▌</span> Gemini is thinking…
                   </span>
                 </div>
               </motion.div>

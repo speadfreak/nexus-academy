@@ -1,5 +1,5 @@
 // AI flashcard generator — generates front/back pairs from content or
-// conversations using Grok, validates with retry, stores deck + cards.
+// conversations using Gemini, validates with retry, stores deck + cards.
 // Simple weighted review system surfaces cards needing attention first.
 
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -15,9 +15,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
-
-const API_URL = "https://api.x.ai/v1/chat/completions";
-const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
+import { callGemini } from "./gemini";
 
 export interface FlashcardPair {
   front: string;
@@ -52,11 +50,6 @@ export const getConversationMessages = internalQuery({
 // AI generation
 // ---------------------------------------------------------------------------
 
-/** Resolve an API key: database (admin panel) first, then env var fallback. */
-async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
-  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
-}
-
 async function requestFlashcards(
   ctx: ActionCtx,
   subjectName: string,
@@ -64,64 +57,28 @@ async function requestFlashcards(
   sourceText: string,
   count: number,
 ): Promise<string> {
-  const xaiKey = await resolveKey(ctx, "XAI_API_KEY");
-  if (!xaiKey) {
-    throw new ConvexError({
-      message: "Flashcard AI is not configured. Go to Admin → Keys tab, click \"Get Key\" next to Grok (xAI), sign up, copy your API key, and paste it here.",
-      code: "ai_not_configured",
-    });
-  }
-
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${xaiKey}`,
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You create flashcards for Ethiopian students (grades 9-12) studying " +
-            "for national examinations (EHEEE/ESSLCE). Each flashcard has a concise " +
-            "front (question, concept, or term) and a clear back (answer or definition). " +
-            "Cards should test understanding, not just recall. " +
-            "Respond ONLY with valid JSON — no markdown, no explanation.",
-        },
-        {
-          role: "user",
-          content:
-            `Create exactly ${count} flashcards for ${subjectName} (${stream} stream).\n` +
-            "Source material:\n" +
-            sourceText.slice(0, 6000) +
-            "\n\n" +
-            "Requirements:\n" +
-            "- Front: short question, term, or concept (1-2 sentences max)\n" +
-            "- Back: clear, concise answer (1-3 sentences max)\n" +
-            "- Cards should progress from easier to harder\n" +
-            "- Ground every card in the source material\n\n" +
-            "Respond with a JSON array only:\n" +
-            '[{"front": "...", "back": "..."}]',
-        },
-      ],
-      max_tokens: 4096,
-      temperature: 0.4,
-    }),
+  return await callGemini(ctx, {
+    systemPrompt:
+      "You create flashcards for Ethiopian students (grades 9-12) studying " +
+      "for national examinations (EHEEE/ESSLCE). Each flashcard has a concise " +
+      "front (question, concept, or term) and a clear back (answer or definition). " +
+      "Cards should test understanding, not just recall. " +
+      "Respond ONLY with valid JSON — no markdown, no explanation.",
+    userMessage:
+      `Create exactly ${count} flashcards for ${subjectName} (${stream} stream).\n` +
+      "Source material:\n" +
+      sourceText.slice(0, 6000) +
+      "\n\n" +
+      "Requirements:\n" +
+      "- Front: short question, term, or concept (1-2 sentences max)\n" +
+      "- Back: clear, concise answer (1-3 sentences max)\n" +
+      "- Cards should progress from easier to harder\n" +
+      "- Ground every card in the source material\n\n" +
+      "Respond with a JSON array only:\n" +
+      '[{"front": "...", "back": "..."}]',
+    maxTokens: 4096,
+    temperature: 0.4,
   });
-
-  if (!response.ok) {
-    const raw = await response.text().catch(() => "");
-    throw new Error(`Grok API error ${response.status}: ${raw.slice(0, 300)}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
-  if (!content) throw new Error("Grok returned an empty flashcard response.");
-  return content;
 }
 
 function parseAndValidate(raw: string, expectedCount: number): FlashcardPair[] {
@@ -161,7 +118,6 @@ export const generateDeck = action({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
 
-    // Premium gate — same pattern as quizzes/plans
     const premium = await getPremiumAccess(ctx, userId);
     if (!premium) {
       throw new ConvexError({
@@ -175,7 +131,6 @@ export const generateDeck = action({
     });
     if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
 
-    // Build source text from content item or conversation
     let sourceText = "";
     let title = `${subject.name} Flashcards`;
 
@@ -193,7 +148,7 @@ export const generateDeck = action({
       if (messages.length === 0) {
         throw new ConvexError({ message: "No messages in this conversation.", code: "invalid" });
       }
-      title = `Flashcards from Tutor Chat`;
+      title = "Flashcards from Tutor Chat";
       sourceText = messages.map((m) => `${m.role}: ${m.content}`).join("\n").slice(0, 6000);
     } else {
       throw new ConvexError({
@@ -202,11 +157,10 @@ export const generateDeck = action({
       });
     }
 
-    const count = 12; // target card count
+    const count = 12;
     let cards: FlashcardPair[] = [];
     let lastError = "Unknown error.";
 
-    // Generate with one retry on malformed output (same pattern as quizzes.ts)
     for (let attempt = 0; attempt < 2 && cards.length === 0; attempt++) {
       try {
         const raw = await requestFlashcards(ctx, subject.name, subject.stream, sourceText, count);
@@ -226,7 +180,6 @@ export const generateDeck = action({
       throw new ConvexError({ message: "No flashcards were generated.", code: "ai_error" });
     }
 
-    // Store deck + cards via internal mutations
     const deckId = await ctx.runMutation(internal.flashcards.insertDeck, {
       userId,
       subjectId: args.subjectId,
@@ -295,8 +248,8 @@ export const submitCardReview = mutation({
     const currentWeight = card.nextReviewWeight ?? 1;
     const newWeight =
       args.result === "review_again"
-        ? Math.min(currentWeight + 0.5, 5) // resurface sooner, cap at 5
-        : Math.max(currentWeight - 0.3, 0.2); // deprioritize, floor at 0.2
+        ? Math.min(currentWeight + 0.5, 5)
+        : Math.max(currentWeight - 0.3, 0.2);
 
     await ctx.db.patch(args.cardId, {
       timesReviewed: (card.timesReviewed ?? 0) + 1,
@@ -326,7 +279,7 @@ export const getMyDecks = query({
 
     return decks.map((deck) => ({
       ...deck,
-      subjectName: "", // filled client-side or via join
+      subjectName: "",
     }));
   },
 });
@@ -337,7 +290,6 @@ export const getDeckCards = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return [];
 
-    // Verify deck ownership
     const deck = await ctx.db.get(args.deckId);
     if (!deck || deck.userId !== userId) return [];
 
@@ -346,7 +298,6 @@ export const getDeckCards = query({
       .withIndex("by_deck", (q) => q.eq("deckId", args.deckId))
       .collect();
 
-    // Sort by nextReviewWeight descending (cards needing review surface first)
     return cards.sort((a, b) => (b.nextReviewWeight ?? 1) - (a.nextReviewWeight ?? 1));
   },
 });

@@ -3,7 +3,7 @@
 // PDF text extraction happens in the BROWSER (pdfjs-dist runs cleanly there
 // and the reader already ships it — it crashes the Convex node analyzer, so
 // it never runs server-side). The admin upload form extracts the first few
-// pages of text and passes the sample here, which asks the Grok API to
+// pages of text and passes the sample here, which asks the Gemini API to
 // classify it: likely grade, subject (matched against the REAL subjects
 // table so the model can never invent a subject), content type, exam year
 // when it looks like a past paper, and 3-5 topic candidates.
@@ -20,9 +20,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdminAction } from "./admin";
 import { logEventAction } from "./systemEvents";
 import { CONTENT_TYPES } from "./constants";
+import { callGemini, resolveKey } from "./gemini";
 
-const AI_MODEL = process.env.AI_MODEL || "grok-4.6";
-const API_URL = "https://api.x.ai/v1/chat/completions";
 const SAMPLE_CHARS = 12000;
 
 export interface ContentAnalysisSuggestion {
@@ -51,11 +50,6 @@ function extractJson(raw: string): Record<string, unknown> | null {
   }
 }
 
-/**
- * Classify a text sample extracted from a staged upload. The file is NOT
- * moved to R2 and nothing is saved — the admin reviews and confirms through
- * the normal upload action.
- */
 export const classifyContentText = action({
   args: {
     sample: v.string(),
@@ -81,9 +75,9 @@ export const classifyContentText = action({
       };
     }
 
-    const xaiKey = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "XAI_API_KEY" });
+    const geminiKey = await resolveKey(ctx, "GEMINI_API_KEY");
 
-    if (!xaiKey) {
+    if (!geminiKey) {
       return {
         analyzed: false,
         sampleChars: sample.trim().length,
@@ -94,11 +88,10 @@ export const classifyContentText = action({
         subjectSlug: null,
         examYear: null,
         topics: [],
-        note: "Go to Admin → Keys tab and add your Grok (xAI) API key to enable AI classification.",
+        note: "Go to Admin → Keys tab and add your Google Gemini API key to enable AI classification.",
       };
     }
 
-    // --- Classify with Grok ----------------------------------------------
     const subjects: Doc<"subjects">[] = await ctx.runQuery(
       internal.subjects.listAllSubjects,
       {},
@@ -140,42 +133,21 @@ Return ONLY strict JSON, no commentary, with this exact shape:
     let parsed: Record<string, unknown> | null = null;
     let classificationError: string | null = null;
     try {
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${xaiKey}`,
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a precise document classifier. You only output valid JSON. Never invent subjects outside the provided catalog.",
-            },
-            { role: "user", content: prompt },
-          ],
-          max_tokens: 512,
-          temperature: 0.1,
-        }),
+      const raw = await callGemini(ctx, {
+        systemPrompt: "You are a precise document classifier. You only output valid JSON. Never invent subjects outside the provided catalog.",
+        userMessage: prompt,
+        maxTokens: 512,
+        temperature: 0.1,
       });
-      if (!response.ok) {
-        classificationError = `Grok API error ${response.status}`;
-      } else {
-        const data = (await response.json()) as {
-          choices?: { message?: { content?: string } }[];
-        };
-        parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
-        if (!parsed) classificationError = "Grok returned unparseable JSON";
-      }
+      parsed = extractJson(raw);
+      if (!parsed) classificationError = "Gemini returned unparseable JSON";
     } catch (error) {
-      classificationError = error instanceof Error ? error.message : "Grok call failed";
+      classificationError = error instanceof Error ? error.message : "Gemini call failed";
     }
 
     await logEventAction(ctx, {
       eventType: "api_call",
-      source: "contentAI.classify.grok",
+      source: "contentAI.classify.gemini",
       status: classificationError ? "error" : "success",
       metadata: {
         filename: args.filename,
@@ -200,7 +172,6 @@ Return ONLY strict JSON, no commentary, with this exact shape:
       };
     }
 
-    // --- Validate every field server-side --------------------------------
     const slug = typeof parsed.subjectSlug === "string" ? parsed.subjectSlug.toLowerCase() : null;
     const matchedSubject = slug
       ? subjects.find((subject) => subject.slug === slug) ?? null

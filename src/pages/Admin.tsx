@@ -417,21 +417,11 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
                 sign up, copy the key, and paste it in. No Convex account needed!
               </p>
               <div className="mt-3 flex flex-col gap-2">
-                {(!aiCategory?.keys.find((k) => k.key === "XAI_API_KEY")?.configured) && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">1</Badge>
-                    <span className="text-sm font-semibold">Grok (xAI)</span>
-                    <span className="text-[12px] text-muted-foreground">— Powers the AI tutor chat</span>
-                    <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
-                      Get Key <ExternalLink className="size-3" />
-                    </a>
-                  </div>
-                )}
                 {(!aiCategory?.keys.find((k) => k.key === "GEMINI_API_KEY")?.configured) && (
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">2</Badge>
+                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">1</Badge>
                     <span className="text-sm font-semibold">Google Gemini</span>
-                    <span className="text-[12px] text-muted-foreground">— Powers the PDF reader AI</span>
+                    <span className="text-[12px] text-muted-foreground">— Powers the AI tutor, quizzes, plans & more</span>
                     <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
                       Get Key <ExternalLink className="size-3" />
                     </a>
@@ -439,7 +429,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
                 )}
                 {(!aiCategory?.keys.find((k) => k.key === "YOUTUBE_API_KEY")?.configured) && (
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">3</Badge>
+                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">2</Badge>
                     <span className="text-sm font-semibold">YouTube Data API</span>
                     <span className="text-[12px] text-muted-foreground">— Shows related videos in reader</span>
                     <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
