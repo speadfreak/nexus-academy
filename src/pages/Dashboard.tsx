@@ -818,10 +818,10 @@ export default function Dashboard() {
 
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-6">
+      <div className="student-dashboard flex flex-col gap-6">
         {/* ═══ CINEMATIC HERO / GREETING ═══ */}
         <motion.div
-          className="glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8"
+          className="student-hero glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8"
           initial={{ opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as const }}
@@ -1069,7 +1069,7 @@ export default function Dashboard() {
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
         >
-          <div className="glass-panel hover-lift rounded-2xl p-4">
+          <div className="student-stat-card student-stat-streak glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <span className="type-mono uppercase text-muted-foreground">streak</span>
               <motion.div
@@ -1090,7 +1090,7 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div className="glass-panel hover-lift rounded-2xl p-4">
+          <div className="student-stat-card student-stat-study glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <span className="type-mono uppercase text-muted-foreground">studied</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
@@ -1104,7 +1104,7 @@ export default function Dashboard() {
             <p className="type-caption mt-1 text-muted-foreground">all time</p>
           </div>
 
-          <div className="glass-panel hover-lift rounded-2xl p-4">
+          <div className="student-stat-card student-stat-week glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <span className="type-mono uppercase text-muted-foreground">this week</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
@@ -1118,7 +1118,7 @@ export default function Dashboard() {
             <p className="type-caption mt-1 text-muted-foreground">last 7 days</p>
           </div>
 
-          <Link to="/todos" className="glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
+          <Link to="/todos" className="student-stat-card student-stat-todos glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
               <span className="type-mono uppercase text-muted-foreground">todos</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-300">
@@ -1132,7 +1132,7 @@ export default function Dashboard() {
             <p className="type-caption mt-1 text-muted-foreground group-hover:text-primary">manage tasks</p>
           </Link>
 
-          <Link to="/achievements" className="glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
+          <Link to="/achievements" className="student-stat-card student-stat-level glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
               <span className="type-mono uppercase text-muted-foreground">level</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
@@ -1206,7 +1206,7 @@ export default function Dashboard() {
 
         {/* ═══ WEEK ACTIVITY STRIP ═══ */}
         <motion.div
-          className="glass-panel rounded-2xl p-5"
+          className="student-focus-panel glass-panel rounded-2xl p-5"
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
@@ -1260,7 +1260,7 @@ export default function Dashboard() {
         {/* ═══ DAILY CHALLENGE ═══ */}
         {dailyChallenges !== undefined && dailyChallenges.length > 0 && activeChallenge && (
           <motion.div
-            className="glass-panel hover-lift rounded-2xl p-5"
+            className="student-challenge glass-panel hover-lift rounded-2xl p-5"
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-60px" }}
