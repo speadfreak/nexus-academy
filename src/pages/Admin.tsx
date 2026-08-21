@@ -629,6 +629,52 @@ export default function Admin() {
   const [userQuery, setUserQuery] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(window.localStorage.getItem("nexus-admin-sidebar") === "collapsed");
+    } catch {
+      // Preferences are non-critical.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "nexus-admin-sidebar",
+        sidebarCollapsed ? "collapsed" : "expanded",
+      );
+    } catch {
+      // Storage may be unavailable in private browsing.
+    }
+  }, [sidebarCollapsed]);
+
+  // Keyboard-first navigation keeps the admin surface fast for daily ops.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+      if (typing && !(event.metaKey || event.ctrlKey)) return;
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document.querySelector<HTMLInputElement>('input[placeholder="Search users…"]')?.focus();
+        return;
+      }
+      if (typing) return;
+
+      const number = Number(event.key);
+      if (number >= 1 && number <= ADMIN_TABS.length) {
+        event.preventDefault();
+        setTab(ADMIN_TABS[number - 1].id);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [setTab]);
+
   /* ── System ── */
   const system = useQuery(
     api.adminCenter.getSystemStatus,
@@ -1031,6 +1077,26 @@ export default function Admin() {
               Users, money, content, activity and safety — the whole platform
               in one place.
             </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTab("content")}
+                className="interactive-press inline-flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-primary hover:bg-primary/15"
+              >
+                <Plus className="size-3.5" /> Add content
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("users")}
+                className="interactive-press inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground"
+              >
+                <Users className="size-3.5" /> Find a user
+              </button>
+              <span className="hidden items-center gap-1.5 font-mono text-[10px] text-muted-foreground/50 sm:inline-flex">
+                <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5">1–9</kbd>
+                jump sections
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1115,9 +1181,11 @@ export default function Admin() {
                       key={id}
                       type="button"
                       onClick={() => setTab(id)}
+                      title={sidebarCollapsed ? `${label} · ${index}` : undefined}
+                      aria-current={tab === id ? "page" : undefined}
                       className={cn(
                         "interactive-press hover-lift group flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all",
-                        "justify-center",
+                        sidebarCollapsed ? "justify-center" : "justify-start",
                         tab === id
                           ? "border-l-2 border-l-primary bg-primary/10 text-primary"
                           : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
