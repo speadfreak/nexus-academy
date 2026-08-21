@@ -123,7 +123,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   return (
     <div className="student-app-shell mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Sidebar (desktop) — sticky + overflow-visible override on glass-panel */}
-      <aside className="student-sidebar glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] w-60 shrink-0 !overflow-y-auto !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
+      <aside className="student-sidebar glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] min-h-0 w-60 shrink-0 !overflow-hidden !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
         {/* Logo + brand */}
         <Link to="/" className="student-brand-lockup group flex items-center gap-3 rounded-2xl border border-white/10 px-3 py-3 transition-all hover:border-primary/35 hover:bg-primary/[0.06]">
           <span className="relative">
@@ -145,7 +145,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </div>
 
         {/* Main navigation */}
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
+        <nav aria-label="Student navigation" className="student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
           {navItems.filter((item) => item.to !== "/upgrade" && item.to !== "/admin").map((item) => {
             const active = location.pathname === item.to;
             return (
@@ -173,7 +173,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Bottom section: Premium + Admin + Profile */}
-        <div className="mt-auto flex flex-col gap-1.5 pt-2">
+        <div className="student-sidebar-footer shrink-0 flex flex-col gap-1.5 pt-2">
           <div className="mx-3 h-px bg-white/[0.06]" />
 
           {/* Premium CTA */}
