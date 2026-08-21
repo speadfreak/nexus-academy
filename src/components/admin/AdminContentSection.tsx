@@ -102,6 +102,8 @@ export function AdminContentSection() {
   const [grade, setGrade] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [examYear, setExamYear] = useState("");
+  const [sourceName, setSourceName] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -265,6 +267,8 @@ export function AdminContentSection() {
         storageId,
         filename: file.name,
         topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
+        sourceName: sourceName.trim() || undefined,
+        sourceUrl: sourceUrl.trim() || undefined,
       });
 
       toast.success("Content uploaded to the library.");
@@ -274,6 +278,8 @@ export function AdminContentSection() {
       setGrade("");
       setSubjectId("");
       setExamYear("");
+      setSourceName("");
+      setSourceUrl("");
       setIsPremium(false);
     } catch (error) {
       const message =
@@ -547,6 +553,17 @@ export function AdminContentSection() {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground">Official source name <span className="font-normal">(optional)</span></Label>
+              <Input value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="Ministry of Education (MoE)" className="h-9 rounded-xl bg-white/5" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground">Official source URL <span className="font-normal">(optional)</span></Label>
+              <Input type="url" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://www.moe.gov.et/..." className="h-9 rounded-xl bg-white/5" />
+            </div>
           </div>
 
           <div className="flex items-center justify-between rounded-xl border border-border/70 bg-white/5 px-4 py-3">
