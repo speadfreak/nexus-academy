@@ -121,7 +121,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     .join("");
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="student-app-shell mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Sidebar (desktop) — sticky + overflow-visible override on glass-panel */}
       <aside className="student-sidebar glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] w-60 shrink-0 !overflow-y-auto !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
         {/* Logo + brand */}
@@ -237,8 +237,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content area */}
-      <div className="flex min-w-0 flex-1 flex-col gap-4 self-stretch">
-        <header className="glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
+      <div className="student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch">
+        <header className="student-mobile-header glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
             <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
@@ -295,7 +295,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           )}
         </header>
 
-        <main className="min-w-0 flex-1 pb-20 sm:pb-28">{children}</main>
+        <main
+          className="student-page-frame min-w-0 flex-1 pb-20 sm:pb-28"
+          data-page={location.pathname.replace(/^\//, "").split("/")[0] || "dashboard"}
+        >
+          {children}
+        </main>
 
         {/* ═══ FOOTER ═══ */}
         <footer className="mt-auto pb-3 pt-2">
