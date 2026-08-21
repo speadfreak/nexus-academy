@@ -298,7 +298,7 @@ function ChartCard({
   className?: string;
 }) {
   return (
-    <div className={cn("glass-panel rounded-2xl p-5", className)}>
+    <div className={cn("admin-chart glass-panel rounded-2xl p-5", className)}>
       <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
         {title}
       </p>
@@ -1056,10 +1056,13 @@ export default function Admin() {
     <DashboardShell>
       <div className="admin-surface flex min-h-0 flex-col gap-5 pb-32 sm:gap-6">
         {/* ── Command header ── */}
-        <div className="admin-command-header relative overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.035] px-4 py-5 sm:px-6 sm:py-6">
+        <div className="admin-command-header admin-hero relative overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.035] px-4 py-5 sm:px-6 sm:py-6">
           <div className="admin-grid-bg pointer-events-none absolute inset-0" />
           <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-primary/10 blur-3xl" />
           <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(ellipse_at_right,rgba(112,196,255,0.12),transparent_68%)]" />
+          <div className="admin-hero-orbit admin-hero-orbit-one pointer-events-none absolute" />
+          <div className="admin-hero-orbit admin-hero-orbit-two pointer-events-none absolute" />
+          <div className="admin-hero-scan pointer-events-none absolute inset-x-0 top-0" />
           <div className="relative">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
@@ -1132,7 +1135,7 @@ export default function Admin() {
           </nav>
 
           {/* ── Desktop: vertical grouped sidebar (>= xl) ── */}
-          <nav className="glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" style={{ width: sidebarCollapsed ? '4rem' : '14rem' }}>
+          <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
             {/* Collapse toggle at top */}
             <button
               type="button"
@@ -1184,10 +1187,10 @@ export default function Admin() {
                       title={sidebarCollapsed ? `${label} · ${index}` : undefined}
                       aria-current={tab === id ? "page" : undefined}
                       className={cn(
-                        "interactive-press hover-lift group flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all",
+                        "admin-rail-item interactive-press hover-lift group flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all",
                         sidebarCollapsed ? "justify-center" : "justify-start",
                         tab === id
-                          ? "border-l-2 border-l-primary bg-primary/10 text-primary"
+                          ? "admin-rail-item-active border-l-2 border-l-primary bg-primary/10 text-primary"
                           : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                       )}
                     >
@@ -1344,7 +1347,7 @@ export default function Admin() {
                           </ResponsiveContainer>
                         </div>
                       </ChartCard>
-                      <div className="glass-panel flex flex-col gap-4 rounded-2xl p-5">
+              <div className="admin-inventory glass-panel flex flex-col gap-4 rounded-2xl p-5">
                         <div>
                           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">streams</p>
                           <div className="mt-3 flex flex-col gap-2.5">
