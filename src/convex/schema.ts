@@ -63,6 +63,8 @@ const schema = defineSchema(
       fileSizeBytes: v.optional(v.number()),
       pageCount: v.optional(v.number()),
       uploadedBy: v.optional(v.id("users")),
+      sourceName: v.optional(v.string()), // official attribution, when applicable
+      sourceUrl: v.optional(v.string()), // official source page, when applicable
       isPremium: v.boolean(),
       createdAt: v.number(), // epoch ms (mirrors a created_at timestamp column)
     })
