@@ -1345,6 +1345,25 @@ html.lenis, html.lenis body {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 
+.student-sidebar-nav {
+  display: flex;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(112 196 255 / 0.38) transparent;
+}
+
+.student-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.student-sidebar-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(112 196 255 / 0.38);
+}
+
+.student-sidebar-footer {
+  background: linear-gradient(to bottom, transparent, rgb(5 12 24 / 0.8) 12%);
+}
+
 .student-page-frame > * {
   animation: page-surface-arrive 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
