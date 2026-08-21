@@ -67,6 +67,14 @@ function formatBytes(bytes?: number): string {
 
 export function AdminContentSection() {
   const subjects = useQuery(api.subjects.getAll);
+  const seedSubjects = useMutation(api.subjects.seed);
+
+  // Auto-seed subjects when the catalog is empty
+  useEffect(() => {
+    if (subjects !== undefined && subjects.length === 0) {
+      seedSubjects().catch(() => {});
+    }
+  }, [subjects, seedSubjects]);
 
   // --- R2 configuration status -----------------------------------------
   const getR2Status = useAction(api.contentAdmin.getR2Status);
