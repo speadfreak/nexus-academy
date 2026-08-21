@@ -4,7 +4,7 @@
 // type that can make external HTTP calls. The API key is read from
 // process.env (set it in the Keys / API keys tab, never hardcode it):
 //   GEMINI_API_KEY   your Google AI Studio key (https://aistudio.google.com/apikey)
-//   AI_MODEL        optional — defaults to gemini-2.0-flash
+//   AI_MODEL        optional — defaults to gemini-2.5-flash
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";

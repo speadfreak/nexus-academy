@@ -6,13 +6,13 @@
 //
 // Required env var (set it in the Keys / API keys tab):
 //   GEMINI_API_KEY   your Google AI Studio key (https://aistudio.google.com/apikey)
-//   AI_MODEL        optional — defaults to gemini-2.0-flash
+//   AI_MODEL        optional — defaults to gemini-2.5-flash
 
 import { ConvexError } from "convex/values";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const DEFAULT_MODEL = process.env.AI_MODEL || "gemini-2.0-flash";
+const DEFAULT_MODEL = process.env.AI_MODEL || "gemini-2.5-flash";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 // ---------------------------------------------------------------------------
