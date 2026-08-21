@@ -401,6 +401,25 @@ export default function Reader() {
             <span className={cn("type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase text-[10px]", subjectHue(item.subjectSlug ?? ""))}>
               {CONTENT_TYPE_LABELS[item.contentType as ContentType]}
             </span>
+            {item.sourceName && (
+              <>
+                <span className="size-1 rounded-full bg-white/20" />
+                {item.sourceUrl ? (
+                  <a
+                    href={item.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="max-w-[240px] truncate type-caption font-semibold text-emerald-200 hover:text-emerald-100"
+                  >
+                    Source: {item.sourceName}
+                  </a>
+                ) : (
+                  <span className="max-w-[240px] truncate type-caption font-semibold text-emerald-200">
+                    Source: {item.sourceName}
+                  </span>
+                )}
+              </>
+            )}
             {item.fileSizeBytes && (<>
               <span className="size-1 rounded-full bg-white/20" />
               <span className="type-caption text-muted-foreground/60">{formatBytes(item.fileSizeBytes)}</span>
