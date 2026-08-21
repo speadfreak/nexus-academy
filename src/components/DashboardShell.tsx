@@ -123,7 +123,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Sidebar (desktop) — sticky + overflow-visible override on glass-panel */}
-      <aside className="glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] w-60 shrink-0 !overflow-y-auto !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
+      <aside className="student-sidebar glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] w-60 shrink-0 !overflow-y-auto !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
         {/* Logo + brand */}
         <Link to="/" className="group flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-white/5">
           <img src={logo} alt="Nexus Academy logo" className="size-10 shrink-0 rounded-xl transition-transform group-hover:scale-105" />
@@ -147,8 +147,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 to={item.to}
                 className={cn(
                   "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
-                  active
-                    ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.1)]"
+                    active
+                     ? "student-nav-active bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.1)]"
                     : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                 )}
                 aria-current={active ? "page" : undefined}
@@ -209,7 +209,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           )}
 
           {/* Profile card */}
-          <div className="glass-soft flex items-center gap-2.5 rounded-xl p-2.5">
+          <div className="student-profile-card glass-soft flex items-center gap-2.5 rounded-xl p-2.5">
             <Link to="/settings" title="Open settings">
               <Avatar className="size-9 cursor-pointer">
                 <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
@@ -261,7 +261,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <div
               id="mobile-navigation"
               ref={mobileMenuRef}
-              className="absolute inset-x-0 top-[calc(100%+0.5rem)] z-50 max-h-[75vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/98 p-2 shadow-2xl backdrop-blur-xl"
+               className="student-mobile-drawer absolute inset-x-0 top-[calc(100%+0.5rem)] z-50 max-h-[75vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/98 p-2 shadow-2xl backdrop-blur-xl"
             >
               <nav aria-label="Mobile navigation" className="grid gap-1">
                 {navItems.map((item) => {
@@ -273,8 +273,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
-                        active
-                          ? "bg-primary/10 text-primary"
+                         active
+                           ? "student-nav-active bg-primary/10 text-primary"
                           : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                       )}
                     >
