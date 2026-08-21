@@ -1262,6 +1262,30 @@ html.lenis, html.lenis body {
   position: relative;
 }
 
+/* Restrained Ethiopian identity layer: green, gold, and red appear as
+   navigation/status accents while the navy technical foundation stays intact. */
+.student-dashboard {
+  position: relative;
+}
+
+.student-dashboard::before {
+  content: "";
+  position: absolute;
+  top: -1.5rem;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #168b49 0 33%, #f5c542 33% 66%, #c83b3b 66%);
+  opacity: 0.72;
+  border-radius: 999px;
+}
+
+.library-section {
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.012)),
+    repeating-linear-gradient(45deg, transparent 0 14px, rgb(245 197 66 / 0.018) 14px 15px);
+}
+
 .student-page-frame > * {
   animation: page-surface-arrive 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
