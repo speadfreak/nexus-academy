@@ -58,7 +58,7 @@ import {
   YAxis,
 } from "recharts";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { DashboardShell } from "@/components/DashboardShell";
@@ -1136,6 +1136,47 @@ export default function Admin() {
 
           {/* ── Desktop: vertical grouped sidebar (>= xl) ── */}
           <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
+            {/* Nexus Academy admin brand lockup */}
+            <Link
+              to="/dashboard"
+              title="Return to Nexus Academy library"
+              className={cn(
+                "admin-brand-lockup group mb-3 flex items-center rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 transition hover:border-primary/35 hover:bg-primary/[0.06]",
+                sidebarCollapsed ? "justify-center" : "gap-3",
+              )}
+            >
+              <span className="admin-brand-mark relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d7cff] via-[#4777ff] to-[#23c8ed] text-xl font-black text-white shadow-[0_0_24px_rgba(71,119,255,0.42)]">
+                N
+                <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
+              </span>
+              <AnimatePresence mode="wait">
+                {!sidebarCollapsed && (
+                  <motion.span
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -6 }}
+                    className="min-w-0 overflow-hidden"
+                  >
+                    <span className="block truncate text-sm font-extrabold tracking-tight text-foreground">Nexus Academy</span>
+                    <span className="mt-0.5 block truncate type-mono text-[9px] uppercase tracking-[0.12em] text-primary/70">exam-prep · library</span>
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </Link>
+
+            {!sidebarCollapsed && (
+              <div className="admin-sidebar-status mb-3 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.05] px-3 py-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="type-mono text-[9px] uppercase tracking-[0.14em] text-emerald-200/80">Admin network</span>
+                  <span className="flex items-center gap-1.5 type-mono text-[9px] text-emerald-300"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> ONLINE</span>
+                </div>
+                <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full w-[78%] rounded-full bg-gradient-to-r from-emerald-400 via-cyan-300 to-primary" />
+                </div>
+                <p className="mt-1.5 type-mono text-[9px] text-muted-foreground">secure control plane · v2.6</p>
+              </div>
+            )}
+
             {/* Collapse toggle at top */}
             <button
               type="button"
