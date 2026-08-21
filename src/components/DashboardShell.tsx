@@ -125,8 +125,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       {/* Sidebar (desktop) — sticky + overflow-visible override on glass-panel */}
       <aside className="student-sidebar glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] w-60 shrink-0 !overflow-y-auto !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
         {/* Logo + brand */}
-        <Link to="/" className="group flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-white/5">
-          <img src={logo} alt="Nexus Academy logo" className="size-10 shrink-0 rounded-xl transition-transform group-hover:scale-105" />
+        <Link to="/" className="student-brand-lockup group flex items-center gap-3 rounded-2xl border border-white/10 px-3 py-3 transition-all hover:border-primary/35 hover:bg-primary/[0.06]">
+          <span className="relative">
+            <img src={logo} alt="Nexus Academy logo" className="size-10 shrink-0 rounded-xl transition-transform group-hover:scale-105" />
+            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
+          </span>
           <div className="min-w-0 leading-tight">
             <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
             <p className="font-mono text-[10px] text-muted-foreground">exam-prep · library</p>
@@ -136,10 +139,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
         {/* Divider */}
         <div className="mx-3 my-2 h-px bg-white/[0.06]" />
+        <div className="mb-2 flex items-center justify-between px-3">
+          <span className="type-mono text-[9px] uppercase tracking-[0.18em] text-primary/70">Student console</span>
+          <span className="flex items-center gap-1 type-mono text-[9px] text-emerald-300"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> LIVE</span>
+        </div>
 
         {/* Main navigation */}
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-          {navItems.slice(0, -1).map((item) => {
+          {navItems.filter((item) => item.to !== "/upgrade" && item.to !== "/admin").map((item) => {
             const active = location.pathname === item.to;
             return (
               <Link
@@ -153,7 +160,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 )}
                 aria-current={active ? "page" : undefined}
               >
-                <item.icon className="size-4 shrink-0" />
+                <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg", active ? "bg-primary/15" : "bg-white/[0.035]")}>
+                  <item.icon className="size-4" />
+                </span>
                 <span className="truncate">{item.label}</span>
                 {item.premiumActive && (
                   <span title="Premium active" className="ml-auto size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)]" />
@@ -169,14 +178,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
           {/* Premium CTA */}
           {(() => {
-            const premium = navItems[navItems.length - 1];
+            const premium = navItems.find((item) => item.to === "/upgrade");
             if (!premium) return null;
             const active = location.pathname === premium.to;
             return (
               <Link
                 to={premium.to}
                 className={cn(
-                  "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
+                  "student-premium-link interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
                   premium.premiumActive
                     ? "bg-premium/10 text-premium"
                     : active
@@ -198,7 +207,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <Link
               to="/admin"
               className={cn(
-                "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+                "student-admin-link interactive-press flex items-center gap-2.5 rounded-xl border border-primary/15 px-3 py-2 text-sm font-semibold transition-all",
                 location.pathname === "/admin"
                   ? "bg-primary/10 text-primary"
                   : "text-primary/70 hover:bg-primary/5 hover:text-primary",
@@ -209,10 +218,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           )}
 
           {/* Profile card */}
-          <div className="student-profile-card glass-soft flex items-center gap-2.5 rounded-xl p-2.5">
+          <div className="student-profile-card glass-soft flex items-center gap-2.5 rounded-2xl border border-white/10 p-2.5">
             <Link to="/settings" title="Open settings">
               <Avatar className="size-9 cursor-pointer">
-                <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
+                <AvatarFallback className="bg-gradient-to-br from-primary/25 to-primary/5 text-xs font-bold text-primary">
                   {initials || "N"}
                 </AvatarFallback>
               </Avatar>
