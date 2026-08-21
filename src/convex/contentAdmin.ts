@@ -84,6 +84,7 @@ export const finalizeUpload = action({
   args: {
     title: v.string(), contentType: contentTypeValidator, grade: v.number(), subjectId: v.id("subjects"),
     examYear: v.optional(v.number()), isPremium: v.boolean(), fileUrl: v.string(),
+    sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
     fileSizeBytes: v.number(), filename: v.string(), topicCandidates: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -95,6 +96,8 @@ export const finalizeUpload = action({
       title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
       examYear: args.examYear, fileUrl: args.fileUrl, fileSizeBytes: args.fileSizeBytes,
       uploadedBy: adminUser._id, isPremium: args.isPremium,
+      sourceName: args.sourceName?.trim() || undefined,
+      sourceUrl: args.sourceUrl?.trim() || undefined,
     });
 
     if (args.topicCandidates && args.topicCandidates.length > 0) {
@@ -131,6 +134,7 @@ export const adminUploadContent = action({
     title: v.string(), contentType: contentTypeValidator, grade: v.number(), subjectId: v.id("subjects"),
     examYear: v.optional(v.number()), isPremium: v.boolean(), storageId: v.string(), filename: v.string(),
     topicCandidates: v.optional(v.array(v.string())),
+    sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const adminUser = await requireAdminAction(ctx);
@@ -155,6 +159,8 @@ export const adminUploadContent = action({
       const createdId = await ctx.runMutation(internal.content.insertContentItem, {
         title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
         examYear: args.examYear, fileUrl, fileSizeBytes: bytes.byteLength, uploadedBy: adminUser._id, isPremium: args.isPremium,
+        sourceName: args.sourceName?.trim() || undefined,
+        sourceUrl: args.sourceUrl?.trim() || undefined,
       });
 
       if (args.topicCandidates && args.topicCandidates.length > 0) {
