@@ -779,6 +779,14 @@ export default function Dashboard() {
     () => [...(content ?? [])].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
     [content],
   );
+  const textbookCount = useMemo(
+    () => (content ?? []).filter((item) => item.contentType === "textbook").length,
+    [content],
+  );
+  const pastExamCount = useMemo(
+    () => (content ?? []).filter((item) => item.contentType === "past_exam").length,
+    [content],
+  );
 
   // Stream breakdown for the header
   const streamBreakdown = useMemo(() => {
@@ -1023,6 +1031,88 @@ export default function Dashboard() {
             </div>
           </div>
         </motion.div>
+
+        {/* ═══ RESOURCE LAUNCHPAD — THE HUB STARTS ABOVE THE DASHBOARD ═══ */}
+        <motion.section
+          className="hub-launchpad relative overflow-hidden rounded-3xl border border-white/10 p-4 sm:p-6"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.25 }}
+        >
+          <div className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-primary/10 blur-3xl" />
+          <div className="relative flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="type-mono uppercase tracking-[0.2em] text-primary">Nexus resource command</p>
+              <h2 className="type-h1 mt-1">Choose your next breakthrough.</h2>
+              <p className="type-body mt-1 text-muted-foreground">A focused launchpad for the resources that move your score.</p>
+            </div>
+            <p className="type-mono text-muted-foreground">{totalContent} indexed · {bookmarkIds?.length ?? 0} saved</p>
+          </div>
+
+          <div className="relative mt-5 grid gap-3 md:grid-cols-3">
+            {[
+              {
+                label: "Core textbooks",
+                detail: "Build the foundation",
+                count: textbookCount,
+                icon: BookOpen,
+                accent: "bg-emerald-400/10 text-emerald-300",
+                onClick: () => { setContentType("textbook"); setExamYear(""); },
+              },
+              {
+                label: "National exam archive",
+                detail: "Train under pressure",
+                count: pastExamCount,
+                icon: CalendarDays,
+                accent: "bg-amber-400/10 text-amber-300",
+                onClick: () => { setContentType("past_exam"); setExamYear(""); },
+              },
+              {
+                label: "Your reading list",
+                detail: "Return to saved work",
+                count: bookmarkIds?.length ?? 0,
+                icon: BookmarkCheck,
+                accent: "bg-primary/10 text-primary",
+                onClick: () => setBookmarkedOnly(true),
+              },
+            ].map((card) => {
+              const Icon = card.icon;
+              return (
+                <button
+                  key={card.label}
+                  type="button"
+                  onClick={card.onClick}
+                  className="hub-launch-card group rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:-translate-y-1 hover:border-primary/30 hover:bg-white/[0.07]"
+                >
+                  <div className="flex items-start justify-between">
+                    <span className={`flex size-10 items-center justify-center rounded-xl ${card.accent}`}>
+                      <Icon className="size-5" />
+                    </span>
+                    <span className="type-h1 text-foreground/90">{card.count}</span>
+                  </div>
+                  <p className="mt-4 type-h3">{card.label}</p>
+                  <p className="mt-1 type-caption text-muted-foreground">{card.detail}</p>
+                  <span className="mt-4 inline-flex items-center type-mono text-primary opacity-70 transition group-hover:opacity-100">OPEN CHANNEL →</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {content?.[0] && (
+            <button
+              type="button"
+              onClick={() => handleOpen(content[0])}
+              className="relative mt-3 flex w-full items-center gap-3 rounded-2xl border border-primary/20 bg-primary/[0.07] p-3 text-left transition hover:border-primary/50 hover:bg-primary/[0.12]"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"><Sparkles className="size-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block type-mono uppercase text-primary/80">Featured in the hub</span>
+                <span className="block truncate type-body font-semibold">{content[0].title}</span>
+              </span>
+              <span className="hidden type-mono text-primary sm:block">START READING →</span>
+            </button>
+          )}
+        </motion.section>
 
         {/* ═══ DAILY QUOTE ═══ */}
         {quote && (
