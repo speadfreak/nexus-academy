@@ -41,6 +41,8 @@ export const insertContentItem = internalMutation({
     fileUrl: v.string(),
     fileSizeBytes: v.optional(v.number()),
     uploadedBy: v.optional(v.id("users")),
+    sourceName: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
     isPremium: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -53,6 +55,8 @@ export const insertContentItem = internalMutation({
       fileUrl: args.fileUrl,
       fileSizeBytes: args.fileSizeBytes,
       uploadedBy: args.uploadedBy,
+      sourceName: args.sourceName,
+      sourceUrl: args.sourceUrl,
       isPremium: args.isPremium,
       createdAt: Date.now(),
     });
