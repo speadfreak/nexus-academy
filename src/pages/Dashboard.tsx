@@ -413,6 +413,24 @@ function BookTile({
                   Premium
                 </span>
               )}
+              {item.sourceName && (
+                item.sourceUrl ? (
+                  <a
+                    href={item.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="max-w-full truncate rounded-md border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 type-caption font-semibold text-emerald-200 hover:bg-emerald-300/20"
+                    title={`Official source: ${item.sourceName}`}
+                  >
+                    Source: {item.sourceName}
+                  </a>
+                ) : (
+                  <span className="max-w-full truncate rounded-md border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 type-caption font-semibold text-emerald-200">
+                    Source: {item.sourceName}
+                  </span>
+                )
+              )}
             </div>
           </div>
 
@@ -753,6 +771,15 @@ export default function Dashboard() {
     return content.filter((item) => ids.has(item._id));
   }, [content, bookmarkedOnly, bookmarkIds]);
 
+  const savedContent = useMemo(
+    () => (content ?? []).filter((item) => bookmarkIds?.includes(item._id)).slice(0, 5),
+    [content, bookmarkIds],
+  );
+  const recentContent = useMemo(
+    () => [...(content ?? [])].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
+    [content],
+  );
+
   // Stream breakdown for the header
   const streamBreakdown = useMemo(() => {
     if (!content) return null;
@@ -818,7 +845,7 @@ export default function Dashboard() {
 
   return (
     <DashboardShell>
-      <div className="student-dashboard flex flex-col gap-6">
+      <div className="student-dashboard mx-auto flex w-full max-w-[1600px] flex-col gap-6">
         {/* ═══ CINEMATIC HERO / GREETING ═══ */}
         <motion.div
           className="student-hero glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8"
@@ -1535,9 +1562,50 @@ export default function Dashboard() {
           </motion.div>
         )}
 
+        {!hasFilters && content && content.length > 0 && (
+          <div className="grid gap-5 xl:grid-cols-2">
+            {savedContent.length > 0 && (
+              <section className="library-section glass-soft rounded-2xl p-4 sm:p-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="type-mono uppercase text-emerald-200/80">Continue where you left off</p>
+                    <p className="type-caption mt-1 text-muted-foreground">Your saved reading list</p>
+                  </div>
+                  <BookmarkCheck className="size-4 text-emerald-300" />
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {savedContent.map((item) => (
+                    <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-[190px] max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-emerald-300/30 hover:bg-white/[0.07]">
+                      <p className="line-clamp-2 type-caption font-bold">{item.title}</p>
+                      <p className="mt-2 type-mono text-emerald-200/70">{item.subjectName} · Grade {item.grade}</p>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            <section className="library-section glass-soft rounded-2xl p-4 sm:p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="type-mono uppercase text-amber-200/80">Recently added</p>
+                  <p className="type-caption mt-1 text-muted-foreground">Fresh resources in the hub</p>
+                </div>
+                <Sparkles className="size-4 text-amber-300" />
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {recentContent.map((item) => (
+                  <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-[190px] max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-amber-300/30 hover:bg-white/[0.07]">
+                    <p className="line-clamp-2 type-caption font-bold">{item.title}</p>
+                    <p className="mt-2 type-mono text-amber-200/70">{CONTENT_TYPE_LABELS[item.contentType]} · {item.subjectName}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
         {/* ═══ CONTENT GALLERY ═══ */}
         {content === undefined ? (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {Array.from({ length: 8 }).map((_, i) => (
               <BookSkeleton key={i} />
             ))}
@@ -1581,7 +1649,7 @@ export default function Dashboard() {
 
             <motion.div
               layout
-              className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+              className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
             >
               <AnimatePresence mode="popLayout">
                 {(visibleContent ?? []).map((item) => (
