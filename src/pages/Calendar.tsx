@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Clock,
   Link2,
-  Loader2,
   Plus,
   Trash2,
   X,
@@ -45,10 +44,10 @@ type EventType = "study_block" | "exam" | "reminder" | "custom";
 type EventRow = Doc<"calendarEvents"> & { subjectName: string | null };
 
 const TYPE_META: Record<EventType, { label: string; classes: string; dot: string }> = {
-  study_block: { label: "study", classes: "border-primary/30 bg-primary/10 text-primary", dot: "bg-primary" },
-  exam: { label: "exam", classes: "border-rose-400/30 bg-rose-400/10 text-rose-300", dot: "bg-rose-400" },
-  reminder: { label: "reminder", classes: "border-amber-400/30 bg-amber-400/10 text-amber-300", dot: "bg-amber-400" },
-  custom: { label: "custom", classes: "border-violet-400/30 bg-violet-400/10 text-violet-300", dot: "bg-violet-400" },
+  study_block: { label: "study", classes: "glass-chip border-primary/30 text-primary", dot: "bg-primary" },
+  exam: { label: "exam", classes: "glass-chip border-rose-400/30 text-rose-300", dot: "bg-rose-400" },
+  reminder: { label: "reminder", classes: "glass-chip border-amber-400/30 text-amber-300", dot: "bg-amber-400" },
+  custom: { label: "custom", classes: "glass-chip border-violet-400/30 text-violet-300", dot: "bg-violet-400" },
 };
 
 const WEEK_START_MS = 24 * 60 * 60 * 1000;
@@ -204,15 +203,15 @@ export default function CalendarPage() {
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
               // calendar
             </p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Calendar</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h1 className="mt-1 type-h1">Calendar</h1>
+            <p className="mt-1 type-body text-muted-foreground">
               Study blocks from your AI plans land here automatically.
             </p>
           </div>
-          <Button className="rounded-xl" onClick={openCreate}>
+          <Button className="interactive-press rounded-xl" onClick={openCreate}>
             <Plus className="size-4" /> New event
           </Button>
         </div>
@@ -223,7 +222,7 @@ export default function CalendarPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 cursor-pointer text-muted-foreground"
+              className="interactive-press size-8 cursor-pointer text-muted-foreground"
               onClick={() => setWeekOffset((offset) => offset - 1)}
               aria-label="Previous week"
             >
@@ -232,7 +231,7 @@ export default function CalendarPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 cursor-pointer text-muted-foreground"
+              className="interactive-press size-8 cursor-pointer text-muted-foreground"
               onClick={() => setWeekOffset((offset) => offset + 1)}
               aria-label="Next week"
             >
@@ -241,7 +240,11 @@ export default function CalendarPage() {
             <Button
               variant="outline"
               size="sm"
-              className="ml-1 h-8 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
+              className={cn(
+                "interactive-press ml-1 h-8 cursor-pointer rounded-lg type-caption",
+                weekOffset === 0 &&
+                  "border-primary/40 bg-primary/10 text-primary shadow-[0_0_12px_-4px_rgb(56_189_248/0.6)] ring-1 ring-primary/30",
+              )}
               onClick={() => setWeekOffset(0)}
             >
               Today
@@ -249,12 +252,12 @@ export default function CalendarPage() {
           </div>
           <div className="flex items-center gap-2">
             <CalendarDays className="size-4 text-primary" />
-            <p className="text-sm font-bold tracking-tight">{monthLabel}</p>
-            <span className="font-mono text-[10px] text-muted-foreground">{weekLabel}</span>
+            <p className="type-body font-semibold tracking-tight">{monthLabel}</p>
+            <span className="type-caption text-muted-foreground">{weekLabel}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
             {(Object.keys(TYPE_META) as EventType[]).map((type) => (
-              <span key={type} className="flex items-center gap-1.5 font-mono text-[9px] text-muted-foreground">
+              <span key={type} className="flex items-center gap-1.5 type-caption text-muted-foreground">
                 <span className={cn("size-2 rounded-full", TYPE_META[type].dot)} />
                 {TYPE_META[type].label}
               </span>
@@ -265,7 +268,11 @@ export default function CalendarPage() {
         {/* Week grid */}
         {events === undefined ? (
           <div className="flex h-48 items-center justify-center">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+              className="size-5 rounded-full border-2 border-primary/30 border-t-primary"
+            />
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
@@ -278,13 +285,14 @@ export default function CalendarPage() {
                   key={key}
                   className={cn(
                     "glass-panel flex min-h-44 flex-col rounded-2xl p-3",
-                    isToday && "border-primary/30",
+                    isToday &&
+                      "border-primary/30 shadow-[0_0_12px_-4px_rgb(56_189_248/0.6)] ring-1 ring-primary/30",
                   )}
                 >
                   <div className="flex items-center justify-between">
                     <span
                       className={cn(
-                        "font-mono text-[10px] font-bold uppercase tracking-wider",
+                        "type-caption uppercase tracking-wider font-bold",
                         isToday ? "text-primary" : "text-muted-foreground",
                       )}
                     >
@@ -292,7 +300,7 @@ export default function CalendarPage() {
                     </span>
                     <span
                       className={cn(
-                        "flex size-6 items-center justify-center rounded-lg font-mono text-[11px] font-bold",
+                        "flex size-6 items-center justify-center rounded-lg type-mono font-bold",
                         isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground",
                       )}
                     >
@@ -301,7 +309,7 @@ export default function CalendarPage() {
                   </div>
                   <div className="mt-2.5 flex flex-1 flex-col gap-1.5">
                     {dayEvents.length === 0 ? (
-                      <p className="pt-2 text-center font-mono text-[9px] text-muted-foreground/50">
+                      <p className="pt-2 text-center type-caption text-muted-foreground/40">
                         —
                       </p>
                     ) : (
@@ -311,7 +319,7 @@ export default function CalendarPage() {
                           type="button"
                           onClick={() => setSelectedEvent(event)}
                           className={cn(
-                            "w-full cursor-pointer rounded-lg border px-2 py-1.5 text-left transition-transform hover:-translate-y-px",
+                            "hover-lift interactive-press w-full cursor-pointer rounded-lg border px-2 py-1.5 text-left",
                             TYPE_META[event.type].classes,
                           )}
                         >
@@ -331,7 +339,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        <p className="font-mono text-[10px] text-muted-foreground">
+        <p className="type-caption text-muted-foreground">
           Study blocks are generated when you create an AI plan. Regenerating a plan
           replaces its blocks automatically.
         </p>
@@ -415,13 +423,21 @@ export default function CalendarPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              className="rounded-xl bg-white/5"
+              className="interactive-press rounded-xl bg-white/5"
               onClick={() => setCreating(false)}
             >
               Cancel
             </Button>
-            <Button className="rounded-xl" onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+            <Button className="interactive-press rounded-xl" onClick={handleSave} disabled={saving}>
+              {saving ? (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                  className="size-4 rounded-full border-2 border-primary/30 border-t-primary"
+                />
+              ) : (
+                <Plus className="size-4" />
+              )}
               Add event
             </Button>
           </DialogFooter>
@@ -457,38 +473,42 @@ export default function CalendarPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="flex flex-col gap-2 py-2">
-                  <p className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+                  <p className="flex items-center gap-2 type-mono uppercase tracking-[0.22em] text-muted-foreground">
                     type: {TYPE_META[selectedEvent.type].label}
                   </p>
                   {selectedEvent.subjectName && (
-                    <p className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+                    <p className="flex items-center gap-2 type-mono uppercase tracking-[0.22em] text-muted-foreground">
                       subject: {selectedEvent.subjectName}
                     </p>
                   )}
                   {selectedEvent.sourceStudyPlanId && (
                     <Link
                       to="/plans"
-                      className="flex items-center gap-2 font-mono text-[11px] text-primary hover:underline"
+                      className="interactive-press flex items-center gap-2 type-mono uppercase tracking-[0.22em] text-primary hover:underline"
                     >
-                      <Link2 className="size-3.5" /> generated from an AI study plan — open plans
+                      <Link2 className="size-3 text-primary/60" /> generated from an AI study plan — open plans
                     </Link>
                   )}
                 </div>
                 <DialogFooter>
                   <Button
                     variant="outline"
-                    className="rounded-xl bg-white/5 text-muted-foreground hover:text-destructive"
+                    className="interactive-press rounded-xl bg-white/5 text-muted-foreground hover:text-destructive"
                     disabled={deletingId === selectedEvent._id}
                     onClick={() => handleDelete(selectedEvent)}
                   >
                     {deletingId === selectedEvent._id ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                        className="size-4 rounded-full border-2 border-primary/30 border-t-primary"
+                      />
                     ) : (
                       <Trash2 className="size-4" />
                     )}
                     Delete
                   </Button>
-                  <Button variant="outline" className="rounded-xl bg-white/5" onClick={() => setSelectedEvent(null)}>
+                  <Button variant="outline" className="interactive-press rounded-xl bg-white/5" onClick={() => setSelectedEvent(null)}>
                     <X className="size-4" /> Close
                   </Button>
                 </DialogFooter>
