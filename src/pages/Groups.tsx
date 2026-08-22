@@ -8,12 +8,13 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   BookOpen,
   Copy,
   Crown,
   LogOut,
+  Medal,
   MonitorPlay,
   Plus,
   Sparkles,
@@ -166,15 +167,22 @@ export default function Groups() {
   return (
     <DashboardShell>
       <div className="flex flex-col gap-6">
-        <div className="relative">
+        {/* ── Header ── */}
+        <motion.div
+          className="relative"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: "easeOut" }}
+        >
           <div className="pointer-events-none absolute -top-10 -left-10 size-40 rounded-full bg-primary/10 blur-[80px]" />
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
+          <div className="pointer-events-none absolute -right-6 top-0 size-32 rounded-full bg-primary/[0.06] blur-[64px]" />
+          <p className="type-mono uppercase tracking-[0.22em] text-primary">
             social · opt-in
           </p>
-          <h1 className="mt-1 text-gradient text-2xl font-extrabold tracking-tight sm:text-3xl">
+          <h1 className="mt-1 text-gradient type-h1">
             Study groups
           </h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          <p className="mt-1 max-w-xl type-body text-muted-foreground">
             Private squads of classmates. You can only join through a shared
             invite code, and the weekly leaderboard ranks XP — one honest
             aggregate of every study action.
@@ -182,24 +190,29 @@ export default function Groups() {
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <div className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1">
               <Users className="size-3 text-primary" />
-              <span className="font-mono text-xs font-bold">{myGroups?.length ?? 0} groups</span>
+              <span className="type-mono font-bold">{myGroups?.length ?? 0} groups</span>
             </div>
             <div className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1">
-              <span className="font-mono text-xs font-bold">{myGroups?.reduce((sum, g) => sum + g.memberCount, 0) ?? 0} members</span>
+              <span className="type-mono font-bold">{myGroups?.reduce((sum, g) => sum + g.memberCount, 0) ?? 0} members</span>
             </div>
             {selectedGroup && (activeRooms?.length ?? 0) > 0 && (
-              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1">
+              <div className="glass-chip flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1">
                 <span className="relative flex size-2">
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
                 </span>
-                <span className="font-mono text-xs font-bold text-emerald-400">{activeRooms?.length ?? 0} live</span>
+                <span className="type-mono font-bold text-emerald-400">{activeRooms?.length ?? 0} live</span>
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
 
-        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+        <motion.div
+          className="grid gap-4 lg:grid-cols-[320px_1fr]"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.08, ease: "easeOut" }}
+        >
           {/* Left: my groups + actions */}
           <div className="flex flex-col gap-4">
             <div className="flex gap-2">
@@ -230,8 +243,8 @@ export default function Groups() {
                   <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                     <Users className="size-5" />
                   </div>
-                  <p className="mt-3 text-sm font-bold tracking-tight">No groups yet</p>
-                  <p className="mt-1 max-w-[220px] text-xs leading-5 text-muted-foreground">
+                  <p className="mt-3 type-h3">No groups yet</p>
+                  <p className="mt-1 max-w-[220px] type-caption leading-5 text-muted-foreground">
                     Create one and share the invite code, or join a friend&apos;s group.
                   </p>
                 </div>
@@ -251,7 +264,7 @@ export default function Groups() {
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-bold tracking-tight">{group.name}</p>
+                      <p className="truncate type-h3">{group.name}</p>
                       <div className="flex items-center gap-1.5">
                         {group.memberCount > 1 && (
                           <div className="flex -space-x-1">
@@ -274,7 +287,7 @@ export default function Groups() {
                         )}
                       </div>
                     </div>
-                    <p className="font-mono text-[10px] text-muted-foreground">
+                    <p className="type-caption text-muted-foreground">
                       {group.subjectFocusName ?? "All subjects"} · {group.memberCount} member
                       {group.memberCount === 1 ? "" : "s"}
                     </p>
@@ -291,8 +304,8 @@ export default function Groups() {
                 <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <Users className="size-6" />
                 </div>
-                <h3 className="mt-4 font-bold tracking-tight">Pick a group</h3>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                <h3 className="mt-4 type-h3">Pick a group</h3>
+                <p className="mt-1 max-w-sm type-body text-muted-foreground">
                   Create or join a group to see its weekly XP leaderboard.
                 </p>
               </div>
@@ -300,14 +313,14 @@ export default function Groups() {
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="type-caption font-bold uppercase tracking-[0.18em] text-muted-foreground">
                       weekly leaderboard · last 7 days
                     </p>
-                    <h2 className="mt-1 text-lg font-extrabold tracking-tight">
+                    <h2 className="mt-1 type-h2">
                       {selectedGroup.name}
                     </h2>
                     {selectedGroup.subjectFocusName && (
-                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <p className="mt-0.5 flex items-center gap-1.5 type-caption text-muted-foreground">
                         <BookOpen className="size-3" /> {selectedGroup.subjectFocusName}
                       </p>
                     )}
@@ -315,7 +328,7 @@ export default function Groups() {
                   <button
                     type="button"
                     onClick={() => void handleCopy(selectedGroup.inviteCode)}
-                    className="glass-chip flex cursor-pointer items-center gap-2 rounded-xl border-primary/25 bg-primary/10 px-3 py-2 font-mono text-sm font-bold tracking-[0.15em] text-primary transition-colors hover:bg-primary/15"
+                    className="glass-chip flex cursor-pointer items-center gap-2 rounded-xl border-primary/25 bg-primary/10 px-3 py-2 type-mono font-bold tracking-[0.15em] text-primary transition-colors hover:bg-primary/15"
                     title="Copy invite code"
                   >
                     {selectedGroup.inviteCode}
@@ -331,73 +344,83 @@ export default function Groups() {
                   </div>
                 ) : (
                   <div className="mt-4 flex flex-col gap-2">
-                    {leaderboard.members.map((member, index) => (
-                      <motion.div
-                        key={member.userId}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.25, delay: index * 0.04 }}
-                        className={cn(
-                          "flex items-center gap-3 rounded-xl border px-3 py-3",
-                          member.isMe
-                            ? "border-primary/30 bg-primary/10"
-                            : "border-white/5 bg-white/[0.02]",
-                          index === 0
-                            ? "shadow-[0_0_24px_-4px_oklch(0.75_0.15_85)]"
-                            : index === 1
-                              ? "shadow-[0_0_16px_-4px_oklch(0.7_0.01_250)]"
-                              : index === 2
-                                ? "shadow-[0_0_16px_-4px_oklch(0.7_0.12_60)]"
-                                : "",
-                        )}
-                      >
-                        <div
+                    {leaderboard.members.map((member, index) => {
+                      const isPodium = index < 3;
+                      return (
+                        <motion.div
+                          key={member.userId}
+                          initial={{ opacity: 0, x: -12 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.35, delay: index * 0.05, ease: "easeOut" }}
                           className={cn(
-                            "flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-extrabold",
+                            "flex items-center gap-3 rounded-xl border px-3 py-3 transition-colors",
+                            member.isMe
+                              ? "border-primary/30 bg-primary/10"
+                              : "border-white/5 bg-white/[0.02]",
                             index === 0
-                              ? "bg-amber-400/15 text-amber-300"
+                              ? "shadow-[0_0_28px_-4px_oklch(0.75_0.15_85)] border-amber-400/20"
                               : index === 1
-                                ? "bg-slate-300/15 text-slate-200"
+                                ? "shadow-[0_0_20px_-4px_oklch(0.7_0.01_250)] border-slate-300/15"
                                 : index === 2
-                                  ? "bg-orange-400/15 text-orange-300"
-                                  : "bg-white/5 text-muted-foreground",
+                                  ? "shadow-[0_0_20px_-4px_oklch(0.7_0.12_60)] border-orange-400/15"
+                                  : "",
                           )}
                         >
-                          {index + 1}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
-                            {member.name}
-                            {member.isMe && (
-                              <Badge className="border-primary/30 bg-primary/10 text-primary">
-                                you
-                              </Badge>
+                          {/* Rank badge */}
+                          <div
+                            className={cn(
+                              "flex shrink-0 items-center justify-center rounded-xl",
+                              isPodium ? "size-9" : "size-8",
+                              index === 0
+                                ? "bg-gradient-to-br from-amber-400/20 to-amber-500/5 text-amber-300 shadow-[0_0_12px_-4px_rgb(245_197_66/0.5)]"
+                                : index === 1
+                                  ? "bg-gradient-to-br from-slate-300/20 to-slate-400/5 text-slate-200 shadow-[0_0_12px_-4px_rgb(180_195_210/0.4)]"
+                                  : index === 2
+                                    ? "bg-gradient-to-br from-orange-400/20 to-orange-500/5 text-orange-300 shadow-[0_0_12px_-4px_rgb(180_130_70/0.4)]"
+                                    : "bg-white/5 text-muted-foreground",
+                              isPodium ? "font-mono text-sm font-extrabold" : "font-mono text-sm font-bold",
                             )}
-                            {member.role === "owner" && (
-                              <Crown className="size-3 text-amber-300" />
-                            )}
-                          </p>
-                          <p className="mt-0.5 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                            <Timer className="size-3" /> {member.hoursThisWeek} h ·{" "}
-                            {member.sessionsThisWeek} session
-                            {member.sessionsThisWeek === 1 ? "" : "s"}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className={cn(
-                            "flex items-center justify-end gap-1 font-mono font-extrabold tabular-nums text-primary",
-                            index < 3 ? "text-base" : "text-sm",
-                          )}>
-                            <Trophy className="size-3.5" /> {member.xpThisWeek}
-                          </p>
-                          <p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
-                            xp this week
-                          </p>
-                        </div>
-                      </motion.div>
-                    ))}
+                          >
+                            {isPodium ? <Medal className={cn("size-4", index === 0 && "text-amber-300", index === 1 && "text-slate-200", index === 2 && "text-orange-300")} /> : index + 1}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="flex items-center gap-1.5 truncate type-body font-semibold">
+                              {member.name}
+                              {member.isMe && (
+                                <Badge className="border-primary/30 bg-primary/10 text-primary">
+                                  you
+                                </Badge>
+                              )}
+                              {member.role === "owner" && (
+                                <Crown className="size-3 text-amber-300" />
+                              )}
+                            </p>
+                            <p className="mt-0.5 flex items-center gap-2 type-caption text-muted-foreground">
+                              <Timer className="size-3" /> {member.hoursThisWeek} h ·{" "}
+                              {member.sessionsThisWeek} session
+                              {member.sessionsThisWeek === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className={cn(
+                              "flex items-center justify-end gap-1 font-mono font-extrabold tabular-nums",
+                              index === 0
+                                ? "type-h2 text-gradient"
+                                : index < 3
+                                  ? "text-base text-primary"
+                                  : "text-sm text-primary",
+                            )}>
+                              <Trophy className={cn("size-3.5", index === 0 && "text-amber-300", index === 1 && "text-slate-300", index === 2 && "text-orange-300")} /> {member.xpThisWeek}
+                            </p>
+                            <p className="type-caption uppercase tracking-wide text-muted-foreground">
+                              xp this week
+                            </p>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
                     {leaderboard.members.length === 0 && (
-                      <p className="py-8 text-center text-sm text-muted-foreground">
+                      <p className="py-8 text-center type-body text-muted-foreground">
                         No members yet — share the invite code.
                       </p>
                     )}
@@ -405,7 +428,7 @@ export default function Groups() {
                 )}
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-4">
-                  <p className="font-mono text-[10px] text-muted-foreground">
+                  <p className="type-caption text-muted-foreground">
                     {selectedGroup.memberCount} member{selectedGroup.memberCount === 1 ? "" : "s"}{" "}
                     · ranked by XP only — never scores or weak topics
                   </p>
@@ -423,18 +446,23 @@ export default function Groups() {
               </>
             )}
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Rooms section (group-scoped — no global directory) */}
       {selectedGroup && (
-        <div className="glass-panel rounded-2xl p-5">
+        <motion.div
+          className="glass-panel rounded-2xl p-5"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.12, ease: "easeOut" }}
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="type-caption font-bold uppercase tracking-[0.18em] text-muted-foreground">
                 study rooms · live video + chat · members only
               </p>
-              <h2 className="mt-1 text-lg font-extrabold tracking-tight">
+              <h2 className="mt-1 type-h2">
                 {selectedGroup.name} rooms
               </h2>
             </div>
@@ -451,14 +479,17 @@ export default function Groups() {
           {activeRooms === undefined ? (
             <div className="mt-4 h-16 animate-pulse rounded-xl bg-white/5" />
           ) : activeRooms.length === 0 ? (
-            <p className="mt-4 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-6 text-center text-sm text-muted-foreground">
+            <p className="mt-4 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-6 text-center type-body text-muted-foreground">
               No live rooms right now — start one and your group members will get a notification.
             </p>
           ) : (
             <div className="mt-4 flex flex-col gap-2">
-              {activeRooms.map((room) => (
-                <div
+              {activeRooms.map((room, i) => (
+                <motion.div
                   key={room.roomId}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.16 + i * 0.04, ease: "easeOut" }}
                   className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
                 >
                   <div className="relative flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -466,8 +497,8 @@ export default function Groups() {
                     <span className="absolute -right-0.5 -top-0.5 size-2.5 animate-ping rounded-full border-2 border-background bg-emerald-400" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{room.name}</p>
-                    <p className="font-mono text-[10px] text-muted-foreground">
+                    <p className="truncate type-body font-bold">{room.name}</p>
+                    <p className="type-caption text-muted-foreground">
                       {room.createdByName} · {room.participantCount} in room
                       {room.iAmIn ? " · you're here" : ""}
                     </p>
@@ -480,31 +511,46 @@ export default function Groups() {
                   >
                     {room.iAmIn ? "Rejoin" : "Join"}
                   </Button>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
+      {/* Chat panel — consistent motion entrance */}
       {selectedGroup && (
-        <GroupChatPanel
-          groupId={selectedGroup.groupId as Id<"studyGroups">}
-          groupName={selectedGroup.name}
-          onStartRoom={() => setRoomDialogOpen(true)}
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.18, ease: "easeOut" }}
+        >
+          <GroupChatPanel
+            groupId={selectedGroup.groupId as Id<"studyGroups">}
+            groupName={selectedGroup.name}
+            onStartRoom={() => setRoomDialogOpen(true)}
+          />
+        </motion.div>
       )}
 
       {/* Member roster with per-person safety actions */}
       {selectedGroup && members && (
-        <div className="glass-panel rounded-2xl p-5">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        <motion.div
+          className="glass-panel rounded-2xl p-5"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.22, ease: "easeOut" }}
+        >
+          <p className="type-caption font-bold uppercase tracking-[0.18em] text-muted-foreground">
             members · report or block anyone from here
           </p>
           <div className="mt-3 flex flex-col gap-1.5">
-            {members.members.map((member) => (
-              <div
+            {members.members.map((member, i) => (
+              <motion.div
                 key={member.userId}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.25, delay: 0.24 + i * 0.03, ease: "easeOut" }}
                 className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5"
               >
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-mono text-xs font-extrabold text-primary">
@@ -516,14 +562,14 @@ export default function Groups() {
                     .join("")}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                  <p className="flex items-center gap-1.5 truncate type-body font-semibold">
                     {member.name}
                     {member.isMe && (
                       <Badge className="border-primary/30 bg-primary/10 text-primary">you</Badge>
                     )}
                     {member.isOwner && <Crown className="size-3 shrink-0 text-amber-300" />}
                   </p>
-                  <p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+                  <p className="type-caption uppercase tracking-wide text-muted-foreground">
                     {member.role}
                   </p>
                 </div>
@@ -533,10 +579,10 @@ export default function Groups() {
                   compact
                   disabled={member.isMe}
                 />
-              </div>
+              </motion.div>
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Start room dialog */}
