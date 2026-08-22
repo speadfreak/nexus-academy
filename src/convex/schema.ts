@@ -610,6 +610,19 @@ const schema = defineSchema(
       updatedAt: v.number(),
       updatedBy: v.id("users"),
     }).index("by_key", ["key"]),
+
+    // ------------------------------------------------------------------
+    // Video cache — YouTube search results per content item
+    // ------------------------------------------------------------------
+    // One row per content item. Serves all users — the FIRST student to
+    // open a content item triggers the real API call; every subsequent
+    // student (and revisit) hits this cache. 30-day TTL keeps results
+    // fresh without burning the 100-searches/day YouTube quota.
+    videoCache: defineTable({
+      contentId: v.id("contentItems"),
+      videosJson: v.string(),
+      fetchedAt: v.number(),
+    }).index("by_content", ["contentId"]),
   },
 );
 

@@ -40,9 +40,11 @@ import {
   RotateCcw,
   FileText,
   Maximize2,
+  Play,
   Scan,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   CONTENT_TYPE_LABELS,
@@ -231,25 +233,27 @@ export default function Reader() {
   };
 
   // --- YouTube -----------------------------------------------------------
-  const [videos, setVideos] = useState<
-    { id: string; title: string; channel: string; thumbnail: string }[] | null
-  >(null);
+  type VideoItem = { id: string; title: string; channel: string; thumbnail: string; isPriority?: boolean };
+  const [videos, setVideos] = useState<VideoItem[] | null>(null);
   const [youtubeConfigured, setYoutubeConfigured] = useState<boolean | null>(null);
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
   const [searchingVideos, setSearchingVideos] = useState(false);
 
-  useEffect(() => {
-    if (!item || videos !== null || searchingVideos) return;
+  const fetchVideos = useCallback(() => {
+    if (!item || searchingVideos) return;
     const query = [item.subjectName, item.grade ? `grade ${item.grade}` : ""]
       .filter(Boolean)
       .join(" ");
     if (!query) return;
     let cancelled = false;
     setSearchingVideos(true);
-    void searchYouTubeVideos({ query, maxResults: 5 })
+    setQuotaExhausted(false);
+    void searchYouTubeVideos({ contentId: item._id as never, query })
       .then((result) => {
         if (cancelled) return;
         setYoutubeConfigured(result.configured);
-        setVideos(result.videos);
+        setVideos(result.videos as VideoItem[]);
+        if (result.quotaExhausted) setQuotaExhausted(true);
       })
       .catch(() => {
         if (!cancelled) setYoutubeConfigured(false);
@@ -257,10 +261,10 @@ export default function Reader() {
       .finally(() => {
         if (!cancelled) setSearchingVideos(false);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [item, videos, searchingVideos, searchYouTubeVideos]);
+    return () => { cancelled = true; };
+  }, [item, searchingVideos, searchYouTubeVideos]);
+
+  useEffect(() => { fetchVideos(); }, [fetchVideos]);
 
   // --- Scratchpad --------------------------------------------------------
   const [scratchText, setScratchText] = useState("");
@@ -935,63 +939,142 @@ export default function Reader() {
                     </div>
 
                     {searchingVideos && videos === null ? (
-                      <div className="type-mono flex items-center gap-2 py-8 justify-center text-muted-foreground/60">
-                        <Loader2 className="size-4 animate-spin text-rose-400" /> searching…
+                      <div className="flex flex-col items-center gap-3 py-12">
+                        <div className="relative">
+                          <div className="absolute inset-0 animate-ping rounded-full bg-rose-400/20" />
+                          <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-400/10 ring-1 ring-rose-400/20">
+                            <Loader2 className="size-5 animate-spin text-rose-400" />
+                          </div>
+                        </div>
+                        <p className="type-mono text-[11px] text-muted-foreground/50">Finding relevant videos…</p>
                       </div>
                     ) : youtubeConfigured === false ? (
-                      <div className="rounded-xl border border-dashed border-white/[0.08] px-4 py-8 text-center">
-                        <p className="type-caption text-muted-foreground/60">
-                          Video search needs a <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-foreground/70">YOUTUBE_API_KEY</code>
-                        </p>
+                      <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] px-5 py-10">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/10 ring-1 ring-amber-400/20">
+                          <Youtube className="size-5 text-amber-400" />
+                        </div>
+                        <div className="text-center">
+                          <p className="type-caption font-medium text-foreground/70">YouTube API key needed</p>
+                          <p className="mt-1.5 type-caption text-[11px] leading-relaxed text-muted-foreground/50 max-w-[200px]">
+                            Ask your admin to add <code className="rounded bg-white/[0.06] px-1 py-0.5 text-[10px] text-amber-300/80">YOUTUBE_API_KEY</code> in the Keys tab
+                          </p>
+                        </div>
+                      </div>
+                    ) : quotaExhausted ? (
+                      <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-amber-400/10 bg-amber-400/[0.02] px-5 py-10">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/10 ring-1 ring-amber-400/20">
+                          <RefreshCw className="size-5 text-amber-400" />
+                        </div>
+                        <div className="text-center">
+                          <p className="type-caption font-medium text-foreground/70">Daily video limit reached</p>
+                          <p className="mt-1.5 type-caption text-[11px] leading-relaxed text-muted-foreground/50 max-w-[200px]">
+                            YouTube's free quota resets tomorrow. Videos will appear again then.
+                          </p>
+                        </div>
                       </div>
                     ) : videos && videos.length === 0 ? (
-                      <p className="type-caption py-8 text-center text-muted-foreground/50">
-                        No videos found for this topic yet.
-                      </p>
+                      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/[0.04] px-5 py-10">
+                        <Youtube className="size-8 text-muted-foreground/20" />
+                        <p className="type-caption text-muted-foreground/40">No videos found for this topic yet.</p>
+                      </div>
                     ) : (
-                      <div className="space-y-2">
-                        {videos?.map((video) => (
-                          <a
-                            key={video.id}
-                            href={`https://www.youtube.com/watch?v=${video.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="group flex cursor-pointer gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 transition-all duration-200 hover:border-rose-400/20 hover:bg-white/[0.04]"
-                          >
-                            {video.thumbnail ? (
-                              <img
-                                src={video.thumbnail}
-                                alt={`${video.title} thumbnail`}
-                                loading="lazy"
-                                className="h-[60px] w-[100px] shrink-0 rounded-lg object-cover ring-1 ring-white/[0.06]"
-                              />
-                            ) : (
-                              <div className="flex h-[60px] w-[100px] shrink-0 items-center justify-center rounded-lg bg-rose-400/[0.08] ring-1 ring-white/[0.06]">
-                                <Youtube className="size-5 text-rose-400/60" />
+                      <div className="space-y-3">
+                        {/* Priority channel section */}
+                        {videos && videos.some((v) => v.isPriority) && (
+                          <div>
+                            <p className="mb-2 flex items-center gap-1.5 type-mono text-[9px] uppercase tracking-[0.15em] text-rose-400/60">
+                              <Badge className="h-4 gap-1 rounded-md bg-rose-400/10 px-1.5 py-0 text-[9px] font-mono text-rose-400/80 border-0">✦ curated</Badge>
+                              Ethiopian education
+                            </p>
+                            <div className="space-y-2">
+                              {videos?.filter((v) => v.isPriority).map((video) => (
+                                <a
+                                  key={`p-${video.id}`}
+                                  href={`https://www.youtube.com/watch?v=${video.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group relative flex cursor-pointer gap-3 rounded-2xl border border-rose-400/10 bg-rose-400/[0.03] p-2.5 transition-all duration-300 hover:border-rose-400/25 hover:bg-rose-400/[0.06] hover:shadow-lg hover:shadow-rose-400/5"
+                                >
+                                  {video.thumbnail ? (
+                                    <div className="relative h-[68px] w-[110px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.08]">
+                                      <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
+                                        <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex h-[68px] w-[110px] shrink-0 items-center justify-center rounded-xl bg-rose-400/10 ring-1 ring-white/[0.08]">
+                                      <Youtube className="size-5 text-rose-400/50" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1 py-0.5">
+                                    <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/80 group-hover:text-foreground transition-colors">
+                                      {video.title}
+                                    </p>
+                                    <p className="mt-2 flex items-center gap-1.5 type-caption text-[10px] text-muted-foreground/40">
+                                      <ExternalLink className="size-2.5" /> {video.channel}
+                                    </p>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* General section */}
+                        {videos && videos.some((v) => !v.isPriority) && (
+                          <div>
+                            {videos.some((v) => v.isPriority) && (
+                              <div className="my-3 flex items-center gap-2">
+                                <div className="h-px flex-1 bg-white/[0.06]" />
+                                <p className="type-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground/30">more results</p>
+                                <div className="h-px flex-1 bg-white/[0.06]" />
                               </div>
                             )}
-                            <div className="min-w-0 flex-1">
-                              <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/80 group-hover:text-foreground transition-colors">
-                                {video.title}
-                              </p>
-                              <p className="type-caption mt-1.5 flex items-center gap-1 text-muted-foreground/50">
-                                <ExternalLink className="size-2.5" /> {video.channel}
-                              </p>
+                            <div className="space-y-2">
+                              {videos?.filter((v) => !v.isPriority).map((video) => (
+                                <a
+                                  key={`g-${video.id}`}
+                                  href={`https://www.youtube.com/watch?v=${video.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group relative flex cursor-pointer gap-3 rounded-2xl border border-white/[0.05] bg-white/[0.015] p-2.5 transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-black/10"
+                                >
+                                  {video.thumbnail ? (
+                                    <div className="relative h-[60px] w-[100px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.06]">
+                                      <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
+                                        <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex h-[60px] w-[100px] shrink-0 items-center justify-center rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                                      <Youtube className="size-5 text-muted-foreground/20" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1 py-0.5">
+                                    <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/70 group-hover:text-foreground transition-colors">
+                                      {video.title}
+                                    </p>
+                                    <p className="mt-2 flex items-center gap-1.5 type-caption text-[10px] text-muted-foreground/35">
+                                      <ExternalLink className="size-2.5" /> {video.channel}
+                                    </p>
+                                  </div>
+                                </a>
+                              ))}
                             </div>
-                          </a>
-                        ))}
-                      </div>
-                    )}
+                          </div>
+                        )}
 
-                    {videos && videos.length > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full cursor-pointer rounded-xl text-muted-foreground/60 hover:text-foreground"
-                        onClick={() => { setVideos(null); setSearchingVideos(false); }}
-                      >
-                        <RefreshCw className="size-3.5" /> Search again
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full cursor-pointer rounded-xl text-muted-foreground/50 hover:text-foreground"
+                          onClick={() => { setVideos(null); setSearchingVideos(false); }}
+                        >
+                          <RefreshCw className="size-3.5" /> Refresh videos
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}

@@ -104,3 +104,19 @@ export const STREAM_SPECIFIC_SUBJECT_SLUGS = {
   natural: ["physics", "chemistry", "biology"],
   social: ["history", "geography", "economics"],
 } as const;
+
+// ---------------------------------------------------------------------------
+// YouTube integration
+// ---------------------------------------------------------------------------
+
+// Ethiopian education channel whose videos are surfaced first in results.
+// The backend resolves this handle to a real channel ID on first use and
+// caches it. Add more channels here to expand priority results.
+export const PRIORITY_CHANNEL_HANDLES = ["ethioeduc"] as const;
+
+// Cache TTL: 30 days. Video relevance for a textbook topic doesn't change
+// daily, and this keeps us well within the 100-searches/day quota.
+export const VIDEO_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Max results per search slice (priority channel + general).
+export const VIDEO_MAX_PER_SLICE = 4;
