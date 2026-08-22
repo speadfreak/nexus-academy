@@ -1,6 +1,5 @@
-// Journey — the student's analytics dashboard: hours per subject, quiz score
-// trend, real topic completion per subject, and cross-subject topic
-// correlations surfaced for the first time in the UI.
+// Journey — the student's analytics dashboard: hero stats, hours per subject,
+// quiz score trend, topic completion, and cross-subject correlations.
 
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
@@ -8,11 +7,13 @@ import { motion } from "framer-motion";
 import {
   BookOpen,
   Brain,
+  Clock,
+  Flame,
   Link2,
-  Loader2,
   Sparkles,
   Target,
   TrendingUp,
+  Zap,
 } from "lucide-react";
 import {
   Bar,
@@ -25,21 +26,18 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Lock } from "lucide-react";
 import { relativeTime } from "@/lib/dates";
+import { cn } from "@/lib/utils";
 
 const AXIS_COLOR = "var(--muted-foreground)";
 const GRID_COLOR = "var(--border)";
-/**
- * Wraps a premium analytics section for free-tier users: the student's REAL
- * data renders underneath a soft blur (honest motivation — seeing your own
- * progress locked), with a dismissible prompt to unlock.
- */
+
 function PremiumBlur({
   locked,
   onUnlock,
@@ -56,14 +54,14 @@ function PremiumBlur({
         {children}
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 rounded-2xl bg-background/30 backdrop-blur-[1px]">
-        <span className="flex items-center gap-1.5 rounded-full border border-premium/30 bg-premium/10 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-premium">
+        <span className="flex items-center gap-1.5 rounded-full border border-premium/30 bg-premium/10 px-3 py-1 type-mono text-[10px] font-bold uppercase tracking-[0.15em] text-premium">
           <Lock className="size-3" /> premium analytics
         </span>
-        <p className="max-w-xs text-center text-xs leading-5 text-muted-foreground">
+        <p className="type-body max-w-xs text-center text-muted-foreground">
           Your real scores and completion are tracked here — unlock the full view
           with premium.
         </p>
-        <Button size="sm" className="rounded-xl" onClick={onUnlock}>
+        <Button size="sm" className="rounded-xl interactive-press" onClick={onUnlock}>
           See what premium includes
         </Button>
       </div>
@@ -84,11 +82,38 @@ export default function Journey() {
   const journey = useQuery(api.journey.getJourney);
   const [analyticsPromptOpen, setAnalyticsPromptOpen] = useState(false);
 
+  const heroStats = useMemo(() => {
+    if (!journey) return null;
+    const totalHours = journey.hoursBySubject.reduce((sum, e) => sum + e.hours, 0);
+    const totalQuizzes = journey.quizTrend.length;
+    const avgScore = totalQuizzes > 0
+      ? Math.round(journey.quizTrend.reduce((sum, e) => sum + e.pct, 0) / totalQuizzes)
+      : 0;
+    // Most improved: compare last 3 vs first 3 quizzes
+    const sorted = [...journey.quizTrend].sort((a, b) => a.completedAt - b.completedAt);
+    let mostImproved = null;
+    if (sorted.length >= 4) {
+      const early = sorted.slice(0, 3);
+      const late = sorted.slice(-3);
+      const earlyAvg = early.reduce((s, e) => s + e.pct, 0) / early.length;
+      const lateAvg = late.reduce((s, e) => s + e.pct, 0) / late.length;
+      const improvement = Math.round(lateAvg - earlyAvg);
+      if (improvement > 0) {
+        mostImproved = { subject: late[late.length - 1]?.subjectName ?? "Quiz", improvement };
+      }
+    }
+    return { totalHours, totalQuizzes, avgScore, mostImproved };
+  }, [journey]);
+
   if (journey === undefined) {
     return (
       <DashboardShell>
         <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+            className="size-6 rounded-full border-2 border-primary/30 border-t-primary"
+          />
         </div>
       </DashboardShell>
     );
@@ -111,35 +136,100 @@ export default function Journey() {
   return (
     <DashboardShell>
       <div className="flex flex-col gap-6">
+        {/* Header */}
         <div>
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+          <p className="type-mono uppercase tracking-[0.22em] text-primary">
             // journey
           </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Your journey</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="type-h1 mt-1">Your journey</h1>
+          <p className="type-body mt-1 text-muted-foreground">
             Real data from your sessions, quizzes and plans — not estimates.
           </p>
+        </div>
+
+        {/* Hero stats — visual hierarchy anchors */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            {
+              label: "Total hours",
+              value: heroStats ? `${heroStats.totalHours.toFixed(1)}` : "0",
+              unit: "h",
+              icon: Clock,
+              accent: "text-primary",
+              glow: "shadow-[0_0_20px_-8px_rgb(56_189_248/0.5)]",
+            },
+            {
+              label: "Quizzes taken",
+              value: String(heroStats?.totalQuizzes ?? 0),
+              unit: "",
+              icon: Sparkles,
+              accent: "text-primary",
+              glow: "shadow-[0_0_20px_-8px_rgb(56_189_248/0.4)]",
+            },
+            {
+              label: "Avg. score",
+              value: heroStats ? `${heroStats.avgScore}` : "—",
+              unit: "%",
+              icon: Target,
+              accent: heroStats && heroStats.avgScore >= 70 ? "text-emerald-400" : "text-premium",
+              glow: heroStats && heroStats.avgScore >= 70
+                ? "shadow-[0_0_20px_-8px_rgb(52_211_153/0.4)]"
+                : "shadow-[0_0_20px_-8px_rgb(245_197_66/0.4)]",
+            },
+            {
+              label: heroStats?.mostImproved ? `Most improved` : "Trending",
+              value: heroStats?.mostImproved
+                ? `+${heroStats.mostImproved.improvement}%`
+                : "—",
+              unit: "",
+              icon: TrendingUp,
+              accent: "text-premium",
+              glow: "shadow-[0_0_20px_-8px_rgb(245_197_66/0.5)]",
+            },
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.05 * i, ease: [0.22, 1, 0.36, 1] }}
+              className="glass-panel flex flex-col gap-2 rounded-2xl p-4 hover-lift"
+            >
+              <div className={cn("flex size-9 items-center justify-center rounded-xl bg-primary/10", stat.accent)}>
+                <stat.icon className="size-4" />
+              </div>
+              <p className="type-caption text-muted-foreground">{stat.label}</p>
+              <p className={cn("type-h2 tabular-nums", stat.accent)}>
+                {stat.value}{stat.unit}
+              </p>
+            </motion.div>
+          ))}
         </div>
 
         {/* Hours per subject */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
           className="glass-panel rounded-2xl p-5"
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <BookOpen className="size-4 text-primary" />
-              <p className="text-sm font-bold tracking-tight">Hours studied per subject</p>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BookOpen className="size-4" />
+              </div>
+              <p className="type-body font-semibold">Hours studied per subject</p>
             </div>
-            <Badge className="bg-white/5 font-mono text-[10px] text-muted-foreground">
+            <Badge className="glass-chip border-0 type-mono text-[10px] text-muted-foreground">
               {journey.hoursBySubject.reduce((sum, entry) => sum + entry.hours, 0).toFixed(1)} h total
             </Badge>
           </div>
           {hoursData.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">
-              Log a focus session and your time-per-subject shows up here.
-            </p>
+            <div className="flex flex-col items-center py-12 text-center">
+              <Flame className="size-6 text-primary/30" />
+              <p className="type-body mt-3 text-muted-foreground">
+                Log a focus session and your time-per-subject shows up here.
+              </p>
+            </div>
           ) : (
             <div className="mt-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -168,19 +258,21 @@ export default function Journey() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
+          transition={{ delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
           className="glass-panel rounded-2xl p-5"
         >
-          <div className="flex items-center gap-2">
-            <TrendingUp className="size-4 text-primary" />
-            <p className="text-sm font-bold tracking-tight">Quiz score trend</p>
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <TrendingUp className="size-4" />
+            </div>
+            <p className="type-body font-semibold">Quiz score trend</p>
           </div>
           <PremiumBlur
             locked={!journey.premiumAccess}
             onUnlock={() => setAnalyticsPromptOpen(true)}
           >
           {trendData.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">
+            <p className="py-12 text-center type-body text-muted-foreground">
               Take a quiz from the library or after a focus session to start your trend line.
             </p>
           ) : (
@@ -227,82 +319,102 @@ export default function Journey() {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
+            transition={{ delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
             className="glass-panel rounded-2xl p-5"
           >
-            <div className="flex items-center gap-2">
-              <Target className="size-4 text-primary" />
-              <p className="text-sm font-bold tracking-tight">Topic completion</p>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Target className="size-4" />
+              </div>
+              <p className="type-body font-semibold">Topic completion</p>
             </div>
             <PremiumBlur
               locked={!journey.premiumAccess}
               onUnlock={() => setAnalyticsPromptOpen(true)}
             >
             {journey.topicCompletion.length === 0 ? (
-              <p className="py-12 text-center text-sm text-muted-foreground">
+              <p className="py-12 text-center type-body text-muted-foreground">
                 No syllabus topics exist yet. Add topics and generate plans to track completion.
               </p>
             ) : (
               <div className="mt-4 flex flex-col gap-4">
-                {journey.topicCompletion.map((entry) => (
-                  <div key={entry.subjectId}>
+                {journey.topicCompletion.map((entry, i) => (
+                  <motion.div
+                    key={entry.subjectId}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, delay: 0.04 * i, ease: [0.22, 1, 0.36, 1] }}
+                  >
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold">{entry.subjectName}</p>
-                      <span className="font-mono text-[10px] text-muted-foreground">
+                      <p className="type-body font-semibold">{entry.subjectName}</p>
+                      <span className="type-caption text-muted-foreground">
                         {entry.completed}/{entry.total} · {entry.pct}%
                       </span>
                     </div>
-                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-primary to-sky-400"
-                        style={{ width: `${entry.pct}%` }}
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/5">
+                      <motion.div
+                        className="h-full rounded-full"
+                        style={{
+                          background: entry.pct >= 80
+                            ? "linear-gradient(90deg, oklch(0.74 0.15 232), oklch(0.82 0.13 85))"
+                            : "linear-gradient(90deg, oklch(0.74 0.15 232), oklch(0.68 0.16 240))",
+                        }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${entry.pct}%` }}
+                        transition={{ duration: 0.8, delay: 0.1 + 0.05 * i, ease: [0.22, 1, 0.36, 1] }}
                       />
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             )}
             </PremiumBlur>
           </motion.div>
 
-          {/* Topic correlations */}
+          {/* Topic correlations — discovery cards */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
+            transition={{ delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
             className="glass-panel rounded-2xl p-5"
           >
-            <div className="flex items-center gap-2">
-              <Link2 className="size-4 text-primary" />
-              <p className="text-sm font-bold tracking-tight">Cross-subject links</p>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Link2 className="size-4" />
+              </div>
+              <p className="type-body font-semibold">Cross-subject links</p>
             </div>
             <PremiumBlur
               locked={!journey.premiumAccess}
               onUnlock={() => setAnalyticsPromptOpen(true)}
             >
             {journey.correlations.length === 0 ? (
-              <p className="py-12 text-center text-sm text-muted-foreground">
+              <p className="py-12 text-center type-body text-muted-foreground">
                 Topics shared across subjects appear here once content is linked — the AI uses
                 these to teach related concepts together.
               </p>
             ) : (
               <div className="mt-4 flex flex-col gap-2.5">
-                {journey.correlations.map((correlation) => (
-                  <div
+                {journey.correlations.map((correlation, i) => (
+                  <motion.div
                     key={correlation.topicId}
-                    className="glass-soft rounded-xl px-3.5 py-3"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, delay: 0.05 * i, ease: [0.22, 1, 0.36, 1] }}
+                    className="glass-soft rounded-xl px-3.5 py-3 hover-lift"
                   >
-                    <p className="flex items-center gap-2 text-sm font-semibold">
+                    <p className="flex items-center gap-2 type-body font-semibold">
                       <Brain className="size-3.5 text-primary" />
                       {correlation.topicName}
-                      <Badge className="bg-white/5 font-mono text-[9px] text-muted-foreground">
+                      <Badge className="glass-chip border-0 type-mono text-[9px] text-muted-foreground">
                         grade {correlation.grade}
                       </Badge>
                     </p>
-                    <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                      appears in: {correlation.subjects.join(" · ")}
+                    <p className="mt-1.5 flex items-center gap-1.5 type-caption text-muted-foreground">
+                      <Link2 className="size-3" />
+                      {correlation.subjects.join(" · ")}
                     </p>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             )}
@@ -315,31 +427,37 @@ export default function Journey() {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="glass-panel rounded-2xl p-5"
           >
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
               // recent attempts
             </p>
             <div className="mt-3 space-y-1.5">
-              {[...journey.quizTrend].reverse().slice(0, 10).map((attempt) => (
-                <div
+              {[...journey.quizTrend].reverse().slice(0, 10).map((attempt, i) => (
+                <motion.div
                   key={attempt.id}
-                  className="flex items-center justify-between gap-3 rounded-xl bg-white/4 px-3.5 py-2.5"
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.25, delay: 0.03 * i, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-white/4 px-3.5 py-2.5 hover-lift"
                 >
-                  <p className="flex items-center gap-2 text-sm font-semibold">
+                  <p className="flex items-center gap-2 type-body font-semibold">
                     <Sparkles className="size-3.5 text-primary" />
                     {attempt.subjectName}
                   </p>
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-[10px] text-muted-foreground">
+                    <span className="type-caption text-muted-foreground">
                       {relativeTime(attempt.completedAt)}
                     </span>
-                    <span className="font-mono text-sm font-bold tabular-nums">
+                    <span className={cn(
+                      "type-mono text-sm font-bold tabular-nums",
+                      attempt.pct >= 70 ? "text-emerald-400" : attempt.pct >= 50 ? "text-premium" : "text-rose-400",
+                    )}>
                       {attempt.score}/{attempt.total} · {attempt.pct}%
                     </span>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </motion.div>
