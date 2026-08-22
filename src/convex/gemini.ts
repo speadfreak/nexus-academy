@@ -5,13 +5,13 @@
 //
 // Required env var (set it in the Keys / API keys tab):
 //   GROQ_API_KEY     your Groq API key (https://console.groq.com/keys)
-//   AI_MODEL         optional — defaults to llama-3.3-70b-versatile
+//   AI_MODEL         optional — defaults to llama3-70b-8192
 
 import { ConvexError } from "convex/values";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const DEFAULT_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
+const DEFAULT_MODEL = process.env.AI_MODEL || "llama3-70b-8192";
 const GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions";
 
 // ---------------------------------------------------------------------------
