@@ -343,8 +343,7 @@ export const getSystemHealthSummary = query({
 export const testIntegrationConnection = action({
   args: {
     integration: v.union(
-      v.literal("xai"),
-      v.literal("gemini"),
+      v.literal("groq"),
       v.literal("telegram"),
       v.literal("github"),
     ),
@@ -399,24 +398,24 @@ export const testIntegrationConnection = action({
     }
 
     try {
-      if (integration === "gemini") {
-        const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "GEMINI_API_KEY" }) ?? process.env.GEMINI_API_KEY;
-        if (!key) return { configured: false, ok: false, detail: "GEMINI_API_KEY not set — add it in the Keys tab" };
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
-        );
+      if (integration === "groq") {
+        const key = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "GROQ_API_KEY" }) ?? process.env.GROQ_API_KEY;
+        if (!key) return { configured: false, ok: false, detail: "GROQ_API_KEY not set — add it in the Keys tab" };
+        const response = await fetch("https://api.groq.com/openai/v1/models", {
+          headers: { Authorization: `Bearer ${key}` },
+        });
         if (!response.ok) {
           return {
             configured: true,
             ok: false,
-            detail: `Gemini rejected the key (HTTP ${response.status})`,
+            detail: `Groq rejected the key (HTTP ${response.status})`,
           };
         }
-        const data = (await response.json()) as { models?: { name: string }[] };
-        const names = (data.models ?? []).map((model) => model.name.split("/").pop()).slice(0, 3);
+        const data = (await response.json()) as { data?: { id: string }[] };
+        const names = (data.data ?? []).map((model) => model.id).slice(0, 3);
         await logEventAction(ctx, {
           eventType: "api_call",
-          source: "admin.testIntegration.gemini",
+          source: "admin.testIntegration.groq",
           status: "success",
           userId,
           durationMs: Date.now() - start,

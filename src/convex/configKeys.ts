@@ -12,7 +12,7 @@ import type { Doc } from "./_generated/dataModel";
 // ── Known integrations registry ──────────────────────────────────────
 
 export const INTEGRATION_KEYS = [
-  { key: "GEMINI_API_KEY", label: "Google Gemini (Primary AI)", category: "ai", description: "AI tutor, quizzes, plans, flashcards, content classification, recaps, quotes", helpUrl: "https://aistudio.google.com/apikey", helpLabel: "aistudio.google.com" },
+  { key: "GROQ_API_KEY", label: "Groq AI (Primary AI)", category: "ai", description: "AI tutor, quizzes, plans, flashcards, content classification, recaps, quotes", helpUrl: "https://console.groq.com/keys", helpLabel: "console.groq.com" },
   { key: "YOUTUBE_API_KEY", label: "YouTube Data API", category: "ai", description: "Related videos in reader", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console" },
   { key: "R2_ACCOUNT_ID", label: "R2 Account ID", category: "storage", description: "Cloudflare R2 bucket access" },
   { key: "R2_ACCESS_KEY_ID", label: "R2 Access Key", category: "storage", description: "Cloudflare R2 credentials" },

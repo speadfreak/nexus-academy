@@ -651,7 +651,7 @@ export const getFinanceOverview = query({
 // ---------------------------------------------------------------------------
 
 const ENV_KEYS = [
-  "GEMINI_API_KEY",
+  "GROQ_API_KEY",
   "AI_MODEL",
   "R2_ACCOUNT_ID",
   "R2_ACCESS_KEY_ID",
@@ -690,16 +690,16 @@ export const getSystemStatus = query({
 
 const INTEGRATION_DEFS = [
   {
-    id: "gemini",
-    label: "Gemini (primary AI)",
-    envKey: "GEMINI_API_KEY",
+    id: "groq",
+    label: "Groq (primary AI)",
+    envKey: "GROQ_API_KEY",
     sourcePrefix: "ai.",
   },
   {
-    id: "geminiReader",
-    label: "Gemini (reader)",
-    envKey: "GEMINI_API_KEY",
-    sourcePrefix: "geminiReader.",
+    id: "groqReader",
+    label: "Groq (reader)",
+    envKey: "GROQ_API_KEY",
+    sourcePrefix: "reader.",
   },
   {
     id: "telegram",

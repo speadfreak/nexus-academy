@@ -1,19 +1,18 @@
-// Shared Gemini AI helper — single place for all model-calling logic.
+// Shared AI helper — single place for all model-calling logic.
 //
-// Uses the REST API directly (no SDK dependency) — same proven pattern that
-// geminiReader.ts already uses in production. The key is resolved from the
-// configKeys database table first, then falls back to process.env.
+// Uses the Groq REST API (OpenAI-compatible format). The key is resolved
+// from the configKeys database table first, then falls back to process.env.
 //
 // Required env var (set it in the Keys / API keys tab):
-//   GEMINI_API_KEY   your Google AI Studio key (https://aistudio.google.com/apikey)
-//   AI_MODEL        optional — defaults to gemini-2.5-flash
+//   GROQ_API_KEY     your Groq API key (https://console.groq.com/keys)
+//   AI_MODEL         optional — defaults to llama-3.3-70b-versatile
 
 import { ConvexError } from "convex/values";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const DEFAULT_MODEL = process.env.AI_MODEL || "gemini-2.5-flash";
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
+const GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions";
 
 // ---------------------------------------------------------------------------
 // Key resolution
@@ -24,14 +23,14 @@ export async function resolveKey(ctx: ActionCtx, keyName: string): Promise<strin
   return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
 }
 
-/** Resolve the Gemini API key. */
-export async function resolveGeminiKey(ctx: ActionCtx): Promise<string> {
-  const key = await resolveKey(ctx, "GEMINI_API_KEY");
+/** Resolve the Groq API key. */
+export async function resolveGroqKey(ctx: ActionCtx): Promise<string> {
+  const key = await resolveKey(ctx, "GROQ_API_KEY");
   if (!key) {
     throw new ConvexError({
       message:
-        "AI is not configured yet. Go to Admin → Keys tab, click \"Get Key\" next to Google Gemini, " +
-        "sign up at aistudio.google.com, copy your API key, and paste it here.",
+        "AI is not configured yet. Go to Admin → Keys tab, add your Groq API key " +
+        "(get one free at console.groq.com/keys) and paste it here.",
       code: "ai_not_configured",
     });
   }
@@ -53,55 +52,50 @@ export interface GeminiCallOptions {
 }
 
 /**
- * Call the Gemini API. Returns the model's text response.
+ * Call the Groq API (OpenAI-compatible). Returns the model's text response.
  * Throws on non-OK status or empty response.
  */
 export async function callGemini(ctx: ActionCtx, opts: GeminiCallOptions): Promise<string> {
-  const apiKey = await resolveGeminiKey(ctx);
+  const apiKey = await resolveGroqKey(ctx);
   const model = opts.model || DEFAULT_MODEL;
 
-  // Build Gemini contents from history
-  const contents: { role: string; parts: { text: string }[] }[] = [];
+  // Build OpenAI-compatible messages array
+  const messages: { role: string; content: string }[] = [];
+  messages.push({ role: "system", content: opts.systemPrompt });
 
   if (opts.history) {
     for (const msg of opts.history) {
-      contents.push({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }],
-      });
+      messages.push({ role: msg.role, content: msg.content });
     }
   }
 
-  // Append the current user message
-  contents.push({ role: "user", parts: [{ text: opts.userMessage }] });
+  messages.push({ role: "user", content: opts.userMessage });
 
-  const response = await fetch(
-    `${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: opts.systemPrompt }] },
-        contents,
-        generationConfig: {
-          maxOutputTokens: opts.maxTokens ?? 1024,
-          temperature: opts.temperature ?? 0.5,
-        },
-      }),
+  const response = await fetch(GROQ_BASE, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
     },
-  );
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: opts.maxTokens ?? 1024,
+      temperature: opts.temperature ?? 0.5,
+    }),
+  });
 
   if (!response.ok) {
     const raw = await response.text().catch(() => "");
-    throw new Error(`Gemini API error ${response.status}${raw ? `: ${raw.slice(0, 300)}` : ""}`);
+    throw new Error(`Groq API error ${response.status}${raw ? `: ${raw.slice(0, 300)}` : ""}`);
   }
 
   const data = (await response.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    choices?: { message?: { content?: string } }[];
   };
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+  const text = data.choices?.[0]?.message?.content?.trim() ?? "";
   if (!text) {
-    throw new Error("Gemini returned an empty response.");
+    throw new Error("Groq returned an empty response.");
   }
   return text;
 }

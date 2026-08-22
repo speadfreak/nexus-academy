@@ -1,5 +1,5 @@
 // AI flashcard generator — generates front/back pairs from content or
-// conversations using Gemini, validates with retry, stores deck + cards.
+// conversations using the AI, validates with retry, stores deck + cards.
 // Simple weighted review system surfaces cards needing attention first.
 
 import { getAuthUserId } from "@convex-dev/auth/server";

@@ -417,12 +417,12 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
                 sign up, copy the key, and paste it in. No Convex account needed!
               </p>
               <div className="mt-3 flex flex-col gap-2">
-                {(!aiCategory?.keys.find((k) => k.key === "GEMINI_API_KEY")?.configured) && (
+                {(!aiCategory?.keys.find((k) => k.key === "GROQ_API_KEY")?.configured) && (
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
                     <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">1</Badge>
-                    <span className="text-sm font-semibold">Google Gemini</span>
+                    <span className="text-sm font-semibold">Groq AI</span>
                     <span className="text-[12px] text-muted-foreground">— Powers the AI tutor, quizzes, plans & more</span>
-                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
+                    <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
                       Get Key <ExternalLink className="size-3" />
                     </a>
                   </div>
@@ -1768,7 +1768,7 @@ export default function Admin() {
                             </span>
                             <div className="flex min-w-0 items-center justify-between gap-3 sm:justify-end">
                               <span className="truncate font-mono text-[10px] text-muted-foreground">{ig.calls24h} calls · {(ig.errorRate * 100).toFixed(0)}% err · {ig.lastUsedAt ? relativeTime(ig.lastUsedAt) : "never used"}</span>
-                              {(["xai", "gemini", "telegram", "github"] as string[]).includes(ig.id) && (
+                              {(["groq", "telegram", "github"] as string[]).includes(ig.id) && (
                                 <Button variant="outline" size="sm" className="h-7 shrink-0 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]" onClick={() => void runIntegrationTest(ig.id)} disabled={testingIntegration === ig.id}>
                                   {testingIntegration === ig.id ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />} Test
                                 </Button>

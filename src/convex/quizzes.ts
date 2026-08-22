@@ -1,6 +1,6 @@
 // Quiz / examination engine.
 //
-// generateQuiz asks Gemini to write a personalized quiz grounded in the
+// generateQuiz asks the AI to write a personalized quiz grounded in the
 // subject's real syllabus topics (same grounding pattern as ai.ts and
 // studyPlans.ts), validates the JSON (retry once), and stores the questions
 // on a quizzes row owned by the generating user.

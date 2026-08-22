@@ -3,7 +3,7 @@
 // PDF text extraction happens in the BROWSER (pdfjs-dist runs cleanly there
 // and the reader already ships it — it crashes the Convex node analyzer, so
 // it never runs server-side). The admin upload form extracts the first few
-// pages of text and passes the sample here, which asks the Gemini API to
+// pages of text and passes the sample here, which asks the Groq API to
 // classify it: likely grade, subject (matched against the REAL subjects
 // table so the model can never invent a subject), content type, exam year
 // when it looks like a past paper, and 3-5 topic candidates.
@@ -75,9 +75,9 @@ export const classifyContentText = action({
       };
     }
 
-    const geminiKey = await resolveKey(ctx, "GEMINI_API_KEY");
+    const groqKey = await resolveKey(ctx, "GROQ_API_KEY");
 
-    if (!geminiKey) {
+    if (!groqKey) {
       return {
         analyzed: false,
         sampleChars: sample.trim().length,
@@ -88,7 +88,7 @@ export const classifyContentText = action({
         subjectSlug: null,
         examYear: null,
         topics: [],
-        note: "Go to Admin → Keys tab and add your Google Gemini API key to enable AI classification.",
+        note: "Go to Admin → Keys tab and add your Groq API key to enable AI classification.",
       };
     }
 
@@ -140,14 +140,14 @@ Return ONLY strict JSON, no commentary, with this exact shape:
         temperature: 0.1,
       });
       parsed = extractJson(raw);
-      if (!parsed) classificationError = "Gemini returned unparseable JSON";
+      if (!parsed) classificationError = "AI returned unparseable JSON";
     } catch (error) {
-      classificationError = error instanceof Error ? error.message : "Gemini call failed";
+      classificationError = error instanceof Error ? error.message : "AI call failed";
     }
 
     await logEventAction(ctx, {
       eventType: "api_call",
-      source: "contentAI.classify.gemini",
+      source: "contentAI.classify.groq",
       status: classificationError ? "error" : "success",
       metadata: {
         filename: args.filename,

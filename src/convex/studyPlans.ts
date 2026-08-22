@@ -1,6 +1,6 @@
 // AI-generated weekly study plans.
 //
-// generatePlan asks Gemini to sequence a subject's syllabus topics into a
+// generatePlan asks the AI to sequence a subject's syllabus topics into a
 // week-by-week plan, validates the returned JSON (retrying once), maps topic
 // names back to real topic ids, and stores the plan as JSON on a studyPlans
 // row. Only one active plan per subject/user.

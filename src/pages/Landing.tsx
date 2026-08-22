@@ -143,7 +143,7 @@ const COMPANION = [
     icon: Brain,
     title: "AI tutor that knows your syllabus",
     description:
-      "Gemini-powered tutor grounded in the real curriculum. It remembers your stream, your hard subjects and every conversation.",
+      "AI-powered tutor grounded in the real curriculum. It remembers your stream, your hard subjects and every conversation.
     tag: "tutor",
   },
   {

@@ -1,10 +1,10 @@
-// AI tutor — powered by Google Gemini.
+// AI tutor — powered by Groq (fast, free LLM API).
 //
 // Called from a Convex action because actions are the only Convex function
 // type that can make external HTTP calls. The API key is read from
 // process.env (set it in the Keys / API keys tab, never hardcode it):
-//   GEMINI_API_KEY   your Google AI Studio key (https://aistudio.google.com/apikey)
-//   AI_MODEL        optional — defaults to gemini-2.5-flash
+//   GROQ_API_KEY     your Groq API key (https://console.groq.com/keys)
+//   AI_MODEL        optional — defaults to llama-3.3-70b-versatile
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
@@ -404,7 +404,7 @@ export const sendMessage = action({
       .slice(-HISTORY_LIMIT)
       .map((message) => ({ role: message.role as "user" | "assistant", content: message.content }));
 
-    // --- Call Gemini ------------------------------------------------------
+    // --- Call AI model ---------------------------------------------------
     const conversation = await ctx.runQuery(internal.ai.getConversationById, {
       conversationId,
     });
@@ -427,7 +427,7 @@ export const sendMessage = action({
       });
       await logEventAction(ctx, {
         eventType: "api_call",
-        source: "ai.sendMessage.gemini",
+        source: "ai.sendMessage.groq",
         status: "success",
         userId,
         metadata: { model: getModelName(), conversationId },
@@ -436,13 +436,13 @@ export const sendMessage = action({
     } catch (error) {
       await logEventAction(ctx, {
         eventType: "error",
-        source: "ai.sendMessage.gemini",
+        source: "ai.sendMessage.groq",
         status: "error",
         userId,
         metadata: { message: error instanceof Error ? error.message : "unknown" },
         durationMs: Date.now() - aiStart,
       });
-      throw asAiError(error, "The AI tutor could not reach Gemini. Try again.");
+      throw asAiError(error, "The AI tutor could not reach Groq. Try again.");
     }
 
     // --- Persist the assistant reply ------------------------------------

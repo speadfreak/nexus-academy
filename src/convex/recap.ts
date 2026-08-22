@@ -1,5 +1,5 @@
 // Study session recap — generates encouraging, data-grounded summaries
-// from real user activity using Gemini. No premium gate — available to all users.
+// from real user activity. No premium gate — available to all users.
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";

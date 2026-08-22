@@ -1,11 +1,11 @@
 // Reader AI companion — the "ask about what you're reading" assistant on the
 // /read/:contentId page.
 //
-// Uses Google Gemini (same provider as the rest of the platform).
+// Uses Groq (same provider as the rest of the platform).
 //
 // Required env vars (Keys / API keys tab):
-//   GEMINI_API_KEY   Google AI Studio key (free tier at aistudio.google.com)
-//   AI_MODEL        optional — defaults to gemini-2.0-flash
+//   GROQ_API_KEY     Groq API key (free at console.groq.com/keys)
+//   AI_MODEL        optional — defaults to llama-3.3-70b-versatile
 //
 // Daily cap: shares the same free-tier tutor limit (15 messages / rolling
 // 24h) so free students get a fair amount of reading help and premium is
@@ -105,24 +105,24 @@ ${trimmed}`;
 
       await logEventAction(ctx, {
         eventType: "api_call",
-        source: "geminiReader.ask",
+        source: "reader.ask",
         status: "success",
         userId,
-        metadata: { provider: "gemini", contentId, model: getModelName() },
+        metadata: { provider: "groq", contentId, model: getModelName() },
         durationMs: Date.now() - startedAt,
       });
     } catch (error) {
       await logEventAction(ctx, {
         eventType: "error",
-        source: "geminiReader.ask",
+        source: "reader.ask",
         status: "error",
         userId,
-        metadata: { provider: "gemini", message: error instanceof Error ? error.message : "unknown" },
+        metadata: { provider: "groq", message: error instanceof Error ? error.message : "unknown" },
         durationMs: Date.now() - startedAt,
       });
-      throw asReaderError(error, "The reading companion could not reach Gemini. Try again.");
+      throw asReaderError(error, "The reading companion could not reach Groq. Try again.");
     }
 
-    return { reply, provider: "gemini" };
+    return { reply, provider: "groq" };
   },
 });
