@@ -7,9 +7,9 @@ import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
-  Loader2,
   Pencil,
   Plus,
+  StickyNote,
   Trash2,
   X,
 } from "lucide-react";
@@ -267,8 +267,10 @@ export default function Notes() {
                   />
                 ))}
               </div>
-              <Button className="ml-auto h-9 rounded-xl" onClick={handleCreate} disabled={creating}>
-                {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              <Button className="ml-auto h-9 rounded-xl interactive-press" onClick={handleCreate} disabled={creating}>
+                {creating ? (
+                  <motion.div animate={{rotate:360}} transition={{duration:1,repeat:Infinity,ease:'linear'}} className="size-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+                ) : <Plus className="size-4" />}
                 Pin note
               </Button>
             </div>
@@ -278,21 +280,34 @@ export default function Notes() {
         {/* Notes grid */}
         {notes === undefined ? (
           <div className="flex h-40 items-center justify-center">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            <motion.div animate={{rotate:360}} transition={{duration:1.2,repeat:Infinity,ease:'linear'}} className="size-5 rounded-full border-2 border-primary/30 border-t-primary" />
           </div>
         ) : notes.length === 0 ? (
-          <div className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Plus className="size-6" />
+          <motion.div
+            initial={{opacity:0,y:12}}
+            animate={{opacity:1,y:0}}
+            transition={{duration:0.5,ease:[0.22,1,0.36,1]}}
+            className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center"
+          >
+            <div className="relative">
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/8 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.6)]">
+                <StickyNote className="size-7" />
+              </div>
             </div>
-            <h3 className="type-h3 mt-4">
+            <h3 className="type-h3 mt-6">
               {subjectName ? `No notes for ${subjectName} yet` : "No notes yet"}
             </h3>
-            <p className="type-body mt-1 max-w-sm text-muted-foreground">
+            <p className="type-body mt-2 max-w-sm text-muted-foreground">
               Pin formulas, exam tricks or reminders. Notes marked{" "}
               <span className="text-rose-300">hard</span> make the tutor slow down on that subject.
             </p>
-          </div>
+            <div className="mt-5 flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-2.5">
+              <Pencil className="size-3.5 text-muted-foreground/50" />
+              <span className="type-mono text-[11px] text-muted-foreground/60">
+                tip: use difficulty tags to help the tutor adapt
+              </span>
+            </div>
+          </motion.div>
         ) : (
           <motion.div layout className="columns-1 gap-4 sm:columns-2 lg:columns-3">
             <AnimatePresence>
@@ -340,7 +355,7 @@ export default function Notes() {
                               color: (note.color as NoteColor) ?? "default",
                             })
                           }
-                          className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+                          className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground interactive-press"
                         >
                           <Pencil className="size-3.5" />
                         </button>
@@ -349,10 +364,10 @@ export default function Notes() {
                           aria-label="Delete note"
                           disabled={deletingId === note._id}
                           onClick={() => handleDelete(note._id)}
-                          className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+                          className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50 interactive-press"
                         >
                           {deletingId === note._id ? (
-                            <Loader2 className="size-3.5 animate-spin" />
+                            <motion.div animate={{rotate:360}} transition={{duration:1,repeat:Infinity,ease:'linear'}} className="size-3.5 rounded-full border-2 border-destructive/30 border-t-destructive" />
                           ) : (
                             <Trash2 className="size-3.5" />
                           )}
@@ -425,13 +440,15 @@ export default function Notes() {
           <DialogFooter>
             <Button
               variant="outline"
-              className="rounded-xl bg-white/5"
+              className="rounded-xl bg-white/5 interactive-press"
               onClick={() => setEditing(null)}
             >
               Cancel
             </Button>
-            <Button className="rounded-xl" onClick={handleSaveEdit} disabled={savingEdit}>
-              {savingEdit ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+            <Button className="rounded-xl interactive-press" onClick={handleSaveEdit} disabled={savingEdit}>
+              {savingEdit ? (
+                <motion.div animate={{rotate:360}} transition={{duration:1,repeat:Infinity,ease:'linear'}} className="size-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+              ) : <Check className="size-4" />}
               Save
             </Button>
           </DialogFooter>
