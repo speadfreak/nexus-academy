@@ -20,7 +20,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdminAction } from "./admin";
 import { logEventAction } from "./systemEvents";
 import { CONTENT_TYPES } from "./constants";
-import { callGemini, resolveKey } from "./gemini";
+import { callGroq, resolveKey } from "./groq";
 
 const SAMPLE_CHARS = 12000;
 
@@ -133,7 +133,7 @@ Return ONLY strict JSON, no commentary, with this exact shape:
     let parsed: Record<string, unknown> | null = null;
     let classificationError: string | null = null;
     try {
-      const raw = await callGemini(ctx, {
+      const raw = await callGroq(ctx, {
         systemPrompt: "You are a precise document classifier. You only output valid JSON. Never invent subjects outside the provided catalog.",
         userMessage: prompt,
         maxTokens: 512,

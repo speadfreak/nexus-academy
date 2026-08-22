@@ -11,7 +11,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { callGemini } from "./gemini";
+import { callGroq } from "./groq";
 
 // ---------------------------------------------------------------------------
 // Internal data queries
@@ -158,7 +158,7 @@ export const generateRecap = action({
         `- Longest streak: ${streak?.longestStreak ?? 0} days`;
     }
 
-    recapText = await callGemini(ctx, {
+    recapText = await callGroq(ctx, {
       systemPrompt:
         "You write short, encouraging study recaps for Ethiopian students (grades 9-12). " +
         "Use real numbers from their activity. Never fabricate data — if there's no comparison " +

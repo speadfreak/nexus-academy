@@ -15,7 +15,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
-import { callGemini } from "./gemini";
+import { callGroq } from "./groq";
 
 export interface FlashcardPair {
   front: string;
@@ -57,7 +57,7 @@ async function requestFlashcards(
   sourceText: string,
   count: number,
 ): Promise<string> {
-  return await callGemini(ctx, {
+  return await callGroq(ctx, {
     systemPrompt:
       "You create flashcards for Ethiopian students (grades 9-12) studying " +
       "for national examinations (EHEEE/ESSLCE). Each flashcard has a concise " +

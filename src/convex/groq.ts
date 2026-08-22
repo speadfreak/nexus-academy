@@ -5,13 +5,13 @@
 //
 // Required env var (set it in the Keys / API keys tab):
 //   GROQ_API_KEY     your Groq API key (https://console.groq.com/keys)
-//   AI_MODEL         optional — defaults to llama3-70b-8192
+//   AI_MODEL         optional — defaults to openai/gpt-oss-120b
 
 import { ConvexError } from "convex/values";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const DEFAULT_MODEL = process.env.AI_MODEL || "llama3-70b-8192";
+const DEFAULT_MODEL = process.env.AI_MODEL || "openai/gpt-oss-120b";
 const GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions";
 
 // ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ export async function resolveGroqKey(ctx: ActionCtx): Promise<string> {
 // Core call function
 // ---------------------------------------------------------------------------
 
-export interface GeminiCallOptions {
+export interface GroqCallOptions {
   systemPrompt: string;
   userMessage: string;
   /** Multi-turn conversation history (newest last). "user" or "assistant". */
@@ -55,7 +55,7 @@ export interface GeminiCallOptions {
  * Call the Groq API (OpenAI-compatible). Returns the model's text response.
  * Throws on non-OK status or empty response.
  */
-export async function callGemini(ctx: ActionCtx, opts: GeminiCallOptions): Promise<string> {
+export async function callGroq(ctx: ActionCtx, opts: GroqCallOptions): Promise<string> {
   const apiKey = await resolveGroqKey(ctx);
   const model = opts.model || DEFAULT_MODEL;
 

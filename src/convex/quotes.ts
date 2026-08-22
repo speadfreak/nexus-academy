@@ -15,7 +15,7 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { callGemini, resolveKey } from "./gemini";
+import { callGroq, resolveKey } from "./groq";
 
 // Original fallback pool, written for this product. Used deterministically by
 // day-of-year so all users share the same quote on the same day.
@@ -53,7 +53,7 @@ function fallbackForDate(dateKey: string): { text: string; author?: string } {
 }
 
 async function requestQuoteFromAI(ctx: any): Promise<{ text: string; author?: string }> {
-  const text = await callGemini(ctx, {
+  const text = await callGroq(ctx, {
     systemPrompt:
       "You write one short motivational quote for an Ethiopian student grinding " +
       "through national exam prep (grades 9-12, ESLCE). Tone: sincere, precise, a " +

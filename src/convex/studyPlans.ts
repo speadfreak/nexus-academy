@@ -21,7 +21,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireActiveSubscriptionAction } from "./subscriptions";
 import { XP_VALUES } from "./constants";
 import { addisDateKey } from "./reminders";
-import { callGemini } from "./gemini";
+import { callGroq } from "./groq";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -42,7 +42,7 @@ async function requestPlanJson(
     ? `\nThe student's target exam date is ${new Date(targetExamDate).toISOString().slice(0, 10)}; fit the plan before then.`
     : "";
 
-  return await callGemini(ctx, {
+  return await callGroq(ctx, {
     systemPrompt:
       "You are a study-plan generator for the Ethiopian national exams (ESLCE), grades 9-12. " +
       "You respond ONLY with valid JSON and nothing else.",

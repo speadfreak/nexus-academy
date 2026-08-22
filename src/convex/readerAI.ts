@@ -5,7 +5,7 @@
 //
 // Required env vars (Keys / API keys tab):
 //   GROQ_API_KEY     Groq API key (free at console.groq.com/keys)
-//   AI_MODEL        optional — defaults to llama-3.3-70b-versatile
+//   AI_MODEL        optional — defaults to openai/gpt-oss-120b
 //
 // Daily cap: shares the same free-tier tutor limit (15 messages / rolling
 // 24h) so free students get a fair amount of reading help and premium is
@@ -18,7 +18,7 @@ import { internal } from "./_generated/api";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
-import { callGemini, getModelName } from "./gemini";
+import { callGroq, getModelName } from "./groq";
 
 const MAX_ANSWER_TOKENS = 900;
 
@@ -96,7 +96,7 @@ ${trimmed}`;
     const startedAt = Date.now();
     let reply: string;
     try {
-      reply = await callGemini(ctx, {
+      reply = await callGroq(ctx, {
         systemPrompt,
         userMessage: userPrompt,
         maxTokens: MAX_ANSWER_TOKENS,

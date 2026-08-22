@@ -29,7 +29,7 @@ import {
   FREE_QUIZ_WINDOW_DAYS,
   XP_VALUES,
 } from "./constants";
-import { callGemini } from "./gemini";
+import { callGroq } from "./groq";
 
 export interface QuizQuestion {
   question: string;
@@ -73,7 +73,7 @@ export async function requestQuestions(
     '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
     `Topics to cover: ${topicNames.join(", ")}`;
 
-  return await callGemini(ctx, {
+  return await callGroq(ctx, {
     systemPrompt,
     userMessage,
     maxTokens: 4096,

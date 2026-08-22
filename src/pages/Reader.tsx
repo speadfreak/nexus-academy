@@ -104,7 +104,7 @@ export default function Reader() {
   });
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const toggleBookmark = useMutation(api.bookmarks.toggleBookmark);
-  const askReaderQuestion = useAction(api.geminiReader.askReaderQuestion);
+  const askReaderQuestion = useAction(api.readerAI.askReaderQuestion);
   const searchYouTubeVideos = useAction(api.media.searchYouTubeVideos);
   const scratchpad = useQuery(api.scratchpads.getScratchpad, {
     contentId: contentId as never,

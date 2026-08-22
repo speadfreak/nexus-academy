@@ -4,7 +4,7 @@
 // type that can make external HTTP calls. The API key is read from
 // process.env (set it in the Keys / API keys tab, never hardcode it):
 //   GROQ_API_KEY     your Groq API key (https://console.groq.com/keys)
-//   AI_MODEL        optional — defaults to llama-3.3-70b-versatile
+//   AI_MODEL        optional — defaults to openai/gpt-oss-120b
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
@@ -20,7 +20,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
-import { callGemini, getModelName } from "./gemini";
+import { callGroq, getModelName } from "./groq";
 
 const HISTORY_LIMIT = 15;
 
@@ -418,7 +418,7 @@ export const sendMessage = action({
     let reply: string;
     const aiStart = Date.now();
     try {
-      reply = await callGemini(ctx, {
+      reply = await callGroq(ctx, {
         systemPrompt,
         userMessage: content,
         history,
