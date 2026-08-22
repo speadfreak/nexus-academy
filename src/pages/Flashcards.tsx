@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
-  Loader2,
   Plus,
   RotateCcw,
   Sparkles,
@@ -132,20 +131,24 @@ export default function Flashcards() {
 
           {cards === undefined ? (
             <div className="flex h-60 items-center justify-center">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              <motion.div animate={{rotate:360}} transition={{duration:1.2,repeat:Infinity,ease:'linear'}} className="size-5 rounded-full border-2 border-primary/30 border-t-primary" />
             </div>
           ) : isComplete ? (
             /* Session complete */
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="glass-panel flex flex-col items-center rounded-2xl p-10 text-center"
+              className="glass-panel relative overflow-hidden flex flex-col items-center rounded-2xl p-10 text-center"
             >
-              <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 size-48 rounded-full bg-primary/15 blur-[60px]" />
+              <div className="relative flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-lg shadow-primary/20">
                 <Sparkles className="size-8" />
               </div>
-              <h2 className="type-h1 mt-5">Session complete!</h2>
-              <div className="mt-4 flex gap-6">
+              <h2 className="type-h1 relative mt-5">Session complete!</h2>
+              <p className="type-body relative mt-1 text-muted-foreground">
+                +{gotItCount * 10} XP earned this session
+              </p>
+              <div className="relative mt-4 flex gap-8">
                 <div className="text-center">
                   <p className="type-h2 text-emerald-400">{gotItCount}</p>
                   <p className="type-mono text-xs text-muted-foreground">Got it</p>
@@ -155,16 +158,16 @@ export default function Flashcards() {
                   <p className="type-mono text-xs text-muted-foreground">Review again</p>
                 </div>
               </div>
-              <p className="type-body mt-3 max-w-xs text-muted-foreground">
+              <p className="type-body relative mt-4 max-w-xs text-muted-foreground">
                 {reviewCount > 0
-                  ? "Cards marked for review will surface first next time."
-                  : "Perfect session — you nailed every card!"}
+                  ? "Cards marked for review will surface first next time — keep at it!"
+                  : "Perfect session — you nailed every card! Your knowledge is solidifying."}
               </p>
               <div className="mt-6 flex gap-3">
                 {reviewCount > 0 && (
                   <Button
                     variant="outline"
-                    className="rounded-xl bg-white/5"
+                    className="interactive-press rounded-xl bg-white/5"
                     onClick={() => {
                       setCurrentIndex(0);
                       setFlipped(false);
@@ -174,7 +177,7 @@ export default function Flashcards() {
                     <RotateCcw className="size-4" /> Review again
                   </Button>
                 )}
-                <Button className="rounded-xl" onClick={endSession}>
+                <Button className="interactive-press rounded-xl" onClick={endSession}>
                   Done
                 </Button>
               </div>
@@ -191,7 +194,7 @@ export default function Flashcards() {
               >
                 <motion.div
                   animate={{ rotateY: flipped ? 180 : 0 }}
-                  transition={{ duration: 0.4, ease: "easeInOut" }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                   className="glass-panel absolute inset-0 flex items-center justify-center rounded-2xl p-8"
                   style={{ transformStyle: "preserve-3d" }}
                 >
@@ -227,14 +230,14 @@ export default function Flashcards() {
                     <button
                       type="button"
                       onClick={() => handleReview("review_again")}
-                      className="interactive-press flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-6 py-3 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-400/20"
+                      className="interactive-press flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-6 py-3 type-body font-semibold text-amber-300 transition-colors hover:bg-amber-400/20"
                     >
                       <RotateCcw className="size-4" /> Review again
                     </button>
                     <button
                       type="button"
                       onClick={() => handleReview("got_it")}
-                      className="interactive-press flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-400/20"
+                      className="interactive-press flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-6 py-3 type-body font-semibold text-emerald-300 transition-colors hover:bg-emerald-400/20"
                     >
                       <Check className="size-4" /> Got it
                     </button>
@@ -254,7 +257,7 @@ export default function Flashcards() {
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="type-mono uppercase tracking-[0.2em] text-primary">
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
               // flashcards
             </p>
             <h1 className="type-h1 mt-1">Flashcards</h1>
@@ -263,7 +266,7 @@ export default function Flashcards() {
             </p>
           </div>
           <Button
-            className="rounded-xl"
+            className="interactive-press rounded-xl"
             onClick={() => setShowGenerate(true)}
             disabled={generating}
           >
@@ -274,19 +277,25 @@ export default function Flashcards() {
         {/* Deck grid */}
         {decks === undefined ? (
           <div className="flex h-40 items-center justify-center">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              <motion.div animate={{rotate:360}} transition={{duration:1.2,repeat:Infinity,ease:'linear'}} className="size-5 rounded-full border-2 border-primary/30 border-t-primary" />
           </div>
         ) : decks.length === 0 ? (
-          <div className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Layers className="size-6" />
+          <div className="glass-soft relative overflow-hidden flex flex-col items-center justify-center rounded-2xl px-6 py-20 text-center">
+            <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 size-40 rounded-full bg-primary/10 blur-[50px]" />
+            <div className="relative flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-lg shadow-primary/20">
+              <Layers className="size-8" />
             </div>
-            <h3 className="type-h3 mt-4">No flashcard decks yet</h3>
-            <p className="type-body mt-1 max-w-sm text-muted-foreground">
+            <h3 className="type-h3 relative mt-5">No flashcard decks yet</h3>
+            <p className="type-body relative mt-2 max-w-sm text-muted-foreground">
               Generate your first deck from any subject. The AI will create
               question/answer pairs you can flip through.
             </p>
-            <Button className="mt-5 rounded-xl" onClick={() => setShowGenerate(true)}>
+            <div className="glass-chip relative mt-4 max-w-sm rounded-xl px-4 py-3">
+              <p className="type-caption text-muted-foreground">
+                <span className="text-primary font-semibold">Pro tip:</span> Start with a subject you find tricky — flashcards are perfect for building confidence on weak spots.
+              </p>
+            </div>
+            <Button className="interactive-press relative mt-6 rounded-xl" onClick={() => setShowGenerate(true)}>
               <Plus className="size-4" /> Create first deck
             </Button>
           </div>
@@ -302,6 +311,7 @@ export default function Flashcards() {
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ delay: decks.indexOf(deck) * 0.06, type: 'spring', stiffness: 260, damping: 24 }}
                     className="glass-panel hover-lift group flex flex-col rounded-2xl p-5"
                   >
                     <div className="flex items-start justify-between">
@@ -326,7 +336,7 @@ export default function Flashcards() {
                     </p>
                     <div className="mt-auto pt-4">
                       <Button
-                        className="w-full rounded-xl"
+                        className="interactive-press w-full rounded-xl"
                         variant="outline"
                         onClick={() => startSession(deck._id)}
                       >
@@ -365,11 +375,11 @@ export default function Flashcards() {
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" className="rounded-xl bg-white/5" onClick={() => setShowGenerate(false)}>
+            <Button variant="outline" className="interactive-press rounded-xl bg-white/5" onClick={() => setShowGenerate(false)}>
               Cancel
             </Button>
-            <Button className="rounded-xl" onClick={handleGenerate} disabled={generating || !genSubjectId}>
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            <Button className="interactive-press rounded-xl" onClick={handleGenerate} disabled={generating || !genSubjectId}>
+              {generating ? <motion.div animate={{rotate:360}} transition={{duration:1.2,repeat:Infinity,ease:'linear'}} className="size-4 rounded-full border-2 border-primary/30 border-t-primary" /> : <Sparkles className="size-4" />}
               Generate
             </Button>
           </DialogFooter>
