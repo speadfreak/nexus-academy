@@ -18,6 +18,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import * as telebirr from "./providers/telebirr";
 import * as mpesa from "./providers/mpesa";
+import type { EnvLike } from "./providers/telebirr";
 import { PREMIUM_PRICE_ETB } from "./constants";
 import { logEventAction } from "./systemEvents";
 
@@ -70,12 +71,17 @@ export const initiatePayment = action({
 
     try {
       if (args.provider === "telebirr") {
+        // Resolve TeleBirr keys from configKeys (database) first, env fallback.
+        const tbEnv = await ctx.runQuery(internal.configKeys.resolveConfigValues, {
+          keys: ["TELEBIRR_APP_ID", "TELEBIRR_APP_KEY", "TELEBIRR_SHORT_CODE", "TELEBIRR_FABRIC_APP_ID", "TELEBIRR_PRIVATE_KEY", "TELEBIRR_NOTIFY_URL", "TELEBIRR_REDIRECT_URL", "TELEBIRR_ENVIRONMENT"],
+        });
         // TeleBirr requires an alphanumeric merchant order id.
         const merchOrderId = `NX${now}${Math.floor(Math.random() * 900 + 100)}`;
         const result = await telebirr.initiateCheckout({
           amount: args.amount,
           merchOrderId,
           userId,
+          env: tbEnv as EnvLike,
         });
         await ctx.runMutation(internal.paymentsDb.setProviderTransactionId, {
           paymentId,
@@ -97,10 +103,15 @@ export const initiatePayment = action({
         };
       }
 
+      // Resolve M-Pesa keys from configKeys (database) first, env fallback.
+      const mpEnv = await ctx.runQuery(internal.configKeys.resolveConfigValues, {
+        keys: ["MPESA_CONSUMER_KEY", "MPESA_CONSUMER_SECRET", "MPESA_SHORT_CODE", "MPESA_PASSKEY", "MPESA_CALLBACK_URL", "MPESA_ENVIRONMENT", "MPESA_BASE_URL", "MPESA_TRANSACTION_TYPE"],
+      });
       const result = await mpesa.initiateCheckout({
         amount: args.amount,
         phoneNumber: args.phoneNumber!,
         userId,
+        env: mpEnv as EnvLike,
       });
       await ctx.runMutation(internal.paymentsDb.setProviderTransactionId, {
         paymentId,
@@ -168,11 +179,17 @@ export const verifyPayment = action({
       return { status: payment.status as PaymentStatus };
     }
 
+    // Resolve keys for verification too.
+    const configKeys = payment.provider === "telebirr"
+      ? ["TELEBIRR_APP_ID", "TELEBIRR_APP_KEY", "TELEBIRR_SHORT_CODE", "TELEBIRR_FABRIC_APP_ID", "TELEBIRR_PRIVATE_KEY", "TELEBIRR_NOTIFY_URL", "TELEBIRR_ENVIRONMENT"]
+      : ["MPESA_CONSUMER_KEY", "MPESA_CONSUMER_SECRET", "MPESA_SHORT_CODE", "MPESA_PASSKEY", "MPESA_CALLBACK_URL", "MPESA_ENVIRONMENT", "MPESA_BASE_URL"];
+    const env = await ctx.runQuery(internal.configKeys.resolveConfigValues, { keys: configKeys });
+
     let verified: { status: "completed" | "pending" | "failed" };
     if (payment.provider === "telebirr") {
-      verified = await telebirr.verifyTransaction(payment.providerTransactionId);
+      verified = await telebirr.verifyTransaction(payment.providerTransactionId, env as EnvLike);
     } else {
-      verified = await mpesa.verifyTransaction(payment.providerTransactionId);
+      verified = await mpesa.verifyTransaction(payment.providerTransactionId, env as EnvLike);
     }
 
     if (verified.status === "completed") {

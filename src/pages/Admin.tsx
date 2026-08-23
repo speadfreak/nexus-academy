@@ -317,14 +317,21 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
     api.configKeys.getKeyStatusesByCategory,
     adminAccess ? undefined : "skip",
   );
+  const customKeys = useQuery(
+    api.configKeys.listCustomKeys,
+    adminAccess ? undefined : "skip",
+  );
   const setKey = useMutation(api.configKeys.setKey);
   const deleteKey = useMutation(api.configKeys.deleteKey);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customValue, setCustomValue] = useState("");
+  const [customSaving, setCustomSaving] = useState(false);
 
   // ── Backend version probe (error-safe) ───────────────────────────
-  // Uses imperative query so a missing function doesn't crash the page.
   const convex = useConvex();
   const [backendOutdated, setBackendOutdated] = useState<boolean | null>(null);
   useEffect(() => {
@@ -333,7 +340,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
     convex
       .query(api.configKeys.getBackendVersion)
       .then((data) => {
-        if (!cancelled) setBackendOutdated((data as any)?.version < 2);
+        if (!cancelled) setBackendOutdated((data as any)?.version < 3);
       })
       .catch(() => {
         if (!cancelled) setBackendOutdated(true);
@@ -346,7 +353,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
     setSaving(key);
     try {
       await setKey({ key, value: editValue.trim() });
-      toast.success(`${key} saved — AI features powered up!`);
+      toast.success(`${key} saved!`);
       setEditingKey(null);
       setEditValue("");
     } catch (error) {
@@ -365,6 +372,22 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
     }
   };
 
+  const handleAddCustom = async () => {
+    if (!customName.trim() || !customValue.trim()) return;
+    setCustomSaving(true);
+    try {
+      await setKey({ key: `custom:${customName.trim()}`, value: customValue.trim() });
+      toast.success(`Custom key "${customName.trim()}" saved!`);
+      setCustomName("");
+      setCustomValue("");
+      setShowAddCustom(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save key.");
+    } finally {
+      setCustomSaving(false);
+    }
+  };
+
   if (categories === undefined)
     return (
       <div className="flex h-40 items-center justify-center">
@@ -372,15 +395,19 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
       </div>
     );
 
-  const configured = categories.reduce(
-    (sum, cat) => sum + cat.keys.filter((k) => k.configured).length,
-    0,
+  // Count configured (excluding env-only keys like Google OAuth)
+  const envOnlyKeys = new Set(
+    categories
+      .flatMap((c) => c.keys)
+      .filter((k) => (k as any).isEnvOnly)
+      .map((k) => k.key),
   );
-  const total = categories.reduce((sum, cat) => sum + cat.keys.length, 0);
-  const aiCategory = categories.find((c) => c.id === "ai");
-  const aiConfigured = aiCategory ? aiCategory.keys.filter((k) => k.configured).length : 0;
-  const aiTotal = aiCategory?.keys.length ?? 0;
-  const aiNotConfigured = aiTotal - aiConfigured;
+  const regularKeys = categories.flatMap((c) => c.keys.filter((k) => !envOnlyKeys.has(k.key)));
+  const configured = regularKeys.filter((k) => k.configured).length;
+  const total = regularKeys.length;
+  const authCategory = categories.find((c) => c.id === "auth");
+  const authConfigured = authCategory ? authCategory.keys.filter((k) => k.configured).length : 0;
+  const authTotal = authCategory?.keys.length ?? 0;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -392,7 +419,8 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
               <KeyRound className="size-4 text-primary" /> API Keys & Integrations
             </h2>
             <p className="text-sm text-muted-foreground">
-              Configure API keys here. Keys are stored securely in the database — never exposed to the browser.
+              All keys are stored in the database and picked up by the backend automatically.
+              No Convex dashboard access needed (except Google OAuth — see below).
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -403,64 +431,47 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
         </div>
       </div>
 
-      {/* Quick setup guide — shown when any AI keys are missing */}
-      {aiNotConfigured > 0 && (
-        <div className="rounded-2xl border border-primary/20 bg-primary/[0.06] p-5">
+      {/* ── GOOGLE OAUTH — HONEST NOTICE ──────────────────────────── */}
+      {authCategory && (
+        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-5">
           <div className="flex items-start gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15">
-              <Lightbulb className="size-4 text-primary" />
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/15">
+              <ShieldCheck className="size-4 text-amber-300" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-bold">Quick Setup — Get Your AI Keys ({aiConfigured}/{aiTotal} done)</h3>
+              <h3 className="text-sm font-bold">Google OAuth — requires one manual Convex step</h3>
               <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-                You need API keys from the providers below. These are <strong className="text-foreground">free</strong> to create —
-                sign up, copy the key, and paste it in. No Convex account needed!
+                Google OAuth credentials <strong className="text-foreground">cannot be database-backed</strong> because
+                Convex&apos;s auth provider reads them at deploy/cold-start time — before any database query is possible.
+                This is an architectural constraint of <code className="rounded bg-white/5 px-1 py-0.5 text-[11px]">@convex-dev/auth</code>, not something we can work around.
               </p>
               <div className="mt-3 flex flex-col gap-2">
-                {(!aiCategory?.keys.find((k) => k.key === "GROQ_API_KEY")?.configured) && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">1</Badge>
-                    <span className="text-sm font-semibold">Groq AI</span>
-                    <span className="text-[12px] text-muted-foreground">— Powers the AI tutor, quizzes, plans & more</span>
-                    <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
-                      Get Key <ExternalLink className="size-3" />
-                    </a>
+                {authCategory.keys.map((k) => (
+                  <div key={k.key} className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
+                    <Badge className={cn("font-mono text-[9px]", k.configured ? "bg-emerald-400/10 text-emerald-300" : "bg-amber-400/10 text-amber-300")}>
+                      {k.configured ? "configured · env" : "not set · env"}
+                    </Badge>
+                    <span className="text-sm font-semibold">{k.label}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">{k.key}</span>
                   </div>
-                )}
-                {(!aiCategory?.keys.find((k) => k.key === "YOUTUBE_API_KEY")?.configured) && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                    <Badge className="bg-amber-400/10 text-amber-300 font-mono text-[10px]">2</Badge>
-                    <span className="text-sm font-semibold">YouTube Data API</span>
-                    <span className="text-[12px] text-muted-foreground">— Shows related videos in reader</span>
-                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20">
-                      Get Key <ExternalLink className="size-3" />
-                    </a>
-                  </div>
-                )}
+                ))}
               </div>
-              <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-white/[0.03] px-3 py-2">
-                <Info className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  <strong>Steps:</strong> (1) Click &quot;Get Key&quot; to open the provider&apos;s website.
-                  (2) Sign up / sign in. (3) Create an API key. (4) Copy it. (5) Come back here,
-                  click &quot;Add key&quot; below, and paste it in. That&apos;s it — no Convex dashboard needed!
+              <div className="mt-3 rounded-xl border border-white/5 bg-black/20 p-4">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">How to set Google OAuth (one-time setup):</p>
+                <ol className="list-inside list-decimal space-y-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                  <li>Go to <strong className="text-foreground">convex.dev/dashboard</strong> → select your project → <strong className="text-foreground">Settings</strong> → <strong className="text-foreground">Environment Variables</strong></li>
+                  <li>Add <code className="rounded bg-white/5 px-1 py-0.5">GOOGLE_CLIENT_ID</code> with your OAuth client ID from <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">Google Cloud Console</a></li>
+                  <li>Add <code className="rounded bg-white/5 px-1 py-0.5">GOOGLE_CLIENT_SECRET</code> with your OAuth client secret</li>
+                  <li>Redeploy: run <code className="rounded bg-white/5 px-1 py-0.5">npx convex dev</code> locally, or push to trigger a production deploy</li>
+                </ol>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Status: {authConfigured === authTotal ? (
+                    <span className="text-emerald-300 font-semibold">Both keys detected — Google sign-in should work</span>
+                  ) : (
+                    <span className="text-amber-300">Keys not yet set in Convex env vars</span>
+                  )}
                 </p>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* All configured — success banner */}
-      {aiConfigured === aiTotal && aiTotal > 0 && backendOutdated !== true && (
-        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
-              <CheckCircle2 className="size-5 text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-emerald-300">All AI providers configured!</p>
-              <p className="text-[12px] text-muted-foreground">The AI tutor, reader AI, and YouTube features are ready to use.</p>
             </div>
           </div>
         </div>
@@ -474,107 +485,217 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
               <AlertTriangle className="size-5 text-red-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-bold text-red-300">Backend needs updating — your keys won't work yet</h3>
+              <h3 className="text-sm font-bold text-red-300">Backend needs updating — your keys won&apos;t work yet</h3>
               <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-                Your API keys are saved in the database, but the Convex backend is running
-                <strong className="text-foreground"> older code</strong> that doesn't read from the database yet.
-                You need to deploy the latest Convex functions from your computer.
+                Keys are saved in the database, but the Convex backend is running
+                <strong className="text-foreground"> older code</strong> that doesn&apos;t read from the database yet.
               </p>
               <div className="mt-3 rounded-xl border border-white/5 bg-black/20 p-4 font-mono text-[12px] leading-loose">
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Run these commands on your computer:</p>
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Run on your computer:</p>
                 <code className="block text-emerald-300">cd nexus-academy</code>
                 <code className="block text-emerald-300">git pull</code>
                 <code className="block text-emerald-300">npx convex dev</code>
               </div>
-              <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                <code className="rounded bg-white/5 px-1.5 py-0.5">npx convex dev</code> will push the latest AI functions to
-                your Convex deployment. Once you see &quot;Connected&quot; in the terminal, your
-                keys will start working immediately. Leave it running or press Ctrl+C after it connects.
-              </p>
-              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                If you get a login prompt, visit <strong className="text-foreground">convex.dev</strong>, sign in with your
-                GitHub/Google account, then come back and run the command again.
-              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Categories */}
-      {categories.map((cat) => (
-        <div key={cat.id} className="glass-panel rounded-2xl p-5">
-          <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            {cat.label} · {cat.keys.filter((k) => k.configured).length}/{cat.keys.length}
+      {/* ── ALL CONFIGURED SUCCESS ────────────────────────────────── */}
+      {configured === total && total > 0 && backendOutdated !== true && (
+        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
+              <CheckCircle2 className="size-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-emerald-300">All integrations configured!</p>
+              <p className="text-[12px] text-muted-foreground">AI, payments, video, Telegram, and GitHub are all database-backed and ready.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── KEY CATEGORIES (skip auth — handled above) ────────────── */}
+      {categories
+        .filter((cat) => cat.id !== "auth")
+        .map((cat) => (
+          <div key={cat.id} className="glass-panel rounded-2xl p-5">
+            <p className="mb-4 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              {cat.label} · {cat.keys.filter((k) => k.configured).length}/{cat.keys.length}
+            </p>
+            <div className="flex flex-col gap-2">
+              {cat.keys.map((k) => {
+                const isEnvOnly = (k as any).isEnvOnly === true;
+                return (
+                  <div key={k.key} className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{k.label}</span>
+                          <Badge className={cn("font-mono text-[9px]", k.configured ? "bg-emerald-400/10 text-emerald-300" : "bg-amber-400/10 text-amber-300")}>
+                            {k.configured ? "configured" : "not set"}
+                          </Badge>
+                          <Badge variant="outline" className="font-mono text-[9px] text-muted-foreground">
+                            {k.source}
+                          </Badge>
+                        </div>
+                        <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{k.key} · {k.description}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {editingKey === k.key ? (
+                          <>
+                            <Input
+                              type="password"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              placeholder="Paste the key value here..."
+                              className="h-8 w-64 rounded-lg bg-white/5 font-mono text-xs"
+                              autoFocus
+                              onKeyDown={(e) => { if (e.key === "Enter") void handleSave(k.key); if (e.key === "Escape") { setEditingKey(null); setEditValue(""); } }}
+                            />
+                            <Button size="sm" className="h-8 cursor-pointer rounded-lg" onClick={() => void handleSave(k.key)} disabled={saving === k.key || !editValue.trim()}>
+                              {saving === k.key ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />} Save
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 cursor-pointer rounded-lg text-muted-foreground" onClick={() => { setEditingKey(null); setEditValue(""); }}>
+                              Cancel
+                            </Button>
+                          </>
+                        ) : isEnvOnly ? (
+                          <span className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-2.5 font-mono text-[10px] text-amber-300">
+                            <Lock className="size-3" /> env only
+                          </span>
+                        ) : (
+                          <>
+                            {k.helpUrl && !k.configured && (
+                              <a href={k.helpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground">
+                                Get Key <ExternalLink className="size-3" />
+                              </a>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
+                              onClick={() => { setEditingKey(k.key); setEditValue(""); }}
+                            >
+                              {k.configured ? "Update" : "Add key"}
+                            </Button>
+                            {k.configured && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 cursor-pointer rounded-lg text-muted-foreground hover:text-rose-300"
+                                onClick={() => void handleDelete(k.key)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+      {/* ── CUSTOM KEYS (PART 4) ──────────────────────────────────── */}
+      <div className="glass-panel rounded-2xl p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Custom Keys{customKeys && customKeys.length > 0 ? ` · ${customKeys.length}` : ""}
           </p>
+          {!showAddCustom && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
+              onClick={() => setShowAddCustom(true)}
+            >
+              <Plus className="mr-1 size-3" /> Add custom key
+            </Button>
+          )}
+        </div>
+
+        {showAddCustom && (
+          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
+            <div className="min-w-0 flex-1">
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Name</label>
+              <Input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="e.g. MY_API_KEY"
+                className="h-8 rounded-lg bg-white/5 font-mono text-xs"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Escape") { setShowAddCustom(false); setCustomName(""); setCustomValue(""); } }}
+              />
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Value</label>
+              <Input
+                type="password"
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                placeholder="Paste the secret value..."
+                className="h-8 rounded-lg bg-white/5 font-mono text-xs"
+                onKeyDown={(e) => { if (e.key === "Enter") void handleAddCustom(); if (e.key === "Escape") { setShowAddCustom(false); setCustomName(""); setCustomValue(""); } }}
+              />
+            </div>
+            <Button size="sm" className="h-8 cursor-pointer rounded-lg" onClick={() => void handleAddCustom()} disabled={customSaving || !customName.trim() || !customValue.trim()}>
+              {customSaving ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />} Save
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 cursor-pointer rounded-lg text-muted-foreground" onClick={() => { setShowAddCustom(false); setCustomName(""); setCustomValue(""); }}>
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {customKeys && customKeys.length > 0 && (
           <div className="flex flex-col gap-2">
-            {cat.keys.map((k) => (
+            {customKeys.map((k) => (
               <div key={k.key} className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold">{k.label}</span>
-                      <Badge className={cn("font-mono text-[9px]", k.configured ? "bg-emerald-400/10 text-emerald-300" : "bg-amber-400/10 text-amber-300")}>
-                        {k.configured ? "configured" : "not set"}
-                      </Badge>
-                      <Badge variant="outline" className="font-mono text-[9px] text-muted-foreground">
-                        {k.source}
-                      </Badge>
+                      <Badge className="bg-emerald-400/10 font-mono text-[9px] text-emerald-300">configured</Badge>
+                      <Badge variant="outline" className="font-mono text-[9px] text-muted-foreground">database</Badge>
                     </div>
-                    <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{k.key} · {k.description}</p>
+                    <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">custom:{k.label}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {editingKey === k.key ? (
-                      <>
-                        <Input
-                          type="password"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          placeholder="Paste the key value here..."
-                          className="h-8 w-64 rounded-lg bg-white/5 font-mono text-xs"
-                          autoFocus
-                          onKeyDown={(e) => { if (e.key === "Enter") void handleSave(k.key); if (e.key === "Escape") { setEditingKey(null); setEditValue(""); } }}
-                        />
-                        <Button size="sm" className="h-8 cursor-pointer rounded-lg" onClick={() => void handleSave(k.key)} disabled={saving === k.key || !editValue.trim()}>
-                          {saving === k.key ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />} Save
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-8 cursor-pointer rounded-lg text-muted-foreground" onClick={() => { setEditingKey(null); setEditValue(""); }}>
-                          Cancel
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        {k.helpUrl && !k.configured && (
-                          <a href={k.helpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground">
-                            Get Key <ExternalLink className="size-3" />
-                          </a>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
-                          onClick={() => { setEditingKey(k.key); setEditValue(""); }}
-                        >
-                          {k.configured ? "Update" : "Add key"}
-                        </Button>
-                        {k.configured && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 cursor-pointer rounded-lg text-muted-foreground hover:text-rose-300"
-                            onClick={() => void handleDelete(k.key)}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        )}
-                      </>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"
+                      onClick={() => { setEditingKey(k.key); setEditValue(""); }}
+                    >
+                      Update
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 cursor-pointer rounded-lg text-muted-foreground hover:text-rose-300"
+                      onClick={() => void handleDelete(k.key)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      ))}
+        )}
+
+        {(!customKeys || customKeys.length === 0) && !showAddCustom && (
+          <p className="text-[12px] text-muted-foreground">
+            No custom keys yet. Use &quot;Add custom key&quot; for any integration that doesn&apos;t have a dedicated field above.
+            Custom keys are resolved with <code className="rounded bg-white/5 px-1 py-0.5">resolveConfigValue</code> just like the built-in ones.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

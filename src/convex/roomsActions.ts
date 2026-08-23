@@ -34,6 +34,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { createHmac } from "crypto";
 import { action } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { assertGroupMember, assertNoBlockWithParticipants } from "./rooms";
@@ -43,10 +44,13 @@ const LIVEKIT_API_BASE = "https://api.livekit.io";
 const TOKEN_TTL_SECONDS = 60 * 15; // 15 minutes — short-lived by design
 const ROOM_EMPTY_TIMEOUT_SECONDS = 60 * 15; // auto-close after 15 min empty
 
-function requireLiveKitConfig(): { url: string; apiKey: string; apiSecret: string } {
-  const url = process.env.LIVEKIT_URL;
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
+async function requireLiveKitConfig(ctx: ActionCtx): Promise<{ url: string; apiKey: string; apiSecret: string }> {
+  const resolved = await ctx.runQuery(internal.configKeys.resolveConfigValues, {
+    keys: ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"],
+  });
+  const url = resolved.LIVEKIT_URL;
+  const apiKey = resolved.LIVEKIT_API_KEY;
+  const apiSecret = resolved.LIVEKIT_API_SECRET;
   if (!url || !apiKey || !apiSecret) {
     throw new ConvexError({
       message:
@@ -160,7 +164,7 @@ export const createRoom = action({
     }
     await assertGroupMember(ctx, groupId, userId);
 
-    const { apiKey } = requireLiveKitConfig();
+    const { apiKey } = await requireLiveKitConfig(ctx);
 
     // LiveKit room names are unique per project — timestamp guarantees it.
     const providerRoomId = `nexus-${groupId}-${Date.now()}`;
@@ -234,7 +238,7 @@ export const getJoinToken = action({
     await assertGroupMember(ctx, room.groupId, userId);
     await assertNoBlockWithParticipants(ctx, userId, roomId);
 
-    const { url, apiKey, apiSecret } = requireLiveKitConfig();
+    const { url, apiKey, apiSecret } = await requireLiveKitConfig(ctx);
     const profile = await ctx.runQuery(internal.profile.getProfileByUser, { userId });
     const user = await ctx.runQuery(internal.admin.getUserById, { userId });
     const groupRole = await ctx.runQuery(internal.studyGroups.getGroupRole, {
@@ -257,11 +261,6 @@ export const getJoinToken = action({
       metadata: { roomId },
     });
     return { url, token };
-  },
-});
-
-/**
- * End a room for EVERYONE. Only the room creator or a group owner can do it.
   },
 });
 
@@ -292,7 +291,7 @@ export const endRoom = action({
       });
     }
 
-    const { apiKey } = requireLiveKitConfig();
+    const { apiKey } = await requireLiveKitConfig(ctx);
     try {
       await liveKitDeleteRoom(apiKey, room.videoProviderRoomId);
     } catch (error) {

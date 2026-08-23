@@ -46,7 +46,12 @@ interface TelebirrConfig {
   baseUrl: string;
 }
 
-export function getTelebirrConfig(): TelebirrConfig {
+/** Env-like accessor — defaults to process.env for backward compat. */
+export type EnvLike = Record<string, string | undefined>;
+
+const DEFAULT_ENV: EnvLike = process.env as unknown as EnvLike;
+
+export function getTelebirrConfig(env: EnvLike = DEFAULT_ENV): TelebirrConfig {
   const required = [
     "TELEBIRR_APP_ID",
     "TELEBIRR_APP_KEY",
@@ -55,14 +60,14 @@ export function getTelebirrConfig(): TelebirrConfig {
     "TELEBIRR_PRIVATE_KEY",
     "TELEBIRR_NOTIFY_URL",
   ] as const;
-  const missing = required.filter((key) => !process.env[key]);
-  const environment = (process.env.TELEBIRR_ENVIRONMENT ?? "sandbox").toLowerCase();
+  const missing = required.filter((key) => !env[key]);
+  const environment = (env["TELEBIRR_ENVIRONMENT"] ?? "sandbox").toLowerCase();
   const baseUrl = environment === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
   return { configured: missing.length === 0, missing, baseUrl };
 }
 
-function requireConfig(): { baseUrl: string } {
-  const config = getTelebirrConfig();
+function requireConfig(env: EnvLike = DEFAULT_ENV): { baseUrl: string } {
+  const config = getTelebirrConfig(env);
   if (!config.configured) {
     throw new ConvexError({
       message: `TeleBirr is not configured yet. Add these keys in the Keys tab: ${config.missing.join(", ")}`,
@@ -82,16 +87,16 @@ function signPayload(_payload: unknown): string {
 }
 
 /** Fetch a fabric (gateway) access token for app-level auth. */
-export async function getFabricToken(): Promise<string> {
-  const { baseUrl } = requireConfig();
+export async function getFabricToken(env: EnvLike = DEFAULT_ENV): Promise<string> {
+  const { baseUrl } = requireConfig(env);
   // Wire contract (token request) must be confirmed against the official
   // guide; this follows the documented appId/appKey model.
   const response = await fetch(`${baseUrl}/apiaccess/payment/gateway`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      appId: process.env.TELEBIRR_FABRIC_APP_ID,
-      appKey: process.env.TELEBIRR_APP_KEY,
+      appId: env["TELEBIRR_FABRIC_APP_ID"],
+      appKey: env["TELEBIRR_APP_KEY"],
       method: "fabric.token.get",
       sign: signPayload({}),
     }),
@@ -127,30 +132,32 @@ export async function initiateCheckout(args: {
   amount: number; // in ETB (birr)
   merchOrderId: string;
   userId: string;
+  env?: EnvLike;
 }): Promise<CheckoutResult> {
-  const { baseUrl } = requireConfig();
-  const token = await getFabricToken();
+  const env = args.env ?? DEFAULT_ENV;
+  const { baseUrl } = requireConfig(env);
+  const token = await getFabricToken(env);
 
   const payload = {
     // NOTE: field names below follow the documented contract from community
     // integrations of the official guide. Confirm against the official
     // "Telebirr H5 C2B Web Payment Integration Guide" (portal-gated) with
     // your merchant credentials before enabling live payments.
-    appId: process.env.TELEBIRR_APP_ID,
+    appId: env["TELEBIRR_APP_ID"],
     method: "payment.web.createOrder",
     charset: "utf-8",
     signType: "RSA2",
     sign: signPayload({}),
     timestamp: new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14),
     version: "1.0",
-    notifyUrl: process.env.TELEBIRR_NOTIFY_URL,
-    returnUrl: process.env.TELEBIRR_REDIRECT_URL,
+    notifyUrl: env["TELEBIRR_NOTIFY_URL"],
+    returnUrl: env["TELEBIRR_REDIRECT_URL"],
     bizContent: {
       subject: "Nexus Academy Premium",
       outTradeNo: args.merchOrderId,
       totalAmount: args.amount.toFixed(2),
-      merchCode: process.env.TELEBIRR_SHORT_CODE,
-      appid: process.env.TELEBIRR_APP_ID,
+      merchCode: env["TELEBIRR_SHORT_CODE"],
+      appid: env["TELEBIRR_APP_ID"],
       timeoutExpress: "30m",
     },
   };
@@ -196,12 +203,12 @@ export async function initiateCheckout(args: {
  * Server-to-server order status check. Success is "PAY_SUCCESS" (query leg)
  * or "Completed" (notify leg). Never trust callback params alone.
  */
-export async function verifyTransaction(merchOrderId: string): Promise<{
+export async function verifyTransaction(merchOrderId: string, env: EnvLike = DEFAULT_ENV): Promise<{
   status: "completed" | "pending" | "failed";
   raw?: Record<string, unknown>;
 }> {
-  const { baseUrl } = requireConfig();
-  const token = await getFabricToken();
+  const { baseUrl } = requireConfig(env);
+  const token = await getFabricToken(env);
 
   const response = await fetch(`${baseUrl}/apiaccess/payment/gateway`, {
     method: "POST",
@@ -210,7 +217,7 @@ export async function verifyTransaction(merchOrderId: string): Promise<{
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      appId: process.env.TELEBIRR_APP_ID,
+      appId: env["TELEBIRR_APP_ID"],
       method: "payment.web.queryOrder",
       charset: "utf-8",
       signType: "RSA2",

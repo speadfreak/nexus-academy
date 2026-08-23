@@ -14,6 +14,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireAdminAction } from "./admin";
 
 export interface GithubConnectionStatus {
@@ -39,7 +40,7 @@ export const verifyGithubConnection = action({
   handler: async (ctx): Promise<GithubConnectionStatus> => {
     await requireAdminAction(ctx);
 
-    const token = process.env.GITHUB_TOKEN;
+    const token = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "GITHUB_TOKEN" });
     if (!token) {
       return {
         configured: false,

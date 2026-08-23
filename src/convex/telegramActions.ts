@@ -11,6 +11,18 @@ import { requireAdminAction } from "./admin";
 import { logEventAction } from "./systemEvents";
 import { CONTENT_TYPE_LABELS } from "./constants";
 
+/** Resolve TELEGRAM_BOT_TOKEN: database first, then env fallback. */
+async function resolveTelegramToken(ctx: any): Promise<string> {
+  const token = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "TELEGRAM_BOT_TOKEN" });
+  if (!token) {
+    throw new ConvexError({
+      message: "Telegram is not configured — add TELEGRAM_BOT_TOKEN in the Keys tab.",
+      code: "not_configured",
+    });
+  }
+  return token;
+}
+
 const API_BASE = "https://api.telegram.org";
 
 async function callBot(token: string, method: string, body: Record<string, unknown>) {
@@ -43,13 +55,7 @@ export const sendBroadcast = action({
     { channelIds, message },
   ): Promise<{ ok: boolean; sent: number; failed: number }> => {
     const admin = await requireAdminAction(ctx);
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) {
-      throw new ConvexError({
-        message: "Telegram is not configured — add TELEGRAM_BOT_TOKEN in the Keys tab.",
-        code: "not_configured",
-      });
-    }
+    const token = await resolveTelegramToken(ctx);
     if (!Array.isArray(channelIds) || channelIds.length === 0) {
       throw new ConvexError({ message: "Pick at least one channel.", code: "invalid" });
     }
@@ -119,7 +125,7 @@ export const postNewContent = internalAction({
     ctx,
     args,
   ): Promise<{ ok: boolean; reason?: string; sent?: number; failed?: number }> => {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const token = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "TELEGRAM_BOT_TOKEN" });
     if (!token) return { ok: false, reason: "not_configured" };
 
     const channels = await ctx.runQuery(internal.telegram.listEnabledAutoPostChannels, {});

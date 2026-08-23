@@ -19,18 +19,25 @@ export const INTEGRATION_KEYS = [
   { key: "R2_SECRET_ACCESS_KEY", label: "R2 Secret Key", category: "storage", description: "Cloudflare R2 credentials" },
   { key: "R2_BUCKET_NAME", label: "R2 Bucket Name", category: "storage", description: "Cloudflare R2 bucket" },
   { key: "R2_PUBLIC_URL", label: "R2 Public URL", category: "storage", description: "Public bucket/custom domain URL" },
-  { key: "TELEBIRR_APP_ID", label: "TeleBirr App ID", category: "payments", description: "Ethiopian mobile money" },
-  { key: "TELEBIRR_APP_KEY", label: "TeleBirr App Key", category: "payments", description: "Ethiopian mobile money" },
-  { key: "TELEBIRR_SHORT_CODE", label: "TeleBirr Short Code", category: "payments", description: "Ethiopian mobile money" },
-  { key: "MPESA_CONSUMER_KEY", label: "M-Pesa Consumer Key", category: "payments", description: "Kenyan mobile money" },
-  { key: "MPESA_CONSUMER_SECRET", label: "M-Pesa Consumer Secret", category: "payments", description: "Kenyan mobile money" },
-  { key: "MPESA_SHORT_CODE", label: "M-Pesa Short Code", category: "payments", description: "Kenyan mobile money" },
-  { key: "TELEGRAM_BOT_TOKEN", label: "Telegram Bot Token", category: "comms", description: "Broadcast to channels" },
-  { key: "GOOGLE_CLIENT_ID", label: "Google OAuth Client ID", category: "auth", description: "Google sign-in (must be set as Convex env var, not here — see README)", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console" },
-  { key: "GOOGLE_CLIENT_SECRET", label: "Google OAuth Client Secret", category: "auth", description: "Google sign-in (must be set as Convex env var, not here — see README)", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console" },
-  { key: "LIVEKIT_API_KEY", label: "LiveKit API Key", category: "video", description: "Study rooms video/audio" },
-  { key: "LIVEKIT_API_SECRET", label: "LiveKit API Secret", category: "video", description: "Study rooms video/audio" },
-  { key: "GITHUB_TOKEN", label: "GitHub Token", category: "integrations", description: "Repo sync + code push" },
+  { key: "TELEBIRR_APP_ID", label: "TeleBirr App ID", category: "payments", description: "Merchant application ID" },
+  { key: "TELEBIRR_APP_KEY", label: "TeleBirr App Key", category: "payments", description: "Merchant application secret" },
+  { key: "TELEBIRR_SHORT_CODE", label: "TeleBirr Merchant Code", category: "payments", description: "6-digit merchant code" },
+  { key: "TELEBIRR_FABRIC_APP_ID", label: "TeleBirr Fabric App ID", category: "payments", description: "Fabric app ID for gateway auth (UUID)" },
+  { key: "TELEBIRR_PRIVATE_KEY", label: "TeleBirr RSA Private Key", category: "payments", description: "RSA private key for request signing (PEM or base64 DER)" },
+  { key: "TELEBIRR_NOTIFY_URL", label: "TeleBirr Notify URL", category: "payments", description: "Server notification URL (public endpoint)" },
+  { key: "TELEBIRR_REDIRECT_URL", label: "TeleBirr Return URL", category: "payments", description: "User return URL after payment (optional)" },
+  { key: "MPESA_CONSUMER_KEY", label: "M-Pesa Consumer Key", category: "payments", description: "Daraja API consumer key" },
+  { key: "MPESA_CONSUMER_SECRET", label: "M-Pesa Consumer Secret", category: "payments", description: "Daraja API consumer secret" },
+  { key: "MPESA_SHORT_CODE", label: "M-Pesa Business Short Code", category: "payments", description: "Paybill/till number" },
+  { key: "MPESA_PASSKEY", label: "M-Pesa Lipa Na M-Pesa Passkey", category: "payments", description: "STK push password (from Daraja portal)" },
+  { key: "MPESA_CALLBACK_URL", label: "M-Pesa Callback URL", category: "payments", description: "Public callback URL for STK results" },
+  { key: "TELEGRAM_BOT_TOKEN", label: "Telegram Bot Token", category: "comms", description: "Broadcast to channels", helpUrl: "https://t.me/BotFather", helpLabel: "@BotFather" },
+  { key: "GOOGLE_CLIENT_ID", label: "Google OAuth Client ID", category: "auth", description: "Google sign-in (requires Convex env var — see notice below)", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console", isEnvOnly: true },
+  { key: "GOOGLE_CLIENT_SECRET", label: "Google OAuth Client Secret", category: "auth", description: "Google sign-in (requires Convex env var — see notice below)", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console", isEnvOnly: true },
+  { key: "LIVEKIT_URL", label: "LiveKit Server URL", category: "video", description: "WebSocket URL, e.g. wss://your-project.livekit.cloud" },
+  { key: "LIVEKIT_API_KEY", label: "LiveKit API Key", category: "video", description: "From LiveKit Cloud project settings" },
+  { key: "LIVEKIT_API_SECRET", label: "LiveKit API Secret", category: "video", description: "From LiveKit Cloud project settings" },
+  { key: "GITHUB_TOKEN", label: "GitHub Token", category: "integrations", description: "Personal access token with repo scope", helpUrl: "https://github.com/settings/tokens", helpLabel: "github.com/settings/tokens" },
 ] as const;
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
@@ -41,6 +48,7 @@ const CATEGORIES: Record<string, { label: string; icon: string }> = {
   auth: { label: "Authentication", icon: "shield" },
   video: { label: "Video (Rooms)", icon: "video" },
   integrations: { label: "Integrations", icon: "git-branch" },
+  custom: { label: "Custom Keys", icon: "key-round" },
 };
 
 export const CATEGORIES_META = CATEGORIES;
@@ -98,14 +106,15 @@ export const getKeyStatusesByCategory = query({
   },
 });
 
-/** Set or update an API key value. */
+/** Set or update an API key value. Accepts known keys and custom keys (prefixed with custom:). */
 export const setKey = mutation({
   args: { key: v.string(), value: v.string() },
   handler: async (ctx, args) => {
     const user = await requireAdmin(ctx);
     const userId = user._id;
     const known = INTEGRATION_KEYS.find((k) => k.key === args.key);
-    if (!known) throw new ConvexError({ message: `Unknown key: ${args.key}`, code: "bad_request" });
+    const isCustom = args.key.startsWith("custom:");
+    if (!known && !isCustom) throw new ConvexError({ message: `Unknown key: ${args.key}`, code: "bad_request" });
     const now = Date.now();
     const existing = await ctx.db.query("configKeys").withIndex("by_key", (q) => q.eq("key", args.key)).first();
     if (existing) {
@@ -194,10 +203,29 @@ export const getKeyValue = query({
  * resolution). If this function doesn't exist on the deployment, the
  * frontend knows the backend is outdated.
  */
+/** List custom keys (prefixed with custom:) for the admin UI. */
+export const listCustomKeys = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const all = await ctx.db.query("configKeys").collect();
+    const customEntries = all
+      .filter((r) => r.key.startsWith("custom:"))
+      .map((r) => ({
+        key: r.key,
+        label: r.key.replace("custom:", ""),
+        configured: true,
+        source: "database" as const,
+        updatedAt: r.updatedAt,
+      }));
+    return customEntries;
+  },
+});
+
 export const getBackendVersion = query({
   args: {},
   handler: () => ({
-    version: 2,
-    features: ["db_key_resolution", "configKeys_table", "resolveConfigValue"],
+    version: 3,
+    features: ["db_key_resolution", "configKeys_table", "resolveConfigValue", "all_keys_db_backed", "custom_keys", "livekit_db", "github_db", "telegram_db", "payment_providers_db"],
   }),
 });

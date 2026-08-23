@@ -18,14 +18,14 @@
 // exact contract for M-Pesa Ethiopia must be confirmed with Safaricom
 // Ethiopia's merchant team before going live.
 //
-// Required env vars (Keys / API keys tab — never hardcode):
+// Required keys (set in the Keys / API keys tab):
 //   MPESA_CONSUMER_KEY     Daraja consumer key
 //   MPESA_CONSUMER_SECRET  Daraja consumer secret
-//   MPESA_SHORTCODE        business shortcode (paybill/till)
+//   MPESA_SHORT_CODE       business shortcode (paybill/till)
 //   MPESA_PASSKEY          Lipa na M-Pesa passkey (STK push password)
+//   MPESA_CALLBACK_URL     public callback URL for STK results
 //   MPESA_ENVIRONMENT      "sandbox" | "production" (default sandbox)
 //   MPESA_BASE_URL         optional override (for M-Pesa Ethiopia gateway)
-//   MPESA_CALLBACK_URL     public callback URL for STK results
 //   MPESA_TRANSACTION_TYPE default "CustomerPayBillOnline"
 "use node";
 
@@ -34,21 +34,25 @@ import { ConvexError } from "convex/values";
 const SANDBOX_BASE = "https://sandbox.safaricom.co.ke";
 const PRODUCTION_BASE = "https://api.safaricom.co.ke";
 
-function getBaseUrl(): string {
-  if (process.env.MPESA_BASE_URL) return process.env.MPESA_BASE_URL;
-  const env = (process.env.MPESA_ENVIRONMENT ?? "sandbox").toLowerCase();
-  return env === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
+/** Env-like accessor — defaults to process.env for backward compat. */
+export type EnvLike = Record<string, string | undefined>;
+const DEFAULT_ENV: EnvLike = process.env as unknown as EnvLike;
+
+function getBaseUrl(env: EnvLike = DEFAULT_ENV): string {
+  if (env["MPESA_BASE_URL"]) return env["MPESA_BASE_URL"]!;
+  const e = (env["MPESA_ENVIRONMENT"] ?? "sandbox").toLowerCase();
+  return e === "production" ? PRODUCTION_BASE : SANDBOX_BASE;
 }
 
-function requireConfig(): void {
+function requireConfig(env: EnvLike = DEFAULT_ENV): void {
   const required = [
     "MPESA_CONSUMER_KEY",
     "MPESA_CONSUMER_SECRET",
-    "MPESA_SHORTCODE",
+    "MPESA_SHORT_CODE",
     "MPESA_PASSKEY",
     "MPESA_CALLBACK_URL",
   ] as const;
-  const missing = required.filter((key) => !process.env[key]);
+  const missing = required.filter((key) => !env[key]);
   if (missing.length > 0) {
     throw new ConvexError({
       message: `M-Pesa is not configured yet. Add these keys in the Keys tab: ${missing.join(", ")}`,
@@ -59,15 +63,15 @@ function requireConfig(): void {
 
 const cachedToken: { token: string; expiresAt: number } = { token: "", expiresAt: 0 };
 
-async function getAccessToken(): Promise<string> {
-  requireConfig();
+async function getAccessToken(env: EnvLike = DEFAULT_ENV): Promise<string> {
+  requireConfig(env);
   if (cachedToken.token && cachedToken.expiresAt > Date.now() + 60_000) {
     return cachedToken.token;
   }
-  const key = process.env.MPESA_CONSUMER_KEY!;
-  const secret = process.env.MPESA_CONSUMER_SECRET!;
+  const key = env["MPESA_CONSUMER_KEY"]!;
+  const secret = env["MPESA_CONSUMER_SECRET"]!;
   const response = await fetch(
-    `${getBaseUrl()}/oauth/v1/generate?grant_type=client_credentials`,
+    `${getBaseUrl(env)}/oauth/v1/generate?grant_type=client_credentials`,
     {
       headers: {
         Authorization: `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`,
@@ -92,9 +96,9 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-function stkPassword(timestamp: string): string {
+function stkPassword(timestamp: string, env: EnvLike = DEFAULT_ENV): string {
   return Buffer.from(
-    `${process.env.MPESA_SHORTCODE}${process.env.MPESA_PASSKEY}${timestamp}`,
+    `${env["MPESA_SHORT_CODE"]}${env["MPESA_PASSKEY"]}${timestamp}`,
   ).toString("base64");
 }
 
@@ -122,13 +126,15 @@ export async function initiateCheckout(args: {
   amount: number; // in KES / ETB minor unit? — Daraja takes whole currency units
   phoneNumber: string;
   userId: string;
+  env?: EnvLike;
 }): Promise<CheckoutResult> {
-  requireConfig();
-  const token = await getAccessToken();
+  const env = args.env ?? DEFAULT_ENV;
+  requireConfig(env);
+  const token = await getAccessToken(env);
   const timestamp = darajaTimestamp();
-  const shortcode = process.env.MPESA_SHORTCODE!;
+  const shortcode = env["MPESA_SHORT_CODE"]!;
 
-  const response = await fetch(`${getBaseUrl()}/mpesa/stkpush/v1/processrequest`, {
+  const response = await fetch(`${getBaseUrl(env)}/mpesa/stkpush/v1/processrequest`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -136,14 +142,14 @@ export async function initiateCheckout(args: {
     },
     body: JSON.stringify({
       BusinessShortCode: shortcode,
-      Password: stkPassword(timestamp),
+      Password: stkPassword(timestamp, env),
       Timestamp: timestamp,
-      TransactionType: process.env.MPESA_TRANSACTION_TYPE ?? "CustomerPayBillOnline",
+      TransactionType: env["MPESA_TRANSACTION_TYPE"] ?? "CustomerPayBillOnline",
       Amount: Math.round(args.amount),
       PartyA: args.phoneNumber.replace(/\D/g, ""),
       PartyB: shortcode,
       PhoneNumber: args.phoneNumber.replace(/\D/g, ""),
-      CallBackURL: process.env.MPESA_CALLBACK_URL!,
+      CallBackURL: env["MPESA_CALLBACK_URL"]!,
       AccountReference: "NEXUSACADEMY".slice(0, 12),
       TransactionDesc: "Premium access".slice(0, 13),
     }),
@@ -176,23 +182,23 @@ export async function initiateCheckout(args: {
 }
 
 /** Query STK push status. ResultCode 0 = success. */
-export async function verifyTransaction(checkoutRequestId: string): Promise<{
+export async function verifyTransaction(checkoutRequestId: string, env: EnvLike = DEFAULT_ENV): Promise<{
   status: "completed" | "pending" | "failed";
   raw?: Record<string, unknown>;
 }> {
-  requireConfig();
-  const token = await getAccessToken();
+  requireConfig(env);
+  const token = await getAccessToken(env);
   const timestamp = darajaTimestamp();
 
-  const response = await fetch(`${getBaseUrl()}/mpesa/stkpushquery/v1/query`, {
+  const response = await fetch(`${getBaseUrl(env)}/mpesa/stkpushquery/v1/query`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      BusinessShortCode: process.env.MPESA_SHORTCODE!,
-      Password: stkPassword(timestamp),
+      BusinessShortCode: env["MPESA_SHORT_CODE"]!,
+      Password: stkPassword(timestamp, env),
       Timestamp: timestamp,
       CheckoutRequestID: checkoutRequestId,
     }),

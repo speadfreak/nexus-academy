@@ -364,7 +364,7 @@ export const testIntegrationConnection = action({
 
     const start = Date.now();
     if (integration === "github") {
-      const token = process.env.GITHUB_TOKEN;
+      const token = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "GITHUB_TOKEN" });
       if (!token) {
         return { configured: false, ok: false, detail: "GITHUB_TOKEN missing" };
       }
@@ -428,7 +428,7 @@ export const testIntegrationConnection = action({
       }
 
       // telegram
-      const token = process.env.TELEGRAM_BOT_TOKEN;
+      const token = await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "TELEGRAM_BOT_TOKEN" });
       if (!token) {
         return { configured: false, ok: false, detail: "TELEGRAM_BOT_TOKEN missing" };
       }

@@ -665,19 +665,30 @@ const ENV_KEYS = [
   "TELEBIRR_PRIVATE_KEY",
   "MPESA_CONSUMER_KEY",
   "MPESA_CONSUMER_SECRET",
-  "MPESA_SHORTCODE",
+  "MPESA_SHORT_CODE",
   "MPESA_PASSKEY",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
   "GITHUB_TOKEN",
+  "TELEGRAM_BOT_TOKEN",
+  "LIVEKIT_URL",
+  "LIVEKIT_API_KEY",
+  "LIVEKIT_API_SECRET",
+  "YOUTUBE_API_KEY",
 ] as const;
 
 export const getSystemStatus = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
+    // Check both configKeys table and env vars.
+    const stored = await ctx.db.query("configKeys").collect();
+    const storedMap = new Map(stored.map((r) => [r.key, r.value]));
     return {
-      keys: ENV_KEYS.map((key) => ({ key, configured: Boolean(process.env[key]) })),
+      keys: ENV_KEYS.map((key) => ({
+        key,
+        configured: Boolean(storedMap.get(key) || process.env[key]),
+      })),
       convexUrl: process.env.CONVEX_SITE_URL ?? null,
     };
   },
