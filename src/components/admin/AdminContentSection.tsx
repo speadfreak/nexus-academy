@@ -6,10 +6,15 @@ import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
+  Copy,
+  ExternalLink,
   FileUp,
   Loader2,
+  Pencil,
   RotateCcw,
+  Search,
   Sparkles,
   Trash2,
   UploadCloud,
@@ -17,7 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { extractPdfText } from "@/lib/pdf";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -33,6 +38,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -150,13 +163,91 @@ export function AdminContentSection() {
   const [adminGrade, setAdminGrade] = useState("");
   const [adminType, setAdminType] = useState("");
   const [adminSubjectId, setAdminSubjectId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const adminContent = useQuery(api.content.getAdminContent, {
     grade: adminGrade ? Number(adminGrade) : undefined,
     subjectId: (adminSubjectId || undefined) as never,
     contentType: (adminType || undefined) as ContentType | undefined,
   });
   const deleteContentItem = useAction(api.contentAdmin.deleteContentItem);
+  const updateContentItem = useAction(api.contentAdmin.updateContentItem);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // --- Edit dialog state -----------------------------------------------
+  const [editItem, setEditItem] = useState<ContentItemWithSubject | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editGrade, setEditGrade] = useState("");
+  const [editSubjectId, setEditSubjectId] = useState("");
+  const [editContentType, setEditContentType] = useState("");
+  const [editExamYear, setEditExamYear] = useState("");
+  const [editIsPremium, setEditIsPremium] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+
+  const openEditDialog = useCallback((item: ContentItemWithSubject) => {
+    setEditItem(item);
+    setEditTitle(item.title);
+    setEditGrade(String(item.grade));
+    setEditSubjectId(item.subjectId);
+    setEditContentType(item.contentType);
+    setEditExamYear(item.examYear ? String(item.examYear) : "");
+    setEditIsPremium(item.isPremium);
+  }, []);
+
+  const handleEditSave = async () => {
+    if (!editItem) return;
+    setEditSaving(true);
+    try {
+      await updateContentItem({
+        contentId: editItem._id,
+        title: editTitle.trim(),
+        grade: Number(editGrade),
+        subjectId: editSubjectId as never,
+        contentType: editContentType as ContentType,
+        examYear: editContentType === "past_exam" ? (editExamYear ? Number(editExamYear) : undefined) : undefined,
+        isPremium: editIsPremium,
+      });
+      toast.success(`Updated "${editTitle.trim()}".`);
+      setEditItem(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Update failed.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  // Quick premium toggle (no dialog)
+  const [togglingPremiumId, setTogglingPremiumId] = useState<string | null>(null);
+  const handleQuickPremiumToggle = async (item: ContentItemWithSubject) => {
+    setTogglingPremiumId(item._id);
+    try {
+      await updateContentItem({ contentId: item._id, isPremium: !item.isPremium });
+      toast.success(item.isPremium ? `"${item.title}" is now free.` : `"${item.title}" is now premium.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Toggle failed.");
+    } finally {
+      setTogglingPremiumId(null);
+    }
+  };
+
+  // Client-side search filter
+  const filteredContent = useMemo(() => {
+    if (!adminContent) return adminContent;
+    if (!searchQuery.trim()) return adminContent;
+    const q = searchQuery.toLowerCase();
+    return adminContent.filter(
+      (item) =>
+        item.title.toLowerCase().includes(q) ||
+        item.subjectName.toLowerCase().includes(q) ||
+        CONTENT_TYPE_LABELS[item.contentType].toLowerCase().includes(q),
+    );
+  }, [adminContent, searchQuery]);
+
+  const copyToClipboard = useCallback((text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => toast.success(`${label} copied!`),
+      () => toast.error("Copy failed."),
+    );
+  }, []);
 
   // --- Sample library (one-shot demo content for an empty library) --------
   const seedSampleLibrary = useAction(api.sampleContent.seedSampleLibrary);
@@ -622,12 +713,23 @@ export function AdminContentSection() {
         </div>
       </div>
 
-      {/* Recent uploads */}
+      {/* Library management */}
       <div className="glass-panel rounded-2xl p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-extrabold tracking-tight">Recent uploads</h2>
-            <p className="text-sm text-muted-foreground">Manage what&apos;s already in the library.</p>
+            <h2 className="text-lg font-extrabold tracking-tight">Library</h2>
+            <p className="text-sm text-muted-foreground">
+              {adminContent !== undefined && (
+                <>
+                  {filteredContent?.length ?? 0} item{((filteredContent?.length ?? 0) !== 1) ? "s" : ""}
+                  {(adminGrade || adminType || adminSubjectId || searchQuery) && (
+                    <span className="text-muted-foreground/60">
+                      {" "}(filtered from {adminContent.length})
+                    </span>
+                  )}
+                </>
+              )}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {libraryEmpty && (
@@ -647,7 +749,7 @@ export function AdminContentSection() {
                     <AlertDialogDescription>
                       Adds a clearly-labeled <strong>demo library</strong> (~20 items:
                       textbooks, past-exam papers, worksheets, guides across all
-                      subjects and grades 9–12) so the bookshelf, reader and
+                      subjects and grades 9-12) so the bookshelf, reader and
                       analytics are testable before real files are uploaded. Every
                       item is marked &quot;Sample&quot; and is not official MoE
                       material. This only runs while the library is empty and can
@@ -672,142 +774,212 @@ export function AdminContentSection() {
                 </AlertDialogContent>
               </AlertDialog>
             )}
-            <Select value={adminGrade} onValueChange={(v) => setAdminGrade(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 w-28 rounded-lg bg-white/5 text-xs">
-                <SelectValue placeholder="Grade" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All grades</SelectItem>
-                {[9, 10, 11, 12].map((g) => (
-                  <SelectItem key={g} value={String(g)}>
-                    Grade {g}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={adminType} onValueChange={(v) => setAdminType(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 w-32 rounded-lg bg-white/5 text-xs">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {CONTENT_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {CONTENT_TYPE_LABELS[type]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={adminSubjectId} onValueChange={(v) => setAdminSubjectId(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 w-32 rounded-lg bg-white/5 text-xs">
-                <SelectValue placeholder="Subject" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All subjects</SelectItem>
-                {subjects?.map((subject) => (
-                  <SelectItem key={subject._id} value={subject._id}>
-                    {subject.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(adminGrade || adminType || adminSubjectId) && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 cursor-pointer text-muted-foreground"
-                onClick={() => {
-                  setAdminGrade("");
-                  setAdminType("");
-                  setAdminSubjectId("");
-                }}
-                aria-label="Reset filters"
-              >
-                <RotateCcw className="size-3.5" />
-              </Button>
-            )}
           </div>
         </div>
 
+        {/* Search + filters row */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by title, subject, or type\u2026"
+              className="h-8 rounded-lg bg-white/5 pl-8 text-xs"
+            />
+          </div>
+          <Select value={adminGrade} onValueChange={(v) => setAdminGrade(v === "all" ? "" : v)}>
+            <SelectTrigger className="h-8 w-28 rounded-lg bg-white/5 text-xs">
+              <SelectValue placeholder="Grade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All grades</SelectItem>
+              {[9, 10, 11, 12].map((g) => (
+                <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={adminType} onValueChange={(v) => setAdminType(v === "all" ? "" : v)}>
+            <SelectTrigger className="h-8 w-32 rounded-lg bg-white/5 text-xs">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {CONTENT_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>{CONTENT_TYPE_LABELS[type]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={adminSubjectId} onValueChange={(v) => setAdminSubjectId(v === "all" ? "" : v)}>
+            <SelectTrigger className="h-8 w-32 rounded-lg bg-white/5 text-xs">
+              <SelectValue placeholder="Subject" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All subjects</SelectItem>
+              {subjects?.map((subject) => (
+                <SelectItem key={subject._id} value={subject._id}>{subject.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(adminGrade || adminType || adminSubjectId || searchQuery) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 cursor-pointer text-muted-foreground"
+              onClick={() => {
+                setAdminGrade("");
+                setAdminType("");
+                setAdminSubjectId("");
+                setSearchQuery("");
+              }}
+              aria-label="Reset filters"
+            >
+              <RotateCcw className="size-3.5" />
+            </Button>
+          )}
+        </div>
+
+        {/* Table */}
         <div className="mt-4 overflow-x-auto">
           {adminContent === undefined ? (
             <div className="flex h-32 items-center justify-center">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
             </div>
-          ) : adminContent.length === 0 ? (
+          ) : filteredContent !== undefined && filteredContent.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              No uploads yet{adminGrade || adminType || adminSubjectId ? " for these filters" : ""}.
+              {searchQuery || adminGrade || adminType || adminSubjectId
+                ? "No items match your filters."
+                : "No uploads yet."}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Title</TableHead>
+                  <TableHead className="min-w-[14rem]">Title</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Grade</TableHead>
                   <TableHead>Subject</TableHead>
                   <TableHead>Year</TableHead>
                   <TableHead>Size</TableHead>
+                  <TableHead>Uploaded</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {adminContent.map((item) => (
+                {filteredContent?.map((item) => (
                   <TableRow key={item._id} className="hover:bg-white/5">
-                    <TableCell className="max-w-[15rem]">
+                    <TableCell className="max-w-[14rem]">
                       <p className="truncate font-semibold">{item.title}</p>
-                      {item.isPremium && (
-                        <Badge className="mt-1 gap-1 bg-amber-400/10 text-amber-300">
-                          <Sparkles className="size-3" /> Premium
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {item.isPremium && (
+                          <Badge className="gap-1 bg-amber-400/10 text-amber-300">
+                            <Sparkles className="size-2.5" /> Premium
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="bg-white/5 text-[10px] font-normal text-muted-foreground">
+                          {item.sourceName || "\u2014"}
                         </Badge>
-                      )}
+                      </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground text-xs">
                       {CONTENT_TYPE_LABELS[item.contentType]}
                     </TableCell>
-                    <TableCell>Grade {item.grade}</TableCell>
-                    <TableCell className="text-muted-foreground">{item.subjectName}</TableCell>
-                    <TableCell>{item.examYear ?? "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-xs">Grade {item.grade}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{item.subjectName}</TableCell>
+                    <TableCell className="text-xs">{item.examYear ?? "\u2014"}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
                       {formatBytes(item.fileSizeBytes)}
                     </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(item.createdAt).toLocaleDateString()}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 cursor-pointer text-muted-foreground hover:text-destructive"
-                            aria-label={`Delete ${item.title}`}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="glass-panel">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this item?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This removes <strong>{item.title}</strong> from the library and
-                              deletes the file from Cloudflare R2. This cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="cursor-pointer rounded-xl bg-destructive text-white hover:bg-destructive/90"
-                              disabled={deletingId === item._id}
-                              onClick={() => handleDelete(item)}
+                      <div className="flex items-center justify-end gap-0.5">
+                        {/* Edit */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 cursor-pointer text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditDialog(item)}
+                          aria-label={`Edit ${item.title}`}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        {/* Copy URL */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 cursor-pointer text-muted-foreground hover:text-foreground"
+                          onClick={() => copyToClipboard(item.fileUrl, "File URL")}
+                          aria-label="Copy file URL"
+                        >
+                          <Copy className="size-3.5" />
+                        </Button>
+                        {/* Open in new tab */}
+                        <a
+                          href={item.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex size-7 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground"
+                          aria-label="Open file"
+                        >
+                          <ExternalLink className="size-3.5" />
+                        </a>
+                        {/* Premium toggle */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "size-7 cursor-pointer",
+                            item.isPremium
+                              ? "text-amber-400 hover:text-amber-300"
+                              : "text-muted-foreground hover:text-amber-400",
+                            togglingPremiumId === item._id && "opacity-50",
+                          )}
+                          disabled={togglingPremiumId === item._id}
+                          onClick={() => handleQuickPremiumToggle(item)}
+                          aria-label={item.isPremium ? "Remove premium" : "Set premium"}
+                        >
+                          <Sparkles className="size-3.5" />
+                        </Button>
+                        {/* Delete */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 cursor-pointer text-muted-foreground hover:text-destructive"
+                              aria-label={`Delete ${item.title}`}
                             >
-                              {deletingId === item._id ? (
-                                <Loader2 className="size-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="size-4" />
-                              )}
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="glass-panel">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete this item?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This removes <strong>{item.title}</strong> from the library and
+                                deletes the file from Cloudflare R2. This cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="cursor-pointer rounded-xl bg-destructive text-white hover:bg-destructive/90"
+                                disabled={deletingId === item._id}
+                                onClick={() => handleDelete(item)}
+                              >
+                                {deletingId === item._id ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="size-4" />
+                                )}
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -816,6 +988,96 @@ export function AdminContentSection() {
           )}
         </div>
       </div>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editItem} onOpenChange={(open) => !open && setEditItem(null)}>
+        <DialogContent className="glass-panel max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit content</DialogTitle>
+            <DialogDescription>Update metadata for this library item.</DialogDescription>
+          </DialogHeader>
+          {editItem && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground">Title</Label>
+                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="h-9 rounded-xl bg-white/5" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Content type</Label>
+                  <Select value={editContentType} onValueChange={(v) => { setEditContentType(v); if (v !== "past_exam") setEditExamYear(""); }}>
+                    <SelectTrigger className="h-9 rounded-xl bg-white/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONTENT_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>{CONTENT_TYPE_LABELS[type]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Grade</Label>
+                  <Select value={editGrade} onValueChange={setEditGrade}>
+                    <SelectTrigger className="h-9 rounded-xl bg-white/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[9, 10, 11, 12].map((g) => (
+                        <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Subject</Label>
+                  <Select value={editSubjectId} onValueChange={setEditSubjectId}>
+                    <SelectTrigger className="h-9 rounded-xl bg-white/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjects?.map((s) => (
+                        <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">
+                    Exam year {editContentType !== "past_exam" && <span className="font-normal text-muted-foreground/50">(past exams only)</span>}
+                  </Label>
+                  <Input
+                    type="number"
+                    min={1990}
+                    max={new Date().getFullYear()}
+                    value={editExamYear}
+                    onChange={(e) => setEditExamYear(e.target.value)}
+                    disabled={editContentType !== "past_exam"}
+                    placeholder="e.g. 2023"
+                    className="h-9 rounded-xl bg-white/5 disabled:opacity-40"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-border/70 bg-white/5 px-4 py-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-sm font-semibold">
+                    <Sparkles className="size-4 text-amber-500" /> Premium
+                  </p>
+                  <p className="text-xs text-muted-foreground">Gated behind subscription.</p>
+                </div>
+                <Switch checked={editIsPremium} onCheckedChange={setEditIsPremium} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl bg-white/5" onClick={() => setEditItem(null)}>Cancel</Button>
+            <Button className="rounded-xl" disabled={editSaving || !editTitle.trim()} onClick={handleEditSave}>
+              {editSaving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

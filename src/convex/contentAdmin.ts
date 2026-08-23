@@ -185,6 +185,54 @@ export const adminUploadContent = action({
 });
 
 // ---------------------------------------------------------------------------
+// Update content item metadata (no file change)
+// ---------------------------------------------------------------------------
+
+export const updateContentItem = action({
+  args: {
+    contentId: v.id("contentItems"),
+    title: v.optional(v.string()),
+    grade: v.optional(v.number()),
+    subjectId: v.optional(v.id("subjects")),
+    contentType: v.optional(contentTypeValidator),
+    examYear: v.optional(v.number()),
+    isPremium: v.optional(v.boolean()),
+    sourceName: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+  },
+ handler: async (ctx, args) => {
+    const adminUser = await requireAdminAction(ctx);
+
+    // Verify item exists via a query
+    const item = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
+    if (!item) throw new ConvexError({ message: "Content item not found.", code: "not_found" });
+
+    const { contentId, ...updates } = args;
+    const patch: Record<string, unknown> = {};
+    if (updates.title !== undefined) patch.title = updates.title.trim();
+    if (updates.grade !== undefined) patch.grade = updates.grade;
+    if (updates.subjectId !== undefined) patch.subjectId = updates.subjectId;
+    if (updates.contentType !== undefined) patch.contentType = updates.contentType;
+    if (updates.isPremium !== undefined) patch.isPremium = updates.isPremium;
+    if (updates.sourceName !== undefined) patch.sourceName = updates.sourceName?.trim() || undefined;
+    if (updates.sourceUrl !== undefined) patch.sourceUrl = updates.sourceUrl?.trim() || undefined;
+    if (updates.examYear !== undefined) patch.examYear = updates.examYear;
+
+    if (Object.keys(patch).length > 0) {
+      await ctx.runMutation(internal.content.updateContentItem, { contentId: args.contentId, patch });
+    }
+
+    await logEventAction(ctx, {
+      eventType: "content_event", source: "contentAdmin.update", status: "success",
+      userId: adminUser._id,
+      metadata: { contentId, updatedFields: Object.keys(patch) }, durationMs: 0,
+    });
+
+    return { success: true as const };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Delete content item + R2 file
 // ---------------------------------------------------------------------------
 

@@ -64,6 +64,15 @@ export const insertContentItem = internalMutation({
   },
 });
 
+/** Internal patch for admin metadata edits. Only updates provided fields. */
+export const updateContentItem = internalMutation({
+  args: { contentId: v.id("contentItems"), patch: v.record(v.string(), v.any()) },
+  handler: async (ctx, { contentId, patch }) => {
+    await ctx.db.patch(contentId, patch);
+    return { ok: true };
+  },
+});
+
 /** Internal (action-only) removal of a content item + its topic links. */
 export const deleteContentRow = internalMutation({
   args: { contentId: v.id("contentItems") },
