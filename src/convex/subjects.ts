@@ -26,10 +26,15 @@ export const SEED_SUBJECTS = [
   { name: "English", stream: "common" },
   { name: "Mathematics", stream: "common" },
   { name: "Scholastic Aptitude Test", stream: "common" },
+  // Common — grades 9–10 (pre-stream selection)
+  { name: "Amharic", stream: "common" },
+  { name: "IT", stream: "common" },
+  { name: "Citizenship", stream: "common" },
   // Natural science stream
   { name: "Physics", stream: "natural" },
   { name: "Chemistry", stream: "natural" },
   { name: "Biology", stream: "natural" },
+  { name: "Agriculture", stream: "natural" },
   // Social science stream
   { name: "History", stream: "social" },
   { name: "Geography", stream: "social" },
