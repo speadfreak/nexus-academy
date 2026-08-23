@@ -186,21 +186,22 @@ export default function Flashcards() {
             /* Active card */
             <div className="flex flex-col items-center">
               {/* Flip card */}
-              <button
-                type="button"
+              <div
                 onClick={handleFlip}
-                className="interactive-press group relative h-64 w-full cursor-pointer rounded-2xl"
+                className="interactive-press group relative h-64 w-full cursor-pointer"
                 style={{ perspective: "1000px" }}
               >
-                <motion.div
-                  animate={{ rotateY: flipped ? 180 : 0 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                  className="glass-panel absolute inset-0 flex items-center justify-center rounded-2xl p-8"
-                  style={{ transformStyle: "preserve-3d" }}
+                <div
+                  className="absolute inset-0 rounded-2xl"
+                  style={{
+                    transformStyle: "preserve-3d",
+                    transition: "transform 500ms cubic-bezier(0.4, 0, 0.2, 1)",
+                    transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                  }}
                 >
                   {/* Front */}
                   <div
-                    className="absolute inset-0 flex flex-col items-center justify-center p-8"
+                    className="glass-panel absolute inset-0 flex flex-col items-center justify-center rounded-2xl p-8"
                     style={{ backfaceVisibility: "hidden" }}
                   >
                     <p className="type-mono mb-2 text-xs text-muted-foreground">QUESTION</p>
@@ -209,14 +210,17 @@ export default function Flashcards() {
                   </div>
                   {/* Back */}
                   <div
-                    className="absolute inset-0 flex flex-col items-center justify-center p-8"
-                    style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
+                    className="glass-panel absolute inset-0 flex flex-col items-center justify-center rounded-2xl p-8"
+                    style={{
+                      backfaceVisibility: "hidden",
+                      transform: "rotateY(180deg)",
+                    }}
                   >
                     <p className="type-mono mb-2 text-xs text-amber-300">ANSWER</p>
                     <p className="type-body-lg text-center leading-7">{currentCard.back}</p>
                   </div>
-                </motion.div>
-              </button>
+                </div>
+              </div>
 
               {/* Review buttons */}
               <AnimatePresence>
