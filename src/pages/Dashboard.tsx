@@ -145,7 +145,7 @@ function ScrollToTopButton() {
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] as const }}
           onClick={scrollToTop}
           aria-label="Scroll to top"
-          className="glass-panel interactive-press fixed bottom-8 right-8 z-40 flex size-11 cursor-pointer items-center justify-center rounded-xl shadow-[0_0_20px_rgba(116,196,255,0.12)] transition-shadow hover:shadow-[0_0_28px_rgba(116,196,255,0.25)]"
+          className="glass-panel interactive-press fixed bottom-8 right-8 z-40 flex size-11 cursor-pointer items-center justify-center rounded-xl shadow-[0_0_20px_rgba(251,191,36,0.1)] transition-shadow hover:shadow-[0_0_28px_rgba(251,191,36,0.2)]"
         >
           <ArrowUp className="size-4 text-primary" />
         </motion.button>
@@ -177,8 +177,8 @@ function ScrollProgressBar() {
       className="fixed inset-x-0 top-0 z-50 h-[2px] origin-left"
       style={{
         scaleX: progress,
-        background: "linear-gradient(90deg, oklch(0.65 0.15 240), oklch(0.78 0.14 210), oklch(0.82 0.12 195))",
-        boxShadow: "0 0 12px rgba(116,196,255,0.6), 0 0 4px rgba(116,196,255,0.9)",
+        background: "linear-gradient(90deg, oklch(0.65 0.15 85), oklch(0.78 0.14 75), oklch(0.82 0.12 80))",
+        boxShadow: "0 0 12px rgba(251,191,36,0.4), 0 0 4px rgba(251,191,36,0.6)",
       }}
     />
   );
@@ -521,8 +521,8 @@ function WeeklyRecap() {
   return (
     <div className="glass-panel rounded-2xl p-5">
       <div className="flex items-center justify-between">
-        <span className="type-mono uppercase text-muted-foreground">this week</span>
-        <Sparkles className="size-3.5 text-primary/60" />
+        <span className="type-caption text-muted-foreground/70">This week</span>
+        <Sparkles className="size-3.5 text-amber-400/60" />
       </div>
       {recapText ? (
         <p className="type-body mt-3 leading-relaxed text-muted-foreground">{recapText}</p>
@@ -552,7 +552,7 @@ function HeroMeshGrid() {
       <div
         className="absolute inset-0 opacity-[0.05]"
         style={{
-          backgroundImage: `linear-gradient(rgba(116,196,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(116,196,255,0.5) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(rgba(251,191,36,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(251,191,36,0.35) 1px, transparent 1px)`,
           backgroundSize: '28px 28px',
           maskImage: 'radial-gradient(ellipse 90% 80% at 65% 35%, black 15%, transparent 65%)',
           WebkitMaskImage: 'radial-gradient(ellipse 90% 80% at 65% 35%, black 15%, transparent 65%)',
@@ -560,33 +560,33 @@ function HeroMeshGrid() {
       />
       {/* Animated horizontal accent lines */}
       <motion.div
-        className="absolute left-0 right-0 top-[38%] h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent"
+        className="absolute left-0 right-0 top-[38%] h-px bg-gradient-to-r from-transparent via-amber-400/20 to-transparent"
         initial={{ scaleX: 0, opacity: 0 }}
         animate={{ scaleX: 1, opacity: 1 }}
         transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] as const, delay: 0.2 }}
       />
       <motion.div
-        className="absolute bottom-[22%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/12 to-transparent"
+        className="absolute bottom-[22%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/8 to-transparent"
         initial={{ scaleX: 0, opacity: 0 }}
         animate={{ scaleX: 1, opacity: 1 }}
         transition={{ duration: 2.2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.5 }}
       />
       {/* Animated vertical accent line */}
       <motion.div
-        className="absolute left-[45%] top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary/10 to-transparent"
+        className="absolute left-[45%] top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-amber-400/8 to-transparent"
         initial={{ scaleY: 0, opacity: 0 }}
         animate={{ scaleY: 1, opacity: 1 }}
         transition={{ duration: 2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.4 }}
       />
       {/* Floating ambient orbs */}
       <motion.div
-        className="absolute -right-6 top-1/3 size-48 -translate-y-1/2 rounded-full bg-primary/[0.06]"
+        className="absolute -right-6 top-1/3 size-48 -translate-y-1/2 rounded-full bg-amber-400/[0.06]"
         style={{ filter: 'blur(40px)' }}
         animate={{ x: [0, 20, 0], y: [0, -15, 0], scale: [1, 1.15, 1] }}
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -left-4 bottom-1/4 size-32 rounded-full bg-primary/[0.04]"
+        className="absolute -left-4 bottom-1/4 size-32 rounded-full bg-primary/[0.03]"
         style={{ filter: 'blur(30px)' }}
         animate={{ x: [0, -12, 0], y: [0, 10, 0], scale: [1, 1.1, 1] }}
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 2 }}
@@ -861,15 +861,15 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as const }}
         >
-          {/* Ambient glow */}
-          <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-16 -left-16 size-48 rounded-full bg-primary/5 blur-3xl" />
+          {/* Ambient warm reading-light glow */}
+          <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-amber-400/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-16 size-48 rounded-full bg-amber-400/[0.04] blur-3xl" />
           <HeroMeshGrid />
 
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <motion.p
-                className="flex items-center gap-2.5 type-mono font-bold uppercase tracking-[0.18em] text-primary"
+                className="flex items-center gap-2.5 type-caption font-semibold text-primary/80"
                 initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
@@ -930,7 +930,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => document.getElementById("library-search")?.focus()}
-                className="mt-5 flex w-full max-w-xl items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left shadow-[0_10px_30px_-18px_rgba(56,189,248,0.7)] transition hover:border-primary/40 hover:bg-black/30"
+                className="mt-5 flex w-full max-w-xl items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left shadow-[0_10px_30px_-18px_rgba(251,191,36,0.35)] transition hover:border-amber-400/30 hover:bg-black/30"
               >
                 <Search className="size-4 shrink-0 text-primary" />
                 <span className="type-caption flex-1 text-muted-foreground">Search the national learning library…</span>
@@ -940,7 +940,7 @@ export default function Dashboard() {
                 <span className="h-1.5 w-10 rounded-full bg-[#168b49]" />
                 <span className="h-1.5 w-10 rounded-full bg-[#f5c542]" />
                 <span className="h-1.5 w-10 rounded-full bg-[#c83b3b]" />
-                <span className="ml-1 type-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">Built for Ethiopian students</span>
+                <span className="ml-1 type-caption text-[10px] text-muted-foreground/60">Built for Ethiopian students</span>
               </div>
 
               {/* Stream breakdown pills */}
@@ -980,25 +980,22 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Personal library snapshot */}
-            <div className="hub-command-deck w-full max-w-sm shrink-0 rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl">
+            {/* Library stats */}
+            <div className="w-full max-w-sm shrink-0 rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground/85">Your library</span>
-                <span className="flex items-center gap-1.5 text-xs text-emerald-200/80">
-                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> Ready to explore
-                </span>
+                <span className="type-caption font-semibold text-foreground/60">Your Library</span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
-                  <p className="text-xs text-muted-foreground">Resources</p>
+                  <p className="type-caption text-muted-foreground/70">Resources</p>
                   <p className="mt-1 type-h2 text-primary">{totalContent}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
-                  <p className="text-xs text-muted-foreground">Saved</p>
+                  <p className="type-caption text-muted-foreground/70">Saved</p>
                   <p className="mt-1 type-h2 text-emerald-300">{bookmarkIds?.length ?? 0}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
-                  <p className="text-xs text-muted-foreground">Subjects</p>
+                  <p className="type-caption text-muted-foreground/70">Subjects</p>
                   <p className="mt-1 type-h2 text-amber-300">{subjects?.length ?? 0}</p>
                 </div>
               </div>
@@ -1039,37 +1036,37 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.25 }}
         >
-          <div className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-primary/10 blur-3xl" />
+          <div className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-amber-400/[0.07] blur-3xl" />
           <div className="relative flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold tracking-wide text-amber-200/80">A little time for yourself</p>
-              <h2 className="type-h1 mt-1">Where would you like to begin?</h2>
-              <p className="type-body mt-1 text-muted-foreground">Settle in with a textbook, practise with an exam, or return to something you saved.</p>
+              <p className="type-caption font-semibold text-primary/70">Your Library</p>
+              <h2 className="type-h1 mt-1">Ready to dive in?</h2>
+              <p className="type-body mt-1 text-muted-foreground">Pick a section below, or search for something specific.</p>
             </div>
-            <p className="type-mono text-muted-foreground">{totalContent} indexed · {bookmarkIds?.length ?? 0} saved</p>
+            <p className="type-caption text-muted-foreground/60">{totalContent} resource{totalContent !== 1 ? "s" : ""} · {bookmarkIds?.length ?? 0} saved</p>
           </div>
 
           <div className="relative mt-5 grid gap-3 md:grid-cols-3">
             {[
               {
-                label: "Textbooks",
-                detail: "Build your foundation",
+                label: "Core textbooks",
+                detail: "Build the foundation",
                 count: textbookCount,
                 icon: BookOpen,
                 accent: "bg-emerald-400/10 text-emerald-300",
                 onClick: () => { setContentType("textbook"); setExamYear(""); },
               },
               {
-                label: "Past exams",
-                detail: "Practise with confidence",
+                label: "National exam archive",
+                detail: "Train under pressure",
                 count: pastExamCount,
                 icon: CalendarDays,
                 accent: "bg-amber-400/10 text-amber-300",
                 onClick: () => { setContentType("past_exam"); setExamYear(""); },
               },
               {
-                label: "Saved reading",
-                detail: "Pick up where you left off",
+                label: "Your reading list",
+                detail: "Return to saved work",
                 count: bookmarkIds?.length ?? 0,
                 icon: BookmarkCheck,
                 accent: "bg-primary/10 text-primary",
@@ -1092,7 +1089,7 @@ export default function Dashboard() {
                   </div>
                   <p className="mt-4 type-h3">{card.label}</p>
                   <p className="mt-1 type-caption text-muted-foreground">{card.detail}</p>
-                  <span className="mt-4 inline-flex items-center text-sm font-semibold text-primary opacity-70 transition group-hover:opacity-100">Explore →</span>
+                  <span className="mt-4 inline-flex items-center type-caption font-semibold text-primary/70 transition group-hover:text-primary">Explore →</span>
                 </button>
               );
             })}
@@ -1106,10 +1103,10 @@ export default function Dashboard() {
             >
               <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"><Sparkles className="size-4" /></span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-amber-200/80">A good place to start</span>
+                <span className="block type-caption font-semibold text-primary/70">Pick up where you left off</span>
                 <span className="block truncate type-body font-semibold">{content[0].title}</span>
               </span>
-              <span className="hidden type-mono text-primary sm:block">START READING →</span>
+              <span className="hidden type-caption font-semibold text-primary sm:block">Continue reading →</span>
             </button>
           )}
         </motion.section>
@@ -1126,8 +1123,8 @@ export default function Dashboard() {
               <Quote className="size-4.5" />
             </div>
             <div className="min-w-0">
-              <p className="type-mono uppercase tracking-[0.2em] text-muted-foreground">
-                // today
+              <p className="type-caption text-muted-foreground">
+                Today
               </p>
               <p className="type-body-lg mt-1 text-foreground/90">{quote.text}</p>
               {quote.author && (
@@ -1243,7 +1240,7 @@ export default function Dashboard() {
         >
           <div className="student-stat-card student-stat-streak glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
-              <span className="type-mono uppercase text-muted-foreground">streak</span>
+              <span className="type-caption text-muted-foreground/70">Streak</span>
               <motion.div
                 className="flex size-8 items-center justify-center rounded-xl bg-orange-400/10 text-orange-300"
                 animate={{ scale: [1, 1.18, 1] }}
@@ -1264,7 +1261,7 @@ export default function Dashboard() {
 
           <div className="student-stat-card student-stat-study glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
-              <span className="type-mono uppercase text-muted-foreground">studied</span>
+              <span className="type-caption text-muted-foreground/70">Studied</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
                 <Clock className="size-4" />
               </div>
@@ -1278,7 +1275,7 @@ export default function Dashboard() {
 
           <div className="student-stat-card student-stat-week glass-panel hover-lift rounded-2xl p-4">
             <div className="flex items-center justify-between">
-              <span className="type-mono uppercase text-muted-foreground">this week</span>
+              <span className="type-caption text-muted-foreground/70">This week</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
                 <CalendarDays className="size-4" />
               </div>
@@ -1292,7 +1289,7 @@ export default function Dashboard() {
 
           <Link to="/todos" className="student-stat-card student-stat-todos glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
-              <span className="type-mono uppercase text-muted-foreground">todos</span>
+              <span className="type-caption text-muted-foreground/70">To-dos</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-300">
                 <CheckCircle2 className="size-4" />
               </div>
@@ -1306,7 +1303,7 @@ export default function Dashboard() {
 
           <Link to="/achievements" className="student-stat-card student-stat-level glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
-              <span className="type-mono uppercase text-muted-foreground">level</span>
+              <span className="type-caption text-muted-foreground/70">Level</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
                 <Trophy className="size-4" />
               </div>
@@ -1385,7 +1382,7 @@ export default function Dashboard() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
         >
           <div className="flex items-center justify-between">
-            <span className="type-mono uppercase text-muted-foreground">focus minutes · last 7 days</span>
+            <span className="type-caption text-muted-foreground/70">Focus time this week</span>
             <Flame className="size-3.5 text-primary/60" />
           </div>
           <div className="mt-3 flex h-24 items-end gap-2">
@@ -1440,8 +1437,8 @@ export default function Dashboard() {
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <span className="type-mono uppercase text-muted-foreground">
-                  daily challenge · one shot per subject
+                <span className="type-caption text-muted-foreground/70">
+                  Daily challenge — one try per subject
                 </span>
                 <p className="type-body-lg mt-1 font-semibold">
                   {activeChallenge.question ?? "Preparing today's question…"}
@@ -1551,16 +1548,16 @@ export default function Dashboard() {
           <div className="relative">
             <motion.div
               className="pointer-events-none absolute -inset-px rounded-xl"
-              style={{ background: 'linear-gradient(135deg, rgba(116,196,255,0.18), rgba(116,196,255,0.04), rgba(116,196,255,0.18))', borderRadius: '0.75rem' }}
+              style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.14), rgba(251,191,36,0.03), rgba(251,191,36,0.14))', borderRadius: '0.75rem' }}
               animate={{ opacity: searchFocused ? 1 : 0, scale: searchFocused ? 1.02 : 1 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] as const }}
             />
             <motion.div
-              animate={{ color: searchFocused ? 'oklch(0.74 0.15 232)' : undefined }}
+              animate={{ color: searchFocused ? 'oklch(0.78 0.14 85)' : undefined }}
               transition={{ duration: 0.2 }}
               className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted-foreground"
             >
-              <Search className={cn("size-4", searchFocused && "drop-shadow-[0_0_6px_rgba(116,196,255,0.6)]")} />
+              <Search className={cn("size-4", searchFocused && "drop-shadow-[0_0_6px_rgba(251,191,36,0.5)]")} />
             </motion.div>
             <Input
                 id="library-search"
@@ -1569,7 +1566,7 @@ export default function Dashboard() {
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
               placeholder='Search the library — "physics past exam", "grade 10 chemistry"'
-              className="relative z-[2] h-11 rounded-xl border-white/10 bg-white/5 pl-9 pr-9 type-body transition-shadow duration-300 focus-visible:shadow-[0_0_28px_rgba(116,196,255,0.15)]"
+              className="relative z-[2] h-11 rounded-xl border-white/10 bg-white/5 pl-9 pr-9 type-body transition-shadow duration-300 focus-visible:shadow-[0_0_28px_rgba(251,191,36,0.12)]"
             />
             {searchQuery && (
               <button
@@ -1714,7 +1711,7 @@ export default function Dashboard() {
               <section className="library-section glass-soft rounded-2xl p-4 sm:p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <p className="type-mono uppercase text-emerald-200/80">Continue where you left off</p>
+                    <p className="type-h3 text-emerald-200/90">Continue where you left off</p>
                     <p className="type-caption mt-1 text-muted-foreground">Your saved reading list</p>
                   </div>
                   <BookmarkCheck className="size-4 text-emerald-300" />
@@ -1723,7 +1720,7 @@ export default function Dashboard() {
                   {savedContent.map((item) => (
                     <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-[190px] max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-emerald-300/30 hover:bg-white/[0.07]">
                       <p className="line-clamp-2 type-caption font-bold">{item.title}</p>
-                      <p className="mt-2 type-mono text-emerald-200/70">{item.subjectName} · Grade {item.grade}</p>
+                      <p className="mt-2 type-caption text-emerald-200/60">{item.subjectName} · Grade {item.grade}</p>
                     </button>
                   ))}
                 </div>
@@ -1732,8 +1729,8 @@ export default function Dashboard() {
             <section className="library-section glass-soft rounded-2xl p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <p className="type-mono uppercase text-amber-200/80">Recently added</p>
-                  <p className="type-caption mt-1 text-muted-foreground">Fresh resources in the hub</p>
+                  <p className="type-h3 text-amber-200/90">Recently added</p>
+                  <p className="type-caption mt-1 text-muted-foreground">Fresh in the library</p>
                 </div>
                 <Sparkles className="size-4 text-amber-300" />
               </div>
@@ -1741,7 +1738,7 @@ export default function Dashboard() {
                 {recentContent.map((item) => (
                   <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-[190px] max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-amber-300/30 hover:bg-white/[0.07]">
                     <p className="line-clamp-2 type-caption font-bold">{item.title}</p>
-                    <p className="mt-2 type-mono text-amber-200/70">{CONTENT_TYPE_LABELS[item.contentType]} · {item.subjectName}</p>
+                    <p className="mt-2 type-caption text-amber-200/60">{CONTENT_TYPE_LABELS[item.contentType]} · {item.subjectName}</p>
                   </button>
                 ))}
               </div>
@@ -1780,7 +1777,8 @@ export default function Dashboard() {
         ) : (
           <>
             {/* Result count header */}
-            <div className="flex items-center justify-between">                <p className="type-mono uppercase text-muted-foreground">
+            <div className="flex items-center justify-between">
+                <p className="type-caption text-muted-foreground">
                 {visibleContent?.length ?? 0} result{(visibleContent?.length ?? 0) !== 1 ? "s" : ""}
               </p>
               {!hasFilters && (
