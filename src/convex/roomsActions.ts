@@ -33,6 +33,9 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { createHmac } from "crypto";
+import https from "node:https";
+import http from "node:http";
+import { URL } from "node:url";
 import { action } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -43,10 +46,14 @@ import { logEventAction } from "./systemEvents";
 const LIVEKIT_API_BASE = "https://api.livekit.io";
 const TOKEN_TTL_SECONDS = 60 * 15; // 15 minutes — short-lived by design
 const ROOM_EMPTY_TIMEOUT_SECONDS = 60 * 15; // auto-close after 15 min empty
-const FETCH_TIMEOUT_MS = 15_000; // 15 s timeout for outbound LiveKit calls
-const MAX_RETRIES = 2; // retry once on transient failures
+const REQUEST_TIMEOUT_MS = 15_000;
+const MAX_RETRIES = 2;
 
-async function requireLiveKitConfig(ctx: ActionCtx): Promise<{ url: string; apiKey: string; apiSecret: string }> {
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+async function requireLiveKitConfig(
+  ctx: ActionCtx,
+): Promise<{ url: string; apiKey: string; apiSecret: string }> {
   const resolved = await ctx.runQuery(internal.configKeys.resolveConfigValues, {
     keys: ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"],
   });
@@ -63,36 +70,145 @@ async function requireLiveKitConfig(ctx: ActionCtx): Promise<{ url: string; apiK
   return { url, apiKey, apiSecret };
 }
 
-function base64url(input: string | Buffer): string {
-  return Buffer.from(input).toString("base64url");
+// ─── Low-level HTTP (node:https) ─────────────────────────────────────────────
+// Convex's "use node" action runtime sometimes fails with the global `fetch`
+// ("fetch failed" / TypeError). Using node:https directly is more reliable
+// because it bypasses any fetch polyfill and gives us socket-level timeout
+// control and detailed error messages.
+
+interface HttpResult {
+  status: number;
+  body: string;
 }
 
-/** Build the LiveKit Basic Auth header value (base64 of apiKey:apiSecret). */
 function liveKitAuthHeader(apiKey: string, apiSecret: string): string {
   return `Basic ${Buffer.from(`${apiKey}:${apiSecret}`).toString("base64")}`;
 }
 
-/** Fetch with timeout and optional retry for transient network errors. */
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit,
+/** Make an HTTPS (or HTTP) request using node:http/https with timeout + retry. */
+function httpRequest(
+  method: string,
+  urlStr: string,
+  headers: Record<string, string>,
+  body: string | null,
   retries = MAX_RETRIES,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    return res;
-  } catch (err) {
-    if (retries > 0) {
-      // Retry on network-level errors (DNS, timeout, connection reset)
-      await new Promise((r) => setTimeout(r, 500));
-      return fetchWithRetry(url, init, retries - 1);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
+): Promise<HttpResult> {
+  return new Promise((resolve, reject) => {
+    const doRequest = (attempt: number) => {
+      let parsed: URL;
+      try {
+        parsed = new URL(urlStr);
+      } catch {
+        reject(new Error(`Invalid URL: ${urlStr}`));
+        return;
+      }
+
+      const transport = parsed.protocol === "https:" ? https : http;
+      const reqHeaders: Record<string, string> = {
+        ...headers,
+        Host: parsed.host,
+      };
+
+      const req = transport.request(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+          path: parsed.pathname + parsed.search,
+          method,
+          headers: reqHeaders,
+          timeout: REQUEST_TIMEOUT_MS,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk: Buffer) => chunks.push(chunk));
+          res.on("end", () => {
+            const body = Buffer.concat(chunks).toString("utf-8");
+            resolve({ status: res.statusCode ?? 0, body });
+          });
+        },
+      );
+
+      req.on("timeout", () => {
+        req.destroy(new Error(`Request to ${parsed.host} timed out after ${REQUEST_TIMEOUT_MS}ms`));
+      });
+
+      req.on("error", (err: Error) => {
+        if (attempt < retries) {
+          // Retry on transient network errors after a short delay
+          setTimeout(() => doRequest(attempt + 1), 500 * (attempt + 1));
+        } else {
+          // Wrap with context to make debugging easier
+          reject(
+            new Error(
+              `Network error calling LiveKit API (${parsed.host}): ${err.message}`,
+            ),
+          );
+        }
+      });
+
+      if (body) {
+        req.write(body);
+      }
+      req.end();
+    };
+
+    doRequest(0);
+  });
+}
+
+// ─── LiveKit REST helpers ────────────────────────────────────────────────────
+
+async function liveKitCreateRoom(
+  apiKey: string,
+  apiSecret: string,
+  name: string,
+): Promise<void> {
+  const url = `${LIVEKIT_API_BASE}/rtc/rooms`;
+  const { status, body } = await httpRequest(
+    "POST",
+    url,
+    {
+      "Content-Type": "application/json",
+      Authorization: liveKitAuthHeader(apiKey, apiSecret),
+    },
+    JSON.stringify({
+      name,
+      emptyTimeout: ROOM_EMPTY_TIMEOUT_SECONDS,
+    }),
+  );
+  if (status < 200 || status >= 300) {
+    throw new Error(
+      `LiveKit create room failed (${status}): ${body.slice(0, 200)}`,
+    );
   }
+}
+
+async function liveKitDeleteRoom(
+  apiKey: string,
+  apiSecret: string,
+  name: string,
+): Promise<void> {
+  const url = `${LIVEKIT_API_BASE}/rtc/rooms/${encodeURIComponent(name)}`;
+  const { status, body } = await httpRequest(
+    "DELETE",
+    url,
+    {
+      Authorization: liveKitAuthHeader(apiKey, apiSecret),
+    },
+    null,
+  );
+  // 404 means the room was already gone — that's fine.
+  if (status !== 404 && (status < 200 || status >= 300)) {
+    throw new Error(
+      `LiveKit delete room failed (${status}): ${body.slice(0, 200)}`,
+    );
+  }
+}
+
+// ─── JWT helpers ─────────────────────────────────────────────────────────────
+
+function base64url(input: string | Buffer): string {
+  return Buffer.from(input).toString("base64url");
 }
 
 /**
@@ -132,38 +248,7 @@ function signLiveKitToken(
   return `${headerB64}.${payloadB64}.${signature}`;
 }
 
-async function liveKitCreateRoom(apiKey: string, apiSecret: string, name: string): Promise<void> {
-  const url = `${LIVEKIT_API_BASE}/rtc/rooms`;
-  const response = await fetchWithRetry(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: liveKitAuthHeader(apiKey, apiSecret),
-    },
-    body: JSON.stringify({
-      name,
-      emptyTimeout: ROOM_EMPTY_TIMEOUT_SECONDS,
-      // No egress config — recording is never enabled in this build.
-    }),
-  });
-  if (!response.ok) {
-    const raw = await response.text().catch(() => "");
-    throw new Error(`LiveKit create room failed (${response.status}): ${raw.slice(0, 200)}`);
-  }
-}
-
-async function liveKitDeleteRoom(apiKey: string, apiSecret: string, name: string): Promise<void> {
-  const url = `${LIVEKIT_API_BASE}/rtc/rooms/${encodeURIComponent(name)}`;
-  const response = await fetchWithRetry(url, {
-    method: "DELETE",
-    headers: { Authorization: liveKitAuthHeader(apiKey, apiSecret) },
-  });
-  // 404 means the room was already gone — that's fine.
-  if (!response.ok && response.status !== 404) {
-    const raw = await response.text().catch(() => "");
-    throw new Error(`LiveKit delete room failed (${response.status}): ${raw.slice(0, 200)}`);
-  }
-}
+// ─── Actions ─────────────────────────────────────────────────────────────────
 
 /**
  * Create a room in a group the caller belongs to, provision it with the
@@ -175,7 +260,10 @@ export const createRoom = action({
     groupId: v.id("studyGroups"),
     name: v.string(),
   },
-  handler: async (ctx, { groupId, name }): Promise<{ roomId: Id<"studyRooms">; name: string }> => {
+  handler: async (
+    ctx,
+    { groupId, name },
+  ): Promise<{ roomId: Id<"studyRooms">; name: string }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
@@ -203,7 +291,8 @@ export const createRoom = action({
     try {
       await liveKitCreateRoom(apiKey, apiSecret, providerRoomId);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Could not create the video room.";
+      const msg =
+        error instanceof Error ? error.message : "Could not create the video room.";
       throw new ConvexError({
         message: `Video provider error: ${msg}. Check that your LiveKit API Key & Secret are correct in the Keys tab.`,
         code: "provider_error",
@@ -237,7 +326,7 @@ export const createRoom = action({
         userId: memberId,
         type: "room",
         title: `Room started: ${trimmed}`,
-        body: `${creatorName} started a study room in “${group.name}”.`,
+        body: `${creatorName} started a study room in "${group.name}".`,
         actionUrl: `/rooms/${roomId}`,
       });
     }
@@ -253,7 +342,10 @@ export const createRoom = action({
  */
 export const getJoinToken = action({
   args: { roomId: v.id("studyRooms") },
-  handler: async (ctx, { roomId }): Promise<{ url: string; token: string }> => {
+  handler: async (
+    ctx,
+    { roomId },
+  ): Promise<{ url: string; token: string }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
@@ -319,7 +411,8 @@ export const endRoom = action({
     });
     if (room.createdBy !== userId && groupRole !== "owner") {
       throw new ConvexError({
-        message: "Only the room creator or a group owner can end the room for everyone.",
+        message:
+          "Only the room creator or a group owner can end the room for everyone.",
         code: "unauthorized",
       });
     }
@@ -328,7 +421,8 @@ export const endRoom = action({
     try {
       await liveKitDeleteRoom(apiKey, apiSecret, room.videoProviderRoomId);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Could not end the video room.";
+      const msg =
+        error instanceof Error ? error.message : "Could not end the video room.";
       throw new ConvexError({
         message: `Video provider error: ${msg}. Check that your LiveKit API Key & Secret are correct in the Keys tab.`,
         code: "provider_error",
