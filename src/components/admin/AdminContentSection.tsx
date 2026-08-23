@@ -69,9 +69,10 @@ export function AdminContentSection() {
   const subjects = useQuery(api.subjects.getAll);
   const seedSubjects = useMutation(api.subjects.seed);
 
-  // Auto-seed subjects when the catalog is empty
+  // Auto-seed subjects on mount (idempotent — skips existing slugs).
+  // This ensures new subjects added to SEED_SUBJECTS appear automatically.
   useEffect(() => {
-    if (subjects !== undefined && subjects.length === 0) {
+    if (subjects !== undefined) {
       seedSubjects().catch(() => {});
     }
   }, [subjects, seedSubjects]);
