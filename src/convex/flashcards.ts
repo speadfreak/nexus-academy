@@ -151,10 +151,14 @@ export const generateDeck = action({
       title = "Flashcards from Tutor Chat";
       sourceText = messages.map((m) => `${m.role}: ${m.content}`).join("\n").slice(0, 6000);
     } else {
-      throw new ConvexError({
-        message: "Provide a content item or conversation as source material.",
-        code: "invalid",
-      });
+      // Topic mode: generate from subject metadata (name, stream, grade).
+      // The AI knows the Ethiopian curriculum and can produce relevant cards.
+      title = `${subject.name} Flashcards`;
+      sourceText =
+        `Subject: ${subject.name}\n` +
+        `Stream: ${subject.stream}\n` +
+        `Generate flashcards covering key topics, definitions, and concepts typically\n` +
+        `found in the Ethiopian national curriculum (EHEEE/ESSLCE) for this subject.`;
     }
 
     const count = 12;
