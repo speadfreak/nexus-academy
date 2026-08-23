@@ -137,8 +137,8 @@ export default function Journey() {
     <DashboardShell>
       <div className="relative flex flex-col gap-6">
         {/* Ambient glow behind header */}
-        <div className="pointer-events-none absolute -top-12 -left-8 size-44 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
-        <div className="pointer-events-none absolute -right-8 top-4 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -top-12 -left-8 size-44 rounded-full bg-amber-400/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -right-8 top-4 size-36 rounded-full bg-amber-400/[0.05] blur-[64px]" aria-hidden="true" />
 
         {/* Header */}
         <motion.div
@@ -147,7 +147,7 @@ export default function Journey() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           className="relative"
         >
-          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // analytics · journey
           </p>
           <h1 className="type-h1 mt-1">Your journey</h1>
@@ -156,11 +156,11 @@ export default function Journey() {
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2.5">
             <span className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1 type-mono text-[10px]">
-              <Clock className="size-3 text-primary" />
+              <Clock className="size-3 text-amber-300" />
               {heroStats ? `${heroStats.totalHours.toFixed(1)}h studied` : "no data"}
             </span>
             <span className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1 type-mono text-[10px]">
-              <Sparkles className="size-3 text-primary" />
+              <Sparkles className="size-3 text-amber-300" />
               {heroStats?.totalQuizzes ?? 0} quizzes
             </span>
             {journey.premiumAccess && (
@@ -179,18 +179,18 @@ export default function Journey() {
               value: heroStats ? `${heroStats.totalHours.toFixed(1)}` : "0",
               unit: "h",
               icon: Clock,
-              accent: "text-primary",
-              iconBg: "bg-primary/10",
-              glow: "shadow-[0_0_24px_-8px_rgb(56_189_248/0.5)]",
+              accent: "text-amber-300",
+              iconBg: "bg-amber-400/10",
+              glow: "shadow-[0_0_24px_-8px_rgb(251,191,36/0.5)]",
             },
             {
               label: "Quizzes taken",
               value: String(heroStats?.totalQuizzes ?? 0),
               unit: "",
               icon: Sparkles,
-              accent: "text-primary",
-              iconBg: "bg-primary/10",
-              glow: "shadow-[0_0_24px_-8px_rgb(56_189_248/0.4)]",
+              accent: "text-amber-300",
+              iconBg: "bg-amber-400/10",
+              glow: "shadow-[0_0_24px_-8px_rgb(251,191,36/0.4)]",
             },
             {
               label: "Avg. score",
@@ -242,7 +242,7 @@ export default function Journey() {
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
                 <BookOpen className="size-4" />
               </div>
               <p className="type-body font-semibold">Hours studied per subject</p>
@@ -253,7 +253,7 @@ export default function Journey() {
           </div>
           {hoursData.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-center">
-              <Flame className="size-6 text-primary/30" />
+              <Flame className="size-6 text-amber-300/30" />
               <p className="type-body mt-3 text-muted-foreground">
                 Log a focus session and your time-per-subject shows up here.
               </p>
@@ -290,7 +290,7 @@ export default function Journey() {
           className="glass-panel rounded-2xl p-5"
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
               <TrendingUp className="size-4" />
             </div>
             <p className="type-body font-semibold">Quiz score trend</p>
@@ -351,7 +351,7 @@ export default function Journey() {
             className="glass-panel rounded-2xl p-5"
           >
             <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
                 <Target className="size-4" />
               </div>
               <p className="type-body font-semibold">Topic completion</p>
@@ -407,7 +407,7 @@ export default function Journey() {
             className="glass-panel rounded-2xl p-5"
           >
             <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
                 <Link2 className="size-4" />
               </div>
               <p className="type-body font-semibold">Cross-subject links</p>
@@ -432,7 +432,7 @@ export default function Journey() {
                     className="glass-soft rounded-xl px-3.5 py-3 hover-lift"
                   >
                     <p className="flex items-center gap-2 type-body font-semibold">
-                      <Brain className="size-3.5 text-primary" />
+                      <Brain className="size-3.5 text-amber-300" />
                       {correlation.topicName}
                       <Badge className="glass-chip border-0 type-mono text-[9px] text-muted-foreground">
                         grade {correlation.grade}
@@ -459,7 +459,7 @@ export default function Journey() {
             className="glass-panel rounded-2xl p-5"
           >
             <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
                 <Sparkles className="size-4" />
               </div>
               <p className="type-body font-semibold">Recent quiz attempts</p>
@@ -474,7 +474,7 @@ export default function Journey() {
                   className="flex items-center justify-between gap-3 rounded-xl bg-white/4 px-3.5 py-2.5 hover-lift"
                 >
                   <p className="flex items-center gap-2 type-body font-semibold">
-                    <Sparkles className="size-3.5 text-primary" />
+                    <Sparkles className="size-3.5 text-amber-300" />
                     {attempt.subjectName}
                   </p>
                   <div className="flex items-center gap-3">

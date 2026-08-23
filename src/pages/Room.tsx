@@ -248,7 +248,7 @@ export default function Room() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <Loader2 className="size-6 animate-spin text-primary" />
+          <Loader2 className="size-6 animate-spin text-amber-300" />
           <p className="font-mono text-xs uppercase tracking-[0.2em]">Entering room…</p>
         </div>
       </div>
@@ -322,7 +322,7 @@ export default function Room() {
             className={cn(
               "flex h-9 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors",
               chatOpen
-                ? "border-primary/30 bg-primary/10 text-primary"
+                ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
                 : "border-white/10 text-muted-foreground hover:bg-white/5",
             )}
           >
@@ -334,7 +334,7 @@ export default function Room() {
             className={cn(
               "flex h-9 cursor-pointer items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors",
               workspaceOpen
-                ? "border-primary/30 bg-primary/10 text-primary"
+                ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
                 : "border-white/10 text-muted-foreground hover:bg-white/5",
             )}
           >
@@ -367,7 +367,7 @@ export default function Room() {
             {!token ? (
               <div className="flex h-full items-center justify-center">
                 <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                  <Loader2 className="size-6 animate-spin text-primary" />
+                  <Loader2 className="size-6 animate-spin text-amber-300" />
                   <p className="font-mono text-xs uppercase tracking-[0.2em]">Connecting…</p>
                 </div>
               </div>
@@ -437,7 +437,7 @@ export default function Room() {
                 <div className="flex min-h-0 flex-1 flex-col">
                   <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
                     <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                      <MessageSquare className="size-3.5 text-primary" /> Room chat
+                      <MessageSquare className="size-3.5 text-amber-300" /> Room chat
                     </p>
                     <button
                       type="button"
@@ -460,12 +460,12 @@ export default function Room() {
                             className={cn(
                               "max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed",
                               message.isMine
-                                ? "rounded-br-sm bg-primary/20 text-foreground"
+                                ? "rounded-br-sm bg-amber-400/20 text-foreground"
                                 : "rounded-bl-sm bg-white/5 text-foreground",
                             )}
                           >
                             {!message.isMine && (
-                              <p className="mb-0.5 text-[10px] font-bold text-primary">{message.name}</p>
+                              <p className="mb-0.5 text-[10px] font-bold text-amber-300">{message.name}</p>
                             )}
                             <p className="whitespace-pre-wrap break-words">{message.content}</p>
                           </div>
@@ -506,7 +506,7 @@ export default function Room() {
                 <div className="flex min-h-0 flex-1 flex-col border-t border-white/5 lg:border-t-0">
                   <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
                     <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                      <Share2 className="size-3.5 text-primary" /> Shared workspace
+                      <Share2 className="size-3.5 text-amber-300" /> Shared workspace
                     </p>
                     <div className="flex items-center gap-1">
                       <button
@@ -587,7 +587,7 @@ export default function Room() {
               key={participant.userId}
               className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-xl bg-white/5 py-1.5 pl-1.5 pr-1"
             >
-              <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15 font-mono text-[10px] font-extrabold text-primary">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-amber-400/15 font-mono text-[10px] font-extrabold text-amber-300">
                 {initialsOf(participant.name)}
               </div>
               <div className="flex flex-col">
@@ -674,7 +674,7 @@ export default function Room() {
         <DialogContent className="glass-panel max-w-lg rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Paperclip className="size-4 text-primary" />
+              <Paperclip className="size-4 text-amber-300" />
               {shareDialog === "content" ? "Share a content item" : "Share one of your notes"}
             </DialogTitle>
             <DialogDescription>
@@ -709,7 +709,7 @@ export default function Room() {
                           : "border-white/5 bg-white/[0.02] hover:bg-white/5",
                       )}
                     >
-                      <BookOpen className="size-4 shrink-0 text-primary" />
+                      <BookOpen className="size-4 shrink-0 text-amber-300" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{item.title}</p>
                         <p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
@@ -748,7 +748,7 @@ export default function Room() {
                         : "border-white/5 bg-white/[0.02] hover:bg-white/5",
                     )}
                   >
-                    <FileText className="size-4 shrink-0 text-primary" />
+                    <FileText className="size-4 shrink-0 text-amber-300" />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">
                         Note · {note.subjectName}

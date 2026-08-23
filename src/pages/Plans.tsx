@@ -94,7 +94,7 @@ export default function Plans() {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         {/* Header */}
         <div>
-          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // ai study plans
           </p>
           <h1 className="type-h1 mt-1">Plans</h1>
@@ -180,7 +180,7 @@ export default function Plans() {
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center"
             >
-              <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/8 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.6)]">
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-amber-400/8 text-amber-300 shadow-[0_0_40px_-12px_rgb(251,191,36/0.6)]">
                 <Map className="size-7" />
               </div>
               <h3 className="type-h3 mt-6">Pick a subject to begin</h3>
@@ -214,7 +214,7 @@ export default function Plans() {
               className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center"
             >
               <div className="relative">
-                <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/8 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.6)]">
+                <div className="flex size-16 items-center justify-center rounded-2xl bg-amber-400/8 text-amber-300 shadow-[0_0_40px_-12px_rgb(251,191,36/0.6)]">
                   <CalendarClock className="size-7" />
                 </div>
                 <div className="absolute -right-1 -top-1 flex size-6 items-center justify-center rounded-lg bg-premium/15 text-premium shadow-[0_0_12px_-4px_rgb(245_197_66/0.8)]">
@@ -239,7 +239,7 @@ export default function Plans() {
               <div className="glass-panel rounded-2xl p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300">
                       <Route className="size-4" />
                     </div>
                     <div>
@@ -320,7 +320,7 @@ export default function Plans() {
                             className={cn(
                               "mt-0.5 flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border-2 transition-all duration-200 interactive-press",
                               done
-                                ? "border-primary/50 bg-primary/15 text-primary shadow-[0_0_16px_-6px_rgb(56_189_248/0.5)]"
+                                ? "border-primary/50 bg-primary/15 text-primary shadow-[0_0_16px_-6px_rgb(251,191,36/0.5)]"
                                 : "border-white/15 bg-white/4 text-muted-foreground hover:border-primary/40 hover:text-primary",
                             )}
                           >
@@ -340,7 +340,7 @@ export default function Plans() {
 
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="type-mono text-[11px] font-bold uppercase tracking-[0.15em] text-primary">
+                            <span className="type-mono text-[11px] font-bold uppercase tracking-[0.15em] text-amber-300">
                               week {week.week}
                             </span>
                             <Badge className="glass-chip border-0 type-mono text-[10px] text-muted-foreground">

@@ -155,7 +155,7 @@ export default function Upgrade() {
     <DashboardShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <div>
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
             // premium access
           </p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Upgrade</h1>
@@ -199,7 +199,7 @@ export default function Upgrade() {
         {/* Free vs premium comparison — rendered from the real limits */}
         <div className="glass-panel overflow-hidden rounded-2xl">
           <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
               // free vs premium
             </p>
             <span className="font-mono text-[10px] text-muted-foreground">
@@ -322,7 +322,7 @@ export default function Upgrade() {
             transition={{ delay: 0.06 }}
             className="glass-panel flex flex-col rounded-2xl p-6"
           >
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
               // checkout
             </p>
 
@@ -458,7 +458,7 @@ export default function Upgrade() {
 
         {/* ------- Payment history ------- */}
         <div className="glass-panel rounded-2xl p-5">
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
             // payment history
           </p>
           {payments === undefined ? (
@@ -479,9 +479,9 @@ export default function Upgrade() {
                   <div className="min-w-0">
                     <p className="flex items-center gap-2 text-sm font-semibold">
                       {row.provider === "telebirr" ? (
-                        <Wallet className="size-3.5 text-primary" />
+                        <Wallet className="size-3.5 text-amber-300" />
                       ) : (
-                        <Smartphone className="size-3.5 text-primary" />
+                        <Smartphone className="size-3.5 text-amber-300" />
                       )}
                       {row.provider === "telebirr" ? "TeleBirr" : "M-Pesa"} · {row.amount} {row.currency}
                     </p>

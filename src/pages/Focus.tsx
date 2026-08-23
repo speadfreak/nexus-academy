@@ -199,7 +199,7 @@ export default function Focus() {
     <DashboardShell>
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <div>
-          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // focus sessions
           </p>
           <h1 className="type-h1 mt-1">Focus timer</h1>
@@ -213,14 +213,14 @@ export default function Focus() {
           <div className="glass-panel relative flex flex-col items-center rounded-2xl p-8 overflow-hidden">
             {/* Ambient glow behind the ring */}
             <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
-              <div className="absolute left-1/2 top-1/3 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/[0.04] blur-3xl transition-opacity duration-500"
+              <div className="absolute left-1/2 top-1/3 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400/[0.04] blur-3xl transition-opacity duration-500"
                 style={{ opacity: status === "running" ? 1 : 0.3 }}
               />
             </div>
 
             <div className="relative z-10 flex flex-col items-center">
               <div className="flex items-center gap-2 type-mono text-[11px] text-muted-foreground">
-                <Timer className="size-3.5 text-primary" />
+                <Timer className="size-3.5 text-amber-300" />
                 {status === "running"
                   ? "session in progress"
                   : status === "paused"
@@ -311,11 +311,11 @@ export default function Focus() {
                           initial={{ scale: 0, rotate: -180 }}
                           animate={{ scale: 1, rotate: 0 }}
                           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
-                          className="flex size-14 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-[0_0_40px_-8px_rgb(56_189_248/0.7)]"
+                          className="flex size-14 items-center justify-center rounded-2xl bg-amber-400/15 text-amber-300 shadow-[0_0_40px_-8px_rgb(251,191,36/0.7)]"
                         >
                           <CheckCircle2 className="size-7" />
                         </motion.div>
-                        <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-primary">
+                        <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-amber-300">
                           complete
                         </p>
                         {sessionResult.xpAwarded > 0 && (
@@ -336,7 +336,7 @@ export default function Focus() {
                             initial={{ opacity: 0, y: 6 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.5 }}
-                            className="flex items-center gap-1.5 type-mono text-[11px] text-primary"
+                            className="flex items-center gap-1.5 type-mono text-[11px] text-amber-300"
                           >
                             <Star className="size-3" />
                             Level {sessionResult.newLevel}
@@ -430,7 +430,7 @@ export default function Focus() {
                       className={cn(
                         "cursor-pointer rounded-xl border px-4 py-2 type-mono text-xs transition-all duration-200 interactive-press disabled:cursor-not-allowed disabled:opacity-50",
                         minutes === preset.minutes
-                          ? "border-primary/40 bg-primary/10 text-primary shadow-[0_0_16px_-6px_rgb(56_189_248/0.6)]"
+                          ? "border-amber-400/40 bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-6px_rgb(251,191,36/0.6)]"
                           : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground",
                       )}
                     >
@@ -495,7 +495,7 @@ export default function Focus() {
           {/* ───── History ───── */}
           <div className="glass-panel flex flex-col rounded-2xl p-6">
             <div className="flex items-center justify-between">
-              <p className="type-mono uppercase tracking-[0.22em] text-primary">
+              <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
                 // history
               </p>
               <div className="flex items-center gap-3">
@@ -523,7 +523,7 @@ export default function Focus() {
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 className="flex flex-1 flex-col items-center justify-center py-12 text-center"
               >
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/8 text-primary/50 shadow-[0_0_30px_-10px_rgb(56_189_248/0.4)]">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-400/8 text-amber-300/50 shadow-[0_0_30px_-10px_rgb(251,191,36/0.4)]">
                   <Flame className="size-6" />
                 </div>
                 <p className="type-h3 mt-4 text-foreground/80">No sessions yet</p>
@@ -566,7 +566,7 @@ export default function Focus() {
                 animate={{ opacity: 1, y: 0 }}
                 className="mt-4"
               >
-                <Badge className="gap-1 bg-primary/10 font-mono text-[10px] text-primary border-primary/15">
+                <Badge className="gap-1 bg-amber-400/10 font-mono text-[10px] text-amber-300 border-amber-400/15">
                   logging to: {selectedSubject.name}
                 </Badge>
               </motion.div>
@@ -584,9 +584,9 @@ export default function Focus() {
             exit={{ opacity: 0, y: -10 }}
             className="mx-auto w-full max-w-2xl glass-panel flex items-start gap-3 rounded-2xl p-5"
           >
-            <Sparkles className="size-5 shrink-0 text-primary mt-0.5" />
+            <Sparkles className="size-5 shrink-0 text-amber-300 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="type-mono text-[10px] font-bold uppercase tracking-[0.18em] text-primary mb-1">
+              <p className="type-mono text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300 mb-1">
                 // study recap
               </p>
               <p className="type-body leading-relaxed text-muted-foreground">{recapText}</p>
@@ -606,7 +606,7 @@ export default function Focus() {
         <DialogContent className="glass-panel rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 type-h3">
-              <Sparkles className="size-4 text-primary" /> Nice work
+              <Sparkles className="size-4 text-amber-300" /> Nice work
             </DialogTitle>
             <DialogDescription className="type-body">
               {selectedSubject

@@ -132,17 +132,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </span>
           <div className="min-w-0 leading-tight">
             <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
-            <p className="font-mono text-[10px] text-muted-foreground">exam-prep · library</p>
+            <p className="text-[10px] text-muted-foreground">Exam prep & library</p>
           </div>
           <NotificationBell />
         </Link>
 
         {/* Divider */}
         <div className="mx-3 my-2 h-px bg-white/[0.06]" />
-        <div className="mb-2 flex items-center justify-between px-3">
-          <span className="type-mono text-[9px] uppercase tracking-[0.18em] text-primary/70">Student console</span>
-          <span className="flex items-center gap-1 type-mono text-[9px] text-emerald-300"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> LIVE</span>
-        </div>
 
         {/* Main navigation */}
         <nav aria-label="Student navigation" className="student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
@@ -155,12 +151,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 className={cn(
                   "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
                     active
-                     ? "student-nav-active bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.1)]"
+                     ? "student-nav-active bg-amber-400/10 text-amber-300 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.12)]"
                     : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                 )}
                 aria-current={active ? "page" : undefined}
               >
-                <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg", active ? "bg-primary/15" : "bg-white/[0.035]")}>
+                <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg", active ? "bg-amber-400/15" : "bg-white/[0.035]")}>
                   <item.icon className="size-4" />
                 </span>
                 <span className="truncate">{item.label}</span>
@@ -189,7 +185,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                   premium.premiumActive
                     ? "bg-premium/10 text-premium"
                     : active
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-amber-400/10 text-amber-300"
                       : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                 )}
               >
@@ -209,8 +205,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               className={cn(
                 "student-admin-link interactive-press flex items-center gap-2.5 rounded-xl border border-primary/15 px-3 py-2 text-sm font-semibold transition-all",
                 location.pathname === "/admin"
-                  ? "bg-primary/10 text-primary"
-                  : "text-primary/70 hover:bg-primary/5 hover:text-primary",
+                  ? "bg-amber-400/10 text-amber-300"
+                  : "text-amber-300/70 hover:bg-amber-400/5 hover:text-amber-300",
               )}
             >
               <ShieldCheck className="size-4 shrink-0" /> Admin
@@ -221,13 +217,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           <div className="student-profile-card glass-soft flex items-center gap-2.5 rounded-2xl border border-white/10 p-2.5">
             <Link to="/settings" title="Open settings">
               <Avatar className="size-9 cursor-pointer">
-                <AvatarFallback className="bg-gradient-to-br from-primary/25 to-primary/5 text-xs font-bold text-primary">
+                <AvatarFallback className="bg-gradient-to-br from-amber-400/25 to-amber-400/5 text-xs font-bold text-amber-300">
                   {initials || "N"}
                 </AvatarFallback>
               </Avatar>
             </Link>
             <Link to="/settings" className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-xs font-semibold hover:text-primary">
+              <p className="truncate text-xs font-semibold hover:text-amber-300">
                 {user?.name || "Guest"}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
@@ -283,7 +279,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                       className={cn(
                         "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
                          active
-                           ? "student-nav-active bg-primary/10 text-primary"
+                           ? "student-nav-active bg-amber-400/10 text-amber-300"
                           : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                       )}
                     >
@@ -320,12 +316,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           <div className="footer-dots relative flex flex-col items-center gap-1.5 pt-3">
             {/* Developed-by line */}
             <div className="flex items-center gap-2">
-              <span className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/40">
+              <span className="text-[10px] text-muted-foreground/40">
                 Developed by
               </span>
               <span className="footer-dev-glow">
                 <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">
-                  JOSEPH JAMES
+                  Joseph James
                 </span>
               </span>
             </div>

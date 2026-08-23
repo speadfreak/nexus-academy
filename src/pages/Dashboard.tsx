@@ -362,7 +362,7 @@ function BookTile({
               className={cn(
                 "flex size-8 cursor-pointer items-center justify-center rounded-xl backdrop-blur-sm transition-all duration-200",
                 bookmarked
-                  ? "bg-primary/30 text-primary shadow-[0_0_12px_rgba(112,196,255,0.3)]"
+                  ? "bg-amber-400/30 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.3)]"
                   : "bg-black/30 text-white/50 hover:bg-black/50 hover:text-white",
               )}
             >
@@ -566,7 +566,7 @@ function HeroMeshGrid() {
         transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] as const, delay: 0.2 }}
       />
       <motion.div
-        className="absolute bottom-[22%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/8 to-transparent"
+        className="absolute bottom-[22%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/8 to-transparent"
         initial={{ scaleX: 0, opacity: 0 }}
         animate={{ scaleX: 1, opacity: 1 }}
         transition={{ duration: 2.2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.5 }}
@@ -586,7 +586,7 @@ function HeroMeshGrid() {
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -left-4 bottom-1/4 size-32 rounded-full bg-primary/[0.03]"
+        className="absolute -left-4 bottom-1/4 size-32 rounded-full bg-amber-400/[0.03]"
         style={{ filter: 'blur(30px)' }}
         animate={{ x: [0, -12, 0], y: [0, 10, 0], scale: [1, 1.1, 1] }}
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 2 }}
@@ -611,7 +611,7 @@ function XPProgressBar({ currentLevel, totalXp, xpToNext }: { currentLevel: numb
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.3 }}
     >
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
         <Trophy className="size-5" />
       </div>
       <div className="min-w-0 flex-1">
@@ -631,8 +631,8 @@ function XPProgressBar({ currentLevel, totalXp, xpToNext }: { currentLevel: numb
             <div
               className="absolute inset-0"
               style={{
-                background: 'linear-gradient(90deg, oklch(0.65 0.15 240), oklch(0.78 0.14 210), oklch(0.82 0.12 195))',
-                boxShadow: '0 0 16px rgba(116,196,255,0.5), 0 0 4px rgba(116,196,255,0.8)',
+                background: 'linear-gradient(90deg, oklch(0.7 0.14 75), oklch(0.78 0.13 80), oklch(0.82 0.11 85))',
+                boxShadow: '0 0 16px rgba(251,191,36,0.4), 0 0 4px rgba(251,191,36,0.6)',
               }}
             />
             <motion.div
@@ -869,7 +869,7 @@ export default function Dashboard() {
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <motion.p
-                className="flex items-center gap-2.5 type-caption font-semibold text-primary/80"
+                className="flex items-center gap-2.5 type-caption font-semibold text-amber-300/80"
                 initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
@@ -882,7 +882,7 @@ export default function Dashboard() {
                   >
                     <Avatar className="size-8 ring-2 ring-primary/20">
                       <AvatarImage src={profile.avatarUrl ?? undefined} />
-                      <AvatarFallback className="bg-primary/15 type-caption font-extrabold text-primary">
+                      <AvatarFallback className="bg-amber-400/15 type-caption font-extrabold text-amber-300">
                         {(profile.displayName ?? "N")
                           .split(/\s+/)
                           .filter(Boolean)
@@ -932,15 +932,15 @@ export default function Dashboard() {
                 onClick={() => document.getElementById("library-search")?.focus()}
                 className="mt-5 flex w-full max-w-xl items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left shadow-[0_10px_30px_-18px_rgba(251,191,36,0.35)] transition hover:border-amber-400/30 hover:bg-black/30"
               >
-                <Search className="size-4 shrink-0 text-primary" />
+                <Search className="size-4 shrink-0 text-amber-300" />
                 <span className="type-caption flex-1 text-muted-foreground">Search the national learning library…</span>
                 <kbd className="hidden rounded-md border border-white/10 bg-white/5 px-2 py-1 type-mono text-muted-foreground/70 sm:inline">/</kbd>
               </button>
               <div className="mt-4 flex items-center gap-2">
-                <span className="h-1.5 w-10 rounded-full bg-[#168b49]" />
-                <span className="h-1.5 w-10 rounded-full bg-[#f5c542]" />
-                <span className="h-1.5 w-10 rounded-full bg-[#c83b3b]" />
-                <span className="ml-1 type-caption text-[10px] text-muted-foreground/60">Built for Ethiopian students</span>
+                <span className="h-1.5 w-8 rounded-full bg-[#168b49]/70" />
+                <span className="h-1.5 w-8 rounded-full bg-[#f5c542]/70" />
+                <span className="h-1.5 w-8 rounded-full bg-[#c83b3b]/70" />
+                <span className="ml-1 text-[10px] text-muted-foreground/50">Built for Ethiopian students</span>
               </div>
 
               {/* Stream breakdown pills */}
@@ -968,7 +968,7 @@ export default function Dashboard() {
                   )}
                   {streamBreakdown.common > 0 && (
                     <motion.span
-                      className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 type-caption font-semibold text-primary"
+                      className="flex items-center gap-1.5 rounded-full bg-amber-400/10 px-3 py-1 type-caption font-semibold text-amber-300"
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as const, delay: 0.49 }}
@@ -988,7 +988,7 @@ export default function Dashboard() {
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
                   <p className="type-caption text-muted-foreground/70">Resources</p>
-                  <p className="mt-1 type-h2 text-primary">{totalContent}</p>
+                  <p className="mt-1 type-h2 text-amber-300">{totalContent}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
                   <p className="type-caption text-muted-foreground/70">Saved</p>
@@ -1039,7 +1039,7 @@ export default function Dashboard() {
           <div className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-amber-400/[0.07] blur-3xl" />
           <div className="relative flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="type-caption font-semibold text-primary/70">Your Library</p>
+              <p className="type-caption font-semibold text-amber-300/70">Your Library</p>
               <h2 className="type-h1 mt-1">Ready to dive in?</h2>
               <p className="type-body mt-1 text-muted-foreground">Pick a section below, or search for something specific.</p>
             </div>
@@ -1069,7 +1069,7 @@ export default function Dashboard() {
                 detail: "Return to saved work",
                 count: bookmarkIds?.length ?? 0,
                 icon: BookmarkCheck,
-                accent: "bg-primary/10 text-primary",
+                accent: "bg-amber-400/10 text-amber-300",
                 onClick: () => setBookmarkedOnly(true),
               },
             ].map((card) => {
@@ -1089,7 +1089,7 @@ export default function Dashboard() {
                   </div>
                   <p className="mt-4 type-h3">{card.label}</p>
                   <p className="mt-1 type-caption text-muted-foreground">{card.detail}</p>
-                  <span className="mt-4 inline-flex items-center type-caption font-semibold text-primary/70 transition group-hover:text-primary">Explore →</span>
+                  <span className="mt-4 inline-flex items-center type-caption font-semibold text-amber-300/70 transition group-hover:text-amber-300">Explore →</span>
                 </button>
               );
             })}
@@ -1101,12 +1101,12 @@ export default function Dashboard() {
               onClick={() => handleOpen(content[0])}
               className="relative mt-3 flex w-full items-center gap-3 rounded-2xl border border-primary/20 bg-primary/[0.07] p-3 text-left transition hover:border-primary/50 hover:bg-primary/[0.12]"
             >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"><Sparkles className="size-4" /></span>
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300"><Sparkles className="size-4" /></span>
               <span className="min-w-0 flex-1">
-                <span className="block type-caption font-semibold text-primary/70">Pick up where you left off</span>
+                <span className="block type-caption font-semibold text-amber-300/70">Pick up where you left off</span>
                 <span className="block truncate type-body font-semibold">{content[0].title}</span>
               </span>
-              <span className="hidden type-caption font-semibold text-primary sm:block">Continue reading →</span>
+              <span className="hidden type-caption font-semibold text-amber-300 sm:block">Continue reading →</span>
             </button>
           )}
         </motion.section>
@@ -1119,7 +1119,7 @@ export default function Dashboard() {
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.3 }}
             className="glass-panel flex items-start gap-4 rounded-2xl px-5 py-4"
           >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
               <Quote className="size-4.5" />
             </div>
             <div className="min-w-0">
@@ -1146,7 +1146,7 @@ export default function Dashboard() {
               className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-4"
             >
               <div className="flex min-w-0 items-center gap-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
                   <Crown className="size-4.5" />
                 </div>
                 <div className="min-w-0">
@@ -1202,7 +1202,7 @@ export default function Dashboard() {
               className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl border-primary/20 px-5 py-4"
             >
               <div className="flex min-w-0 items-center gap-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
                   <BellRing className="size-4.5" />
                 </div>
                 <div className="min-w-0">
@@ -1298,7 +1298,7 @@ export default function Dashboard() {
               <StatNumber value={pendingTodoCount} />
               <span className="type-caption text-muted-foreground">open</span>
             </p>
-            <p className="type-caption mt-1 text-muted-foreground group-hover:text-primary">manage tasks</p>
+            <p className="type-caption mt-1 text-muted-foreground group-hover:text-amber-300">manage tasks</p>
           </Link>
 
           <Link to="/achievements" className="student-stat-card student-stat-level glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
@@ -1312,7 +1312,7 @@ export default function Dashboard() {
               <StatNumber value={level?.currentLevel ?? 1} />
               <span className="type-caption text-muted-foreground">· {level?.totalXp ?? 0} xp</span>
             </p>
-            <p className="type-caption mt-1 text-muted-foreground group-hover:text-primary">
+            <p className="type-caption mt-1 text-muted-foreground group-hover:text-amber-300">
               {level?.xpToNext ?? 0} xp to next
             </p>
           </Link>
@@ -1332,7 +1332,7 @@ export default function Dashboard() {
               className={cn(
                 "interactive-press shrink-0 rounded-xl px-4 py-2.5 type-caption font-bold transition-all duration-200",
                 subjectSlug === ""
-                  ? "bg-primary/15 text-primary shadow-[0_0_20px_rgba(116,196,255,0.15)] ring-1 ring-primary/25"
+                  ? "bg-amber-400/15 text-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.15)] ring-1 ring-amber-400/25"
                   : "bg-white/5 text-muted-foreground hover:bg-white/8 hover:text-foreground",
               )}
               whileTap={{ scale: 0.96 }}
@@ -1383,7 +1383,7 @@ export default function Dashboard() {
         >
           <div className="flex items-center justify-between">
             <span className="type-caption text-muted-foreground/70">Focus time this week</span>
-            <Flame className="size-3.5 text-primary/60" />
+            <Flame className="size-3.5 text-amber-300/60" />
           </div>
           <div className="mt-3 flex h-24 items-end gap-2">
             {weekActivity?.map((day) => {
@@ -1396,17 +1396,17 @@ export default function Dashboard() {
                     className={cn(
                       "w-full rounded-t-lg",
                       day.seconds > 0
-                        ? "bg-gradient-to-t from-primary/50 to-primary"
+                        ? "bg-gradient-to-t from-amber-400/50 to-amber-400"
                         : "bg-white/5",
                     )}
                     initial={{ height: 0 }}
                     animate={{ height: `${height}%` }}
                     transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] as const, delay: 0.6 }}
-                    style={day.seconds > 0 ? { boxShadow: '0 0 12px rgba(116,196,255,0.25)' } : undefined}
+                    style={day.seconds > 0 ? { boxShadow: '0 0 12px rgba(251,191,36,0.25)' } : undefined}
                   />
                   <span className={cn(
                     "type-caption uppercase",
-                    isToday ? "font-bold text-primary" : "text-muted-foreground",
+                    isToday ? "font-bold text-amber-300" : "text-muted-foreground",
                   )}>
                     {label}
                   </span>
@@ -1444,7 +1444,7 @@ export default function Dashboard() {
                   {activeChallenge.question ?? "Preparing today's question…"}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 type-mono font-bold text-primary">
+              <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-400/10 px-2.5 py-1.5 type-mono font-bold text-amber-300">
                 <Target className="size-3" /> +10 XP
               </div>
             </div>
@@ -1458,7 +1458,7 @@ export default function Dashboard() {
                   className={cn(
                     "interactive-press flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 type-caption font-semibold",
                     activeChallenge.subjectId === challenge.subjectId
-                      ? "bg-primary/15 text-primary"
+                      ? "bg-amber-400/15 text-amber-300"
                       : "bg-white/5 text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -1755,7 +1755,7 @@ export default function Dashboard() {
           </div>
         ) : (visibleContent ?? []).length === 0 ? (
           <div className="glass-soft flex flex-col items-center justify-center rounded-3xl px-6 py-20 text-center">
-            <div className="flex size-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
+            <div className="flex size-16 items-center justify-center rounded-3xl bg-amber-400/10 text-amber-300">
               <FileSearch className="size-7" />
             </div>
             <h3 className="type-h2 mt-5">No content here yet</h3>
@@ -1784,7 +1784,7 @@ export default function Dashboard() {
               {!hasFilters && (
                 <Link
                   to="/dashboard"
-                  className="interactive-press flex items-center gap-1 type-caption font-semibold text-primary transition-colors hover:text-primary/80"
+                  className="interactive-press flex items-center gap-1 type-caption font-semibold text-amber-300 transition-colors hover:text-amber-300/80"
                 >
                   View all <ChevronRight className="size-3" />
                 </Link>

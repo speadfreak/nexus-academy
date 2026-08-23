@@ -47,7 +47,7 @@ const DIFFICULTY_META: Record<Difficulty, { label: string; classes: string }> = 
 };
 
 const COLOR_META: Record<NoteColor, { bar: string; tint: string }> = {
-  default: { bar: "bg-primary/70", tint: "bg-primary/[0.04]" },
+  default: { bar: "bg-amber-400/70", tint: "bg-amber-400/[0.04]" },
   blue: { bar: "bg-sky-400/70", tint: "bg-sky-400/[0.05]" },
   green: { bar: "bg-emerald-400/70", tint: "bg-emerald-400/[0.05]" },
   amber: { bar: "bg-amber-400/70", tint: "bg-amber-400/[0.05]" },
@@ -161,7 +161,7 @@ export default function Notes() {
     <DashboardShell>
       <div className="relative flex flex-col gap-6">
         {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 size-52 rounded-full bg-primary/8 blur-[90px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 size-52 rounded-full bg-amber-400/8 blur-[90px]" aria-hidden="true" />
 
         <motion.div
           className="flex flex-wrap items-end justify-between gap-3 relative"
@@ -170,7 +170,7 @@ export default function Notes() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
           <div>
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
               // notes · sticky
             </p>
             <h1 className="type-h1 mt-1">Notes</h1>
@@ -221,10 +221,10 @@ export default function Notes() {
           className="glass-panel rounded-2xl p-5"
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
               <Pencil className="size-4" />
             </div>
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
               // pin a note
             </p>
           </div>
@@ -307,9 +307,9 @@ export default function Notes() {
             transition={{duration:0.5,ease:[0.22,1,0.36,1]}}
             className="glass-soft relative overflow-hidden flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center"
           >
-            <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 size-40 rounded-full bg-primary/10 blur-[50px]" />
+            <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 size-40 rounded-full bg-amber-400/10 blur-[50px]" />
             <div className="relative">
-              <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.6)]">
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300 shadow-[0_0_40px_-12px_rgb(251,191,36/0.5)]">
                 <StickyNote className="size-7" />
               </div>
             </div>

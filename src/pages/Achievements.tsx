@@ -79,8 +79,8 @@ export default function Achievements() {
     <DashboardShell>
       <div className="relative flex flex-col gap-6">
         {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-12 -right-6 size-48 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
-        <div className="pointer-events-none absolute top-20 -left-10 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -top-12 -right-6 size-48 rounded-full bg-amber-400/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute top-20 -left-10 size-36 rounded-full bg-amber-400/[0.05] blur-[64px]" aria-hidden="true" />
 
         <motion.div
           className="relative"
@@ -88,7 +88,7 @@ export default function Achievements() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
-          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // gamification · progress
           </p>
           <h1 className="mt-1 type-h1">
@@ -107,10 +107,10 @@ export default function Achievements() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-primary/10 blur-[40px]" />
+            <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-amber-400/10 blur-[40px]" />
             <div className="relative flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[0_0_24px_-8px_rgb(56_189_248/0.5)]">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300 shadow-[0_0_24px_-8px_rgb(251,191,36/0.4)]">
                   <Sparkles className="size-5" />
                 </div>
                 <div>
@@ -158,7 +158,7 @@ export default function Achievements() {
               <span className="type-caption font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 collected
               </span>
-              <Medal className="size-4 text-primary" />
+              <Medal className="size-4 text-amber-300" />
             </div>
             <p className="mt-2 flex items-baseline gap-1.5">
               <span className="font-mono text-3xl font-bold tabular-nums text-gradient">
@@ -185,8 +185,8 @@ export default function Achievements() {
           </div>
         ) : achievements.length === 0 ? (
           <div className="glass-panel rounded-2xl p-16 text-center">
-            <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-primary/10">
-              <Trophy className="size-8 text-primary/30" />
+            <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-amber-400/10">
+              <Trophy className="size-8 text-amber-300/30" />
             </div>
             <h3 className="mt-6 type-h3 text-muted-foreground">
               No achievements yet
@@ -236,7 +236,7 @@ export default function Achievements() {
                     {def.description}
                   </p>
                   {earned ? (
-                    <p className="mt-3 flex items-center gap-1.5 type-caption font-semibold uppercase tracking-wide text-primary">
+                    <p className="mt-3 flex items-center gap-1.5 type-caption font-semibold uppercase tracking-wide text-amber-300">
                       <Flame className="size-3" />
                       unlocked{" "}
                       {new Date(def.earnedAt ?? 0).toLocaleDateString(undefined, {
@@ -264,7 +264,7 @@ export default function Achievements() {
           transition={{ duration: 0.5, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
               <Zap className="size-4" />
             </div>
             <p className="type-body font-semibold">Recent XP · last 10 events</p>
@@ -288,7 +288,7 @@ export default function Achievements() {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 type-mono font-bold text-primary">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 type-mono font-bold text-amber-300">
                       +{event.amount}
                     </div>
                     <div>

@@ -119,8 +119,8 @@ function ThinkingIndicator() {
       <div className="glass-soft relative overflow-hidden rounded-2xl rounded-bl-md px-5 py-4 min-w-[180px]">
         <div className="scan-line" aria-hidden="true" />
         <div className="flex items-center gap-3">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <Bot className="size-3.5 text-primary" />
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-400/10">
+            <Bot className="size-3.5 text-amber-300" />
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="type-mono text-muted-foreground/60 text-[10px] uppercase tracking-widest">
@@ -133,7 +133,7 @@ function ThinkingIndicator() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.15 }}
-                className="type-mono text-primary text-sm"
+                className="type-mono text-amber-300 text-sm"
               >
                 {THINKING_CHARS[charIndex]}
               </motion.span>
@@ -400,7 +400,7 @@ export default function Tutor() {
                         className={cn(
                           "w-full cursor-pointer rounded-xl px-3 py-2.5 text-left interactive-press",
                           active
-                            ? "bg-primary/12 text-primary shadow-[inset_0_0_0_1px_rgb(112_196_255/0.14),0_8px_24px_-18px_rgb(112_196_255/0.9)]"
+                            ? "bg-amber-400/12 text-amber-300 shadow-[inset_0_0_0_1px_rgb(251,191,36/0.14),0_8px_24px_-18px_rgb(251,191,36/0.9)]"
                             : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                         )}
                       >
@@ -447,14 +447,14 @@ export default function Tutor() {
             className="pointer-events-none absolute inset-0 z-0"
             aria-hidden="true"
           >
-            <div className="absolute -top-20 right-0 h-48 w-48 rounded-full bg-primary/4 blur-3xl" />
-            <div className="absolute bottom-20 -left-10 h-36 w-36 rounded-full bg-primary/[0.03] blur-3xl" />
+            <div className="absolute -top-20 right-0 h-48 w-48 rounded-full bg-amber-400/4 blur-3xl" />
+            <div className="absolute bottom-20 -left-10 h-36 w-36 rounded-full bg-amber-400/[0.03] blur-3xl" />
           </div>
 
           {/* Header */}
           <div className="relative z-10 flex items-center justify-between gap-3 border-b border-white/8 px-5 py-3.5">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[0_0_20px_-8px_rgb(56_189_248/0.5)]">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300 shadow-[0_0_20px_-8px_rgb(251,191,36/0.4)]">
                 <Bot className="size-4.5" />
               </div>
               <div className="min-w-0 leading-tight">
@@ -470,7 +470,7 @@ export default function Tutor() {
                   <motion.p
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-1 flex max-w-full items-center gap-1.5 truncate rounded-lg bg-primary/8 px-2 py-0.5 type-mono text-[10px] text-primary border border-primary/10"
+                    className="mt-1 flex max-w-full items-center gap-1.5 truncate rounded-lg bg-amber-400/8 px-2 py-0.5 type-mono text-[10px] text-amber-300 border border-amber-400/10"
                   >
                     <FileText className="size-3 shrink-0" />
                     <span className="truncate">Discussing: {discussing}</span>
@@ -497,7 +497,7 @@ export default function Tutor() {
                   <Layers className="size-3" /> Make flashcards
                 </Button>
               )}
-              <Badge className="gap-1.5 bg-primary/10 font-mono text-[10px] text-primary border-primary/15">
+              <Badge className="gap-1.5 bg-amber-400/10 font-mono text-[10px] text-amber-300 border-amber-400/15">
                 <Sparkles className="size-3" /> AI Tutor · national exam prep
               </Badge>
             </div>
@@ -587,10 +587,10 @@ export default function Tutor() {
                   }}
                   className="text-center"
                 >
-                  <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.7)]">
+                  <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300 shadow-[0_0_40px_-12px_rgb(251,191,36/0.7)]">
                     <Bot className="size-7" />
                   </div>
-                  <p className="type-mono uppercase tracking-[0.22em] text-primary">
+                  <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
                     // nexus tutor
                   </p>
                   <h2 className="type-h1 mt-2">
@@ -628,7 +628,7 @@ export default function Tutor() {
                       disabled={isAwaiting}
                       className="glass-soft cursor-pointer rounded-xl px-4 py-3.5 text-left text-[13px] leading-5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground hover:border-primary/10 disabled:opacity-50 interactive-press border border-transparent"
                     >
-                      <span className="mr-2.5 font-mono text-[10px] text-primary">
+                      <span className="mr-2.5 font-mono text-[10px] text-amber-300">
                         $
                       </span>
                       {prompt}

@@ -146,7 +146,7 @@ export default function Settings() {
     <DashboardShell>
       <div className="relative mx-auto flex w-full max-w-3xl flex-col gap-6">
         {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 size-52 rounded-full bg-primary/8 blur-[90px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 size-52 rounded-full bg-amber-400/8 blur-[90px]" aria-hidden="true" />
 
         {/* Header */}
         <motion.div
@@ -155,7 +155,7 @@ export default function Settings() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
-          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // configuration · settings
           </p>
           <h1 className="type-h1 mt-1">Settings</h1>
@@ -172,10 +172,10 @@ export default function Settings() {
           className="glass-panel hover-lift rounded-2xl p-6"
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
               <UserRound className="size-4" />
             </div>
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
               // profile
             </p>
           </div>
@@ -184,7 +184,7 @@ export default function Settings() {
             <div className="relative">
               <Avatar className="size-20">
                 <AvatarImage src={profile?.avatarUrl ?? undefined} />
-                <AvatarFallback className="bg-primary/10 text-xl font-bold text-primary">
+                <AvatarFallback className="bg-amber-400/10 text-xl font-bold text-amber-300">
                   {initials || "N"}
                 </AvatarFallback>
               </Avatar>
@@ -193,7 +193,7 @@ export default function Settings() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadingAvatar}
                 aria-label="Upload avatar"
-                className="interactive-press absolute -bottom-1 -right-1 flex size-7 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_16px_-4px_rgb(56_189_248/0.5)] disabled:opacity-60"
+                className="interactive-press absolute -bottom-1 -right-1 flex size-7 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_16px_-4px_rgb(251,191,36/0.5)] disabled:opacity-60"
               >
                 {uploadingAvatar ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -218,7 +218,7 @@ export default function Settings() {
                 {profile?.email ?? user?.email ?? "Anonymous session"}
               </p>
               {profile?.stream && (
-                <Badge className="mt-1.5 glass-chip gap-1 border-0 type-mono text-[10px] text-primary">
+                <Badge className="mt-1.5 glass-chip gap-1 border-0 type-mono text-[10px] text-amber-300">
                   <UserRound className="size-3" /> {STREAM_LABELS[profile.stream as keyof typeof STREAM_LABELS]} stream
                 </Badge>
               )}
@@ -296,10 +296,10 @@ export default function Settings() {
           className="glass-panel hover-lift rounded-2xl p-6"
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
               <Sun className="size-4" />
             </div>
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
               // appearance
             </p>
           </div>
@@ -315,14 +315,14 @@ export default function Settings() {
                 className={cn(
                   "interactive-press flex cursor-pointer items-center gap-3 rounded-xl border p-4 text-left",
                   theme === option
-                    ? "border-primary/50 bg-primary/10 shadow-[inset_0_0_0_1px_rgb(112_196_255/0.14),0_8px_24px_-18px_rgb(112_196_255/0.9)]"
+                    ? "border-primary/50 bg-primary/10 shadow-[inset_0_0_0_1px_rgb(251,191,36/0.14),0_8px_24px_-18px_rgb(251,191,36/0.9)]"
                     : "border-white/10 bg-white/4 hover:border-white/25",
                 )}
               >
                 {option === "dark" ? (
-                  <Moon className="size-5 text-primary" />
+                  <Moon className="size-5 text-amber-300" />
                 ) : (
-                  <Sun className="size-5 text-primary" />
+                  <Sun className="size-5 text-amber-300" />
                 )}
                 <div>
                   <p className="type-body font-semibold">
@@ -346,10 +346,10 @@ export default function Settings() {
           className="glass-panel hover-lift rounded-2xl p-6"
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
               <Atom className="size-4" />
             </div>
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
               // study track
             </p>
           </div>
@@ -368,7 +368,7 @@ export default function Settings() {
                   className={cn(
                     "interactive-press flex cursor-pointer flex-col gap-2 rounded-xl border p-4 text-left",
                     active
-                      ? "border-primary/50 bg-primary/10 shadow-[inset_0_0_0_1px_rgb(112_196_255/0.14),0_8px_24px_-18px_rgb(112_196_255/0.9)]"
+                      ? "border-primary/50 bg-primary/10 shadow-[inset_0_0_0_1px_rgb(251,191,36/0.14),0_8px_24px_-18px_rgb(251,191,36/0.9)]"
                       : "border-white/10 bg-white/4 hover:border-white/25",
                   )}
                 >
@@ -379,7 +379,7 @@ export default function Settings() {
                   </p>
                   <p className="type-mono text-[10px] text-muted-foreground/70">
                     + {SHARED_SUBJECTS}{" "}
-                    <span className="text-primary/70">(both streams)</span>
+                    <span className="text-amber-300/70">(both streams)</span>
                   </p>
                 </button>
               );

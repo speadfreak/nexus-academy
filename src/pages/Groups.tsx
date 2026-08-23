@@ -174,9 +174,9 @@ export default function Groups() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="pointer-events-none absolute -top-10 -left-10 size-40 rounded-full bg-primary/10 blur-[80px]" />
-          <div className="pointer-events-none absolute -right-6 top-0 size-32 rounded-full bg-primary/[0.06] blur-[64px]" />
-          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+          <div className="pointer-events-none absolute -top-10 -left-10 size-40 rounded-full bg-amber-400/10 blur-[80px]" />
+          <div className="pointer-events-none absolute -right-6 top-0 size-32 rounded-full bg-amber-400/[0.06] blur-[64px]" />
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // social · groups
           </p>
           <h1 className="mt-1 text-gradient type-h1">
@@ -189,7 +189,7 @@ export default function Groups() {
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <div className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1">
-              <Users className="size-3 text-primary" />
+              <Users className="size-3 text-amber-300" />
               <span className="type-mono font-bold">{myGroups?.length ?? 0} groups</span>
             </div>
             <div className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1">
@@ -240,8 +240,8 @@ export default function Groups() {
                 </>
               ) : myGroups.length === 0 ? (
                 <div className="relative flex flex-col items-center px-4 py-10 text-center overflow-hidden">
-                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 size-28 rounded-full bg-primary/10 blur-[40px]" />
-                  <div className="relative flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[0_0_24px_-8px_rgb(56_189_248/0.5)]">
+                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 size-28 rounded-full bg-amber-400/10 blur-[40px]" />
+                  <div className="relative flex size-11 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300 shadow-[0_0_24px_-8px_rgb(251,191,36/0.4)]">
                     <Users className="size-5" />
                   </div>
                   <p className="relative mt-3 type-h3">No groups yet</p>
@@ -272,12 +272,12 @@ export default function Groups() {
                             {Array.from({ length: Math.min(group.memberCount, 3) }).map((_, i) => (
                               <span
                                 key={i}
-                                className="inline-block size-4 rounded-full border border-background bg-primary/20"
+                                className="inline-block size-4 rounded-full border border-background bg-amber-400/20"
                                 style={{ zIndex: 3 - i }}
                               />
                             ))}
                             {group.memberCount > 3 && (
-                              <span className="inline-flex size-4 items-center justify-center rounded-full border border-background bg-primary/30 text-[8px] font-bold text-primary">
+                              <span className="inline-flex size-4 items-center justify-center rounded-full border border-background bg-amber-400/30 text-[8px] font-bold text-amber-300">
                                 +
                               </span>
                             )}
@@ -302,7 +302,7 @@ export default function Groups() {
           <div className="glass-panel rounded-2xl p-5">
             {!selectedGroup ? (
               <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300">
                   <Users className="size-6" />
                 </div>
                 <h3 className="mt-4 type-h3">Pick a group</h3>
@@ -388,7 +388,7 @@ export default function Groups() {
                             <p className="flex items-center gap-1.5 truncate type-body font-semibold">
                               {member.name}
                               {member.isMe && (
-                                <Badge className="border-primary/30 bg-primary/10 text-primary">
+                                <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-300">
                                   you
                                 </Badge>
                               )}
@@ -493,7 +493,7 @@ export default function Groups() {
                   transition={{ duration: 0.3, delay: 0.16 + i * 0.04, ease: "easeOut" }}
                   className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
                 >
-                  <div className="relative flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <div className="relative flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
                     <MonitorPlay className="size-4" />
                     <span className="absolute -right-0.5 -top-0.5 size-2.5 animate-ping rounded-full border-2 border-background bg-emerald-400" />
                   </div>
@@ -554,7 +554,7 @@ export default function Groups() {
                 transition={{ duration: 0.25, delay: 0.24 + i * 0.03, ease: "easeOut" }}
                 className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5"
               >
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-mono text-xs font-extrabold text-primary">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-400/15 font-mono text-xs font-extrabold text-amber-300">
                   {member.name
                     .split(/\s+/)
                     .filter(Boolean)
@@ -566,7 +566,7 @@ export default function Groups() {
                   <p className="flex items-center gap-1.5 truncate type-body font-semibold">
                     {member.name}
                     {member.isMe && (
-                      <Badge className="border-primary/30 bg-primary/10 text-primary">you</Badge>
+                      <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-300">you</Badge>
                     )}
                     {member.isOwner && <Crown className="size-3 shrink-0 text-amber-300" />}
                   </p>
@@ -591,7 +591,7 @@ export default function Groups() {
         <DialogContent className="glass-panel max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Video className="size-4 text-primary" /> Start a study room
+              <Video className="size-4 text-amber-300" /> Start a study room
             </DialogTitle>
             <DialogDescription>
               Group members get a notification with a link to join. Rooms are
@@ -629,7 +629,7 @@ export default function Groups() {
         <DialogContent className="glass-panel max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="size-4 text-primary" /> Create a study group
+              <Sparkles className="size-4 text-amber-300" /> Create a study group
             </DialogTitle>
             <DialogDescription>
               Share the invite code with classmates — groups stay private and capped.
@@ -680,7 +680,7 @@ export default function Groups() {
         <DialogContent className="glass-panel max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="size-4 text-primary" /> Join a group
+              <UserPlus className="size-4 text-amber-300" /> Join a group
             </DialogTitle>
             <DialogDescription>
               Enter the 6-character invite code a friend shared with you.

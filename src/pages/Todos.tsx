@@ -59,7 +59,7 @@ function CompletionBurst({ show }: { show: boolean }) {
           animate={{ opacity: 0, scale: 2.2 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="pointer-events-none absolute inset-0 -m-2 rounded-full bg-primary/20"
+          className="pointer-events-none absolute inset-0 -m-2 rounded-full bg-amber-400/20"
         />
       )}
     </AnimatePresence>
@@ -162,7 +162,7 @@ export default function Todos() {
             className={cn(
               "relative flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition-all duration-200 interactive-press",
               todo.isDone
-                ? "border-primary bg-primary text-primary-foreground shadow-[0_0_12px_2px_rgb(56_189_248/0.25)]"
+                ? "border-primary bg-primary text-primary-foreground shadow-[0_0_12px_2px_rgb(251,191,36/0.25)]"
                 : "border-border bg-white/5 hover:border-primary/60",
             )}
           >
@@ -262,7 +262,7 @@ export default function Todos() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         {/* Header */}
         <div>
-          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // study tasks
           </p>
           <div className="mt-1 flex items-end justify-between gap-3">
@@ -270,7 +270,7 @@ export default function Todos() {
             <div className="flex items-center gap-3">
               {pending.length > 0 && (
                 <span className="type-mono text-muted-foreground">
-                  <span className="text-foreground font-semibold">{pending.length}</span> open · <span className="text-primary font-semibold">{done.length}</span> done
+                  <span className="text-foreground font-semibold">{pending.length}</span> open · <span className="text-amber-300 font-semibold">{done.length}</span> done
                 </span>
               )}
             </div>
@@ -341,7 +341,7 @@ export default function Todos() {
               className="glass-soft flex flex-col items-center rounded-2xl px-6 py-16 text-center"
             >
               <div className="relative">
-                <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/8 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.6)]">
+                <div className="flex size-16 items-center justify-center rounded-2xl bg-amber-400/8 text-amber-300 shadow-[0_0_40px_-12px_rgb(251,191,36/0.6)]">
                   <ListChecks className="size-7" />
                 </div>
                 <div className="absolute -right-1 -top-1 flex size-6 items-center justify-center rounded-lg bg-premium/15 text-premium shadow-[0_0_12px_-4px_rgb(245_197_66/0.8)]">
@@ -370,7 +370,7 @@ export default function Todos() {
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               className="glass-soft flex items-center gap-3 rounded-2xl px-5 py-4 border-primary/10"
             >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
                 <Check className="size-4" />
               </div>
               <div>
@@ -401,7 +401,7 @@ export default function Todos() {
               <span className="type-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 completed
               </span>
-              <span className="flex size-5 items-center justify-center rounded-md bg-primary/10 type-mono text-[10px] font-bold text-primary">
+              <span className="flex size-5 items-center justify-center rounded-md bg-amber-400/10 type-mono text-[10px] font-bold text-amber-300">
                 {done.length}
               </span>
             </div>

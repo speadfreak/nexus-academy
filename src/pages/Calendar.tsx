@@ -202,8 +202,8 @@ export default function CalendarPage() {
     <DashboardShell>
       <div className="relative flex flex-col gap-6">
         {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-10 -right-6 size-44 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
-        <div className="pointer-events-none absolute bottom-0 -left-10 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -top-10 -right-6 size-44 rounded-full bg-amber-400/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute bottom-0 -left-10 size-36 rounded-full bg-amber-400/[0.05] blur-[64px]" aria-hidden="true" />
 
         <motion.div
           className="flex flex-wrap items-end justify-between gap-3 relative"
@@ -212,7 +212,7 @@ export default function CalendarPage() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
           <div>
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
               // schedule · calendar
             </p>
             <h1 className="mt-1 type-h1">Calendar</h1>
@@ -257,7 +257,7 @@ export default function CalendarPage() {
               className={cn(
                 "interactive-press ml-1 h-8 cursor-pointer rounded-lg type-caption",
                 weekOffset === 0 &&
-                  "border-primary/40 bg-primary/10 text-primary shadow-[0_0_12px_-4px_rgb(56_189_248/0.6)] ring-1 ring-primary/30",
+                  "border-amber-400/40 bg-amber-400/10 text-amber-300 shadow-[0_0_12px_-4px_rgb(251,191,36/0.5)] ring-1 ring-amber-400/30",
               )}
               onClick={() => setWeekOffset(0)}
             >
@@ -265,7 +265,7 @@ export default function CalendarPage() {
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <CalendarDays className="size-4 text-primary" />
+            <CalendarDays className="size-4 text-amber-300" />
             <p className="type-body font-semibold tracking-tight">{monthLabel}</p>
             <span className="type-caption text-muted-foreground">{weekLabel}</span>
           </div>
@@ -303,7 +303,7 @@ export default function CalendarPage() {
                   className={cn(
                     "glass-panel flex min-h-44 flex-col rounded-2xl p-3 hover-lift",
                     isToday &&
-                      "border-primary/30 shadow-[0_0_16px_-4px_rgb(56_189_248/0.6)] ring-1 ring-primary/30",
+                      "border-primary/30 shadow-[0_0_16px_-4px_rgb(251,191,36/0.6)] ring-1 ring-amber-400/30",
                   )}
                 >
                   <div className="flex items-center justify-between">
@@ -319,7 +319,7 @@ export default function CalendarPage() {
                       className={cn(
                         "flex size-6 items-center justify-center rounded-lg type-mono font-bold",
                         isToday
-                          ? "bg-primary text-primary-foreground shadow-[0_0_12px_-4px_rgb(56_189_248/0.5)]"
+                          ? "bg-primary text-primary-foreground shadow-[0_0_12px_-4px_rgb(251,191,36/0.5)]"
                           : "text-muted-foreground",
                       )}
                     >
@@ -503,9 +503,9 @@ export default function CalendarPage() {
                   {selectedEvent.sourceStudyPlanId && (
                     <Link
                       to="/plans"
-                      className="interactive-press flex items-center gap-2 type-mono uppercase tracking-[0.22em] text-primary hover:underline"
+                      className="interactive-press flex items-center gap-2 uppercase tracking-[0.22em] text-amber-300 font-semibold hover:underline"
                     >
-                      <Link2 className="size-3 text-primary/60" /> generated from an AI study plan — open plans
+                      <Link2 className="size-3 text-amber-300/60" /> generated from an AI study plan — open plans
                     </Link>
                   )}
                 </div>

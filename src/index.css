@@ -152,30 +152,25 @@
   --sidebar-ring: oklch(0.74 0.15 232 / 0.55);
 }
 
-/* Deep navy base with a faint technical grid and cool blue glows */
+/* Warm paper/lamp glow — soft amber radial washes, no grid */
 body {
   background-color: var(--background);
   background-image:
-    linear-gradient(rgb(148 163 255 / 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(148 163 255 / 0.04) 1px, transparent 1px),
-    radial-gradient(54rem 38rem at 112% -10%, oklch(0.45 0.16 250 / 0.16), transparent 62%),
-    radial-gradient(46rem 34rem at -14% 16%, oklch(0.5 0.13 215 / 0.11), transparent 58%),
-    radial-gradient(42rem 30rem at 55% 118%, oklch(0.46 0.12 205 / 0.1), transparent 62%);
-  background-size: 56px 56px, 56px 56px, auto, auto, auto;
+    radial-gradient(52rem 36rem at 88% -8%, oklch(0.65 0.14 75 / 0.09), transparent 62%),
+    radial-gradient(44rem 32rem at -8% 14%, oklch(0.6 0.12 65 / 0.07), transparent 58%),
+    radial-gradient(38rem 28rem at 50% 108%, oklch(0.58 0.1 55 / 0.06), transparent 62%);
+  background-size: auto, auto, auto;
   background-attachment: fixed;
   color: var(--foreground);
 }
 
-/* Light-mode background: faint blueprint grid, soft blue washes instead of
-   the dark glows. */
+/* Light-mode background: soft warm amber washes instead of cool blue glows. */
 .light body {
   background-image:
-    linear-gradient(rgb(30 58 138 / 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(30 58 138 / 0.05) 1px, transparent 1px),
-    radial-gradient(54rem 38rem at 112% -10%, oklch(0.55 0.16 240 / 0.1), transparent 62%),
-    radial-gradient(46rem 34rem at -14% 16%, oklch(0.5 0.13 215 / 0.08), transparent 58%),
-    radial-gradient(42rem 30rem at 55% 118%, oklch(0.46 0.12 205 / 0.07), transparent 62%);
-  background-size: 56px 56px, 56px 56px, auto, auto, auto;
+    radial-gradient(52rem 36rem at 88% -8%, oklch(0.7 0.1 80 / 0.08), transparent 62%),
+    radial-gradient(44rem 32rem at -8% 14%, oklch(0.65 0.08 70 / 0.06), transparent 58%),
+    radial-gradient(38rem 28rem at 50% 108%, oklch(0.6 0.08 60 / 0.05), transparent 62%);
+  background-size: auto, auto, auto;
 }
 
 ::selection {
@@ -211,9 +206,9 @@ body {
 .light .text-gradient {
   background: linear-gradient(
     118deg,
-    oklch(0.52 0.17 255),
-    oklch(0.5 0.14 230) 55%,
-    oklch(0.5 0.12 200)
+    oklch(0.55 0.16 75),
+    oklch(0.52 0.14 65) 55%,
+    oklch(0.50 0.12 55)
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -543,9 +538,9 @@ body {
   .text-gradient {
     background: linear-gradient(
       118deg,
-      oklch(0.76 0.13 255),
-      oklch(0.8 0.12 225) 55%,
-      oklch(0.83 0.1 195)
+      oklch(0.82 0.13 80),
+      oklch(0.85 0.12 75) 55%,
+      oklch(0.80 0.10 65)
     );
     -webkit-background-clip: text;
     background-clip: text;
@@ -795,9 +790,9 @@ html.lenis, html.lenis body {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    oklch(0.74 0.15 232 / 0.08) 15%,
-    oklch(0.74 0.15 232 / 0.45) 50%,
-    oklch(0.74 0.15 232 / 0.08) 85%,
+    oklch(0.78 0.14 75 / 0.08) 15%,
+    oklch(0.78 0.14 75 / 0.45) 50%,
+    oklch(0.78 0.14 75 / 0.08) 85%,
     transparent 100%
   );
   background-size: 200% 100%;
@@ -812,19 +807,19 @@ html.lenis, html.lenis body {
 /* Glow pulse on the developer name — uses filter: drop-shadow so it works
    with the text-gradient (color: transparent) approach. */
 .footer-dev-glow {
-  filter: drop-shadow(0 0 16px oklch(0.74 0.15 232 / 0.35))
-          drop-shadow(0 0 32px oklch(0.74 0.15 232 / 0.15));
+  filter: drop-shadow(0 0 16px oklch(0.78 0.14 75 / 0.35))
+          drop-shadow(0 0 32px oklch(0.78 0.14 75 / 0.15));
   animation: footer-glow-pulse 3s ease-in-out infinite;
 }
 
 @keyframes footer-glow-pulse {
   0%, 100% {
-    filter: drop-shadow(0 0 16px oklch(0.74 0.15 232 / 0.35))
-            drop-shadow(0 0 32px oklch(0.74 0.15 232 / 0.15));
+    filter: drop-shadow(0 0 16px oklch(0.78 0.14 75 / 0.35))
+            drop-shadow(0 0 32px oklch(0.78 0.14 75 / 0.15));
   }
   50% {
-    filter: drop-shadow(0 0 22px oklch(0.74 0.15 232 / 0.5))
-            drop-shadow(0 0 44px oklch(0.74 0.15 232 / 0.25));
+    filter: drop-shadow(0 0 22px oklch(0.78 0.14 75 / 0.5))
+            drop-shadow(0 0 44px oklch(0.78 0.14 75 / 0.25));
   }
 }
 
@@ -843,7 +838,7 @@ html.lenis, html.lenis body {
     105deg,
     transparent 0%,
     transparent 38%,
-    oklch(0.92 0.04 195 / 0.15) 50%,
+    oklch(0.92 0.04 75 / 0.12) 50%,
     transparent 62%,
     transparent 100%
   );
@@ -858,7 +853,7 @@ html.lenis, html.lenis body {
 
 /* Faint dot pattern behind the footer */
 .footer-dots {
-  background-image: radial-gradient(oklch(0.74 0.15 232 / 0.06) 1px, transparent 1px);
+  background-image: radial-gradient(oklch(0.78 0.14 75 / 0.05) 1px, transparent 1px);
   background-size: 12px 12px;
 }
 
@@ -1079,10 +1074,10 @@ html.lenis, html.lenis body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.6;
+  opacity: 0.5;
   background:
-    linear-gradient(rgb(112 196 255 / 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(112 196 255 / 0.04) 1px, transparent 1px);
+    linear-gradient(rgb(251 191 36 / 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(251 191 36 / 0.03) 1px, transparent 1px);
   background-size: 28px 28px;
   mask-image: linear-gradient(to bottom, black, transparent 72%);
 }
@@ -1095,8 +1090,8 @@ html.lenis, html.lenis body {
 .student-nav-active {
   position: relative;
   box-shadow:
-    inset 0 0 0 1px rgb(112 196 255 / 0.16),
-    0 8px 24px -18px rgb(112 196 255 / 0.9);
+    inset 0 0 0 1px rgb(251 191 36 / 0.2),
+    0 8px 24px -18px rgb(251 191 36 / 0.7);
 }
 
 .student-nav-active::before {
@@ -1107,22 +1102,22 @@ html.lenis, html.lenis body {
   height: 56%;
   width: 2px;
   border-radius: 999px;
-  background: var(--primary);
-  box-shadow: 0 0 12px 2px rgb(112 196 255 / 0.8);
+  background: oklch(0.78 0.14 75);
+  box-shadow: 0 0 12px 2px rgb(251 191 36 / 0.6);
 }
 
 .student-profile-card {
   background:
     linear-gradient(135deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.025)),
-    radial-gradient(circle at 0 100%, rgb(56 189 248 / 0.12), transparent 45%);
-  border-color: rgb(112 196 255 / 0.14);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 10px 24px -18px rgb(56 189 248 / 0.7);
+    radial-gradient(circle at 0 100%, rgb(251 191 36 / 0.08), transparent 45%);
+  border-color: rgb(251 191 36 / 0.12);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 10px 24px -18px rgb(251 191 36 / 0.5);
 }
 
 .student-mobile-drawer {
   background:
-    linear-gradient(180deg, rgb(16 29 49 / 0.98), rgb(8 15 29 / 0.98)),
-    radial-gradient(circle at 100% 0, rgb(56 189 248 / 0.16), transparent 42%);
+    linear-gradient(180deg, rgb(20 18 12 / 0.98), rgb(10 9 6 / 0.98)),
+    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.1), transparent 42%);
   box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.75), inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
@@ -1131,11 +1126,11 @@ html.lenis, html.lenis body {
   isolation: isolate;
   background:
     linear-gradient(135deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.018) 55%),
-    radial-gradient(ellipse at 90% 10%, rgb(251 191 36 / 0.1), transparent 42%),
-    radial-gradient(ellipse at 10% 90%, rgb(56 189 248 / 0.06), transparent 42%);
+    radial-gradient(ellipse at 90% 10%, rgb(251 191 36 / 0.12), transparent 42%),
+    radial-gradient(ellipse at 10% 90%, rgb(251 191 36 / 0.05), transparent 42%);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.1),
-    0 26px 70px -38px rgb(251 191 36 / 0.35);
+    0 26px 70px -38px rgb(251 191 36 / 0.45);
 }
 
 .student-hero::after {
@@ -1145,22 +1140,23 @@ html.lenis, html.lenis body {
   pointer-events: none;
   border: 1px solid rgb(255 255 255 / 0.04);
   border-radius: inherit;
-  background: linear-gradient(115deg, rgb(251 191 36 / 0.04), transparent 30%, transparent 70%, rgb(56 189 248 / 0.04));
+  background: linear-gradient(115deg, rgb(251 191 36 / 0.06), transparent 30%, transparent 70%, rgb(251 191 36 / 0.03));
 }
 
 .student-stat-card {
   min-height: 8.5rem;
   background:
     linear-gradient(145deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.018) 65%),
-    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.06), transparent 45%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07);
+    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.08), transparent 45%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 0 0 1px rgb(251 191 36 / 0.06);
 }
 
 .student-stat-card:hover {
-  border-color: rgb(251 191 36 / 0.18);
+  border-color: rgb(251 191 36 / 0.22);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.1),
-    0 14px 34px -24px rgb(251 191 36 / 0.5);
+    inset 0 0 0 1px rgb(251 191 36 / 0.1),
+    0 14px 34px -24px rgb(251 191 36 / 0.55);
 }
 
 .student-stat-streak {
@@ -1178,7 +1174,7 @@ html.lenis, html.lenis body {
 .student-focus-panel {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.065), rgb(255 255 255 / 0.018)),
-    repeating-linear-gradient(90deg, transparent 0 54px, rgb(251 191 36 / 0.025) 55px);
+    repeating-linear-gradient(90deg, transparent 0 54px, rgb(251 191 36 / 0.018) 55px);
 }
 
 .student-focus-panel [title] {
@@ -1187,11 +1183,11 @@ html.lenis, html.lenis body {
 
 .student-challenge {
   background:
-    linear-gradient(135deg, rgb(251 191 36 / 0.07), rgb(255 255 255 / 0.025) 48%, rgb(56 189 248 / 0.04)),
-    radial-gradient(circle at 90% 0, rgb(251 191 36 / 0.1), transparent 35%);
+    linear-gradient(135deg, rgb(251 191 36 / 0.08), rgb(255 255 255 / 0.025) 48%, rgb(251 191 36 / 0.03)),
+    radial-gradient(circle at 90% 0, rgb(251 191 36 / 0.12), transparent 35%);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.1),
-    0 20px 50px -32px rgb(251 191 36 / 0.45);
+    0 20px 50px -32px rgb(251 191 36 / 0.5);
 }
 
 @media (max-width: 639px) {
@@ -1225,8 +1221,8 @@ html.lenis, html.lenis body {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(42rem 24rem at 92% 8%, rgb(56 189 248 / 0.07), transparent 68%),
-    radial-gradient(38rem 26rem at 4% 82%, rgb(99 102 241 / 0.06), transparent 68%);
+    radial-gradient(42rem 24rem at 92% 8%, rgb(251 191 36 / 0.06), transparent 68%),
+    radial-gradient(38rem 26rem at 4% 82%, rgb(245 158 11 / 0.04), transparent 68%);
 }
 
 .student-app-main {
@@ -1254,8 +1250,10 @@ html.lenis, html.lenis body {
   width: 24rem;
   height: 18rem;
   pointer-events: none;
-  opacity: 0.12;
-  background: radial-gradient(circle, hsl(var(--page-accent) / 0.55), transparent 68%);
+  opacity: 0.1;
+  background:
+    radial-gradient(circle, hsl(var(--page-accent) / 0.4), transparent 68%),
+    radial-gradient(circle at 0% 50%, rgb(251 191 36 / 0.15), transparent 60%);
   filter: blur(28px);
 }
 
@@ -1296,9 +1294,9 @@ html.lenis, html.lenis body {
 
 .hub-launchpad {
   background:
-    linear-gradient(135deg, rgb(18 24 38 / 0.9), rgb(10 14 24 / 0.88)),
-    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.08), transparent 42%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 24px 60px -40px rgb(251 191 36 / 0.5);
+    linear-gradient(135deg, rgb(18 16 10 / 0.9), rgb(10 9 6 / 0.88)),
+    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.1), transparent 42%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 24px 60px -40px rgb(251 191 36 / 0.6);
 }
 
 .hub-launch-card {
@@ -1325,15 +1323,15 @@ html.lenis, html.lenis body {
 
 .student-sidebar {
   background:
-    linear-gradient(165deg, rgb(13 28 48 / 0.98), rgb(5 12 24 / 0.98)),
-    radial-gradient(circle at 0 0, rgb(56 189 248 / 0.1), transparent 40%);
+    linear-gradient(165deg, rgb(20 18 12 / 0.98), rgb(10 9 6 / 0.98)),
+    radial-gradient(circle at 0 0, rgb(251 191 36 / 0.07), transparent 40%);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.08),
-    0 26px 70px -42px rgb(24 104 190 / 0.9);
+    0 26px 70px -42px rgb(180 120 20 / 0.6);
 }
 
 .student-brand-lockup {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 30px -24px rgb(56 189 248 / 0.9);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 30px -24px rgb(251 191 36 / 0.6);
 }
 
 .student-premium-link {
@@ -1343,14 +1341,14 @@ html.lenis, html.lenis body {
 }
 
 .student-admin-link {
-  background: linear-gradient(100deg, rgb(56 189 248 / 0.12), rgb(56 189 248 / 0.025));
+  background: linear-gradient(100deg, rgb(251 191 36 / 0.08), rgb(251 191 36 / 0.02));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 
 .student-sidebar-nav {
   display: flex;
   scrollbar-width: thin;
-  scrollbar-color: rgb(112 196 255 / 0.38) transparent;
+  scrollbar-color: rgb(251 191 36 / 0.28) transparent;
 }
 
 .student-sidebar-nav::-webkit-scrollbar {
@@ -1359,7 +1357,7 @@ html.lenis, html.lenis body {
 
 .student-sidebar-nav::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgb(112 196 255 / 0.38);
+  background: rgb(251 191 36 / 0.28);
 }
 
 .student-sidebar-footer {
@@ -1371,34 +1369,40 @@ html.lenis, html.lenis body {
 }
 
 .student-page-frame .glass-panel {
-  border-color: rgb(255 255 255 / 0.1);
+  border-color: rgb(251 191 36 / 0.08);
   background:
     linear-gradient(145deg, rgb(255 255 255 / 0.065), rgb(255 255 255 / 0.016) 68%),
-    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.025), transparent 36%);
+    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.035), transparent 36%);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.075),
     inset 0 0 0 1px rgb(255 255 255 / 0.018),
-    0 18px 48px -32px rgb(251 191 36 / 0.2);
+    0 18px 48px -32px rgb(251 191 36 / 0.25);
 }
 
 .student-page-frame .glass-panel:hover {
-  border-color: rgb(251 191 36 / 0.15);
+  border-color: rgb(251 191 36 / 0.18);
 }
 
 .student-page-frame .glass-soft {
   background:
     linear-gradient(135deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.018)),
-    radial-gradient(circle at 0 100%, rgb(251 191 36 / 0.035), transparent 45%);
-  border-color: rgb(255 255 255 / 0.09);
+    radial-gradient(circle at 0 100%, rgb(251 191 36 / 0.05), transparent 45%);
+  border-color: rgb(251 191 36 / 0.07);
+}
+
+  /* Warmer, softer card treatment in student dashboard */
+.student-page-frame .glass-panel,
+.student-page-frame .glass-soft {
+  border-radius: 1.125rem;
 }
 
 .student-mobile-header {
   background:
-    linear-gradient(135deg, rgb(18 32 54 / 0.92), rgb(9 17 32 / 0.82)),
-    radial-gradient(circle at 100% 0, rgb(56 189 248 / 0.13), transparent 42%);
+    linear-gradient(135deg, rgb(20 18 12 / 0.92), rgb(10 9 6 / 0.82)),
+    radial-gradient(circle at 100% 0, rgb(251 191 36 / 0.08), transparent 42%);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.1),
-    0 14px 34px -25px rgb(56 189 248 / 0.65);
+    0 14px 34px -25px rgb(180 120 20 / 0.5);
 }
 
 .student-page-frame h1,

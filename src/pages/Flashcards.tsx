@@ -140,8 +140,8 @@ export default function Flashcards() {
               animate={{ opacity: 1, scale: 1 }}
               className="glass-panel relative overflow-hidden flex flex-col items-center rounded-2xl p-10 text-center"
             >
-              <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 size-48 rounded-full bg-primary/15 blur-[60px]" />
-              <div className="relative flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-lg shadow-primary/20">
+              <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 size-48 rounded-full bg-amber-400/15 blur-[60px]" />
+              <div className="relative flex size-16 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300 shadow-lg shadow-amber-400/20">
                 <Sparkles className="size-8" />
               </div>
               <h2 className="type-h1 relative mt-5">Session complete!</h2>
@@ -212,7 +212,7 @@ export default function Flashcards() {
                     className="absolute inset-0 flex flex-col items-center justify-center p-8"
                     style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
                   >
-                    <p className="type-mono mb-2 text-xs text-primary">ANSWER</p>
+                    <p className="type-mono mb-2 text-xs text-amber-300">ANSWER</p>
                     <p className="type-body-lg text-center leading-7">{currentCard.back}</p>
                   </div>
                 </motion.div>
@@ -256,8 +256,8 @@ export default function Flashcards() {
     <DashboardShell>
       <div className="relative flex flex-col gap-6">
         {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-10 -left-6 size-44 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
-        <div className="pointer-events-none absolute top-8 -right-8 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -top-10 -left-6 size-44 rounded-full bg-amber-400/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute top-8 -right-8 size-36 rounded-full bg-amber-400/[0.05] blur-[64px]" aria-hidden="true" />
 
         <motion.div
           className="flex flex-wrap items-end justify-between gap-3 relative"
@@ -266,7 +266,7 @@ export default function Flashcards() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
           <div>
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
               // spaced repetition · flashcards
             </p>
             <h1 className="type-h1 mt-1">Flashcards</h1>
@@ -290,8 +290,8 @@ export default function Flashcards() {
           </div>
         ) : decks.length === 0 ? (
           <div className="glass-soft relative overflow-hidden flex flex-col items-center justify-center rounded-2xl px-6 py-20 text-center">
-            <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 size-40 rounded-full bg-primary/10 blur-[50px]" />
-            <div className="relative flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-lg shadow-primary/20">
+            <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 size-40 rounded-full bg-amber-400/10 blur-[50px]" />
+            <div className="relative flex size-16 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300 shadow-lg shadow-amber-400/20">
               <Layers className="size-8" />
             </div>
             <h3 className="type-h3 relative mt-5">No flashcard decks yet</h3>
@@ -301,7 +301,7 @@ export default function Flashcards() {
             </p>
             <div className="glass-chip relative mt-4 max-w-sm rounded-xl px-4 py-3">
               <p className="type-caption text-muted-foreground">
-                <span className="text-primary font-semibold">Pro tip:</span> Start with a subject you find tricky — flashcards are perfect for building confidence on weak spots.
+                <span className="text-amber-300 font-semibold">Pro tip:</span> Start with a subject you find tricky — flashcards are perfect for building confidence on weak spots.
               </p>
             </div>
             <Button className="interactive-press relative mt-6 rounded-xl" onClick={() => setShowGenerate(true)}>
@@ -324,7 +324,7 @@ export default function Flashcards() {
                     className="glass-panel hover-lift group flex flex-col rounded-2xl p-5"
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[0_0_20px_-8px_rgb(56_189_248/0.5)]">
+                      <div className="flex size-10 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300 shadow-[0_0_20px_-8px_rgb(251,191,36/0.4)]">
                         <Brain className="size-5" />
                       </div>
                       <span className="type-mono rounded-lg bg-white/5 px-2 py-1 text-xs text-muted-foreground">
