@@ -35,6 +35,7 @@ import { ConvexError, v } from "convex/values";
 import { createHmac } from "crypto";
 import https from "node:https";
 import http from "node:http";
+import dns from "node:dns/promises";
 import { URL } from "node:url";
 import { action } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
@@ -48,6 +49,34 @@ const TOKEN_TTL_SECONDS = 60 * 15; // 15 minutes — short-lived by design
 const ROOM_EMPTY_TIMEOUT_SECONDS = 60 * 15; // auto-close after 15 min empty
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 2;
+
+// ─── DNS cache ────────────────────────────────────────────────────────────────
+// Convex's action runtime can throw `getaddrinfo EBUSY` because the c-ares
+// resolver (used by Node's default dns.lookup inside https.request) is
+// under contention. We bypass it by resolving hostnames once via
+// dns.promises.resolve4() (which uses Node's own resolver, NOT c-ares)
+// and then connecting to the IP directly with the correct Host header.
+
+type DnsEntry = { ip: string; expires: number };
+const dnsCache = new Map<string, DnsEntry>();
+const DNS_TTL_MS = 5 * 60_000; // 5 minutes
+
+async function resolveHostname(hostname: string): Promise<string> {
+  const now = Date.now();
+  const cached = dnsCache.get(hostname);
+  if (cached && cached.expires > now) return cached.ip;
+  try {
+    const addresses = await dns.resolve4(hostname);
+    if (addresses.length === 0) throw new Error(`No A records for ${hostname}`);
+    const ip = addresses[0];
+    dnsCache.set(hostname, { ip, expires: now + DNS_TTL_MS });
+    return ip;
+  } catch (err) {
+    // If dns.resolve4 also fails, fall through — the error will be
+    // caught and reported by httpRequest with full context.
+    throw new Error(`DNS resolution failed for ${hostname}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -71,10 +100,10 @@ async function requireLiveKitConfig(
 }
 
 // ─── Low-level HTTP (node:https) ─────────────────────────────────────────────
-// Convex's "use node" action runtime sometimes fails with the global `fetch`
-// ("fetch failed" / TypeError). Using node:https directly is more reliable
-// because it bypasses any fetch polyfill and gives us socket-level timeout
-// control and detailed error messages.
+// Convex's "use node" action runtime: the c-ares resolver inside
+// https.request's default dns.lookup throws `getaddrinfo EBUSY` under
+// contention. We bypass it by pre-resolving hostnames via dns.resolve4()
+// and connecting to the IP directly (Host header keeps TLS SNI correct).
 
 interface HttpResult {
   status: number;
@@ -86,24 +115,27 @@ function liveKitAuthHeader(apiKey: string, apiSecret: string): string {
 }
 
 /** Make an HTTPS (or HTTP) request using node:http/https with timeout + retry. */
-function httpRequest(
+async function httpRequest(
   method: string,
   urlStr: string,
   headers: Record<string, string>,
   body: string | null,
   retries = MAX_RETRIES,
 ): Promise<HttpResult> {
-  return new Promise((resolve, reject) => {
-    const doRequest = (attempt: number) => {
-      let parsed: URL;
-      try {
-        parsed = new URL(urlStr);
-      } catch {
-        reject(new Error(`Invalid URL: ${urlStr}`));
-        return;
-      }
+  let parsed: URL;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    throw new Error(`Invalid URL: ${urlStr}`);
+  }
 
+  // Pre-resolve hostname to IP to avoid getaddrinfo EBUSY
+  const ip = await resolveHostname(parsed.hostname);
+
+  return new Promise<HttpResult>((resolve, reject) => {
+    const doRequest = (attempt: number) => {
       const transport = parsed.protocol === "https:" ? https : http;
+      // Connect to the IP, but set Host + servername for correct TLS SNI
       const reqHeaders: Record<string, string> = {
         ...headers,
         Host: parsed.host,
@@ -111,7 +143,8 @@ function httpRequest(
 
       const req = transport.request(
         {
-          hostname: parsed.hostname,
+          hostname: ip,
+          servername: parsed.hostname, // TLS SNI — required for HTTPS
           port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
           path: parsed.pathname + parsed.search,
           method,
@@ -134,13 +167,11 @@ function httpRequest(
 
       req.on("error", (err: Error) => {
         if (attempt < retries) {
-          // Retry on transient network errors after a short delay
           setTimeout(() => doRequest(attempt + 1), 500 * (attempt + 1));
         } else {
-          // Wrap with context to make debugging easier
           reject(
             new Error(
-              `Network error calling LiveKit API (${parsed.host}): ${err.message}`,
+              `Network error calling LiveKit API (${parsed.host} → ${ip}): ${err.message}`,
             ),
           );
         }
