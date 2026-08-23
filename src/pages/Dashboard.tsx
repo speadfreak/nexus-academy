@@ -980,25 +980,25 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Hub command deck */}
+            {/* Personal library snapshot */}
             <div className="hub-command-deck w-full max-w-sm shrink-0 rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl">
               <div className="flex items-center justify-between">
-                <span className="type-mono uppercase tracking-[0.18em] text-primary/80">Hub pulse</span>
-                <span className="flex items-center gap-1.5 type-mono text-[10px] text-emerald-300">
-                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> LIVE CATALOG
+                <span className="text-sm font-semibold text-foreground/85">Your library</span>
+                <span className="flex items-center gap-1.5 text-xs text-emerald-200/80">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> Ready to explore
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
-                  <p className="type-mono text-muted-foreground">RESOURCES</p>
+                  <p className="text-xs text-muted-foreground">Resources</p>
                   <p className="mt-1 type-h2 text-primary">{totalContent}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
-                  <p className="type-mono text-muted-foreground">SAVED</p>
+                  <p className="text-xs text-muted-foreground">Saved</p>
                   <p className="mt-1 type-h2 text-emerald-300">{bookmarkIds?.length ?? 0}</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
-                  <p className="type-mono text-muted-foreground">STREAMS</p>
+                  <p className="text-xs text-muted-foreground">Subjects</p>
                   <p className="mt-1 type-h2 text-amber-300">{subjects?.length ?? 0}</p>
                 </div>
               </div>
@@ -1042,9 +1042,9 @@ export default function Dashboard() {
           <div className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-primary/10 blur-3xl" />
           <div className="relative flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="type-mono uppercase tracking-[0.2em] text-primary">Nexus resource command</p>
-              <h2 className="type-h1 mt-1">Choose your next breakthrough.</h2>
-              <p className="type-body mt-1 text-muted-foreground">A focused launchpad for the resources that move your score.</p>
+              <p className="text-sm font-semibold tracking-wide text-amber-200/80">A little time for yourself</p>
+              <h2 className="type-h1 mt-1">Where would you like to begin?</h2>
+              <p className="type-body mt-1 text-muted-foreground">Settle in with a textbook, practise with an exam, or return to something you saved.</p>
             </div>
             <p className="type-mono text-muted-foreground">{totalContent} indexed · {bookmarkIds?.length ?? 0} saved</p>
           </div>
@@ -1052,24 +1052,24 @@ export default function Dashboard() {
           <div className="relative mt-5 grid gap-3 md:grid-cols-3">
             {[
               {
-                label: "Core textbooks",
-                detail: "Build the foundation",
+                label: "Textbooks",
+                detail: "Build your foundation",
                 count: textbookCount,
                 icon: BookOpen,
                 accent: "bg-emerald-400/10 text-emerald-300",
                 onClick: () => { setContentType("textbook"); setExamYear(""); },
               },
               {
-                label: "National exam archive",
-                detail: "Train under pressure",
+                label: "Past exams",
+                detail: "Practise with confidence",
                 count: pastExamCount,
                 icon: CalendarDays,
                 accent: "bg-amber-400/10 text-amber-300",
                 onClick: () => { setContentType("past_exam"); setExamYear(""); },
               },
               {
-                label: "Your reading list",
-                detail: "Return to saved work",
+                label: "Saved reading",
+                detail: "Pick up where you left off",
                 count: bookmarkIds?.length ?? 0,
                 icon: BookmarkCheck,
                 accent: "bg-primary/10 text-primary",
@@ -1092,7 +1092,7 @@ export default function Dashboard() {
                   </div>
                   <p className="mt-4 type-h3">{card.label}</p>
                   <p className="mt-1 type-caption text-muted-foreground">{card.detail}</p>
-                  <span className="mt-4 inline-flex items-center type-mono text-primary opacity-70 transition group-hover:opacity-100">OPEN CHANNEL →</span>
+                  <span className="mt-4 inline-flex items-center text-sm font-semibold text-primary opacity-70 transition group-hover:opacity-100">Explore →</span>
                 </button>
               );
             })}
@@ -1106,7 +1106,7 @@ export default function Dashboard() {
             >
               <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"><Sparkles className="size-4" /></span>
               <span className="min-w-0 flex-1">
-                <span className="block type-mono uppercase text-primary/80">Featured in the hub</span>
+                <span className="block text-sm font-semibold text-amber-200/80">A good place to start</span>
                 <span className="block truncate type-body font-semibold">{content[0].title}</span>
               </span>
               <span className="hidden type-mono text-primary sm:block">START READING →</span>
