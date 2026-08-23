@@ -205,8 +205,8 @@ export function AdminContentSection() {
       toast.error("Only PDF files are supported for now.");
       return;
     }
-    if (next && next.size > 50 * 1024 * 1024) {
-      toast.error("File too large — maximum 50 MB.");
+    if (next && next.size > 200 * 1024 * 1024) {
+      toast.error("File too large — maximum 200 MB.");
       return;
     }
     setFile(next);
