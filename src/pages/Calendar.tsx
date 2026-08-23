@@ -200,11 +200,20 @@ export default function CalendarPage() {
 
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="relative flex flex-col gap-6">
+        {/* Ambient glow */}
+        <div className="pointer-events-none absolute -top-10 -right-6 size-44 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute bottom-0 -left-10 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+
+        <motion.div
+          className="flex flex-wrap items-end justify-between gap-3 relative"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
           <div>
             <p className="type-mono uppercase tracking-[0.22em] text-primary">
-              // calendar
+              // schedule · calendar
             </p>
             <h1 className="mt-1 type-h1">Calendar</h1>
             <p className="mt-1 type-body text-muted-foreground">
@@ -214,10 +223,15 @@ export default function CalendarPage() {
           <Button className="interactive-press rounded-xl" onClick={openCreate}>
             <Plus className="size-4" /> New event
           </Button>
-        </div>
+        </motion.div>
 
         {/* Week header */}
-        <div className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3"
+        >
           <div className="flex items-center gap-1.5">
             <Button
               variant="ghost"
@@ -263,7 +277,7 @@ export default function CalendarPage() {
               </span>
             ))}
           </div>
-        </div>
+        </motion.div>
 
         {/* Week grid */}
         {events === undefined ? (
@@ -276,17 +290,20 @@ export default function CalendarPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
-            {weekDays.map((day) => {
+            {weekDays.map((day, dayIndex) => {
               const key = day.toDateString();
               const dayEvents = eventsByDay.get(key) ?? [];
               const isToday = key === todayKey;
               return (
-                <div
+                <motion.div
                   key={key}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.04 * dayIndex, ease: [0.22, 1, 0.36, 1] }}
                   className={cn(
-                    "glass-panel flex min-h-44 flex-col rounded-2xl p-3",
+                    "glass-panel flex min-h-44 flex-col rounded-2xl p-3 hover-lift",
                     isToday &&
-                      "border-primary/30 shadow-[0_0_12px_-4px_rgb(56_189_248/0.6)] ring-1 ring-primary/30",
+                      "border-primary/30 shadow-[0_0_16px_-4px_rgb(56_189_248/0.6)] ring-1 ring-primary/30",
                   )}
                 >
                   <div className="flex items-center justify-between">
@@ -301,7 +318,9 @@ export default function CalendarPage() {
                     <span
                       className={cn(
                         "flex size-6 items-center justify-center rounded-lg type-mono font-bold",
-                        isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+                        isToday
+                          ? "bg-primary text-primary-foreground shadow-[0_0_12px_-4px_rgb(56_189_248/0.5)]"
+                          : "text-muted-foreground",
                       )}
                     >
                       {day.getDate()}
@@ -333,7 +352,7 @@ export default function CalendarPage() {
                       ))
                     )}
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>

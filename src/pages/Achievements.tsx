@@ -77,10 +77,19 @@ export default function Achievements() {
 
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-6">
-        <div>
+      <div className="relative flex flex-col gap-6">
+        {/* Ambient glow */}
+        <div className="pointer-events-none absolute -top-12 -right-6 size-48 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute top-20 -left-10 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+
+        <motion.div
+          className="relative"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
           <p className="type-mono uppercase tracking-[0.22em] text-primary">
-            gamification · progress
+            // gamification · progress
           </p>
           <h1 className="mt-1 type-h1">
             Achievements
@@ -88,19 +97,20 @@ export default function Achievements() {
           <p className="mt-1 type-body text-muted-foreground">
             Earned through real study — quizzes, focus, streaks, plans and daily challenges.
           </p>
-        </div>
+        </motion.div>
 
         {/* Level + XP summary */}
         <div className="grid gap-4 md:grid-cols-3">
           <motion.div
-            className="glass-panel rounded-2xl p-5 md:col-span-2"
+            className="glass-panel relative overflow-hidden rounded-2xl p-5 md:col-span-2"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+            transition={{ duration: 0.5, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-primary/10 blur-[40px]" />
+            <div className="relative flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[0_0_24px_-8px_rgb(56_189_248/0.5)]">
                   <Sparkles className="size-5" />
                 </div>
                 <div>
@@ -142,7 +152,7 @@ export default function Achievements() {
             className="glass-panel rounded-2xl p-5"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
           >
             <div className="flex items-center justify-between">
               <span className="type-caption font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -198,8 +208,8 @@ export default function Achievements() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{
                     duration: 0.4,
-                    delay: index * 0.05,
-                    ease: [0.25, 0.46, 0.45, 0.94],
+                    delay: 0.04 * Math.min(index, 12),
+                    ease: [0.22, 1, 0.36, 1],
                   }}
                   className={cn(
                     "glass-panel relative flex flex-col rounded-2xl p-5 transition-all",
@@ -251,13 +261,16 @@ export default function Achievements() {
           className="glass-panel rounded-2xl p-5"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
+          transition={{ duration: 0.5, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="flex items-center justify-between">
-            <span className="type-caption font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              recent xp · last 10 events
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <Zap className="size-4" />
+            </div>
+            <p className="type-body font-semibold">Recent XP · last 10 events</p>
+            <span className="ml-auto type-mono text-[10px] text-muted-foreground">
+              +{level?.totalXp ?? 0} total
             </span>
-            <Zap className="size-3.5 text-primary/60" />
           </div>
           <div className="mt-3 flex flex-col">
             {level?.recentXp.length === 0 ? (

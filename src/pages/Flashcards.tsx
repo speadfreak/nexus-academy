@@ -254,11 +254,20 @@ export default function Flashcards() {
   // Deck list view
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="relative flex flex-col gap-6">
+        {/* Ambient glow */}
+        <div className="pointer-events-none absolute -top-10 -left-6 size-44 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute top-8 -right-8 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+
+        <motion.div
+          className="flex flex-wrap items-end justify-between gap-3 relative"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
           <div>
             <p className="type-mono uppercase tracking-[0.22em] text-primary">
-              // flashcards
+              // spaced repetition · flashcards
             </p>
             <h1 className="type-h1 mt-1">Flashcards</h1>
             <p className="type-body mt-1 text-muted-foreground">
@@ -272,7 +281,7 @@ export default function Flashcards() {
           >
             <Plus className="size-4" /> New deck
           </Button>
-        </div>
+        </motion.div>
 
         {/* Deck grid */}
         {decks === undefined ? (
@@ -311,11 +320,11 @@ export default function Flashcards() {
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ delay: decks.indexOf(deck) * 0.06, type: 'spring', stiffness: 260, damping: 24 }}
+                    transition={{ delay: decks.indexOf(deck) * 0.06, type: 'spring', stiffness: 260, damping: 24, ease: [0.22, 1, 0.36, 1] }}
                     className="glass-panel hover-lift group flex flex-col rounded-2xl p-5"
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[0_0_20px_-8px_rgb(56_189_248/0.5)]">
                         <Brain className="size-5" />
                       </div>
                       <span className="type-mono rounded-lg bg-white/5 px-2 py-1 text-xs text-muted-foreground">

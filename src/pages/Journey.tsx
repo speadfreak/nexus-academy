@@ -112,7 +112,7 @@ export default function Journey() {
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-            className="size-6 rounded-full border-2 border-primary/30 border-t-primary"
+            className="size-5 rounded-full border-2 border-primary/30 border-t-primary"
           />
         </div>
       </DashboardShell>
@@ -135,17 +135,41 @@ export default function Journey() {
 
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-6">
+      <div className="relative flex flex-col gap-6">
+        {/* Ambient glow behind header */}
+        <div className="pointer-events-none absolute -top-12 -left-8 size-44 rounded-full bg-primary/8 blur-[80px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -right-8 top-4 size-36 rounded-full bg-primary/[0.05] blur-[64px]" aria-hidden="true" />
+
         {/* Header */}
-        <div>
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          className="relative"
+        >
           <p className="type-mono uppercase tracking-[0.22em] text-primary">
-            // journey
+            // analytics · journey
           </p>
           <h1 className="type-h1 mt-1">Your journey</h1>
           <p className="type-body mt-1 text-muted-foreground">
             Real data from your sessions, quizzes and plans — not estimates.
           </p>
-        </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2.5">
+            <span className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1 type-mono text-[10px]">
+              <Clock className="size-3 text-primary" />
+              {heroStats ? `${heroStats.totalHours.toFixed(1)}h studied` : "no data"}
+            </span>
+            <span className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1 type-mono text-[10px]">
+              <Sparkles className="size-3 text-primary" />
+              {heroStats?.totalQuizzes ?? 0} quizzes
+            </span>
+            {journey.premiumAccess && (
+              <span className="glass-chip flex items-center gap-1.5 rounded-lg px-2.5 py-1 type-mono text-[10px] text-premium">
+                <Zap className="size-3" /> premium analytics active
+              </span>
+            )}
+          </div>
+        </motion.div>
 
         {/* Hero stats — visual hierarchy anchors */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -156,7 +180,8 @@ export default function Journey() {
               unit: "h",
               icon: Clock,
               accent: "text-primary",
-              glow: "shadow-[0_0_20px_-8px_rgb(56_189_248/0.5)]",
+              iconBg: "bg-primary/10",
+              glow: "shadow-[0_0_24px_-8px_rgb(56_189_248/0.5)]",
             },
             {
               label: "Quizzes taken",
@@ -164,7 +189,8 @@ export default function Journey() {
               unit: "",
               icon: Sparkles,
               accent: "text-primary",
-              glow: "shadow-[0_0_20px_-8px_rgb(56_189_248/0.4)]",
+              iconBg: "bg-primary/10",
+              glow: "shadow-[0_0_24px_-8px_rgb(56_189_248/0.4)]",
             },
             {
               label: "Avg. score",
@@ -172,9 +198,10 @@ export default function Journey() {
               unit: "%",
               icon: Target,
               accent: heroStats && heroStats.avgScore >= 70 ? "text-emerald-400" : "text-premium",
+              iconBg: heroStats && heroStats.avgScore >= 70 ? "bg-emerald-400/10" : "bg-premium/10",
               glow: heroStats && heroStats.avgScore >= 70
-                ? "shadow-[0_0_20px_-8px_rgb(52_211_153/0.4)]"
-                : "shadow-[0_0_20px_-8px_rgb(245_197_66/0.4)]",
+                ? "shadow-[0_0_24px_-8px_rgb(52_211_153/0.4)]"
+                : "shadow-[0_0_24px_-8px_rgb(245_197_66/0.4)]",
             },
             {
               label: heroStats?.mostImproved ? `Most improved` : "Trending",
@@ -184,17 +211,18 @@ export default function Journey() {
               unit: "",
               icon: TrendingUp,
               accent: "text-premium",
-              glow: "shadow-[0_0_20px_-8px_rgb(245_197_66/0.5)]",
+              iconBg: "bg-premium/10",
+              glow: "shadow-[0_0_24px_-8px_rgb(245_197_66/0.5)]",
             },
           ].map((stat, i) => (
             <motion.div
               key={stat.label}
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.4, delay: 0.05 * i, ease: [0.22, 1, 0.36, 1] }}
-              className="glass-panel flex flex-col gap-2 rounded-2xl p-4 hover-lift"
+              transition={{ duration: 0.4, delay: 0.06 * i, ease: [0.22, 1, 0.36, 1] }}
+              className="glass-panel hover-lift relative overflow-hidden flex flex-col gap-2 rounded-2xl p-4"
             >
-              <div className={cn("flex size-9 items-center justify-center rounded-xl bg-primary/10", stat.accent)}>
+              <div className={cn("flex size-9 items-center justify-center rounded-xl", stat.iconBg, stat.glow, stat.accent)}>
                 <stat.icon className="size-4" />
               </div>
               <p className="type-caption text-muted-foreground">{stat.label}</p>
@@ -209,12 +237,12 @@ export default function Journey() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
           className="glass-panel rounded-2xl p-5"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
                 <BookOpen className="size-4" />
               </div>
               <p className="type-body font-semibold">Hours studied per subject</p>
@@ -258,11 +286,11 @@ export default function Journey() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
           className="glass-panel rounded-2xl p-5"
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
               <TrendingUp className="size-4" />
             </div>
             <p className="type-body font-semibold">Quiz score trend</p>
@@ -319,11 +347,11 @@ export default function Journey() {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ delay: 0.34, ease: [0.22, 1, 0.36, 1] }}
             className="glass-panel rounded-2xl p-5"
           >
             <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
                 <Target className="size-4" />
               </div>
               <p className="type-body font-semibold">Topic completion</p>
@@ -375,11 +403,11 @@ export default function Journey() {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ delay: 0.38, ease: [0.22, 1, 0.36, 1] }}
             className="glass-panel rounded-2xl p-5"
           >
             <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
                 <Link2 className="size-4" />
               </div>
               <p className="type-body font-semibold">Cross-subject links</p>
@@ -427,12 +455,15 @@ export default function Journey() {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ delay: 0.42, ease: [0.22, 1, 0.36, 1] }}
             className="glass-panel rounded-2xl p-5"
           >
-            <p className="type-mono uppercase tracking-[0.22em] text-primary">
-              // recent attempts
-            </p>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+                <Sparkles className="size-4" />
+              </div>
+              <p className="type-body font-semibold">Recent quiz attempts</p>
+            </div>
             <div className="mt-3 space-y-1.5">
               {[...journey.quizTrend].reverse().slice(0, 10).map((attempt, i) => (
                 <motion.div

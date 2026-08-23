@@ -172,12 +172,12 @@ export default function Groups() {
           className="relative"
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: "easeOut" }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="pointer-events-none absolute -top-10 -left-10 size-40 rounded-full bg-primary/10 blur-[80px]" />
           <div className="pointer-events-none absolute -right-6 top-0 size-32 rounded-full bg-primary/[0.06] blur-[64px]" />
           <p className="type-mono uppercase tracking-[0.22em] text-primary">
-            social · opt-in
+            // social · groups
           </p>
           <h1 className="mt-1 text-gradient type-h1">
             Study groups
@@ -211,7 +211,7 @@ export default function Groups() {
           className="grid gap-4 lg:grid-cols-[320px_1fr]"
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.08, ease: "easeOut" }}
+          transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
           {/* Left: my groups + actions */}
           <div className="flex flex-col gap-4">
@@ -239,12 +239,13 @@ export default function Groups() {
                   ))}
                 </>
               ) : myGroups.length === 0 ? (
-                <div className="flex flex-col items-center px-4 py-10 text-center">
-                  <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="relative flex flex-col items-center px-4 py-10 text-center overflow-hidden">
+                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 size-28 rounded-full bg-primary/10 blur-[40px]" />
+                  <div className="relative flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[0_0_24px_-8px_rgb(56_189_248/0.5)]">
                     <Users className="size-5" />
                   </div>
-                  <p className="mt-3 type-h3">No groups yet</p>
-                  <p className="mt-1 max-w-[220px] type-caption leading-5 text-muted-foreground">
+                  <p className="relative mt-3 type-h3">No groups yet</p>
+                  <p className="relative mt-1 max-w-[220px] type-caption leading-5 text-muted-foreground">
                     Create one and share the invite code, or join a friend&apos;s group.
                   </p>
                 </div>
@@ -351,7 +352,7 @@ export default function Groups() {
                           key={member.userId}
                           initial={{ opacity: 0, x: -12 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.35, delay: index * 0.05, ease: "easeOut" }}
+                          transition={{ duration: 0.35, delay: 0.04 * Math.min(index, 10), ease: [0.22, 1, 0.36, 1] }}
                           className={cn(
                             "flex items-center gap-3 rounded-xl border px-3 py-3 transition-colors",
                             member.isMe

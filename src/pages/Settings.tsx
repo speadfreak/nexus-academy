@@ -113,7 +113,7 @@ export default function Settings() {
       const result = await setUsername({ username: value });
       setUsernameDirty(false);
       setUsernameValue(result.username);
-      toast.success(`Username set — you can now sign in with “${result.username}”.`);
+      toast.success(`Username set — you can now sign in with "${result.username}".`);
     } catch (error) {
       setUsernameError(errorMessage(error, "Could not save your username."));
     } finally {
@@ -144,26 +144,41 @@ export default function Settings() {
 
   return (
     <DashboardShell>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-        <div>
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-            // settings
+      <div className="relative mx-auto flex w-full max-w-3xl flex-col gap-6">
+        {/* Ambient glow */}
+        <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 size-52 rounded-full bg-primary/8 blur-[90px]" aria-hidden="true" />
+
+        {/* Header */}
+        <motion.div
+          className="relative"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <p className="type-mono uppercase tracking-[0.22em] text-primary">
+            // configuration · settings
           </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Settings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="type-h1 mt-1">Settings</h1>
+          <p className="type-body mt-1 text-muted-foreground">
             Your profile, appearance and study track.
           </p>
-        </div>
+        </motion.div>
 
         {/* ------- Profile ------- */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-panel rounded-2xl p-6"
+          transition={{ duration: 0.4, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel hover-lift rounded-2xl p-6"
         >
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-            // profile
-          </p>
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <UserRound className="size-4" />
+            </div>
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+              // profile
+            </p>
+          </div>
 
           <div className="mt-5 flex items-center gap-5">
             <div className="relative">
@@ -178,7 +193,7 @@ export default function Settings() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadingAvatar}
                 aria-label="Upload avatar"
-                className="absolute -bottom-1 -right-1 flex size-7 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 disabled:opacity-60"
+                className="interactive-press absolute -bottom-1 -right-1 flex size-7 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_16px_-4px_rgb(56_189_248/0.5)] disabled:opacity-60"
               >
                 {uploadingAvatar ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -196,14 +211,14 @@ export default function Settings() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold tracking-tight">
+              <p className="type-body font-semibold">
                 {profile?.displayName ?? user?.name ?? "Guest"}
               </p>
-              <p className="truncate font-mono text-[11px] text-muted-foreground">
+              <p className="type-mono truncate text-muted-foreground">
                 {profile?.email ?? user?.email ?? "Anonymous session"}
               </p>
               {profile?.stream && (
-                <Badge className="mt-1.5 gap-1 bg-primary/10 font-mono text-[10px] text-primary">
+                <Badge className="mt-1.5 glass-chip gap-1 border-0 type-mono text-[10px] text-primary">
                   <UserRound className="size-3" /> {STREAM_LABELS[profile.stream as keyof typeof STREAM_LABELS]} stream
                 </Badge>
               )}
@@ -211,7 +226,7 @@ export default function Settings() {
           </div>
 
           <div className="mt-6 flex flex-col gap-2">
-            <Label className="text-xs font-semibold text-muted-foreground">Display name</Label>
+            <Label className="type-caption font-semibold text-muted-foreground">Display name</Label>
             <div className="flex gap-2">
               <Input
                 value={
@@ -222,10 +237,10 @@ export default function Settings() {
                   setNameDirty(true);
                 }}
                 placeholder="How the tutor should call you"
-                className="h-10 rounded-xl bg-white/5 font-mono text-sm"
+                className="type-body h-10 rounded-xl bg-white/5 font-mono"
               />
               <Button
-                className="h-10 rounded-xl"
+                className="interactive-press h-10 rounded-xl"
                 onClick={handleSaveName}
                 disabled={savingName || !nameDirty}
               >
@@ -236,7 +251,7 @@ export default function Settings() {
           </div>
 
           <div className="mt-4 flex flex-col gap-2">
-            <Label className="text-xs font-semibold text-muted-foreground">Username (login handle)</Label>
+            <Label className="type-caption font-semibold text-muted-foreground">Username (login handle)</Label>
             <div className="flex gap-2">
               <div className="flex-1">
                 <Input
@@ -249,20 +264,20 @@ export default function Settings() {
                     setUsernameError(null);
                   }}
                   placeholder="e.g. abebe_12"
-                  className="h-10 rounded-xl bg-white/5 font-mono text-sm"
+                  className="type-body h-10 rounded-xl bg-white/5 font-mono"
                 />
                 {usernameError ? (
-                  <p className="mt-1 text-xs text-red-500">{usernameError}</p>
+                  <p className="mt-1 type-caption text-destructive">{usernameError}</p>
                 ) : (
-                  <p className="mt-1 text-[11px] text-muted-foreground">
+                  <p className="mt-1 type-caption text-muted-foreground">
                     {profile?.username
-                      ? `Sign in with your username or email — “${profile.username}”.`
+                      ? `Sign in with your username or email — "${profile.username}".`
                       : "Optional: pick one so you can sign in with your username instead of your email."}
                   </p>
                 )}
               </div>
               <Button
-                className="h-10 rounded-xl"
+                className="interactive-press h-10 rounded-xl"
                 onClick={() => void handleSaveUsername()}
                 disabled={savingUsername || !usernameDirty}
               >
@@ -277,12 +292,17 @@ export default function Settings() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="glass-panel rounded-2xl p-6"
+          transition={{ duration: 0.4, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel hover-lift rounded-2xl p-6"
         >
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-            // appearance
-          </p>
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <Sun className="size-4" />
+            </div>
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+              // appearance
+            </p>
+          </div>
           <div className="mt-5 grid grid-cols-2 gap-3">
             {(["dark", "light"] as const).map((option) => (
               <button
@@ -293,9 +313,9 @@ export default function Settings() {
                   void updateProfile({ themePreference: option }).catch(() => {});
                 }}
                 className={cn(
-                  "flex cursor-pointer items-center gap-3 rounded-xl border p-4 text-left transition-colors",
+                  "interactive-press flex cursor-pointer items-center gap-3 rounded-xl border p-4 text-left",
                   theme === option
-                    ? "border-primary/50 bg-primary/10"
+                    ? "border-primary/50 bg-primary/10 shadow-[inset_0_0_0_1px_rgb(112_196_255/0.14),0_8px_24px_-18px_rgb(112_196_255/0.9)]"
                     : "border-white/10 bg-white/4 hover:border-white/25",
                 )}
               >
@@ -305,10 +325,10 @@ export default function Settings() {
                   <Sun className="size-5 text-primary" />
                 )}
                 <div>
-                  <p className="text-sm font-bold tracking-tight">
+                  <p className="type-body font-semibold">
                     {option === "dark" ? "Dark" : "Light"}
                   </p>
-                  <p className="font-mono text-[10px] text-muted-foreground">
+                  <p className="type-caption text-muted-foreground">
                     {option === "dark" ? "deep navy technical" : "cool paper blueprint"}
                   </p>
                 </div>
@@ -322,13 +342,18 @@ export default function Settings() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass-panel rounded-2xl p-6"
+          transition={{ duration: 0.4, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel hover-lift rounded-2xl p-6"
         >
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-            // study track
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <Atom className="size-4" />
+            </div>
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+              // study track
+            </p>
+          </div>
+          <p className="mt-1 type-caption text-muted-foreground">
             The AI tutor and dashboard organize around your stream&apos;s exam subjects.
             English, Mathematics and the SAT are part of both streams.
           </p>
@@ -341,18 +366,18 @@ export default function Settings() {
                   type="button"
                   onClick={() => handleStream(option.id)}
                   className={cn(
-                    "flex cursor-pointer flex-col gap-2 rounded-xl border p-4 text-left transition-colors",
+                    "interactive-press flex cursor-pointer flex-col gap-2 rounded-xl border p-4 text-left",
                     active
-                      ? "border-primary/50 bg-primary/10"
+                      ? "border-primary/50 bg-primary/10 shadow-[inset_0_0_0_1px_rgb(112_196_255/0.14),0_8px_24px_-18px_rgb(112_196_255/0.9)]"
                       : "border-white/10 bg-white/4 hover:border-white/25",
                   )}
                 >
                   <option.icon className={cn("size-5", active ? "text-primary" : "text-muted-foreground")} />
-                  <p className="text-sm font-bold tracking-tight">{option.label}</p>
-                  <p className="font-mono text-[9px] leading-4 text-muted-foreground">
+                  <p className="type-body font-semibold">{option.label}</p>
+                  <p className="type-mono text-[10px] text-muted-foreground">
                     {option.subjects}
                   </p>
-                  <p className="font-mono text-[9px] leading-4 text-muted-foreground/70">
+                  <p className="type-mono text-[10px] text-muted-foreground/70">
                     + {SHARED_SUBJECTS}{" "}
                     <span className="text-primary/70">(both streams)</span>
                   </p>
@@ -366,15 +391,16 @@ export default function Settings() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl p-6"
+          transition={{ duration: 0.4, delay: 0.24, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel hover-lift relative overflow-hidden flex flex-wrap items-center justify-between gap-3 rounded-2xl p-6"
         >
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <div className="pointer-events-none absolute -top-6 -right-6 size-24 rounded-full bg-premium/10 blur-[40px]" />
+          <div className="relative flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-premium/10 text-premium shadow-[0_0_20px_-8px_rgb(245_197_66/0.5)]">
               <Crown className="size-5" />
             </div>
             <div>
-              <p className="text-sm font-bold tracking-tight">
+              <p className="type-body font-semibold">
                 {subscription?.status === "active"
                   ? "Premium is active"
                   : subscription?.status === "trial"
@@ -383,17 +409,17 @@ export default function Settings() {
                       ? "Trial ended — premium paused"
                       : "No active subscription"}
               </p>
-              <p className="font-mono text-[10px] text-muted-foreground">
+              <p className="type-mono text-muted-foreground">
                 status: {subscription?.status ?? "checking…"} · tier: {subscription?.planTier ?? "premium"}
               </p>
             </div>
           </div>
           {subscription?.needsUpgrade ? (
-            <Button asChild className="rounded-xl">
+            <Button asChild className="interactive-press rounded-xl">
               <a href="/upgrade">Upgrade now</a>
             </Button>
           ) : (
-            <Badge className="gap-1 bg-emerald-400/10 font-mono text-[10px] text-emerald-300">
+            <Badge className="glass-chip border-0 gap-1 type-mono text-[10px] text-emerald-400">
               <Check className="size-3" /> access granted
             </Badge>
           )}
@@ -403,18 +429,18 @@ export default function Settings() {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ duration: 0.4, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl p-6"
         >
           <div>
-            <p className="text-sm font-bold tracking-tight">Sign out</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="type-body font-semibold">Sign out</p>
+            <p className="type-caption text-muted-foreground">
               Your streak, notes and progress stay saved to your account.
             </p>
           </div>
           <Button
             variant="outline"
-            className="cursor-pointer rounded-xl bg-white/5 text-muted-foreground hover:text-destructive"
+            className="interactive-press cursor-pointer rounded-xl bg-white/5 text-muted-foreground hover:text-destructive"
             onClick={handleSignOut}
           >
             <LogOut className="size-4" /> Sign out

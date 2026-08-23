@@ -159,11 +159,19 @@ export default function Notes() {
 
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="relative flex flex-col gap-6">
+        {/* Ambient glow */}
+        <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 size-52 rounded-full bg-primary/8 blur-[90px]" aria-hidden="true" />
+
+        <motion.div
+          className="flex flex-wrap items-end justify-between gap-3 relative"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
           <div>
-            <p className="type-mono uppercase tracking-[0.2em] text-primary">
-              // sticky notes
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+              // notes · sticky
             </p>
             <h1 className="type-h1 mt-1">Notes</h1>
             <p className="type-body mt-1 text-muted-foreground">
@@ -203,13 +211,23 @@ export default function Notes() {
               <X className="size-3.5" /> Clear
             </Button>
           </div>
-        </div>
+        </motion.div>
 
         {/* Quick create */}
-        <div className="glass-panel rounded-2xl p-5">
-          <p className="type-mono uppercase tracking-[0.2em] text-primary">
-            // pin a note
-          </p>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel rounded-2xl p-5"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-[0_0_16px_-4px_rgb(56_189_248/0.4)]">
+              <Pencil className="size-4" />
+            </div>
+            <p className="type-mono uppercase tracking-[0.22em] text-primary">
+              // pin a note
+            </p>
+          </div>
           <div className="mt-3 flex flex-col gap-3">
             <Textarea
               value={draft.content}
@@ -275,7 +293,7 @@ export default function Notes() {
               </Button>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Notes grid */}
         {notes === undefined ? (
@@ -287,10 +305,11 @@ export default function Notes() {
             initial={{opacity:0,y:12}}
             animate={{opacity:1,y:0}}
             transition={{duration:0.5,ease:[0.22,1,0.36,1]}}
-            className="glass-soft flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center"
+            className="glass-soft relative overflow-hidden flex flex-col items-center justify-center rounded-2xl px-6 py-16 text-center"
           >
+            <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 size-40 rounded-full bg-primary/10 blur-[50px]" />
             <div className="relative">
-              <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/8 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.6)]">
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[0_0_40px_-12px_rgb(56_189_248/0.6)]">
                 <StickyNote className="size-7" />
               </div>
             </div>
@@ -311,7 +330,7 @@ export default function Notes() {
         ) : (
           <motion.div layout className="columns-1 gap-4 sm:columns-2 lg:columns-3">
             <AnimatePresence>
-              {notes.map((note: { _id: string; difficulty?: string; color: string; content: string; subjectId?: string; subjectName?: string }) => {
+              {notes.map((note: { _id: string; difficulty?: string; color: string; content: string; subjectId?: string; subjectName?: string }, noteIndex: number) => {
                 const meta = note.difficulty
                   ? DIFFICULTY_META[note.difficulty as keyof typeof DIFFICULTY_META]
                   : null;
@@ -323,6 +342,7 @@ export default function Notes() {
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.3, delay: 0.03 * Math.min(noteIndex, 15), ease: [0.22, 1, 0.36, 1] }}
                     className={cn(
                       "glass-panel hover-lift relative mb-4 break-inside-avoid overflow-hidden rounded-2xl p-5",
                       colorMeta.tint,
