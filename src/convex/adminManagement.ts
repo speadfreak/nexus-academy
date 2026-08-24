@@ -9,8 +9,8 @@ import {
   internalQuery,
   query,
   type ActionCtx,
-  type UserDoc,
 } from "./_generated/server";
+import type { UserDoc } from "./admin";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { adminRoleValidator, ROLE_LEVELS, ROLES } from "./schema";
