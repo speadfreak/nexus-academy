@@ -188,8 +188,6 @@ async function requireRoleInternal(
   promote: (userId: Id<"users">) => Promise<void>,
 ): Promise<UserDoc> {
   const user = await getUser();
-  const userLevel = getUserRoleLevel(user);
-  const minLevel = ROLE_LEVELS[minRole] ?? 0;
 
   // Bootstrap: first non-anonymous user becomes super_admin
   if (!user || user.isAnonymous) {
@@ -199,12 +197,19 @@ async function requireRoleInternal(
     });
   }
 
+  const userLevel = getUserRoleLevel(user);
+  const minLevel = ROLE_LEVELS[minRole] ?? 0;
+
+  // If user already has sufficient role, return immediately.
+  if (userLevel >= minLevel) return user;
+
+  // User's role is too low — try bootstrap promotion.
   const isBootstrap = "db" in ctx
     ? !(await adminExistsFromDb(ctx))
     : !(await ctx.runQuery(internal.admin.anyAdminExists));
 
-  if (isBootstrap && !user.role) {
-    // First user gets promoted to bootstrapRole (super_admin)
+  if (isBootstrap) {
+    // No admin exists yet — promote this user to super_admin.
     await promote(user._id);
     const promoted = await getUser();
     if (!promoted || getUserRoleLevel(promoted) < minLevel) {
@@ -216,13 +221,10 @@ async function requireRoleInternal(
     return promoted;
   }
 
-  if (userLevel < minLevel) {
-    throw new ConvexError({
-      message: `Access denied. Required: ${minRole}.`,
-      code: "unauthorized",
-    });
-  }
-  return user;
+  throw new ConvexError({
+    message: `Access denied. Required: ${minRole}.`,
+    code: "unauthorized",
+  });
 }
 
 /**
