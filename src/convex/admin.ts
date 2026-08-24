@@ -156,7 +156,11 @@ export const isCurrentUserAdmin = query({
   handler: async (ctx) => {
     const user = await getCurrentUserFromDb(ctx);
     const admin = await isAdmin(ctx, user);
-    return { isAdmin: admin, role: admin ? (user?.role ?? null) : null };
+    // Bootstrap admins are super_admins — report the role immediately
+    // even before it's persisted to the DB (persistence happens on first
+    // gated mutation/action).
+    const role = admin ? (user?.role ?? ROLES.SUPER_ADMIN) : null;
+    return { isAdmin: admin, role };
   },
 });
 
