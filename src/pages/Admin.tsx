@@ -711,6 +711,14 @@ export default function Admin() {
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const isSuperAdmin = (isAdmin?.role ?? null) === "super_admin";
   const promoteSelf = useMutation(api.admin.promoteSelfIfBootstrap);
+
+  // Auto-persist bootstrap promotion: if user is admin (bootstrap) but has no
+  // persisted role, call promoteSelf to write super_admin to the DB.
+  useEffect(() => {
+    if (isAdmin?.isAdmin && !isAdmin.role) {
+      void promoteSelf();
+    }
+  }, [isAdmin?.isAdmin, isAdmin?.role, promoteSelf]);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") ?? "dashboard") as AdminTabId;
   const setTab = (id: AdminTabId) =>
