@@ -709,7 +709,6 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
 
 export default function Admin() {
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
-  const isSuperAdmin = (isAdmin?.role ?? null) === "super_admin";
   const promoteSelf = useMutation(api.admin.promoteSelfIfBootstrap);
 
   // Auto-persist bootstrap promotion: if user is admin (bootstrap) but has no
@@ -1158,12 +1157,11 @@ export default function Admin() {
   /* ── Derived data ── */
   const visibleTabs = ADMIN_TABS.filter((t) => {
     if (isAdmin === undefined) return true; // loading — show all tabs
-    if (!isSuperAdmin) {
-      if (t.id === "keys" || t.id === "admins" || t.id === "audit") return false;
-    }
+    if (!isAdmin?.isAdmin) return false;
     const myRole = isAdmin?.role;
+    // Moderators cannot manage admins, keys, audit, or finance.
     if (myRole === "moderator") {
-      if (t.id === "finance") return false;
+      if (t.id === "keys" || t.id === "admins" || t.id === "audit" || t.id === "finance") return false;
     }
     return true;
   });
