@@ -67,6 +67,7 @@ import {
 import {
   CONTENT_TYPES,
   CONTENT_TYPE_LABELS,
+  CONTENT_TYPE_SLUGS,
   type ContentType,
 } from "@/convex/constants";
 import type { ContentItemWithSubject } from "@/convex/content";
@@ -121,16 +122,17 @@ export function AdminContentSection() {
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Upload through Convex first, then let the server relay bytes to R2. This avoids
-  // browser-to-R2 CORS failures (the old presigned PUT surfaced as generic “Failed to fetch”).
-  const generateUploadUrl = useAction(api.contentAdmin.generateUploadUrl);
-  const adminUploadContent = useAction(api.contentAdmin.adminUploadContent);
+  // Direct browser→R2 upload via presigned URLs. The file never passes through
+  // the Convex action runtime, so large files won’t cause “Connection lost while
+  // action was in flight” errors. Only lightweight metadata calls go through Convex.
+  const getPresignedR2UploadUrl = useAction(api.contentAdmin.getPresignedR2UploadUrl);
+  const finalizeUpload = useAction(api.contentAdmin.finalizeUpload);
   const classifyContentText = useAction(api.contentAI.classifyContentText);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<Awaited<
     ReturnType<typeof classifyContentText>
   > | null>(null);
-
+  const [uploadProgress, setUploadProgress] = useState(0);
   const handleAnalyze = async () => {
     if (!file) return;
     setAnalyzing(true);
@@ -304,7 +306,10 @@ export function AdminContentSection() {
     setFile(next);
   };
 
-  const handleUpload = async () => {
+  /** Upload the file directly to R2 via a presigned URL, then finalize metadata.
+   *  This avoids sending large file bytes through the Convex action runtime,
+   *  which causes “Connection lost while action was in flight” on bigger files. */
+  const handleUpload = () => {
     if (!file) {
       toast.error("Choose a PDF file first.");
       return;
@@ -330,63 +335,101 @@ export function AdminContentSection() {
       return;
     }
 
-    setUploading(true);
-    try {
-      // Step 1: Upload to Convex's authenticated temporary storage.
-      // The server then writes to R2, so the browser never needs R2 CORS permission.
-      toast.info("Preparing secure upload…");
-      const uploadUrl = await generateUploadUrl();
-      const tempResponse = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type || "application/pdf" },
-        body: file,
-      });
-      if (!tempResponse.ok) {
-        throw new Error(`Secure upload failed (HTTP ${tempResponse.status}). Please retry.`);
+    // We use a non-async runner so the XHR progress callbacks can drive state
+    // without competing with an async chain.
+    (async () => {
+      setUploading(true);
+      setUploadProgress(0);
+      try {
+        // Step 1 — get a presigned PUT URL (fast, tiny payload through Convex).
+        toast.info("Getting upload URL…");
+        const { uploadUrl, fileUrl } = await getPresignedR2UploadUrl({
+          filename: file.name,
+          contentType: file.type || "application/pdf",
+          grade: Number(grade),
+          subjectId: subjectId as never,
+          contentSlug: CONTENT_TYPE_SLUGS[contentType as ContentType],
+        });
+
+        // Step 2 — upload file directly from browser to R2 (no Convex in the loop).
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", uploadUrl);
+          xhr.setRequestHeader("Content-Type", file.type || "application/pdf");
+          xhr.upload.addEventListener("progress", (e) => {
+            if (e.lengthComputable) {
+              const pct = Math.round((e.loaded / e.total) * 100);
+              setUploadProgress(pct);
+            }
+          });
+          xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`R2 upload returned HTTP ${xhr.status}`));
+            }
+          });
+          xhr.addEventListener("error", () => {
+            // A network-level error (usually CORS) — the browser never got a
+            // response from R2. Show a helpful message instead of a generic error.
+            reject(
+              new Error(
+                "Upload to R2 failed — this is usually a CORS configuration issue. " +
+                  "Go to your Cloudflare R2 bucket → Settings → CORS Policy and add a rule allowing PUT from your site’s origin.",
+              ),
+            );
+          });
+          xhr.addEventListener("timeout", () => {
+            reject(new Error("Upload to R2 timed out. Check your connection and try again."));
+          });
+          xhr.timeout = 10 * 60 * 1000; // 10 minutes
+          xhr.send(file);
+        });
+
+        // Step 3 — save metadata to the DB (fast, tiny payload through Convex).
+        toast.info("Saving to library…");
+        await finalizeUpload({
+          title: title.trim(),
+          contentType,
+          grade: Number(grade),
+          subjectId: subjectId as never,
+          examYear: contentType === "past_exam" ? Number(examYear) : undefined,
+          isPremium,
+          fileUrl,
+          fileSizeBytes: file.size,
+          filename: file.name,
+          topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
+          sourceName: sourceName.trim() || undefined,
+          sourceUrl: sourceUrl.trim() || undefined,
+        });
+
+        toast.success("Content uploaded to the library.");
+        setFile(null);
+        setTitle("");
+        setContentType("");
+        setGrade("");
+        setSubjectId("");
+        setExamYear("");
+        setSourceName("");
+        setSourceUrl("");
+        setIsPremium(false);
+        setUploadProgress(0);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === "object" &&
+                error &&
+                "data" in error &&
+                typeof (error as { data: { message?: string } }).data?.message === "string"
+              ? (error as { data: { message: string } }).data.message
+              : "Upload failed. Check the details and try again.";
+        toast.error(message);
+      } finally {
+        setUploading(false);
+        setUploadProgress(0);
       }
-      const uploadResult = await tempResponse.json();
-      const storageId = typeof uploadResult === "string" ? uploadResult : uploadResult.storageId;
-
-      // Step 2: Server-side transfer to R2 and library finalization.
-      toast.info("Saving to library…");
-      await adminUploadContent({
-        title: title.trim(),
-        contentType,
-        grade: Number(grade),
-        subjectId: subjectId as never,
-        examYear: contentType === "past_exam" ? Number(examYear) : undefined,
-        isPremium,
-        storageId,
-        filename: file.name,
-        topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
-        sourceName: sourceName.trim() || undefined,
-        sourceUrl: sourceUrl.trim() || undefined,
-      });
-
-      toast.success("Content uploaded to the library.");
-      setFile(null);
-      setTitle("");
-      setContentType("");
-      setGrade("");
-      setSubjectId("");
-      setExamYear("");
-      setSourceName("");
-      setSourceUrl("");
-      setIsPremium(false);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === "object" &&
-              error &&
-              "data" in error &&
-              typeof (error as { data: { message?: string } }).data?.message === "string"
-            ? (error as { data: { message: string } }).data.message
-            : "Upload failed. Check the details and try again.";
-      toast.error(message);
-    } finally {
-      setUploading(false);
-    }
+    })();
   };
 
   const handleDelete = async (item: ContentItemWithSubject) => {
@@ -677,7 +720,10 @@ export function AdminContentSection() {
           >
             {uploading ? (
               <>
-                <Loader2 className="size-4 animate-spin" /> Uploading to R2…
+                <Loader2 className="size-4 animate-spin" />{" "}
+                {uploadProgress > 0 && uploadProgress < 100
+                  ? `Uploading ${uploadProgress}%…`
+                  : "Preparing upload…"}
               </>
             ) : (
               <>
@@ -685,6 +731,14 @@ export function AdminContentSection() {
               </>
             )}
           </Button>
+          {uploading && uploadProgress > 0 && (
+            <div className="mt-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-2 rounded-full bg-primary transition-all duration-300 ease-out"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="glass-soft hidden rounded-2xl p-5 lg:block">
