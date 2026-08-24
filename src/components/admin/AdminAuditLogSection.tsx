@@ -2,6 +2,7 @@
 // Read-only view of all admin actions with filters.
 
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { relativeTime } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -109,7 +110,7 @@ export function AdminAuditLogSection() {
   const auditLog = useQuery(api.adminManagement.listAuditLog, {
     limit: 100,
     actionType: actionFilter || undefined,
-    actorId: actorFilter || undefined,
+    actorId: (actorFilter || undefined) as Id<"users"> | undefined,
   });
 
   // Build actor options from log entries

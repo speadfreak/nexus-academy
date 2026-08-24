@@ -137,7 +137,7 @@ export const listAdmins = action({
       adminUsers.map(async (u) => {
         const lastSession = await ctx.runQuery(
           internal.adminManagement.getLastSession,
-          { userId: u._id as string },
+          { userId: u._id as Id<"users"> },
         );
         return {
           _id: u._id as string,
