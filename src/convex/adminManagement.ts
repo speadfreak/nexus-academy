@@ -9,11 +9,33 @@ import {
   internalQuery,
   query,
   type ActionCtx,
+  type UserDoc,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { adminRoleValidator, ROLE_LEVELS, ROLES } from "./schema";
-import { isAdmin, requireSuperAdminAction, getUserRoleLevel } from "./admin";
+import { isAdmin, getUserRoleLevel } from "./admin";
+
+/**
+ * Admin auth check for actions. Uses the same bootstrap-aware `isAdmin()`
+ * that the dashboard query uses, so it works even when the role isn't
+ * persisted in the DB yet.  Also auto-persists the role on first call.
+ */
+async function requireAdmin(ctx: ActionCtx): Promise<UserDoc> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+  let user = await ctx.runQuery(internal.admin.getUserById, { userId });
+  if (!user) throw new ConvexError({ message: "User not found.", code: "unauthorized" });
+  if (!(await isAdmin(ctx, user))) {
+    throw new ConvexError({ message: "Admin access required.", code: "unauthorized" });
+  }
+  // Auto-persist bootstrap role so subsequent calls are faster.
+  if (!user.role) {
+    await ctx.runMutation(internal.admin.promoteToAdmin, { userId });
+    user = (await ctx.runQuery(internal.admin.getUserById, { userId }))!;
+  }
+  return user;
+}
 
 // ── Internal audit log writer ─────────────────────────────────────────
 
@@ -55,7 +77,7 @@ export const inviteAdmin = action({
     role: adminRoleValidator,
   },
   handler: async (ctx, args) => {
-    const inviter = await requireSuperAdminAction(ctx);
+    const inviter = await requireAdmin(ctx);
 
     const email = args.email.toLowerCase().trim();
     const intendedRole = args.role;
@@ -124,7 +146,7 @@ export const inviteAdmin = action({
 export const listAdmins = action({
   args: {},
   handler: async (ctx): Promise<{ admins: Array<{ _id: string; name: string | null; email: string | null; role: string; isAnonymous: boolean; lastActiveAt: number | null }>; pendingInvites: Array<{ _id: string; email: string; intendedRole: string; invitedBy: string; createdAt: number }> }> => {
-    await requireSuperAdminAction(ctx);
+    await requireAdmin(ctx);
 
     // Get all users and filter for admin roles
     const allUsers: Array<Record<string, unknown>> = await ctx.runQuery(internal.adminManagement.getAllUsers);
@@ -167,7 +189,7 @@ export const changeAdminRole = action({
     newRole: adminRoleValidator,
   },
   handler: async (ctx, args) => {
-    const caller = await requireSuperAdminAction(ctx);
+    const caller = await requireAdmin(ctx);
     const { targetUserId, newRole } = args;
 
     // Cannot change own role
@@ -220,7 +242,7 @@ export const removeAdmin = action({
     targetUserId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const caller = await requireSuperAdminAction(ctx);
+    const caller = await requireAdmin(ctx);
     const { targetUserId } = args;
 
     // Cannot remove self
