@@ -13,7 +13,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { adminRoleValidator, ROLE_LEVELS, ROLES } from "./schema";
-import { requireSuperAdminAction, getUserRoleLevel } from "./admin";
+import { isAdmin, requireSuperAdminAction, getUserRoleLevel } from "./admin";
 
 // ── Internal audit log writer ─────────────────────────────────────────
 
@@ -288,7 +288,7 @@ export const listAuditLog = query({
     actorId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    // Require super_admin for audit log access
+    // Require admin access (bootstrap-aware — works for first user too)
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({
@@ -297,9 +297,9 @@ export const listAuditLog = query({
       });
     }
     const user = await ctx.db.get(userId);
-    if (!user || user.role !== ROLES.SUPER_ADMIN) {
+    if (!user || !(await isAdmin(ctx, user))) {
       throw new ConvexError({
-        message: "Super admin access required.",
+        message: "Admin access required.",
         code: "unauthorized",
       });
     }
