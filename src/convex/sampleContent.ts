@@ -379,7 +379,7 @@ const CATALOG: SeedItem[] = [
 export const seedSampleLibrary = action({
   args: {},
   handler: async (ctx): Promise<{ seeded: number; skipped: boolean }> => {
-    const adminUser = await requireAdminAction(ctx);
+    const { user: adminUser } = await requireAdminAction(ctx);
 
     const existingCount = await ctx.runQuery(
       internal.content.countContentItems,

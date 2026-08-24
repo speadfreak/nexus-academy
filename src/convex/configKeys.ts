@@ -53,13 +53,13 @@ const CATEGORIES: Record<string, { label: string; icon: string }> = {
 
 export const CATEGORIES_META = CATEGORIES;
 
-// Inline admin check — same pattern as adminCenter.ts
+// Inline admin check — requires super_admin for key management.
 async function requireAdmin(ctx: { db: { get: (id: any) => Promise<any> }; auth: any }) {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
   const user = await ctx.db.get(userId);
-  if (!user || user.role !== "admin") {
-    throw new ConvexError({ message: "Admin access required.", code: "unauthorized" });
+  if (!user || user.role !== "super_admin") {
+    throw new ConvexError({ message: "Super admin access required.", code: "unauthorized" });
   }
   return user as Doc<"users">;
 }

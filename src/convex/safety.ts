@@ -24,7 +24,8 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { isAdmin } from "./admin";
+import { isAdmin, hasMinRole } from "./admin";
+import { ROLES } from "./schema";
 
 export const reportReasonValidator = v.union(
   v.literal("harassment"),
@@ -240,7 +241,7 @@ export const reportUser = mutation({
 });
 
 // ---------------------------------------------------------------------------
-// Admin reports queue
+// Admin reports queue — accessible to moderator+ (reports are a moderation task)
 // ---------------------------------------------------------------------------
 
 async function requireAdmin(ctx: DbCtx): Promise<Doc<"users">> {

@@ -88,7 +88,7 @@ export const finalizeUpload = action({
     fileSizeBytes: v.number(), filename: v.string(), topicCandidates: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const adminUser = await requireAdminAction(ctx);
+    const { user: adminUser } = await requireAdminAction(ctx);
     const subject: Doc<"subjects"> | null = await ctx.runQuery(internal.content.getSubjectById, { subjectId: args.subjectId });
     if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
 
@@ -137,7 +137,7 @@ export const adminUploadContent = action({
     sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const adminUser = await requireAdminAction(ctx);
+    const { user: adminUser } = await requireAdminAction(ctx);
     const subject: Doc<"subjects"> | null = await ctx.runQuery(internal.content.getSubjectById, { subjectId: args.subjectId });
     if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
 
@@ -201,7 +201,7 @@ export const updateContentItem = action({
     sourceUrl: v.optional(v.string()),
   },
  handler: async (ctx, args) => {
-    const adminUser = await requireAdminAction(ctx);
+    const { user: adminUser } = await requireAdminAction(ctx);
 
     // Verify item exists via a query
     const item = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
@@ -239,7 +239,7 @@ export const updateContentItem = action({
 export const deleteContentItem = action({
   args: { contentId: v.id("contentItems") },
   handler: async (ctx, args) => {
-    await requireAdminAction(ctx);
+    const { user: adminUser } = await requireAdminAction(ctx);
     const item: Doc<"contentItems"> | null = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
     if (!item) throw new ConvexError({ message: "Content item not found.", code: "not_found" });
 
@@ -253,6 +253,16 @@ export const deleteContentItem = action({
     }
 
     await ctx.runMutation(internal.content.deleteContentRow, { contentId: args.contentId });
+
+    // Audit log
+    await ctx.runMutation(internal.adminManagement.internalInsertAuditLog, {
+      actorUserId: adminUser._id,
+      action: "content.deleted",
+      targetType: "content",
+      targetId: args.contentId,
+      details: JSON.stringify({ title: item.title, contentType: item.contentType }),
+    }).catch(() => {});
+
     return { success: true, r2Error };
   },
 });

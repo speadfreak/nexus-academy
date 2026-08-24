@@ -11,15 +11,39 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { ROLE_LEVELS, ROLES } from "./schema";
 
 type DbCtx = QueryCtx | MutationCtx;
 type AnyCtx = DbCtx | ActionCtx;
 export type UserDoc = Doc<"users">;
 
-/** Direct role-field check. */
-export function isAdminDoc(user: UserDoc | null | undefined): boolean {
-  return user?.role === "admin";
+// ── Role helpers ─────────────────────────────────────────────────────
+
+/** Minimum role level that counts as "admin" (moderator and above). */
+const ADMIN_MIN_LEVEL = ROLE_LEVELS[ROLES.MODERATOR]; // 60
+
+/** Get a user's numeric role level (defaults to user level for no role). */
+export function getUserRoleLevel(user: UserDoc | null | undefined): number {
+  if (!user?.role) return ROLE_LEVELS[ROLES.USER];
+  return ROLE_LEVELS[user.role] ?? ROLE_LEVELS[ROLES.USER];
 }
+
+/** True if the user's role level meets or exceeds the given minimum role. */
+export function hasMinRole(
+  user: UserDoc | null | undefined,
+  minRole: string,
+): boolean {
+  const userLevel = getUserRoleLevel(user);
+  const minLevel = ROLE_LEVELS[minRole] ?? 0;
+  return userLevel >= minLevel;
+}
+
+/** Direct role-field check: true if user is moderator or above. */
+export function isAdminDoc(user: UserDoc | null | undefined): boolean {
+  return getUserRoleLevel(user) >= ADMIN_MIN_LEVEL;
+}
+
+// ── Internal DB reads ────────────────────────────────────────────────
 
 async function getCurrentUserFromDb(ctx: DbCtx): Promise<UserDoc | null> {
   const userId = await getAuthUserId(ctx);
@@ -27,53 +51,64 @@ async function getCurrentUserFromDb(ctx: DbCtx): Promise<UserDoc | null> {
   return (await ctx.db.get(userId)) ?? null;
 }
 
-// --- Internal read helpers (used by actions via ctx.runQuery) ------------
-
 export const getUserById = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => (await ctx.db.get(userId)) ?? null,
 });
 
-export const anyAdminExists = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const admins = await ctx.db
+/** Internal: get user by email (for invite claiming). */
+export const getUserByEmail = internalQuery({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    return await ctx.db
       .query("users")
-      .filter((q) => q.eq(q.field("role"), "admin"))
-      .take(1);
-    return admins.length > 0;
+      .withIndex("email", (q) => q.eq("email", email))
+      .first();
   },
 });
 
-/** All admin user ids — used to route safety reports to moderators. */
+export const anyAdminExists = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").take(200);
+    return users.some((u) => getUserRoleLevel(u) >= ADMIN_MIN_LEVEL);
+  },
+});
+
+/** All admin/moderator+ user ids — used to route safety reports. */
 export const listAdminUserIds = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const admins = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("role"), "admin"))
-      .take(50);
-    return admins.map((admin) => admin._id);
+    const allUsers = await ctx.db.query("users").take(200);
+    return allUsers
+      .filter((u) => getUserRoleLevel(u) >= ADMIN_MIN_LEVEL)
+      .map((u) => u._id);
   },
 });
 
 async function adminExistsFromDb(ctx: DbCtx): Promise<boolean> {
-  const admins = await ctx.db
-    .query("users")
-    .filter((q) => q.eq(q.field("role"), "admin"))
-    .take(1);
-  return admins.length > 0;
+  const allUsers = await ctx.db.query("users").take(200);
+  return allUsers.some((u) => getUserRoleLevel(u) >= ADMIN_MIN_LEVEL);
 }
+
+/** Count super_admins (used by removeAdmin safeguard). */
+export const countSuperAdmins = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const allUsers = await ctx.db.query("users").take(200);
+    return allUsers.filter((u) => u.role === ROLES.SUPER_ADMIN).length;
+  },
+});
+
+// ── Admin check with bootstrap ───────────────────────────────────────
 
 /**
  * Read-only admin check (safe from queries AND actions — never writes).
  *
- * A user is an admin when their `role` field is "admin". As a v1 bootstrap
- * (proper RBAC comes later), when NO admin exists yet, the first
- * non-anonymous user (an email account) is treated as an admin so the
- * platform owner can start uploading content immediately. The promotion is
- * persisted the first time an admin-gated mutation/action runs via
- * requireAdminMutation / requireAdminAction.
+ * A user is an admin when their role level >= 60 (moderator+). As a
+ * bootstrap, when NO admin exists yet, the first non-anonymous user is
+ * treated as an admin so the platform owner can get started. The promotion
+ * is persisted to super_admin the first time a gated mutation/action runs.
  */
 export async function isAdmin(
   ctx: AnyCtx,
@@ -87,14 +122,48 @@ export async function isAdmin(
   return !adminExists;
 }
 
-/** Frontend-facing query: is the signed-in user allowed to see admin UI? */
+// ── Frontend-facing queries ──────────────────────────────────────────
+
+/**
+ * Returns the current user's role (or null). Used by the frontend to
+ * determine which admin tabs/features are available.
+ */
+export const getCurrentAdminRole = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUserFromDb(ctx);
+    if (!user) return null;
+    if (isAdminDoc(user)) return user.role ?? null;
+    return null;
+  },
+});
+
+/** True if the current user is a super_admin. */
+export const isCurrentUserSuperAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUserFromDb(ctx);
+    return user?.role === ROLES.SUPER_ADMIN;
+  },
+});
+
+/**
+ * Returns { isAdmin: boolean, role: string | null } for the current user.
+ * Kept under the old name for backward compatibility.
+ */
 export const isCurrentUserAdmin = query({
   args: {},
   handler: async (ctx) => {
     const user = await getCurrentUserFromDb(ctx);
-    return isAdmin(ctx, user);
+    const admin = await isAdmin(ctx, user);
+    return { isAdmin: admin, role: admin ? (user?.role ?? null) : null };
   },
 });
+
+/** New name, same function for clarity in new code. */
+export const getAdminInfo = isCurrentUserAdmin;
+
+// ── Action context helpers ───────────────────────────────────────────
 
 async function getCurrentUserFromAction(ctx: ActionCtx): Promise<UserDoc | null> {
   const userId = await getAuthUserId(ctx);
@@ -102,52 +171,129 @@ async function getCurrentUserFromAction(ctx: ActionCtx): Promise<UserDoc | null>
   return ctx.runQuery(internal.admin.getUserById, { userId });
 }
 
-async function requireAdminInternal(
+// ── Require-role patterns ────────────────────────────────────────────
+
+/**
+ * Require the caller to have at least `minRole` level.
+ * Returns the user doc. Works in MutationCtx and ActionCtx.
+ */
+async function requireRoleInternal(
   ctx: MutationCtx | ActionCtx,
+  minRole: string,
   getUser: () => Promise<UserDoc | null>,
   promote: (userId: Id<"users">) => Promise<void>,
 ): Promise<UserDoc> {
   const user = await getUser();
-  if (!user || !(await isAdmin(ctx, user))) {
+  const userLevel = getUserRoleLevel(user);
+  const minLevel = ROLE_LEVELS[minRole] ?? 0;
+
+  // Bootstrap: first non-anonymous user becomes super_admin
+  if (!user || user.isAnonymous) {
     throw new ConvexError({
-      message: "Admin access required. Sign in with an admin account.",
+      message: "Sign in required.",
       code: "unauthorized",
     });
   }
-  if (user.role !== "admin") {
-    // Persist the first-user bootstrap promotion.
+
+  const isBootstrap = "db" in ctx
+    ? !(await adminExistsFromDb(ctx))
+    : !(await ctx.runQuery(internal.admin.anyAdminExists));
+
+  if (isBootstrap && !user.role) {
+    // First user gets promoted to bootstrapRole (super_admin)
     await promote(user._id);
+    const promoted = await getUser();
+    if (!promoted || getUserRoleLevel(promoted) < minLevel) {
+      throw new ConvexError({
+        message: `Access denied. Required: ${minRole}.`,
+        code: "unauthorized",
+      });
+    }
+    return promoted;
+  }
+
+  if (userLevel < minLevel) {
+    throw new ConvexError({
+      message: `Access denied. Required: ${minRole}.`,
+      code: "unauthorized",
+    });
   }
   return user;
 }
 
-/** For mutations: verifies admin and persists bootstrap promotion. */
-export async function requireAdminMutation(ctx: MutationCtx): Promise<UserDoc> {
-  return requireAdminInternal(
+/**
+ * For mutations: verifies admin (moderator+) and persists bootstrap.
+ * Returns the user doc AND their role.
+ */
+export async function requireAdminMutation(
+  ctx: MutationCtx,
+): Promise<{ user: UserDoc; role: string }> {
+  const user = await requireRoleInternal(
     ctx,
+    ROLES.MODERATOR,
     () => getCurrentUserFromDb(ctx),
-    (userId) => ctx.db.patch(userId, { role: "admin" }),
+    (userId) => ctx.db.patch(userId, { role: ROLES.SUPER_ADMIN }),
   );
+  return { user, role: user.role ?? ROLES.USER };
+}
+
+/**
+ * For actions: verifies admin (moderator+) and persists bootstrap.
+ * Returns the user doc AND their role.
+ */
+export async function requireAdminAction(
+  ctx: ActionCtx,
+): Promise<{ user: UserDoc; role: string }> {
+  const user = await requireRoleInternal(
+    ctx,
+    ROLES.MODERATOR,
+    () => getCurrentUserFromAction(ctx),
+    async (userId) => {
+      await ctx.runMutation(internal.admin.promoteToAdmin, { userId });
+    },
+  );
+  return { user, role: user.role ?? ROLES.USER };
+}
+
+/**
+ * Require super_admin specifically. For mutations.
+ */
+export async function requireSuperAdminMutation(
+  ctx: MutationCtx,
+): Promise<UserDoc> {
+  const user = await requireRoleInternal(
+    ctx,
+    ROLES.SUPER_ADMIN,
+    () => getCurrentUserFromDb(ctx),
+    (userId) => ctx.db.patch(userId, { role: ROLES.SUPER_ADMIN }),
+  );
+  return user;
+}
+
+/**
+ * Require super_admin specifically. For actions.
+ */
+export async function requireSuperAdminAction(
+  ctx: ActionCtx,
+): Promise<UserDoc> {
+  const user = await requireRoleInternal(
+    ctx,
+    ROLES.SUPER_ADMIN,
+    () => getCurrentUserFromAction(ctx),
+    async (userId) => {
+      await ctx.runMutation(internal.admin.promoteToAdmin, { userId });
+    },
+  );
+  return user;
 }
 
 /** Internal mutation used by actions to persist bootstrap promotion. */
 export const promoteToAdmin = internalMutation({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
-    await ctx.db.patch(userId, { role: "admin" });
+    await ctx.db.patch(userId, { role: ROLES.SUPER_ADMIN });
   },
 });
-
-/** For actions: verifies admin and persists bootstrap promotion via runMutation. */
-export async function requireAdminAction(ctx: ActionCtx): Promise<UserDoc> {
-  return requireAdminInternal(
-    ctx,
-    () => getCurrentUserFromAction(ctx),
-    async (userId) => {
-      await ctx.runMutation(internal.admin.promoteToAdmin, { userId });
-    },
-  );
-}
 
 /**
  * Public mutation so an eligible (first) user can request promotion from the
@@ -161,8 +307,8 @@ export const promoteSelfIfBootstrap = mutation({
     if (!(await isAdmin(ctx, user))) {
       return { promoted: false, reason: "admin-exists" as const };
     }
-    if (user.role !== "admin") {
-      await ctx.db.patch(user._id, { role: "admin" });
+    if (user.role !== ROLES.SUPER_ADMIN && user.role !== ROLES.ADMIN && user.role !== ROLES.MODERATOR) {
+      await ctx.db.patch(user._id, { role: ROLES.SUPER_ADMIN });
     }
     return { promoted: true, reason: "bootstrap" as const };
   },

@@ -3,19 +3,39 @@ import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 import { CONTENT_TYPES, STREAMS } from "./constants";
 
-// default user roles. can add / remove based on the project as needed
+// ── Role system ──────────────────────────────────────────────────────
+
 export const ROLES = {
+  SUPER_ADMIN: "super_admin",
   ADMIN: "admin",
+  MODERATOR: "moderator",
   USER: "user",
   MEMBER: "member",
 } as const;
 
+export const ROLE_LEVELS: Record<string, number> = {
+  super_admin: 100,
+  admin: 80,
+  moderator: 60,
+  user: 20,
+  member: 10,
+};
+
 export const roleValidator = v.union(
+  v.literal(ROLES.SUPER_ADMIN),
   v.literal(ROLES.ADMIN),
+  v.literal(ROLES.MODERATOR),
   v.literal(ROLES.USER),
   v.literal(ROLES.MEMBER),
 );
 export type Role = Infer<typeof roleValidator>;
+
+export const adminRoleValidator = v.union(
+  v.literal(ROLES.SUPER_ADMIN),
+  v.literal(ROLES.ADMIN),
+  v.literal(ROLES.MODERATOR),
+);
+export type AdminRole = Infer<typeof adminRoleValidator>;
 
 export const streamValidator = v.union(...STREAMS.map((s) => v.literal(s)));
 export const contentTypeValidator = v.union(
@@ -623,6 +643,31 @@ const schema = defineSchema(
       videosJson: v.string(),
       fetchedAt: v.number(),
     }).index("by_content", ["contentId"]),
+
+    // ------------------------------------------------------------------
+    // Admin role management + audit log
+    // ------------------------------------------------------------------
+
+    // Admin audit log — append-only, records who did what.
+    adminAuditLog: defineTable({
+      actorUserId: v.id("users"),
+      action: v.string(),        // e.g. "admin.role_changed", "content.deleted"
+      targetType: v.optional(v.string()),  // "user" | "content" | "payment" | etc.
+      targetId: v.optional(v.string()),
+      details: v.optional(v.string()),     // JSON string with old/new values etc.
+      createdAt: v.number(),
+    })
+      .index("by_createdAt", ["createdAt"])
+      .index("by_actor", ["actorUserId", "createdAt"]),
+
+    // Pending admin invites — when an invited email hasn't signed up yet.
+    pendingAdminInvites: defineTable({
+      email: v.string(),
+      intendedRole: adminRoleValidator,
+      invitedBy: v.id("users"),
+      createdAt: v.number(),
+      claimed: v.boolean(),  // true after the email signs up and role is applied
+    }).index("by_email", ["email"]),
   },
 );
 

@@ -54,7 +54,7 @@ export const sendBroadcast = action({
     ctx,
     { channelIds, message },
   ): Promise<{ ok: boolean; sent: number; failed: number }> => {
-    const admin = await requireAdminAction(ctx);
+    const { user: admin } = await requireAdminAction(ctx);
     const token = await resolveTelegramToken(ctx);
     if (!Array.isArray(channelIds) || channelIds.length === 0) {
       throw new ConvexError({ message: "Pick at least one channel.", code: "invalid" });

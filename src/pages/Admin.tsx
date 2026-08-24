@@ -19,9 +19,7 @@ import {
   Flame,
   Github,
   Globe,
-  Info,
   KeyRound,
-  Lightbulb,
   Loader2,
   Lock,
   Plug,
@@ -29,6 +27,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  ScrollText,
   Search,
   Send,
   ShieldCheck,
@@ -60,6 +59,8 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { AdminAdminsSection } from "@/components/admin/AdminAdminsSection";
+import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -142,12 +143,14 @@ const ADMIN_TABS = [
   { id: "dashboard", label: "Dashboard", index: "01", icon: Activity },
   { id: "content", label: "Content", index: "02", icon: FileText },
   { id: "users", label: "Users", index: "03", icon: UserRound },
-  { id: "keys", label: "Keys", index: "04", icon: KeyRound },
-  { id: "finance", label: "Finance", index: "05", icon: Wallet },
-  { id: "reports", label: "Reports", index: "06", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "07", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "08", icon: Send },
-  { id: "system", label: "System", index: "09", icon: Plug },
+  { id: "admins", label: "Admins", index: "04", icon: ShieldCheck },
+  { id: "keys", label: "Keys", index: "05", icon: KeyRound },
+  { id: "finance", label: "Finance", index: "06", icon: Wallet },
+  { id: "reports", label: "Reports", index: "07", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "08", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "09", icon: Send },
+  { id: "system", label: "System", index: "10", icon: Plug },
+  { id: "audit", label: "Audit Log", index: "11", icon: ScrollText },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -155,8 +158,8 @@ type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const ADMIN_TAB_GROUPS = [
   { label: "OVERVIEW", ids: ["dashboard"] as const },
   { label: "CONTENT", ids: ["content"] as const },
-  { label: "MANAGEMENT", ids: ["users", "keys", "finance"] as const },
-  { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system"] as const },
+  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance"] as const },
+  { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
 ] as const;
 
 /* ── Small helpers ──────────────────────────────────────────────────── */
@@ -706,13 +709,14 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
 
 export default function Admin() {
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
+  const isSuperAdmin = useQuery(api.admin.isCurrentUserSuperAdmin);
   const promoteSelf = useMutation(api.admin.promoteSelfIfBootstrap);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") ?? "dashboard") as AdminTabId;
   const setTab = (id: AdminTabId) =>
     setSearchParams(id === "dashboard" ? {} : { tab: id });
 
-  const adminAccess = isAdmin === true;
+  const adminAccess = isAdmin?.isAdmin ?? false;
 
   /* ── Dashboard ── */
   const dashboard = useQuery(
@@ -777,9 +781,9 @@ export default function Admin() {
       if (typing) return;
 
       const number = Number(event.key);
-      if (number >= 1 && number <= ADMIN_TABS.length) {
+      if (number >= 1 && number <= visibleTabs.length) {
         event.preventDefault();
-        setTab(ADMIN_TABS[number - 1].id);
+        setTab(visibleTabs[number - 1].id);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -993,11 +997,13 @@ export default function Admin() {
   /* ── Handlers ── */
   const handlePromote = async () => {
     const r = await promoteSelf();
-    r.promoted
-      ? toast.success("Admin access granted. Welcome!")
-      : toast.error(
-          "Could not grant admin access — an admin account already exists.",
-        );
+    if (r.promoted) {
+      toast.success("Admin access granted. Welcome!");
+    } else {
+      toast.error(
+        "Could not grant admin access — an admin account already exists.",
+      );
+    }
   };
 
   const handleAddChannel = async () => {
@@ -1101,7 +1107,7 @@ export default function Admin() {
             : "Subscription canceled for this user.",
       );
       setPremiumAction(null);
-    } catch (error) {
+    } catch {
       toast.error("Action failed.");
     } finally {
       setActing(false);
@@ -1118,7 +1124,7 @@ export default function Admin() {
       </DashboardShell>
     );
 
-  if (!isAdmin)
+  if (!isAdmin?.isAdmin)
     return (
       <DashboardShell>
         <div className="glass-soft mx-auto flex max-w-lg flex-col items-center rounded-2xl px-6 py-14 text-center">
@@ -1142,6 +1148,18 @@ export default function Admin() {
     );
 
   /* ── Derived data ── */
+  const visibleTabs = ADMIN_TABS.filter((t) => {
+    if (isSuperAdmin === undefined) return true; // loading
+    if (!isSuperAdmin) {
+      if (t.id === "keys" || t.id === "admins" || t.id === "audit") return false;
+    }
+    const myRole = isAdmin?.role;
+    if (myRole === "moderator") {
+      if (t.id === "finance") return false;
+    }
+    return true;
+  });
+
   const filteredUsers =
     users?.filter((u) => {
       const q = userQuery.trim().toLowerCase();
@@ -1218,7 +1236,7 @@ export default function Admin() {
         <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:gap-6">
           {/* ── Mobile: horizontal scrollable tab bar (< xl) ── */}
           <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:hidden">
-            {ADMIN_TABS.map(({ id, label, icon: TabIcon }) => (
+            {visibleTabs.map(({ id, label, icon: TabIcon }) => (
               <button
                 key={id}
                 type="button"
@@ -1284,7 +1302,10 @@ export default function Admin() {
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
                   <div className="h-full w-[78%] rounded-full bg-gradient-to-r from-emerald-400 via-cyan-300 to-primary" />
                 </div>
-                <p className="mt-1.5 type-mono text-[9px] text-muted-foreground">secure control plane · v2.6</p>
+                <p className="mt-1.5 type-mono text-[9px] text-muted-foreground">secure control plane · v2.7</p>
+                {isAdmin?.role && (
+                  <Badge variant="outline" className="mt-1 text-[8px]">{isAdmin.role.replace('_', ' ')}</Badge>
+                )}
               </div>
             )}
 
@@ -1328,7 +1349,7 @@ export default function Admin() {
                   )}
                 </AnimatePresence>
                 {group.ids.map((tabId) => {
-                  const found = ADMIN_TABS.find((t) => t.id === tabId);
+                  const found = visibleTabs.find((t) => t.id === tabId);
                   if (!found) return null;
                   const { id, label, index, icon: TabIcon } = found;
                   return (
@@ -1658,6 +1679,11 @@ export default function Admin() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* ══════ ADMINS ══════ */}
+            {tab === "admins" && (
+              <AdminAdminsSection />
             )}
 
             {/* ══════ KEYS ══════ */}
@@ -2040,12 +2066,17 @@ export default function Admin() {
                 </div>
               </div>
             )}
+
+            {/* ══════ AUDIT LOG ══════ */}
+            {tab === "audit" && (
+              <AdminAuditLogSection />
+            )}
           </main>
         </div>
 
         {/* ── Footer ── */}
         <div className="admin-foot mt-1 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> nexus://admin · 8 modules online</span>
+          <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> nexus://admin · 11 modules online</span>
           <span className="hidden sm:inline">convex reactive · no polling</span>
           <span className="flex items-center gap-2"><ShieldCheck className="size-3.5 text-primary" /> access: admin <LiveClock /></span>
         </div>

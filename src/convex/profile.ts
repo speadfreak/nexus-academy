@@ -53,6 +53,16 @@ export const getProfileByUser = internalQuery({
 export const ensureProfile = internalMutation({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
+    // Attempt to claim any pending admin invite for this user's email.
+    // This is the auth hook point since auth.ts is read-only.
+    const user = await ctx.db.get(userId);
+    if (user?.email) {
+      await ctx.runMutation(internal.adminManagement.claimPendingInvite, {
+        userId,
+        email: user.email,
+      });
+    }
+
     const existing = await getProfileRow(ctx, userId);
     if (existing) return existing._id;
     return await ctx.db.insert("userProfiles", {

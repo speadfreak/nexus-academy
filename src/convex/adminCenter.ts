@@ -15,7 +15,8 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { isAdmin } from "./admin";
+import { isAdmin, hasMinRole } from "./admin";
+import { ROLES } from "./schema";
 
 type DbCtx = MutationCtx | QueryCtx;
 
@@ -28,6 +29,13 @@ async function requireAdmin(ctx: DbCtx): Promise<Doc<"users">> {
   if (!user || !(await isAdmin(ctx, user))) {
     throw new ConvexError({
       message: "Admin access required. Sign in with an admin account.",
+      code: "unauthorized",
+    });
+  }
+  // Admin center requires role >= admin (not just moderator)
+  if (!hasMinRole(user, ROLES.ADMIN)) {
+    throw new ConvexError({
+      message: "Admin access required. Moderators cannot access this section.",
       code: "unauthorized",
     });
   }
