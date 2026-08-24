@@ -1,8 +1,7 @@
-"use node";
-
 // Admin management — CRUD operations for admin roles, invites, and audit log.
-// All functions that write audit log entries run as actions.
+// Actions call internal mutations/queries for all DB writes.
 
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import {
   action,
@@ -124,39 +123,39 @@ export const inviteAdmin = action({
 
 export const listAdmins = action({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<{ admins: Array<{ _id: string; name: string | null; email: string | null; role: string; isAnonymous: boolean; lastActiveAt: number | null }>; pendingInvites: Array<{ _id: string; email: string; intendedRole: string; invitedBy: string; createdAt: number }> }> => {
     await requireSuperAdminAction(ctx);
 
     // Get all users and filter for admin roles
-    const allUsers = await ctx.runQuery(internal.adminManagement.getAllUsers);
+    const allUsers: Array<Record<string, unknown>> = await ctx.runQuery(internal.adminManagement.getAllUsers);
     const adminUsers = allUsers.filter(
-      (u: { role?: string }) => getUserRoleLevel(u as Parameters<typeof getUserRoleLevel>[0]) >= ROLE_LEVELS[ROLES.MODERATOR],
+      (u) => getUserRoleLevel(u as Parameters<typeof getUserRoleLevel>[0]) >= ROLE_LEVELS[ROLES.MODERATOR],
     );
 
     // Get last active timestamp from studySessions for each admin
     const admins = await Promise.all(
-      adminUsers.map(async (u: { _id: string; name?: string | null; email?: string | null; role?: string; isAnonymous?: boolean }) => {
+      adminUsers.map(async (u) => {
         const lastSession = await ctx.runQuery(
           internal.adminManagement.getLastSession,
-          { userId: u._id },
+          { userId: u._id as string },
         );
         return {
-          _id: u._id,
-          name: u.name ?? null,
-          email: u.email ?? null,
-          role: u.role ?? ROLES.USER,
-          isAnonymous: u.isAnonymous ?? false,
-          lastActiveAt: lastSession?.endedAt ?? null,
+          _id: u._id as string,
+          name: (u.name as string | null | undefined) ?? null,
+          email: (u.email as string | null | undefined) ?? null,
+          role: ((u.role as string | undefined) ?? ROLES.USER),
+          isAnonymous: (u.isAnonymous as boolean | undefined) ?? false,
+          lastActiveAt: (lastSession as Record<string, unknown> | null)?.endedAt as number | null ?? null,
         };
       }),
     );
 
     // Get pending invites
-    const pendingInvites = await ctx.runQuery(
+    const pendingInvites: Array<Record<string, unknown>> = await ctx.runQuery(
       internal.adminManagement.getPendingInvites,
     );
 
-    return { admins, pendingInvites };
+    return { admins, pendingInvites: pendingInvites as Array<{ _id: string; email: string; intendedRole: string; invitedBy: string; createdAt: number }> };
   },
 });
 
@@ -290,7 +289,6 @@ export const listAuditLog = query({
   },
   handler: async (ctx, args) => {
     // Require super_admin for audit log access
-    const { getAuthUserId } = await import("@convex-dev/auth/server");
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({
