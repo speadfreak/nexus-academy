@@ -39,7 +39,13 @@ services:
         sync: false
     routes:
       # SPA fallback: any unknown path serves index.html so client-side
-      # routing works on refresh.
+      # routing works on refresh. Headers prevent Cloudflare from caching
+      # the HTML response for non-asset paths.
       - type: rewrite
         source: /*
         destination: /index.html
+        headers:
+          # Prevent ALL caching of HTML at CDN and browser level
+          Cache-Control: no-cache, no-store, must-revalidate, max-age=0, s-maxage=0
+          Surrogate-Key: html
+          X-Nexus-SPA: "1"

@@ -11,48 +11,177 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Nexus Academy — Ethiopian National Exam Prep Library</title>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       INLINE RECOVERY SYSTEM — runs before ANY JS module loads.
+       Catches: stale chunks, CORS failures, network errors, CSS failures,
+       and React failing to mount. Uses sessionStorage (not URL params)
+       so normal refreshes are never affected.
+       ═══════════════════════════════════════════════════════════════════ -->
+  <style>
+    /* CSS-only loading state — visible BEFORE React mounts */
+    #nexus-boot-screen {
+      position: fixed; inset: 0; z-index: 99999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: #0B0F17; color: #94a3b8; font-family: system-ui, -apple-system, sans-serif;
+      transition: opacity 0.3s ease;
+    }
+    #nexus-boot-screen.nexus-hidden { opacity: 0; pointer-events: none; }
+    #nexus-boot-screen .nexus-boot-logo {
+      width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
+      border-radius: 16px; border: 1px solid rgba(251,191,36,0.3);
+      background: linear-gradient(to bottom, rgba(251,191,36,0.2), rgba(251,191,36,0.05));
+      font-family: Georgia, serif; font-size: 28px; font-weight: 900; color: #f59e0b;
+      animation: nexus-pulse 2s ease-in-out infinite;
+    }
+    #nexus-boot-screen .nexus-boot-text {
+      margin-top: 20px; font-family: monospace; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.3em; color: #64748b;
+    }
+    @keyframes nexus-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.2); }
+      50% { box-shadow: 0 0 40px -5px rgba(251,191,36,0.3); }
+    }
+    /* Error recovery UI — shown when boot fails */
+    #nexus-recovery {
+      display: none; position: fixed; inset: 0; z-index: 100000;
+      background: #0B0F17; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif;
+      flex-direction: column; align-items: center; justify-content: center; padding: 24px;
+      text-align: center;
+    }
+    #nexus-recovery.nexus-visible { display: flex; }
+    #nexus-recovery .nexus-recovery-card {
+      max-width: 400px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px; padding: 32px;
+    }
+    #nexus-recovery .nexus-recovery-title { font-size: 16px; font-weight: 600; color: #f8fafc; margin-bottom: 8px; }
+    #nexus-recovery .nexus-recovery-msg { font-size: 13px; color: #64748b; margin-bottom: 20px; word-break: break-word; }
+    #nexus-recovery .nexus-recovery-btn {
+      display: inline-block; padding: 10px 24px; border-radius: 12px; border: none;
+      background: #f59e0b; color: #0B0F17; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    #nexus-recovery .nexus-recovery-btn:hover { opacity: 0.9; }
+    #nexus-recovery .nexus-recovery-count { margin-top: 12px; font-size: 11px; color: #475569; }
+  </style>
   <script>
-    // ── Stale-chunk auto-recovery ─────────────────────────────────────
-    // If the browser loads an old index.html (CDN cache) whose JS chunks
-    // have been deleted on deploy, the <script> tags fail to fetch.  This
-    // listener catches those errors before React even mounts and forces a
-    // full, cache-busting reload so the user never sees a blank page.
-    (function () {
-      var RELOAD_KEY = '__nexus_cb';
-      var params = new URLSearchParams(location.search);
-      // If we already reloaded once for this reason and it still fails,
-      // don't loop — let the normal error boundary handle it.
-      if (params.has(RELOAD_KEY)) return;
-      window.addEventListener('error', function (e) {
-        var el = e.target;
-        if (el && el.tagName === 'SCRIPT' && el.src && !el.src.includes('chunk-')) {
-          // A top-level <script> failed — likely stale index.html.
-          // Also catch dynamically imported modules that fail.
+  (function() {
+    'use strict';
+    var STORAGE_KEY = '__nexus_reload_count';
+    var MAX_RETRIES = 3;
+
+    // Read retry count from sessionStorage (per-tab, cleared on tab close)
+    function getRetryCount() {
+      try { return parseInt(sessionStorage.getItem(STORAGE_KEY) || '0', 10); } catch(e) { return 0; }
+    }
+    function setRetryCount(n) {
+      try { sessionStorage.setItem(STORAGE_KEY, String(n)); } catch(e) {}
+    }
+    function clearRetryCount() {
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch(e) {}
+    }
+
+    // Hide boot screen and show recovery UI
+    function showRecovery(message) {
+      var boot = document.getElementById('nexus-boot-screen');
+      var recovery = document.getElementById('nexus-recovery');
+      var msgEl = document.getElementById('nexus-recovery-message');
+      var countEl = document.getElementById('nexus-recovery-count');
+      if (boot) boot.classList.add('nexus-hidden');
+      if (recovery) {
+        recovery.classList.add('nexus-visible');
+        if (msgEl) msgEl.textContent = message || 'Unknown error occurred.';
+        if (countEl) {
+          var count = getRetryCount();
+          countEl.textContent = count > 0 ? 'Auto-retry attempted ' + count + ' time(s)' : '';
         }
-        if (el && el.tagName === 'LINK' && el.rel === 'stylesheet') return;
-        if (el && el.tagName === 'SCRIPT' && el.src) {
-          var url = new URL(location.href);
-          url.searchParams.set(RELOAD_KEY, String(Date.now()));
-          console.warn('[Nexus] Script load failed, reloading with cache bust:', el.src);
-          location.replace(url.toString());
+      }
+    }
+
+    // Cache-busting reload with retry counting
+    function forceReload(reason) {
+      var count = getRetryCount();
+      if (count >= MAX_RETRIES) {
+        // Too many retries — show manual recovery UI
+        showRecovery('The app failed to load after multiple attempts. Please tap Retry or clear your browser cache.');
+        return;
+      }
+      setRetryCount(count + 1);
+      console.warn('[Nexus] Reloading (' + (count+1) + '/' + MAX_RETRIES + '): ' + reason);
+      // Use location.replace with a cache-busting query param, then
+      // immediately remove it via replaceState so the URL stays clean.
+      var url = new URL(location.href);
+      url.searchParams.set('_t', String(Date.now()));
+      location.replace(url.toString());
+    }
+
+    // ── 1. Catch failed <script> loads (including the main entry) ──
+    window.addEventListener('error', function(e) {
+      var el = e.target;
+      if (!el || !el.tagName) return;
+      var tag = el.tagName.toUpperCase();
+      var src = el.src || el.href || '';
+
+      if (tag === 'SCRIPT' && src) {
+        // Script failed to load — stale chunk, CORS, network error
+        console.error('[Nexus] Script failed to load:', src);
+        e.preventDefault();
+        forceReload('Script failed: ' + src);
+      }
+
+      if (tag === 'LINK' && el.rel === 'stylesheet' && src) {
+        // CSS failed — page would be unstyled, force reload
+        console.error('[Nexus] Stylesheet failed to load:', src);
+        e.preventDefault();
+        forceReload('Stylesheet failed: ' + src);
+      }
+    }, true); // capture phase
+
+    // ── 2. Catch failed dynamic imports (React.lazy / import()) ──
+    window.addEventListener('unhandledrejection', function(e) {
+      var msg = (e.reason && e.reason.message) || String(e.reason || '');
+      if (
+        msg.indexOf('Failed to fetch dynamically imported module') !== -1 ||
+        msg.indexOf('Loading chunk') !== -1 ||
+        msg.indexOf('Importing a module script failed') !== -1 ||
+        msg.indexOf('NetworkError') !== -1 ||
+        msg.indexOf('Failed to load') !== -1
+      ) {
+        e.preventDefault();
+        forceReload('Dynamic import failed: ' + msg);
+      }
+    });
+
+    // ── 3. React mount timeout — if React hasn't mounted in 10s, something is wrong ──
+    window.__NEXUS_MOUNTED = false;
+    setTimeout(function() {
+      if (!window.__NEXUS_MOUNTED) {
+        console.error('[Nexus] React did not mount within 10 seconds');
+        var count = getRetryCount();
+        if (count < MAX_RETRIES) {
+          forceReload('React mount timeout (10s)');
+        } else {
+          showRecovery('The app is taking too long to load. This may be a network issue. Please check your connection and tap Retry.');
         }
-      }, true);
-      // Also catch failed dynamic imports (React.lazy / import()).
-      // These don't fire 'error' on a script element in all browsers,
-      // but unhandledrejection catches the resulting promise rejection.
-      window.addEventListener('unhandledrejection', function (e) {
-        var msg = (e.reason && e.reason.message) || '';
-        if (msg.includes('Failed to fetch dynamically imported module') ||
-            msg.includes('Loading chunk') ||
-            msg.includes('Importing a module script failed')) {
-          if (params.has(RELOAD_KEY)) return;
-          var url = new URL(location.href);
-          url.searchParams.set(RELOAD_KEY, String(Date.now()));
-          console.warn('[Nexus] Chunk load failed, reloading with cache bust:', msg);
-          location.replace(url.toString());
-        }
-      });
-    })();
+      } else {
+        // React mounted — clear retry count for next refresh
+        clearRetryCount();
+      }
+    }, 10000);
+
+    // ── 4. Clean up the cache-busting param from URL after load ──
+    // This runs after the page loads successfully — removes the _t param.
+    window.addEventListener('load', function() {
+      var url = new URL(location.href);
+      if (url.searchParams.has('_t')) {
+        url.searchParams.delete('_t');
+        history.replaceState(null, '', url.pathname + url.hash);
+      }
+    });
+
+    // Expose showRecovery globally for React error boundaries to use
+    window.__NEXUS_SHOW_RECOVERY = showRecovery;
+  })();
   </script>
   <script>
     // Apply theme before first paint to prevent light-theme flash.
@@ -74,6 +203,22 @@
 
 
 <body>
+  <!-- CSS-only boot screen: visible before React mounts -->
+  <div id="nexus-boot-screen">
+    <div class="nexus-boot-logo">N</div>
+    <div class="nexus-boot-text">Nexus Academy</div>
+  </div>
+
+  <!-- Recovery UI: shown when boot fails after max retries -->
+  <div id="nexus-recovery">
+    <div class="nexus-recovery-card">
+      <div class="nexus-recovery-title">Failed to load Nexus Academy</div>
+      <div class="nexus-recovery-msg" id="nexus-recovery-message">Unknown error.</div>
+      <button class="nexus-recovery-btn" onclick="sessionStorage.clear();location.href=location.pathname">Retry</button>
+      <div class="nexus-recovery-count" id="nexus-recovery-count"></div>
+    </div>
+  </div>
+
   <div id="root"></div>
   <noscript>
     <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0B0F17;color:#94a3b8;font-family:system-ui,sans-serif;text-align:center;padding:1.5rem">

@@ -2,9 +2,25 @@
   Access-Control-Allow-Origin: *
   X-Content-Type-Options: nosniff
 
-/index.html
-  Cache-Control: no-cache, no-store, must-revalidate
+# Prevent Cloudflare and browsers from caching ANY HTML response.
+# Render rewrites all non-file paths to /index.html, so this covers
+# SPA routes like /dashboard, /tutor, /settings etc.
+/*.html
+  Cache-Control: no-cache, no-store, must-revalidate, max-age=0, s-maxage=0
+  Surrogate-Control: no-store
+  Vary: *
 
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate, max-age=0, s-maxage=0
+  Surrogate-Control: no-store
+  Vary: *
+
+# Static assets with content hashes CAN be cached forever by CDNs.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+
+# Public static files that don't change
+/public/*
+  Cache-Control: public, max-age=86400
   Access-Control-Allow-Origin: *

@@ -101,16 +101,19 @@ class LazyErrorBoundary extends React.Component<
   }
   componentDidCatch(err: Error) {
     console.error("[LazyErrorBoundary]", err);
+    // If the global recovery system exists, use it for more robust handling
+    const showRecovery = (window as unknown as Record<string, (msg: string) => void>).__NEXUS_SHOW_RECOVERY;
+    if (showRecovery) {
+      showRecovery(this.state.message || err.message);
+    }
   }
   retry = () => {
     this.setState({ hasError: false, message: "" });
-    // Force a full page reload with cache-busting to guarantee a fresh
-    // index.html from the origin (not a stale CDN copy).
-    window.location.href =
-      window.location.pathname +
-      "?__nexus_retry=" +
-      Date.now() +
-      window.location.hash;
+    // Clear any stale session state and force a full cache-busting reload.
+    try { sessionStorage.clear(); } catch { /* ignore */ }
+    const url = new URL(window.location.href);
+    url.searchParams.set("_t", String(Date.now()));
+    window.location.href = url.toString();
   };
   render() {
     if (this.state.hasError) {
@@ -169,7 +172,19 @@ class RootErrorBoundary extends React.Component<
   }
   componentDidCatch(err: Error) {
     console.error("[Nexus] Root crash:", err);
+    // Notify the global recovery system
+    const showRecovery = (window as unknown as Record<string, (msg: string) => void>).__NEXUS_SHOW_RECOVERY;
+    if (showRecovery) {
+      showRecovery(this.state.message || err.message);
+    }
   }
+  retry = () => {
+    this.setState({ hasError: false, message: "", stack: "" });
+    try { sessionStorage.clear(); } catch { /* ignore */ }
+    const url = new URL(window.location.href);
+    url.searchParams.set("_t", String(Date.now()));
+    window.location.href = url.toString();
+  };
   render() {
     if (this.state.hasError) {
       return (
@@ -185,7 +200,7 @@ class RootErrorBoundary extends React.Component<
               </pre>
             )}
             <button
-              onClick={() => window.location.reload()}
+              onClick={this.retry}
               className="mt-4 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
             >
               Reload
@@ -217,8 +232,22 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Branded preloader */
+/** Branded preloader — hides the CSS-only boot screen when React takes over. */
 function AppPreloader({ ready }: { ready: boolean }) {
+  useEffect(() => {
+    // Signal to the inline recovery system that React has mounted
+    (window as unknown as Record<string, boolean>).__NEXUS_MOUNTED = true;
+    // Hide the CSS-only boot screen (visible before React)
+    const boot = document.getElementById('nexus-boot-screen');
+    if (boot) {
+      boot.classList.add('nexus-hidden');
+      // Remove from DOM after fade-out transition
+      const onEnd = () => { boot.remove(); };
+      boot.addEventListener('transitionend', onEnd, { once: true });
+      // Safety: remove after 500ms even if transitionend doesn't fire
+      setTimeout(onEnd, 500);
+    }
+  }, []);
   return (
     <AnimatePresence>
       {!ready && (
@@ -270,6 +299,16 @@ function AppPreloader({ ready }: { ready: boolean }) {
 function PreloaderGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
+    // Signal mount immediately so the boot-screen timeout knows we're alive
+    (window as unknown as Record<string, boolean>).__NEXUS_MOUNTED = true;
+    // Hide the CSS-only boot screen right away
+    const boot = document.getElementById('nexus-boot-screen');
+    if (boot) {
+      boot.classList.add('nexus-hidden');
+      const onEnd = () => { boot.remove(); };
+      boot.addEventListener('transitionend', onEnd, { once: true });
+      setTimeout(onEnd, 500);
+    }
     let finished = false;
     let firstFrame = 0;
     let secondFrame = 0;
@@ -285,7 +324,8 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     } else {
       window.addEventListener("load", finish, { once: true });
     }
-    const safety = window.setTimeout(() => setReady(true), 800);
+    // Reduced safety timeout: 600ms instead of 800ms for faster perceived load
+    const safety = window.setTimeout(() => setReady(true), 600);
     return () => {
       window.removeEventListener("load", finish);
       window.clearTimeout(safety);
