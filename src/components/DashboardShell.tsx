@@ -243,7 +243,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
       {/* Main content area */}
       <div className="student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch">
-        <header className="student-mobile-header glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
+        <header className="student-mobile-header glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 !overflow-visible xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
             <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
