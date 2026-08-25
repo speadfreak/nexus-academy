@@ -6,7 +6,54 @@
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Prevent browser/CDN from caching index.html so stale chunk hashes never load -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Nexus Academy — Ethiopian National Exam Prep Library</title>
+  <script>
+    // ── Stale-chunk auto-recovery ─────────────────────────────────────
+    // If the browser loads an old index.html (CDN cache) whose JS chunks
+    // have been deleted on deploy, the <script> tags fail to fetch.  This
+    // listener catches those errors before React even mounts and forces a
+    // full, cache-busting reload so the user never sees a blank page.
+    (function () {
+      var RELOAD_KEY = '__nexus_cb';
+      var params = new URLSearchParams(location.search);
+      // If we already reloaded once for this reason and it still fails,
+      // don't loop — let the normal error boundary handle it.
+      if (params.has(RELOAD_KEY)) return;
+      window.addEventListener('error', function (e) {
+        var el = e.target;
+        if (el && el.tagName === 'SCRIPT' && el.src && !el.src.includes('chunk-')) {
+          // A top-level <script> failed — likely stale index.html.
+          // Also catch dynamically imported modules that fail.
+        }
+        if (el && el.tagName === 'LINK' && el.rel === 'stylesheet') return;
+        if (el && el.tagName === 'SCRIPT' && el.src) {
+          var url = new URL(location.href);
+          url.searchParams.set(RELOAD_KEY, String(Date.now()));
+          console.warn('[Nexus] Script load failed, reloading with cache bust:', el.src);
+          location.replace(url.toString());
+        }
+      }, true);
+      // Also catch failed dynamic imports (React.lazy / import()).
+      // These don't fire 'error' on a script element in all browsers,
+      // but unhandledrejection catches the resulting promise rejection.
+      window.addEventListener('unhandledrejection', function (e) {
+        var msg = (e.reason && e.reason.message) || '';
+        if (msg.includes('Failed to fetch dynamically imported module') ||
+            msg.includes('Loading chunk') ||
+            msg.includes('Importing a module script failed')) {
+          if (params.has(RELOAD_KEY)) return;
+          var url = new URL(location.href);
+          url.searchParams.set(RELOAD_KEY, String(Date.now()));
+          console.warn('[Nexus] Chunk load failed, reloading with cache bust:', msg);
+          location.replace(url.toString());
+        }
+      });
+    })();
+  </script>
   <script>
     // Apply theme before first paint to prevent light-theme flash.
     // Default is dark; only switch to light if explicitly saved.

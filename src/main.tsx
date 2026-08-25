@@ -104,11 +104,13 @@ class LazyErrorBoundary extends React.Component<
   }
   retry = () => {
     this.setState({ hasError: false, message: "" });
-    const params = new URLSearchParams(window.location.search);
-    params.set("__nexus_retry", String(Date.now()));
-    window.location.replace(
-      `${window.location.pathname}?${params.toString()}${window.location.hash}`,
-    );
+    // Force a full page reload with cache-busting to guarantee a fresh
+    // index.html from the origin (not a stale CDN copy).
+    window.location.href =
+      window.location.pathname +
+      "?__nexus_retry=" +
+      Date.now() +
+      window.location.hash;
   };
   render() {
     if (this.state.hasError) {
