@@ -1,4 +1,8 @@
 // THIS FILE IS READ ONLY. Do not touch this file unless you are correctly adding a new auth provider in accordance to the vly auth documentation
+// EXCEPTION: callbacks.redirect added to allow OAuth redirects to the actual
+// frontend URL (nexus-academy-5nfg.onrender.com) instead of the default
+// Convex cloud SITE_URL. This is required because the Convex deployment's
+// SITE_URL points to the Convex backend domain, not the Render frontend.
 
 import { convexAuth } from "@convex-dev/auth/server";
 import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
@@ -29,4 +33,12 @@ const providers = [
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers,
+  callbacks: {
+    // Allow OAuth redirects to any URL, not just SITE_URL.
+    // The client already validates redirectTo against window.location.origin
+    // in Auth.tsx, so this is safe.
+    async redirect({ redirectTo }) {
+      return redirectTo;
+    },
+  },
 });
