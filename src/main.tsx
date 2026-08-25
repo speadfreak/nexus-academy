@@ -241,28 +241,42 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Holds the preloader until the app is genuinely ready. */
+/** Holds the preloader until the app is genuinely ready.
+ *  First visit in a tab: cinematic preloader plays once.
+ *  Every refresh after that: preloader skipped, content renders instantly. */
 function PreloaderGate({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = React.useState(false);
+  const booted = React.useRef(false);
+  const [ready, setReady] = React.useState(() => {
+    try {
+      const already = sessionStorage.getItem("nexus-booted") === "true";
+      if (already) {
+        const boot = document.getElementById("nexus-boot-screen");
+        if (boot) boot.remove();
+      }
+      return already;
+    } catch { return false; }
+  });
+
   React.useEffect(() => {
-    // Signal mount immediately so the boot-screen timeout knows we're alive
+    if (booted.current) return;
+    booted.current = true;
     (window as unknown as Record<string, boolean>).__NEXUS_MOUNTED = true;
-    // Hide the CSS-only boot screen right away
     const boot = document.getElementById('nexus-boot-screen');
     if (boot) {
       boot.classList.add('nexus-hidden');
-      const onEnd = () => { boot.remove(); };
+      const onEnd = () => boot.remove();
       boot.addEventListener('transitionend', onEnd, { once: true });
       setTimeout(onEnd, 500);
     }
     let finished = false;
-    let firstFrame = 0;
-    let secondFrame = 0;
     const finish = () => {
       if (finished) return;
       finished = true;
-      firstFrame = requestAnimationFrame(() => {
-        secondFrame = requestAnimationFrame(() => setReady(true));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setReady(true);
+          try { sessionStorage.setItem("nexus-booted", "true"); } catch {}
+        });
       });
     };
     if (document.readyState === "complete") {
@@ -270,15 +284,13 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     } else {
       window.addEventListener("load", finish, { once: true });
     }
-    // Safety timeout: 1500ms to let cinematic boot sequence play out
-    const safety = window.setTimeout(() => setReady(true), 1500);
+    const safety = window.setTimeout(finish, 1500);
     return () => {
       window.removeEventListener("load", finish);
       window.clearTimeout(safety);
-      cancelAnimationFrame(firstFrame);
-      cancelAnimationFrame(secondFrame);
     };
   }, []);
+
   return (
     <>
       <AppPreloader ready={ready} />
