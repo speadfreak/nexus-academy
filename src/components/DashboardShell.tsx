@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router";
 import { localDateKey } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -293,64 +294,70 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </footer>
       </div>
 
-      {/* ═══ Mobile drawer overlay (fixed, outside all stacking contexts) ═══ */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <>
-            {/* Backdrop — dims and blocks interaction with page content */}
-            <motion.div
-              key="mobile-drawer-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm xl:hidden"
-              onClick={() => setMobileOpen(false)}
-              aria-hidden="true"
-            />
-            {/* Drawer panel — positioned below the mobile header */}
-            <motion.div
-              key="mobile-drawer-panel"
-              initial={{ opacity: 0, y: -8, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.98 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }}
-              className="fixed inset-x-3 top-[4.5rem] z-50 max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden"
-              data-lenis-prevent-wheel
-              role="dialog"
-              aria-label="Navigation menu"
-            >
-              <nav aria-label="Mobile navigation" className="grid gap-1">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setMobileOpen(false)}
-                    aria-current={location.pathname === item.to ? "page" : undefined}
-                    className={cn(
-                      "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
-                      location.pathname === item.to
-                        ? "student-nav-active bg-amber-400/10 text-amber-300"
-                        : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                    )}
+      {/* ═══ Mobile drawer overlay — portaled to body to escape ═══
+           ancestor transform (from framer-motion PageTransition) that
+           would otherwise make position:fixed relative to that ancestor
+           instead of the viewport, breaking the overlay on mobile. */}
+      {createPortal(
+        <AnimatePresence>
+          {mobileOpen && (
+            <>
+              {/* Backdrop — dims and blocks interaction with page content */}
+              <motion.div
+                key="mobile-drawer-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm xl:hidden"
+                onClick={() => setMobileOpen(false)}
+                aria-hidden="true"
+              />
+              {/* Drawer panel — positioned below the mobile header */}
+              <motion.div
+                key="mobile-drawer-panel"
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }}
+                className="fixed inset-x-3 top-[4.5rem] z-[9999] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden"
+                data-lenis-prevent-wheel
+                role="dialog"
+                aria-label="Navigation menu"
+              >
+                <nav aria-label="Mobile navigation" className="grid gap-1">
+                  {navItems.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileOpen(false)}
+                      aria-current={location.pathname === item.to ? "page" : undefined}
+                      className={cn(
+                        "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
+                        location.pathname === item.to
+                          ? "student-nav-active bg-amber-400/10 text-amber-300"
+                          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                      )}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </Link>
+                  ))}
+                  <div className="my-1 h-px bg-white/[0.06]" />
+                  <Button
+                    variant="ghost"
+                    onClick={() => { setMobileOpen(false); void handleSignOut(); }}
+                    className="justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground"
                   >
-                    <item.icon className="size-4" />
-                    {item.label}
-                  </Link>
-                ))}
-                <div className="my-1 h-px bg-white/[0.06]" />
-                <Button
-                  variant="ghost"
-                  onClick={() => { setMobileOpen(false); void handleSignOut(); }}
-                  className="justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground"
-                >
-                  <LogOut className="size-4" /> Sign out
-                </Button>
-              </nav>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+                    <LogOut className="size-4" /> Sign out
+                  </Button>
+                </nav>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
       {/* Persistent study-vibe player */}
       <MusicPlayer />
