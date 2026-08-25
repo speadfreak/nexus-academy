@@ -579,6 +579,78 @@ body {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   NEXUS PRELOADER — Cinematic boot sequence animations
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@keyframes preloader-orbit-1 {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes preloader-orbit-2 {
+  from { transform: rotate(120deg); }
+  to   { transform: rotate(480deg); }
+}
+@keyframes preloader-orbit-3 {
+  from { transform: rotate(240deg); }
+  to   { transform: rotate(600deg); }
+}
+
+@keyframes preloader-pulse-ring {
+  0%, 100% { transform: scale(1); opacity: 0.15; }
+  50%      { transform: scale(1.08); opacity: 0.3; }
+}
+
+@keyframes preloader-shimmer-letter {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.9); filter: blur(4px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes preloader-scan-beam {
+  0%   { top: -2px; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@keyframes preloader-bar-fill {
+  0%   { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+@keyframes preloader-corner-in-tl {
+  from { width: 0; height: 0; opacity: 0; }
+  to   { width: 32px; height: 32px; opacity: 1; }
+}
+@keyframes preloader-corner-in-tr {
+  from { width: 0; height: 0; opacity: 0; }
+  to   { width: 32px; height: 32px; opacity: 1; }
+}
+@keyframes preloader-corner-in-bl {
+  from { width: 0; height: 0; opacity: 0; }
+  to   { width: 32px; height: 32px; opacity: 1; }
+}
+@keyframes preloader-corner-in-br {
+  from { width: 0; height: 0; opacity: 0; }
+  to   { width: 32px; height: 32px; opacity: 1; }
+}
+
+@keyframes preloader-dot-float {
+  0%, 100% { transform: translateY(0px) scale(1); opacity: 0.4; }
+  50%      { transform: translateY(-6px) scale(1.3); opacity: 0.8; }
+}
+
+@keyframes preloader-glow-breathe {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.05); }
+}
+
+@keyframes preloader-n-glow {
+  0%, 100% { text-shadow: 0 0 20px oklch(0.74 0.15 232 / 0.3); }
+  50%      { text-shadow: 0 0 40px oklch(0.74 0.15 232 / 0.6), 0 0 80px oklch(0.74 0.15 232 / 0.2); }
+}
+
+
 @keyframes admin-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
