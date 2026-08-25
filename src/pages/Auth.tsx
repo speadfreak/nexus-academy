@@ -127,7 +127,7 @@ function FloatingParticles() {
       {particles.map((p) => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full bg-blue-400/30"
+          className="absolute rounded-full bg-amber-400/30"
           style={{
             left: `${p.x}%`,
             top: `${p.y}%`,
@@ -187,7 +187,7 @@ function ShowcasePanel() {
             </div>
             <span className="type-display text-gradient">Nexus Academy</span>
           </div>
-          <p className="text-lg leading-relaxed text-blue-200/60">
+          <p className="text-lg leading-relaxed text-amber-200/60">
             Where ambition meets intelligence — master any subject, crush every exam,
             and outlearn everyone.
           </p>
@@ -231,7 +231,7 @@ function ShowcasePanel() {
           className="flex items-center gap-3 pt-2"
         >
           <div className="flex -space-x-2">
-            {['bg-blue-500', 'bg-violet-500', 'bg-cyan-500', 'bg-emerald-500'].map((bg, i) => (
+            {['bg-amber-500', 'bg-orange-500', 'bg-emerald-500', 'bg-teal-500'].map((bg, i) => (
               <div
                 key={i}
                 className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#0a1128] ${bg} text-[10px] font-bold text-white`}
@@ -262,8 +262,8 @@ function AnimatedBorderCard({ children, className = "" }: { children: React.Reac
       {/* Card content */}
       <div className="relative z-10 overflow-hidden rounded-2xl bg-[#0c1425]/95 backdrop-blur-2xl">
         {/* Inner top-edge highlight */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
-        <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-blue-500/[0.03] to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-amber-500/[0.03] to-transparent" />
         
         {/* Grain */}
         <div className="absolute inset-0 opacity-[0.02]"

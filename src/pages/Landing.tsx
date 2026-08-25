@@ -319,7 +319,7 @@ export default function Landing() {
               : { x: [0, -50, 0], y: [0, 40, 0] }
           }
           transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute -right-24 top-24 size-[26rem] rounded-full bg-sky-400/10 blur-3xl"
+          className="absolute -right-24 top-24 size-[26rem] rounded-full bg-amber-400/10 blur-3xl"
         />
         <motion.div
           animate={
@@ -329,7 +329,7 @@ export default function Landing() {
               : { x: [0, 40, 0], y: [0, -30, 0] }
           }
           transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute left-1/2 top-56 size-[24rem] -translate-x-1/2 rounded-full bg-violet-400/10 blur-3xl"
+          className="absolute left-1/2 top-56 size-[24rem] -translate-x-1/2 rounded-full bg-amber-400/[0.07] blur-3xl"
         />
       </div>
 
@@ -509,7 +509,7 @@ export default function Landing() {
               className="glass-panel hover-lift group rounded-2xl p-6 transition-all duration-300 hover:border-primary/30"
             >
               <div className="flex items-center justify-between">
-                <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.74_0.15_232_/_0.25)]">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.78_0.15_80_/_0.25)]">
                   <feature.icon className="size-5" />
                 </div>
                 <span className="font-mono text-[10px] text-muted-foreground transition-colors group-hover:text-primary">
@@ -679,7 +679,7 @@ export default function Landing() {
               className="glass-panel hover-lift group rounded-2xl p-6 transition-all duration-300"
             >
               <div className="flex items-center justify-between">
-                <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.74_0.15_232_/_0.25)]">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_oklch(0.78_0.15_80_/_0.25)]">
                   <GraduationCap className="size-5" />
                 </div>
                 <span className="font-mono text-[10px] text-muted-foreground">
@@ -914,7 +914,7 @@ export default function Landing() {
           className="glass-panel relative overflow-hidden rounded-3xl px-6 py-14 text-center sm:px-12"
         >
           <div className="pointer-events-none absolute -left-20 -top-24 size-72 rounded-full bg-primary/15 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -right-16 size-72 rounded-full bg-sky-400/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -right-16 size-72 rounded-full bg-amber-400/10 blur-3xl" />
           <div className="relative">
             <p className="type-mono uppercase tracking-[0.2em] text-primary">
               // get started
@@ -956,7 +956,7 @@ export default function Landing() {
       <footer className="relative border-t border-white/8 overflow-hidden">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-primary/[0.03] to-primary/[0.06]" />
         <div className="pointer-events-none absolute -left-24 bottom-0 size-64 rounded-full bg-primary/8 blur-3xl" />
-        <div className="pointer-events-none absolute -right-24 bottom-10 size-48 rounded-full bg-sky-400/5 blur-3xl" />
+        <div className="pointer-events-none absolute -right-24 bottom-10 size-48 rounded-full bg-amber-400/5 blur-3xl" />
         <div className="relative mx-auto max-w-6xl px-4 py-14">
           {/* Signature credit — the standout element */}
           <div className="flex flex-col items-center text-center">
