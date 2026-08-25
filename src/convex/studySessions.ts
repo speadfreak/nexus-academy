@@ -252,7 +252,6 @@ export const getRecentSessions = query({
         _id: session._id,
         subjectId: session.subjectId,
         subjectName: subject?.name ?? "Unknown",
-        subjectColor: subject?.color,
         durationSeconds: session.durationSeconds,
         startedAt: session.startedAt,
         endedAt: session.endedAt,
