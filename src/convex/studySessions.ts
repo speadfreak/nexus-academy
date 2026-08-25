@@ -233,6 +233,35 @@ export const getStreak = query({
   },
 });
 
+export const getRecentSessions = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    const sessions = await ctx.db
+      .query("studySessions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(limit ?? 30);
+
+    const results = [];
+    for (const session of sessions) {
+      const subject = await ctx.db.get(session.subjectId);
+      results.push({
+        _id: session._id,
+        subjectId: session.subjectId,
+        subjectName: subject?.name ?? "Unknown",
+        subjectColor: subject?.color,
+        durationSeconds: session.durationSeconds,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+      });
+    }
+    return results;
+  },
+});
+
 /** Hours and session counts per subject, most-studied first. */
 export const getHistory = query({
   args: {},
