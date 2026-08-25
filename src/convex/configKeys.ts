@@ -8,6 +8,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { mutation, query, internalQuery } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+import { isAdminDoc } from "./admin";
 
 // ── Known integrations registry ──────────────────────────────────────
 
@@ -53,13 +54,16 @@ const CATEGORIES: Record<string, { label: string; icon: string }> = {
 
 export const CATEGORIES_META = CATEGORIES;
 
-// Inline admin check — requires super_admin for key management.
+// Admin check consistent with the rest of the admin system (moderator+).
+// Uses isAdminDoc from admin.ts so the same role-level threshold (>= 60)
+// applies everywhere — no more "Super admin access required" crashes
+// for admin/moderator users who can see the Admin page.
 async function requireAdmin(ctx: { db: { get: (id: any) => Promise<any> }; auth: any }) {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
   const user = await ctx.db.get(userId);
-  if (!user || user.role !== "super_admin") {
-    throw new ConvexError({ message: "Super admin access required.", code: "unauthorized" });
+  if (!user || !isAdminDoc(user)) {
+    throw new ConvexError({ message: "Admin access required.", code: "unauthorized" });
   }
   return user as Doc<"users">;
 }
