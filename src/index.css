@@ -1357,16 +1357,6 @@ html.lenis, html.lenis body {
 }
 
 /* ═══ Collapsible Sidebar ═══ */
-.sidebar-collapsible {
-  position: sticky;
-  top: 1rem;
-}
-
-@media (min-width: 1024px) {
-  .sidebar-collapsible {
-    top: 1.5rem;
-  }
-}
 
 /* Floating toggle button glow pulse */
 .sidebar-toggle-btn {
