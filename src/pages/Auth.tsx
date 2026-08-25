@@ -545,7 +545,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await signIn("google", { redirectTo: redirect });
+      // Use absolute URL (origin + path) so Convex redirects back to
+      // the actual frontend domain after Google OAuth, not the Convex
+      // backend URL (which would show 404).
+      const frontendUrl = window.location.origin + redirect;
+      const result = await signIn("google", { redirectTo: frontendUrl });
       if (result.redirect) {
         window.location.assign(result.redirect.toString());
       }
