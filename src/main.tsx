@@ -14,7 +14,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
 import { useLenis } from "@/hooks/useLenis";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
+import { ConvexAuthProvider, useConvexAuth } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
@@ -341,6 +341,20 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Auto-closes the OAuth popup once auth settles. Must live inside
+ * ConvexAuthProvider so it can read the auth state. */
+function OAuthPopupCloser() {
+  const { isLoading } = useConvexAuth();
+  useEffect(() => {
+    if (window.name !== "nexus-google-auth") return;
+    if (isLoading) return;
+    // Auth settled — close popup so parent picks up the new session
+    const t = setTimeout(() => window.close(), 500);
+    return () => clearTimeout(t);
+  }, [isLoading]);
+  return null;
+}
+
 function RouteSyncer() {
   useLenis();
   const location = useLocation();
@@ -382,6 +396,7 @@ if (rootEl) {
           </ToolbarErrorBoundary>
         </Suspense>
         <ConvexAuthProvider client={convex}>
+          <OAuthPopupCloser />
           <ThemeProvider>
             <MusicProvider>
               <PreloaderGate>

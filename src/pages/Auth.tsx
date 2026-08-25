@@ -188,7 +188,8 @@ function ShowcasePanel() {
             <span className="type-display text-gradient">Nexus Academy</span>
           </div>
           <p className="text-lg leading-relaxed text-blue-200/60">
-            Your AI-powered command center for academic excellence.
+            Where ambition meets intelligence — master any subject, crush every exam,
+            and outlearn everyone.
           </p>
         </motion.div>
 
@@ -545,13 +546,39 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      // Use absolute URL (origin + path) so Convex redirects back to
-      // the actual frontend domain after Google OAuth, not the Convex
-      // backend URL (which would show 404).
       const frontendUrl = window.location.origin + redirect;
       const result = await signIn("google", { redirectTo: frontendUrl });
       if (result.redirect) {
-        window.location.assign(result.redirect.toString());
+        // ── Popup-based OAuth ─────────────────────────────────────────
+        // Open the Google OAuth flow in a popup so the user stays on
+        // the branded Nexus Academy page the entire time. The Convex
+        // "Continue to" page only flashes inside the popup.
+        const popup = window.open(
+          result.redirect.toString(),
+          "nexus-google-auth",
+          "width=500,height=700,left=200,top=100",
+        );
+        if (!popup) {
+          // Popup blocked — fall back to full-page redirect
+          window.location.assign(result.redirect.toString());
+          return;
+        }
+        // Poll popup: when it closes, the Convex session will already
+        // be established (or not). The existing auth useEffect will
+        // handle navigation if authenticated.
+        const poll = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(poll);
+            // Small delay for the Convex client to pick up the new session
+            setTimeout(() => setIsLoading(false), 800);
+          }
+        }, 400);
+        // Auto-cleanup after 5 minutes (timeout safety)
+        setTimeout(() => {
+          clearInterval(poll);
+          setIsLoading(false);
+        }, 5 * 60 * 1000);
+        return; // Don't setIsLoading(false) — popup is still open
       }
       setIsLoading(false);
     } catch (error) {
@@ -903,15 +930,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     {/* Footer */}
                     <div className="mt-8 flex items-center justify-center gap-1.5 text-center text-[10px] text-white/20">
                       <Shield className="h-3 w-3" />
-                      <span>Secured by </span>
-                      <a
-                        href="https://freebuff.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline-offset-2 transition-colors hover:text-white/40"
-                      >
-                        freebuff.com
-                      </a>
+                      <span>256-bit encrypted</span>
+                      <span className="text-white/10">·</span>
+                      <span>Your data stays yours</span>
                     </div>
                   </div>
                 </AnimatedBorderCard>
