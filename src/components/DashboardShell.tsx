@@ -28,6 +28,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MusicPlayer } from "@/components/music-player";
+import { AnimatePresence, motion } from "framer-motion";
 import logo from "@/assets/nexus-logo.svg";
 
 export function DashboardShell({ children }: { children: ReactNode }) {
@@ -38,19 +39,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close mobile menu on click outside
+  // Close mobile menu on route change
   useEffect(() => {
-    if (!mobileOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
-        setMobileOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [mobileOpen]);
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   // Close on Escape key
   useEffect(() => {
@@ -62,6 +55,16 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("keydown", handler);
   }, [mobileOpen]);
 
+  // Lock body scroll while mobile drawer is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
+
   // First activity of any authenticated session: create the trial subscription
   // if needed and count the active day. Both are idempotent server-side, so
   // double-fire (StrictMode) is safe.
@@ -71,10 +74,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     touchedRef.current = true;
     void touch({ localDate: localDateKey() }).catch(() => {});
   }, [touch]);
-
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [location.pathname]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -120,9 +119,35 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
+  // Nav link shared between desktop sidebar and mobile drawer
+  const renderNavLink = (item: typeof navItems[number]) => {
+    const active = location.pathname === item.to;
+    return (
+      <Link
+        to={item.to}
+        onClick={() => setMobileOpen(false)}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+          active
+            ? "student-nav-active bg-amber-400/10 text-amber-300 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.12)]"
+            : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+        )}
+      >
+        <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg", active ? "bg-amber-400/15" : "bg-white/[0.035]")}>
+          <item.icon className="size-4" />
+        </span>
+        <span className="truncate">{item.label}</span>
+        {item.premiumActive && (
+          <span title="Premium active" className="ml-auto size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)]" />
+        )}
+      </Link>
+    );
+  };
+
   return (
-    <div className="student-app-shell mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* Sidebar (desktop) — sticky + overflow-visible override on glass-panel */}
+    <div className="student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-6 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+      {/* ═══ Desktop sidebar (hidden below xl) ═══ */}
       <aside className="student-sidebar glass-panel sticky top-4 hidden h-[calc(100dvh-2rem)] min-h-0 w-60 shrink-0 !overflow-hidden !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]">
         {/* Logo + brand */}
         <Link to="/" className="student-brand-lockup group flex items-center gap-3 rounded-2xl border border-white/10 px-3 py-3 transition-all hover:border-primary/35 hover:bg-primary/[0.06]">
@@ -137,35 +162,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           <NotificationBell />
         </Link>
 
-        {/* Divider */}
         <div className="mx-3 my-2 h-px bg-white/[0.06]" />
 
         {/* Main navigation */}
         <nav aria-label="Student navigation" data-lenis-prevent-wheel className="student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
-          {navItems.filter((item) => item.to !== "/upgrade" && item.to !== "/admin").map((item) => {
-            const active = location.pathname === item.to;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "interactive-press flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
-                    active
-                     ? "student-nav-active bg-amber-400/10 text-amber-300 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.12)]"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                )}
-                aria-current={active ? "page" : undefined}
-              >
-                <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg", active ? "bg-amber-400/15" : "bg-white/[0.035]")}>
-                  <item.icon className="size-4" />
-                </span>
-                <span className="truncate">{item.label}</span>
-                {item.premiumActive && (
-                  <span title="Premium active" className="ml-auto size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)]" />
-                )}
-              </Link>
-            );
-          })}
+          {navItems.filter((item) => item.to !== "/upgrade" && item.to !== "/admin").map(renderNavLink)}
         </nav>
 
         {/* Bottom section: Premium + Admin + Profile */}
@@ -241,9 +242,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Main content area */}
+      {/* ═══ Main content area ═══ */}
       <div className="student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch">
-        <header className="student-mobile-header glass-panel relative flex items-center justify-between rounded-2xl px-4 py-2.5 !overflow-visible xl:hidden">
+        {/* Mobile top bar (hidden at xl+) */}
+        <header className="student-mobile-header glass-panel relative z-30 flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
             <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
@@ -255,50 +257,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               size="icon"
               onClick={() => setMobileOpen((open) => !open)}
               aria-expanded={mobileOpen}
-              aria-controls="mobile-navigation"
               aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
               className="size-10 min-h-10 min-w-10 text-muted-foreground"
             >
               {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
             </Button>
           </div>
-          {mobileOpen && (
-            <div
-              id="mobile-navigation"
-              ref={mobileMenuRef}
-               className="student-mobile-drawer absolute inset-x-0 top-[calc(100%+0.5rem)] z-50 max-h-[75vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/98 p-2 shadow-2xl backdrop-blur-xl"
-              data-lenis-prevent-wheel
-            >
-              <nav aria-label="Mobile navigation" className="grid gap-1">
-                {navItems.map((item) => {
-                  const active = location.pathname === item.to;
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
-                         active
-                           ? "student-nav-active bg-amber-400/10 text-amber-300"
-                          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                      )}
-                    >
-                      <item.icon className="size-4" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-                <Button
-                  variant="ghost"
-                  onClick={handleSignOut}
-                  className="justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground"
-                >
-                  <LogOut className="size-4" /> Sign out
-                </Button>
-              </nav>
-            </div>
-          )}
         </header>
 
         <main
@@ -310,12 +274,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
         {/* ═══ FOOTER ═══ */}
         <footer className="mt-auto pb-3 pt-2">
-          {/* Animated gradient border line */}
           <div className="footer-gradient-line mx-auto max-w-xs rounded-full" />
-
-          {/* Footer content with faint dot pattern */}
           <div className="footer-dots relative flex flex-col items-center gap-1.5 pt-3">
-            {/* Developed-by line */}
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground/40">
                 Developed by
@@ -326,8 +286,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 </span>
               </span>
             </div>
-
-            {/* Copyright metadata */}
             <p className="type-caption text-muted-foreground/30">
               © 2025 Nexus Academy
             </p>
@@ -335,8 +293,66 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </footer>
       </div>
 
-      {/* Persistent study-vibe player — lives at the app root so it survives
-          navigation. Defaults to off; never autoplays. */}
+      {/* ═══ Mobile drawer overlay (fixed, outside all stacking contexts) ═══ */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <>
+            {/* Backdrop — dims and blocks interaction with page content */}
+            <motion.div
+              key="mobile-drawer-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm xl:hidden"
+              onClick={() => setMobileOpen(false)}
+              aria-hidden="true"
+            />
+            {/* Drawer panel — positioned below the mobile header */}
+            <motion.div
+              key="mobile-drawer-panel"
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }}
+              className="fixed inset-x-3 top-[4.5rem] z-50 max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden"
+              data-lenis-prevent-wheel
+              role="dialog"
+              aria-label="Navigation menu"
+            >
+              <nav aria-label="Mobile navigation" className="grid gap-1">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileOpen(false)}
+                    aria-current={location.pathname === item.to ? "page" : undefined}
+                    className={cn(
+                      "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
+                      location.pathname === item.to
+                        ? "student-nav-active bg-amber-400/10 text-amber-300"
+                        : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                    )}
+                  >
+                    <item.icon className="size-4" />
+                    {item.label}
+                  </Link>
+                ))}
+                <div className="my-1 h-px bg-white/[0.06]" />
+                <Button
+                  variant="ghost"
+                  onClick={() => { setMobileOpen(false); void handleSignOut(); }}
+                  className="justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground"
+                >
+                  <LogOut className="size-4" /> Sign out
+                </Button>
+              </nav>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Persistent study-vibe player */}
       <MusicPlayer />
     </div>
   );
