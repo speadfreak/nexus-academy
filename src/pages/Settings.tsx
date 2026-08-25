@@ -85,12 +85,14 @@ export default function Settings() {
     try {
       const uploadUrl = await generateAvatarUploadUrl();
       const response = await fetch(uploadUrl, {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": file.type || "image/png" },
         body: file,
       });
       if (!response.ok) throw new Error("Could not upload the image.");
-      const { storageId } = (await response.json()) as { storageId: string };
+      const raw = await response.json();
+      const storageId: string = raw?.storageId ?? raw?.fileId ?? Object.values(raw)[0] as string;
+      if (!storageId) throw new Error("Upload response missing storage ID.");
       await setAvatar({ storageId });
       toast.success("Avatar updated.");
     } catch (error) {

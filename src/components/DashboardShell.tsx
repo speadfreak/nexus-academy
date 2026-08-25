@@ -59,44 +59,28 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Close mobile menu on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [location.pathname]);
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
-  // Close on Escape key
   useEffect(() => {
     if (!mobileOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMobileOpen(false);
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileOpen(false); };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [mobileOpen]);
 
-  // Ctrl+B  → toggle sidebar collapse (desktop only)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
-        e.preventDefault();
-        toggleCollapsed();
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") { e.preventDefault(); toggleCollapsed(); }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [toggleCollapsed]);
 
-  // Lock body scroll while mobile drawer is open
   useEffect(() => {
-    if (mobileOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  // First activity of any authenticated session: create the trial subscription
   const touchedRef = useRef(false);
   useEffect(() => {
     if (touchedRef.current) return;
@@ -104,10 +88,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     void touch({ localDate: localDateKey() }).catch(() => {});
   }, [touch]);
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
-  };
+  const handleSignOut = async () => { await signOut(); navigate("/"); };
 
   const navItems: {
     to: string;
@@ -131,9 +112,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       to: "/upgrade",
       label:
         subscription?.status === "trial"
-          ? `Premium · ${subscription.trialDaysRemaining}d trial`
+          ? `Premium \u00b7 ${subscription.trialDaysRemaining}d trial`
           : subscription?.needsUpgrade
-            ? "Premium · upgrade"
+            ? "Premium \u00b7 upgrade"
             : "Premium",
       icon: Crown,
       premiumActive: Boolean(subscription?.premiumAccess),
@@ -142,14 +123,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   ];
 
   const initials = (user?.name || user?.email || "N")
-    .split(/[\s@]/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
+    .split(/[\s@]/).filter(Boolean).slice(0, 2)
+    .map((part) => part[0]?.toUpperCase()).join("");
 
-  // ── Desktop nav link (supports collapsed tooltips) ──
-  const renderDesktopNavLink = (item: typeof navItems[number], idx: number) => {
+  const renderDesktopNavLink = (item: typeof navItems[number]) => {
     const active = location.pathname === item.to;
     const link = (
       <Link
@@ -176,17 +153,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           {item.label}
         </span>
         {item.premiumActive && (
-          <span
-            title="Premium active"
-            className={cn(
-              "size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)] transition-all duration-300",
-              collapsed ? "absolute right-1" : "ml-auto",
-            )}
-          />
+          <span className={cn(
+            "size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)] transition-all duration-300",
+            collapsed ? "absolute right-1" : "ml-auto",
+          )} />
         )}
       </Link>
     );
-
     if (collapsed) {
       return (
         <Tooltip key={item.to} delayDuration={0}>
@@ -200,7 +173,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     return <div key={item.to}>{link}</div>;
   };
 
-  // ── Mobile nav link (unchanged) ──
   const renderMobileNavLink = (item: typeof navItems[number]) => {
     const active = location.pathname === item.to;
     return (
@@ -224,219 +196,161 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-4 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* ═══ Desktop sidebar (hidden below xl) ═══ */}
-      <motion.aside
-        animate={{ width: collapsed ? COLLAPSED_W : EXPANDED_W }}
-        transition={{ type: "spring", stiffness: 400, damping: 34, mass: 0.8 }}
-        className="student-sidebar sidebar-collapsible relative hidden h-[calc(100dvh-2rem)] min-h-0 shrink-0 !overflow-hidden !overflow-x-clip flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]"
-      >
-        {/* ── Collapsed/Expanded toggle button ── */}
+
+      {/* Desktop sidebar wrapper — toggle button lives here so it's not clipped */}
+      <div className="relative hidden shrink-0 xl:block">
+        <motion.aside
+          animate={{ width: collapsed ? COLLAPSED_W : EXPANDED_W }}
+          transition={{ type: "spring", stiffness: 400, damping: 34, mass: 0.8 }}
+          className="student-sidebar sidebar-collapsible sticky top-4 hidden h-[calc(100dvh-2rem)] min-h-0 flex-col rounded-2xl p-3 xl:flex lg:top-6 lg:h-[calc(100dvh-3rem)]"
+        >
+          {/* Logo + brand */}
+          <Link
+            to="/"
+            className={cn(
+              "student-brand-lockup group relative flex items-center gap-3 rounded-2xl border border-white/10 px-3 py-3 transition-all hover:border-primary/35 hover:bg-primary/[0.06]",
+              collapsed && "justify-center border-transparent px-0 hover:bg-white/5",
+            )}
+          >
+            <span className="relative shrink-0">
+              <img src={logo} alt="Nexus Academy logo" className="size-10 rounded-xl transition-transform group-hover:scale-105" />
+              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
+            </span>
+            <div className={cn(
+              "sidebar-label min-w-0 leading-tight transition-all duration-300",
+              collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
+            )}>
+              <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
+              <p className="text-[10px] text-muted-foreground">Exam prep & library</p>
+            </div>
+            {!collapsed && <NotificationBell />}
+          </Link>
+
+          {collapsed && (
+            <div className="mt-1 flex justify-center">
+              <NotificationBell />
+            </div>
+          )}
+
+          <div className={cn("mx-3 my-2 h-px bg-white/[0.06] transition-all duration-300", collapsed && "mx-1.5")} />
+
+          {/* Main navigation */}
+          <nav
+            aria-label="Student navigation"
+            data-lenis-prevent-wheel
+            className={cn(
+              "student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1 transition-all duration-300",
+              collapsed && "items-center gap-1 pr-0",
+            )}
+          >
+            {navItems.filter((i) => i.to !== "/upgrade" && i.to !== "/admin").map(renderDesktopNavLink)}
+          </nav>
+
+          {/* Bottom section */}
+          <div className="student-sidebar-footer shrink-0 flex flex-col gap-1.5 pt-2">
+            <div className={cn("mx-3 h-px bg-white/[0.06] transition-all duration-300", collapsed && "mx-1.5")} />
+
+            {/* Premium */}
+            {(() => {
+              const premium = navItems.find((i) => i.to === "/upgrade");
+              if (!premium) return null;
+              const active = location.pathname === premium.to;
+              const link = (
+                <Link to={premium.to} className={cn(
+                  "student-premium-link sidebar-nav-item interactive-press group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
+                  premium.premiumActive ? "bg-premium/10 text-premium" : active ? "bg-amber-400/10 text-amber-300" : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                  collapsed && "justify-center px-0",
+                )}>
+                  <premium.icon className="size-4 shrink-0" />
+                  <span className={cn("sidebar-label truncate transition-all duration-300", collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100")}>{premium.label}</span>
+                  {premium.premiumActive && <span className={cn("size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)] transition-all duration-300", collapsed ? "absolute right-1" : "ml-auto")} />}
+                </Link>
+              );
+              if (collapsed) return (
+                <Tooltip key="premium" delayDuration={0}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={12} className="sidebar-tooltip">{premium.label}</TooltipContent>
+                </Tooltip>
+              );
+              return <div key="premium">{link}</div>;
+            })()}
+
+            {/* Admin */}
+            {isAdmin?.isAdmin && (() => {
+              const link = (
+                <Link to="/admin" className={cn(
+                  "student-admin-link sidebar-nav-item interactive-press group relative flex items-center gap-2.5 rounded-xl border border-primary/15 px-3 py-2 text-sm font-semibold transition-all",
+                  location.pathname === "/admin" ? "bg-amber-400/10 text-amber-300" : "text-amber-300/70 hover:bg-amber-400/5 hover:text-amber-300",
+                  collapsed && "justify-center border-transparent px-0",
+                )}>
+                  <ShieldCheck className="size-4 shrink-0" />
+                  <span className={cn("sidebar-label truncate transition-all duration-300", collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100")}>Admin</span>
+                </Link>
+              );
+              if (collapsed) return (
+                <Tooltip key="admin" delayDuration={0}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={12} className="sidebar-tooltip">Admin</TooltipContent>
+                </Tooltip>
+              );
+              return <div key="admin">{link}</div>;
+            })()}
+
+            {/* Profile card */}
+            <div className={cn(
+              "student-profile-card glass-soft relative flex items-center gap-2.5 rounded-2xl border border-white/10 p-2.5 transition-all duration-300",
+              collapsed && "justify-center p-2",
+            )}>
+              <Link to="/settings" title="Open settings">
+                <Avatar className="size-9 cursor-pointer">
+                  <AvatarFallback className="bg-gradient-to-br from-amber-400/25 to-amber-400/5 text-xs font-bold text-amber-300">
+                    {initials || "N"}
+                  </AvatarFallback>
+                </Avatar>
+              </Link>
+              <div className={cn(
+                "sidebar-label flex min-w-0 flex-1 leading-tight transition-all duration-300",
+                collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
+              )}>
+                <Link to="/settings" className="min-w-0 flex-1 leading-tight">
+                  <p className="truncate text-xs font-semibold hover:text-amber-300">{user?.name || "Guest"}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
+                </Link>
+                <Button variant="ghost" size="icon" onClick={handleSignOut} aria-label="Sign out" className="cursor-pointer text-muted-foreground hover:text-destructive">
+                  <LogOut className="size-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </motion.aside>
+
+        {/* Toggle button — outside aside so overflow never clips it */}
         <button
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className={cn(
-            "sidebar-toggle-btn group absolute -right-3 top-8 z-50 flex size-6 items-center justify-center rounded-full border transition-all duration-300",
+            "sidebar-toggle-btn group absolute -right-3.5 top-8 z-50 flex size-7 items-center justify-center rounded-full border transition-all duration-300",
             "border-white/10 bg-background/90 backdrop-blur-md shadow-lg",
-            "hover:border-amber-400/40 hover:bg-amber-400/10 hover:shadow-[0_0_16px_-4px_rgb(251,191,36,0.7)]",
+            "hover:border-amber-400/40 hover:bg-amber-400/10 hover:shadow-[0_0_18px_-4px_rgb(251,191,36,0.7)]",
             "active:scale-90",
           )}
         >
           {collapsed ? (
-            <PanelLeftOpen className="size-3 text-muted-foreground transition-colors group-hover:text-amber-300" />
+            <PanelLeftOpen className="size-3.5 text-muted-foreground transition-colors group-hover:text-amber-300" />
           ) : (
-            <PanelLeftClose className="size-3 text-muted-foreground transition-colors group-hover:text-amber-300" />
+            <PanelLeftClose className="size-3.5 text-muted-foreground transition-colors group-hover:text-amber-300" />
           )}
         </button>
 
-        {/* ── Animated edge glow line ── */}
+        {/* Edge glow line */}
         <div className={cn(
           "sidebar-edge-glow pointer-events-none absolute -right-px top-0 bottom-0 w-px transition-opacity duration-500",
           collapsed ? "opacity-0" : "opacity-100",
         )} />
+      </div>
 
-        {/* Logo + brand */}
-        <Link
-          to="/"
-          className={cn(
-            "student-brand-lockup group relative flex items-center gap-3 rounded-2xl border border-white/10 px-3 py-3 transition-all hover:border-primary/35 hover:bg-primary/[0.06]",
-            collapsed && "justify-center border-transparent px-0 hover:bg-white/5",
-          )}
-        >
-          <span className="relative shrink-0">
-            <img
-              src={logo}
-              alt="Nexus Academy logo"
-              className="size-10 rounded-xl transition-transform group-hover:scale-105"
-            />
-            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
-          </span>
-          <div className={cn(
-            "sidebar-label min-w-0 leading-tight transition-all duration-300",
-            collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
-          )}>
-            <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
-            <p className="text-[10px] text-muted-foreground">Exam prep & library</p>
-          </div>
-          {!collapsed && <NotificationBell />}
-        </Link>
-
-        {/* Notification bell (collapsed: below brand, centered) */}
-        {collapsed && (
-          <div className="mt-1 flex justify-center">
-            <NotificationBell />
-          </div>
-        )}
-
-        <div className={cn(
-          "mx-3 my-2 h-px bg-white/[0.06] transition-all duration-300",
-          collapsed && "mx-1.5",
-        )} />
-
-        {/* Main navigation */}
-        <nav
-          aria-label="Student navigation"
-          data-lenis-prevent-wheel
-          className={cn(
-            "student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1 transition-all duration-300",
-            collapsed && "items-center gap-1 pr-0",
-          )}
-        >
-          {navItems
-            .filter((item) => item.to !== "/upgrade" && item.to !== "/admin")
-            .map((item, idx) => renderDesktopNavLink(item, idx))}
-        </nav>
-
-        {/* Bottom section: Premium + Admin + Profile */}
-        <div className="student-sidebar-footer shrink-0 flex flex-col gap-1.5 pt-2">
-          <div className={cn(
-            "mx-3 h-px bg-white/[0.06] transition-all duration-300",
-            collapsed && "mx-1.5",
-          )} />
-
-          {/* Premium CTA */}
-          {(() => {
-            const premium = navItems.find((item) => item.to === "/upgrade");
-            if (!premium) return null;
-            const active = location.pathname === premium.to;
-            const link = (
-              <Link
-                to={premium.to}
-                className={cn(
-                  "student-premium-link sidebar-nav-item interactive-press group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
-                  premium.premiumActive
-                    ? "bg-premium/10 text-premium"
-                    : active
-                      ? "bg-amber-400/10 text-amber-300"
-                      : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                  collapsed && "justify-center px-0",
-                )}
-              >
-                <premium.icon className="size-4 shrink-0" />
-                <span className={cn(
-                  "sidebar-label truncate transition-all duration-300",
-                  collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
-                )}>
-                  {premium.label}
-                </span>
-                {premium.premiumActive && (
-                  <span
-                    title="Premium active"
-                    className={cn(
-                      "size-1.5 shrink-0 rounded-full bg-premium shadow-[0_0_8px_1px_var(--premium)] transition-all duration-300",
-                      collapsed ? "absolute right-1" : "ml-auto",
-                    )}
-                  />
-                )}
-              </Link>
-            );
-
-            if (collapsed) {
-              return (
-                <Tooltip key="premium" delayDuration={0}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12} className="sidebar-tooltip">
-                    {premium.label}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
-            return <div key="premium">{link}</div>;
-          })()}
-
-          {/* Admin badge */}
-          {isAdmin?.isAdmin && (() => {
-            const link = (
-              <Link
-                to="/admin"
-                className={cn(
-                  "student-admin-link sidebar-nav-item interactive-press group relative flex items-center gap-2.5 rounded-xl border border-primary/15 px-3 py-2 text-sm font-semibold transition-all",
-                  location.pathname === "/admin"
-                    ? "bg-amber-400/10 text-amber-300"
-                    : "text-amber-300/70 hover:bg-amber-400/5 hover:text-amber-300",
-                  collapsed && "justify-center border-transparent px-0",
-                )}
-              >
-                <ShieldCheck className="size-4 shrink-0" />
-                <span className={cn(
-                  "sidebar-label truncate transition-all duration-300",
-                  collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
-                )}>
-                  Admin
-                </span>
-              </Link>
-            );
-            if (collapsed) {
-              return (
-                <Tooltip key="admin" delayDuration={0}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12} className="sidebar-tooltip">
-                    Admin
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
-            return <div key="admin">{link}</div>;
-          })()}
-
-          {/* Profile card */}
-          <div className={cn(
-            "student-profile-card glass-soft relative flex items-center gap-2.5 rounded-2xl border border-white/10 p-2.5 transition-all duration-300",
-            collapsed && "justify-center p-2",
-          )}>
-            <Link to="/settings" title="Open settings">
-              <Avatar className="size-9 cursor-pointer">
-                <AvatarFallback className="bg-gradient-to-br from-amber-400/25 to-amber-400/5 text-xs font-bold text-amber-300">
-                  {initials || "N"}
-                </AvatarFallback>
-              </Avatar>
-            </Link>
-            <div className={cn(
-              "sidebar-label flex min-w-0 flex-1 leading-tight transition-all duration-300",
-              collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
-            )}>
-              <Link to="/settings" className="min-w-0 flex-1 leading-tight">
-                <p className="truncate text-xs font-semibold hover:text-amber-300">
-                  {user?.name || "Guest"}
-                </p>
-                <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSignOut}
-                aria-label="Sign out"
-                className="cursor-pointer text-muted-foreground hover:text-destructive"
-              >
-                <LogOut className="size-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </motion.aside>
-
-      {/* ═══ Main content area ═══ */}
+      {/* Main content area */}
       <div className="student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch">
-        {/* Mobile top bar (hidden at xl+) */}
         <header className="student-mobile-header glass-panel relative z-30 flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
@@ -444,81 +358,41 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </Link>
           <div className="flex items-center gap-1">
             <NotificationBell />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setMobileOpen((open) => !open)}
-              aria-expanded={mobileOpen}
-              aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
-              className="size-10 min-h-10 min-w-10 text-muted-foreground"
-            >
+            <Button variant="ghost" size="icon" onClick={() => setMobileOpen((o) => !o)} aria-expanded={mobileOpen} aria-label={mobileOpen ? "Close navigation" : "Open navigation"} className="size-10 min-h-10 min-w-10 text-muted-foreground">
               {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
             </Button>
           </div>
         </header>
 
-        <main
-          className="student-page-frame min-w-0 flex-1 pb-20 sm:pb-28"
-          data-page={location.pathname.replace(/^\//, "").split("/")[0] || "dashboard"}
-        >
+        <main className="student-page-frame min-w-0 flex-1 pb-20 sm:pb-28" data-page={location.pathname.replace(/^\//, "").split("/")[0] || "dashboard"}>
           {children}
         </main>
 
-        {/* ═══ FOOTER ═══ */}
         <footer className="mt-auto pb-3 pt-2">
           <div className="footer-gradient-line mx-auto max-w-xs rounded-full" />
           <div className="footer-dots relative flex flex-col items-center gap-1.5 pt-3">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40">
-                Developed by
-              </span>
+              <span className="text-[10px] text-muted-foreground/40">Developed by</span>
               <span className="footer-dev-glow">
-                <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">
-                  Joseph James
-                </span>
+                <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">Joseph James</span>
               </span>
             </div>
-            <p className="type-caption text-muted-foreground/30">
-              © 2025 Nexus Academy
-            </p>
+            <p className="type-caption text-muted-foreground/30">&copy; 2025 Nexus Academy</p>
           </div>
         </footer>
       </div>
 
-      {/* ═══ Mobile drawer overlay ═══ */}
+      {/* Mobile drawer overlay */}
       {createPortal(
         <AnimatePresence>
           {mobileOpen && (
             <>
-              <motion.div
-                key="mobile-drawer-backdrop"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm xl:hidden"
-                onClick={() => setMobileOpen(false)}
-                aria-hidden="true"
-              />
-              <motion.div
-                key="mobile-drawer-panel"
-                initial={{ opacity: 0, y: -8, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }}
-                className="fixed inset-x-3 top-[4.5rem] z-[9999] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden"
-                data-lenis-prevent-wheel
-                role="dialog"
-                aria-label="Navigation menu"
-              >
+              <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm xl:hidden" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+              <motion.div key="drawer" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }} className="fixed inset-x-3 top-[4.5rem] z-[9999] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden" data-lenis-prevent-wheel role="dialog" aria-label="Navigation menu">
                 <nav aria-label="Mobile navigation" className="grid gap-1">
                   {navItems.map(renderMobileNavLink)}
                   <div className="my-1 h-px bg-white/[0.06]" />
-                  <Button
-                    variant="ghost"
-                    onClick={() => { setMobileOpen(false); void handleSignOut(); }}
-                    className="justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground"
-                  >
+                  <Button variant="ghost" onClick={() => { setMobileOpen(false); void handleSignOut(); }} className="justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted-foreground">
                     <LogOut className="size-4" /> Sign out
                   </Button>
                 </nav>
@@ -529,7 +403,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         document.body,
       )}
 
-      {/* Persistent study-vibe player */}
       <MusicPlayer />
     </div>
   );
