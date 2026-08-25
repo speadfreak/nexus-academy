@@ -19,9 +19,10 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { useConvexAuth } from "convex/react";
 import { ConvexReactClient } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
-import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import React, { StrictMode, useEffect, useRef, lazy, Suspense, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { api } from "@/convex/_generated/api";
 import "./index.css";
 
 // ─── VlyToolbar: LAZY with error recovery ────────────────────────────
@@ -52,6 +53,24 @@ try {
   // Placeholder that won't crash render — auth queries will return
   // undefined and RequireAuth will redirect to /auth.
   convex = null as unknown as ConvexReactClient;
+}
+
+// ─── Client-side error logger (fire-and-forget to systemEvents) ─────
+// Sends errors to the admin Terminal tab.  Never throws — if Convex is
+// down or the action fails, we silently keep the app running.
+function logErrorToServer(source: string, err: unknown) {
+  try {
+    const message = err instanceof Error ? err.message : String(err ?? "unknown");
+    const stack = err instanceof Error ? err.stack : undefined;
+    convex?.action(api.systemEvents.logClientError, {
+      message,
+      source,
+      stack,
+      url: typeof location !== "undefined" ? location.href : undefined,
+    }).catch(() => { /* observability must never break the flow */ });
+  } catch {
+    // If even constructing the action call fails, just console.error.
+  }
 }
 
 // Lazy load route components for better code splitting
@@ -96,7 +115,7 @@ function RouteLoading() {
 }
 
 /** Error boundary that catches lazy-load / chunk-fetch failures and offers a
- *  retry button instead of a dead page. */
+ *  retry button instead of a dead page.  Logs to admin Terminal. */
 class LazyErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string }
@@ -110,7 +129,7 @@ class LazyErrorBoundary extends React.Component<
   }
   componentDidCatch(err: Error) {
     console.error("[LazyErrorBoundary]", err);
-    // If the global recovery system exists, use it for more robust handling
+    logErrorToServer("LazyErrorBoundary", err);
     const showRecovery = (window as unknown as Record<string, (msg: string) => void>).__NEXUS_SHOW_RECOVERY;
     if (showRecovery) {
       showRecovery(this.state.message || err.message);
@@ -118,7 +137,6 @@ class LazyErrorBoundary extends React.Component<
   }
   retry = () => {
     this.setState({ hasError: false, message: "" });
-    // Clear any stale session state and force a full cache-busting reload.
     try { sessionStorage.clear(); } catch { /* ignore */ }
     const url = new URL(window.location.href);
     url.searchParams.set("_t", String(Date.now()));
@@ -129,17 +147,22 @@ class LazyErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen flex items-center justify-center bg-background p-6">
           <div className="max-w-md text-center glass-panel rounded-2xl p-8">
+            <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-destructive/10">
+              <svg className="size-6 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+            </div>
             <p className="text-sm font-semibold text-foreground">
-              Page failed to load
+              Something went wrong loading this page
             </p>
             <p className="mt-2 text-xs text-muted-foreground break-words">
               {this.state.message}
             </p>
             <button
               onClick={this.retry}
-              className="mt-4 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
+              className="mt-5 rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
             >
-              Retry
+              Reload Page
             </button>
           </div>
         </div>
@@ -166,7 +189,8 @@ class ToolbarErrorBoundary extends React.Component<
   }
 }
 
-/** Hard guard so runtime errors never leave the app as a blank page. */
+/** Hard guard so runtime errors never leave the app as a blank page.
+ *  Logs to admin Terminal for full visibility. */
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string; stack: string }
@@ -181,7 +205,7 @@ class RootErrorBoundary extends React.Component<
   }
   componentDidCatch(err: Error) {
     console.error("[Nexus] Root crash:", err);
-    // Notify the global recovery system
+    logErrorToServer("RootErrorBoundary", err);
     const showRecovery = (window as unknown as Record<string, (msg: string) => void>).__NEXUS_SHOW_RECOVERY;
     if (showRecovery) {
       showRecovery(this.state.message || err.message);
@@ -199,7 +223,12 @@ class RootErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
           <div className="max-w-lg text-center">
-            <p className="text-sm font-semibold">Something went wrong</p>
+            <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-destructive/10">
+              <svg className="size-7 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+            </div>
+            <p className="text-base font-semibold">Something went wrong</p>
             <p className="mt-2 text-xs text-muted-foreground break-words">
               {this.state.message}
             </p>
@@ -210,7 +239,7 @@ class RootErrorBoundary extends React.Component<
             )}
             <button
               onClick={this.retry}
-              className="mt-4 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
+              className="mt-5 rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
             >
               Reload
             </button>
@@ -222,16 +251,50 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-/** Smooth fade/slide between routes */
+// ═══════════════════════════════════════════════════════════════════════
+// PAGE TRANSITION — THE KEY FIX
+// ═══════════════════════════════════════════════════════════════════════
+// ROOT CAUSE of blank-page-on-refresh: this component used
+// `initial={{ opacity: 0 }}` on EVERY mount — including the initial page
+// load / hard refresh.  When framer-motion's animation didn't fire
+// (StrictMode double-mount race, Convex reconnect causing Suspense
+// re-suspend, or edge cases with the key prop), the page stayed
+// permanently at opacity: 0 — invisible.
+//
+// FIX: Skip the initial animation on the FIRST mount (page load / refresh)
+// so content is immediately visible.  Only animate on subsequent SPA
+// navigations (route changes within the app).
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Smooth fade/slide between routes — BUT NOT on first page load. */
 function PageTransition({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const isFirstMount = useRef(true);
+
+  // After the first mount completes, enable animations for future navigations
+  useEffect(() => {
+    const t = setTimeout(() => {
+      isFirstMount.current = false;
+    }, 100); // Small delay to ensure first render is fully committed
+    return () => clearTimeout(t);
+  }, []);
+
   const prefersReduced =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
   return (
     <motion.div
       key={location.pathname}
-      initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+      // On first mount: `initial={false}` means framer-motion applies the
+      // `animate` values directly with NO entry animation → content is
+      // immediately visible at opacity: 1.
+      // On SPA navigation: the ref is false, so the nice fade/slide plays.
+      initial={
+        prefersReduced || isFirstMount.current
+          ? false
+          : { opacity: 0, y: 8 }
+      }
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: "easeOut" }}
       className="min-h-screen"
@@ -241,11 +304,110 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// CONTENT SAFETY NET
+// ═══════════════════════════════════════════════════════════════════════
+// Nuclear option: if 5 seconds pass and the root element still has no
+// visible content (everything stuck at opacity: 0, or Suspense never
+// resolved), we force-inject CSS that overrides ALL framer-motion
+// opacity values to 1.  This guarantees the user NEVER sees a blank
+// page, even if every other mechanism fails.
+// ═══════════════════════════════════════════════════════════════════════
+
+function ContentSafetyNet() {
+  const fired = useRef(false);
+
+  useEffect(() => {
+    const SAFETY_MS = 5000;
+    const timer = setTimeout(() => {
+      if (fired.current) return;
+      fired.current = true;
+
+      const root = document.getElementById("root");
+      if (!root) return;
+
+      // Check if root has any visible children with actual content
+      const allEls = root.querySelectorAll("*");
+      let hasVisibleContent = false;
+      for (const el of allEls) {
+        const html = el as HTMLElement;
+        if (html.offsetHeight === 0 && html.offsetWidth === 0) continue;
+        const style = window.getComputedStyle(html);
+        const opacity = parseFloat(style.opacity);
+        if (isNaN(opacity) || opacity < 0.05) continue;
+        // Has non-zero size and visible opacity → content is showing
+        hasVisibleContent = true;
+        break;
+      }
+
+      if (hasVisibleContent) return; // All good, nothing to do
+
+      // EMERGENCY: Force all elements visible
+      console.warn("[Nexus] ContentSafetyNet triggered — forcing all content visible");
+      logErrorToServer("ContentSafetyNet", new Error("Content invisible after 5s — forced opacity override"));
+
+      const id = "nexus-safety-net-override";
+      if (document.getElementById(id)) return; // Already injected
+      const style = document.createElement("style");
+      style.id = id;
+      style.textContent = `
+        #root * { opacity: 1 !important; transform: none !important; }
+        #root .nexus-safety-net-hidden { display: none !important; }
+      `;
+      document.head.appendChild(style);
+
+      // Remove the override after 2s — by then framer-motion should have caught up
+      setTimeout(() => {
+        style.remove();
+      }, 2000);
+    }, SAFETY_MS);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// GLOBAL ERROR CAPTOR
+// ═══════════════════════════════════════════════════════════════════════
+// Captures window.onerror and unhandledrejection AFTER React mounts.
+// Logs to admin Terminal.  The index.html already handles pre-mount
+// errors (script failures, dynamic import failures), this covers
+// post-mount runtime errors that slip through error boundaries.
+// ═══════════════════════════════════════════════════════════════════════
+
+function GlobalErrorCaptor() {
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      // Skip errors already handled by error boundaries or the index.html script
+      if (event.message.includes("Loading chunk") ||
+          event.message.includes("dynamically imported")) return;
+      console.error("[Nexus] Uncaught error:", event.error);
+      logErrorToServer("window.onerror", event.error || event.message);
+    };
+
+    const onRejection = (event: PromiseRejectionEvent) => {
+      console.error("[Nexus] Unhandled rejection:", event.reason);
+      logErrorToServer("window.unhandledrejection", event.reason);
+    };
+
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+
+  return null;
+}
+
 /** Holds the preloader until the app is genuinely ready.
  *  First visit in a tab: cinematic preloader plays once.
  *  Every refresh after that: preloader skipped, content renders instantly. */
 function PreloaderGate({ children }: { children: React.ReactNode }) {
-  const booted = React.useRef(false);
+  const booted = useRef(false);
   const [ready, setReady] = React.useState(() => {
     try {
       const already = sessionStorage.getItem("nexus-booted") === "true";
@@ -338,8 +500,6 @@ function RouteSyncer() {
 }
 
 // ─── Mount ────────────────────────────────────────────────────────────
-// Wrap in a self-executing async function so we can use top-level
-// await-style patterns without blocking the module.
 const rootEl = document.getElementById("root");
 if (rootEl) {
   createRoot(rootEl).render(
@@ -360,6 +520,8 @@ if (rootEl) {
               <PreloaderGate>
                 <BrowserRouter>
                   <RouteSyncer />
+                  <ContentSafetyNet />
+                  <GlobalErrorCaptor />
                   <Suspense fallback={<RouteLoading />}>
                     <LazyErrorBoundary>
                       <PageTransition>

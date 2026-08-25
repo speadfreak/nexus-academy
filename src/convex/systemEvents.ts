@@ -473,3 +473,43 @@ export const testIntegrationConnection = action({
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// Client-side error logging (public action — callable from the browser)
+// ---------------------------------------------------------------------------
+
+/**
+ * Log a client-side error (React error boundary, unhandled rejection, etc.)
+ * to the systemEvents table so it's visible in the admin Terminal.
+ *
+ * No auth required — we want to capture errors even for unauthenticated
+ * users (landing page, auth page).  The metadata is capped at 4 KB to
+ * prevent abuse.
+ */
+export const logClientError = action({
+  args: {
+    message: v.string(),
+    source: v.string(),
+    stack: v.optional(v.string()),
+    url: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      await ctx.runMutation(internal.systemEvents.logEvent, {
+        eventType: "error",
+        source: args.source,
+        status: "error",
+        metadata: JSON.stringify({
+          message: args.message.slice(0, 1000),
+          stack: args.stack?.slice(0, 3000),
+          url: args.url?.slice(0, 500),
+          userAgent: typeof navigator !== "undefined" ? navigator.userAgent?.slice(0, 300) : null,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch {
+      // Observability must never break the flow it observes.
+    }
+    return { ok: true };
+  },
+});
