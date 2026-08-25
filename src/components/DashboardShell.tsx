@@ -110,7 +110,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       icon: Crown,
       premiumActive: Boolean(subscription?.premiumAccess),
     },
-    ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: ShieldCheck }] : []),
+    ...(isAdmin?.isAdmin ? [{ to: "/admin", label: "Admin", icon: ShieldCheck }] : []),
   ];
 
   const initials = (user?.name || user?.email || "N")
@@ -199,7 +199,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           })()}
 
           {/* Admin badge */}
-          {isAdmin && (
+          {isAdmin?.isAdmin && (
             <Link
               to="/admin"
               className={cn(
