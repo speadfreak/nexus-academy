@@ -1241,7 +1241,7 @@ export default function Admin() {
         {/* ── Main layout: sidebar + content ── */}
         <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:gap-6">
           {/* ── Mobile: horizontal scrollable tab bar (< xl) ── */}
-          <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:hidden">
+          <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:hidden" data-lenis-prevent-wheel>
             {visibleTabs.map(({ id, label, icon: TabIcon }) => (
               <button
                 key={id}
@@ -1270,7 +1270,7 @@ export default function Admin() {
           </nav>
 
           {/* ── Desktop: vertical grouped sidebar (>= xl) ── */}
-          <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
+          <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" data-lenis-prevent-wheel style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
             {/* Nexus Academy admin brand lockup */}
             <Link
               to="/dashboard"

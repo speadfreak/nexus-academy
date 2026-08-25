@@ -141,7 +141,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         <div className="mx-3 my-2 h-px bg-white/[0.06]" />
 
         {/* Main navigation */}
-        <nav aria-label="Student navigation" className="student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
+        <nav aria-label="Student navigation" data-lenis-prevent-wheel className="student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1">
           {navItems.filter((item) => item.to !== "/upgrade" && item.to !== "/admin").map((item) => {
             const active = location.pathname === item.to;
             return (
@@ -267,6 +267,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               id="mobile-navigation"
               ref={mobileMenuRef}
                className="student-mobile-drawer absolute inset-x-0 top-[calc(100%+0.5rem)] z-50 max-h-[75vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/98 p-2 shadow-2xl backdrop-blur-xl"
+              data-lenis-prevent-wheel
             >
               <nav aria-label="Mobile navigation" className="grid gap-1">
                 {navItems.map((item) => {
