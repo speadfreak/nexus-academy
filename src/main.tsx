@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { Toaster } from "@/components/ui/sonner";
+import AppPreloader from "@/components/AppPreloader";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
@@ -240,215 +241,6 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** ═══════════════════════════════════════════════════════════════════════
- *  NEXUS CINEMATIC PRELOADER — "Protocol Activation" sequence
- *  ═══════════════════════════════════════════════════════════════════════
- *  Visual layers (bottom → top):
- *    1. Deep-space background with subtle radial pulse
- *    2. Horizontal scan beam sweeping top → bottom
- *    3. HUD corner brackets (targeting reticle)
- *    4. Pulsing ambient glow ring
- *    5. 3 orbital rings with glowing tracker dots
- *    6. Central glassmorphic logo frame with breathing glow
- *    7. "N" letter with glow pulse
- *    8. Staggered character-by-character text reveal
- *    9. Expanding progress line
- *    10. Cinematic exit: scale + blur + fade (hyperspace feel)
- */
-function AppPreloader({ ready }: { ready: boolean }) {
-  useEffect(() => {
-    (window as unknown as Record<string, boolean>).__NEXUS_MOUNTED = true;
-    const boot = document.getElementById('nexus-boot-screen');
-    if (boot) {
-      boot.classList.add('nexus-hidden');
-      const onEnd = () => { boot.remove(); };
-      boot.addEventListener('transitionend', onEnd, { once: true });
-      setTimeout(onEnd, 500);
-    }
-  }, []);
-
-  // Pre-compute the staggered letter animation for "NEXUS ACADEMY"
-  const letters = "NEXUS ACADEMY".split("");
-
-  return (
-    <AnimatePresence>
-      {!ready && (
-        <motion.div
-          key="nexus-preloader"
-          exit={{ opacity: 0, scale: 1.04, filter: 'blur(12px)' }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-[#050510]"
-          role="status"
-          aria-label="Loading Nexus Academy"
-        >
-          {/* ── Layer 1: Background radial pulse ── */}
-          <div
-            className="absolute inset-0"
-            style={{
-              background: 'radial-gradient(ellipse 60% 50% at 50% 50%, oklch(0.25 0.08 232 / 0.15) 0%, transparent 70%)',
-              animation: 'preloader-glow-breathe 2.4s ease-in-out infinite',
-            }}
-          />
-
-          {/* ── Layer 2: Scan beam ── */}
-          <div
-            className="absolute left-0 right-0 h-px"
-            style={{
-              background: 'linear-gradient(90deg, transparent 5%, oklch(0.74 0.15 232 / 0.4) 50%, transparent 95%)',
-              animation: 'preloader-scan-beam 1.4s ease-in-out 0.2s 1',
-            }}
-          />
-
-          {/* ── Layer 3: HUD corner brackets ── */}
-          {/* Top-left */}
-          <div
-            className="absolute top-10 left-10 border-t border-l border-primary/30"
-            style={{ animation: 'preloader-corner-in-tl 0.5s ease-out 0.1s both', width: 32, height: 32 }}
-          />
-          {/* Top-right */}
-          <div
-            className="absolute top-10 right-10 border-t border-r border-primary/30"
-            style={{ animation: 'preloader-corner-in-tr 0.5s ease-out 0.15s both', width: 32, height: 32 }}
-          />
-          {/* Bottom-left */}
-          <div
-            className="absolute bottom-10 left-10 border-b border-l border-primary/30"
-            style={{ animation: 'preloader-corner-in-bl 0.5s ease-out 0.2s both', width: 32, height: 32 }}
-          />
-          {/* Bottom-right */}
-          <div
-            className="absolute bottom-10 right-10 border-b border-r border-primary/30"
-            style={{ animation: 'preloader-corner-in-br 0.5s ease-out 0.25s both', width: 32, height: 32 }}
-          />
-
-          {/* ── Layer 4: Pulsing ambient ring ── */}
-          <div
-            className="absolute rounded-full border border-primary/10"
-            style={{
-              width: 200, height: 200,
-              animation: 'preloader-pulse-ring 2s ease-in-out infinite',
-            }}
-          />
-
-          {/* ── Layer 5: Orbital rings with tracker dots ── */}
-          {/* Ring 1 — fast, close */}
-          <div
-            className="absolute"
-            style={{
-              width: 160, height: 160,
-              animation: 'preloader-orbit-1 3s linear infinite',
-            }}
-          >
-            <div className="absolute inset-0 rounded-full border border-primary/15" />
-            <div className="absolute -top-[2px] left-1/2 -translate-x-1/2 size-2 rounded-full bg-primary shadow-[0_0_10px_oklch(0.74_0.15_232),0_0_20px_oklch(0.74_0.15_232/0.3)]" />
-          </div>
-          {/* Ring 2 — medium, tilted */}
-          <div
-            className="absolute"
-            style={{
-              width: 220, height: 220,
-              animation: 'preloader-orbit-2 5s linear infinite',
-            }}
-          >
-            <div className="absolute inset-0 rounded-full border border-primary/10" />
-            <div className="absolute -top-[1.5px] left-1/2 -translate-x-1/2 size-1.5 rounded-full bg-primary/70 shadow-[0_0_8px_oklch(0.74_0.15_232/0.5)]" />
-          </div>
-          {/* Ring 3 — slow, wide */}
-          <div
-            className="absolute"
-            style={{
-              width: 280, height: 280,
-              animation: 'preloader-orbit-3 7s linear infinite',
-            }}
-          >
-            <div className="absolute inset-0 rounded-full border border-[oklch(0.74_0.15_232/0.06)]" />
-            <div className="absolute -top-[1px] left-1/2 -translate-x-1/2 size-1 rounded-full bg-primary/40 shadow-[0_0_6px_oklch(0.74_0.15_232/0.3)]" />
-          </div>
-
-          {/* ── Layer 6+7: Central logo with glow ── */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10"
-          >
-            {/* Breathing glow behind the logo */}
-            <div
-              className="absolute inset-0 -m-10 rounded-full bg-primary/8 blur-2xl"
-              style={{ animation: 'preloader-glow-breathe 2s ease-in-out infinite' }}
-            />
-
-            {/* Glassmorphic frame */}
-            <div className="relative flex size-[76px] items-center justify-center rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/15 via-[oklch(0.2_0.05_232/0.4)] to-primary/5 shadow-[0_0_40px_-8px_oklch(0.74_0.15_232/0.3),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-sm">
-              {/* Inner subtle border highlight */}
-              <div className="absolute inset-[1px] rounded-[14px] border border-white/[0.03]" />
-
-              {/* The "N" with glow pulse */}
-              <span
-                className="relative font-serif text-4xl font-black text-gradient"
-                style={{ animation: 'preloader-n-glow 2s ease-in-out infinite' }}
-              >
-                N
-              </span>
-            </div>
-          </motion.div>
-
-          {/* ── Layer 8: Staggered text reveal ── */}
-          <div className="relative z-10 mt-8 flex items-center justify-center overflow-hidden" style={{ height: 16 }}>
-            <div className="flex">
-              {letters.map((char, i) => (
-                <span
-                  key={i}
-                  className="inline-block font-mono text-[11px] font-bold uppercase tracking-[0.12em]"
-                  style={{
-                    color: char === ' ' ? 'transparent' : 'oklch(0.7 0.08 232 / 0.5)',
-                    width: char === ' ' ? '0.4em' : 'auto',
-                    animation: `preloader-shimmer-letter 0.4s ease-out ${0.25 + i * 0.04}s both`,
-                  }}
-                >
-                  {char === ' ' ? '\u00A0' : char}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Layer 9: Progress line ── */}
-          <div className="relative z-10 mt-5 h-px w-36 overflow-hidden rounded-full bg-white/[0.04]">
-            <div
-              className="h-full w-full origin-left"
-              style={{
-                background: 'linear-gradient(90deg, transparent, oklch(0.74 0.15 232 / 0.6) 40%, oklch(0.74 0.15 232) 50%, oklch(0.74 0.15 232 / 0.6) 60%, transparent)',
-                animation: 'preloader-bar-fill 1.4s ease-out 0.15s both',
-              }}
-            />
-          </div>
-
-          {/* ── Floating ambient dots ── */}
-          {[
-            { top: '18%', left: '15%', delay: '0s' },
-            { top: '25%', right: '18%', delay: '0.6s' },
-            { bottom: '22%', left: '22%', delay: '1.2s' },
-            { bottom: '30%', right: '12%', delay: '0.3s' },
-            { top: '40%', left: '8%', delay: '0.9s' },
-            { top: '35%', right: '8%', delay: '1.5s' },
-          ].map((pos, i) => (
-            <div
-              key={i}
-              className="absolute size-1 rounded-full bg-primary/40"
-              style={{
-                ...pos,
-                animation: `preloader-dot-float ${2 + i * 0.3}s ease-in-out ${pos.delay} infinite`,
-              }}
-            />
-          ))}
-
-          <span className="sr-only">Loading Nexus Academy…</span>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
 /** Holds the preloader until the app is genuinely ready. */
 function PreloaderGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
@@ -478,8 +270,8 @@ function PreloaderGate({ children }: { children: React.ReactNode }) {
     } else {
       window.addEventListener("load", finish, { once: true });
     }
-    // Reduced safety timeout: 600ms instead of 800ms for faster perceived load
-    const safety = window.setTimeout(() => setReady(true), 600);
+    // Safety timeout: 1500ms to let cinematic boot sequence play out
+    const safety = window.setTimeout(() => setReady(true), 1500);
     return () => {
       window.removeEventListener("load", finish);
       window.clearTimeout(safety);
