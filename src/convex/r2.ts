@@ -11,7 +11,6 @@
 "use node";
 
 import {
-  CORSConfiguration,
   DeleteObjectCommand,
   GetBucketCorsCommand,
   GetObjectCommand,
@@ -104,12 +103,11 @@ export async function ensureBucketCors(overrides?: R2ConfigOverrides): Promise<v
   } catch {
     // NoCORSConfiguration — expected for new buckets
   }
-  const corsConfig: CORSConfiguration = {
+  const corsConfig = {
     CORSRules: [{
       AllowedOrigins: ["*"],
-      AllowedMethods: ["GET", "HEAD", "OPTIONS"],
-      AllowedHeaders: ["Range", "Content-Range", "Content-Type", "Accept", "Origin"],
-      ExposeHeaders: ["Content-Range", "Accept-Ranges", "Content-Length", "Content-Type"],
+      AllowedMethods: ["GET", "HEAD"],
+      AllowedHeaders: ["*"],
       MaxAgeSeconds: 86400,
     }],
   };
