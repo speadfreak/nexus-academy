@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MusicPlayer } from "@/components/music-player";
 import { AnimatePresence, motion } from "framer-motion";
+import { TourProvider } from "@/components/tour";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import logo from "@/assets/nexus-logo.svg";
 
@@ -195,6 +196,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   };
 
   return (
+    <TourProvider>
     <div className="student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-4 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
 
       {/* Desktop sidebar wrapper — toggle button lives here so it's not clipped */}
@@ -405,5 +407,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
       <MusicPlayer />
     </div>
+    </TourProvider>
   );
 }

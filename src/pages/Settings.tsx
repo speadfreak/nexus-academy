@@ -10,6 +10,7 @@ import {
   Atom,
   Camera,
   Check,
+  Compass,
   Crown,
   Landmark,
   Loader2,
@@ -31,6 +32,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { useTour } from "@/components/tour";
 
 // Two streams only. English, Mathematics and the SAT are sat by every
 // candidate, so they're shown inside both tracks — never as a third choice.
@@ -61,6 +63,7 @@ export default function Settings() {
   const [savingUsername, setSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { startTour } = useTour();
 
   const handleSaveName = async () => {
     setSavingName(true);
@@ -425,6 +428,36 @@ export default function Settings() {
               <Check className="size-3" /> access granted
             </Badge>
           )}
+        </motion.div>
+
+        {/* ------- Onboarding ------- */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.27, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel hover-lift rounded-2xl p-6"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
+              <Compass className="size-4" />
+            </div>
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
+              // onboarding
+            </p>
+          </div>
+          <p className="mt-1 type-caption text-muted-foreground">
+            Replay the feature walkthrough to refresh your memory.
+          </p>
+          <div className="mt-4">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 rounded-xl border-white/10 hover:border-amber-400/30 hover:bg-amber-400/5"
+              onClick={() => startTour()}
+            >
+              <Compass className="size-4 text-amber-400" />
+              Replay onboarding tour
+            </Button>
+          </div>
         </motion.div>
 
         {/* ------- Danger zone ------- */}

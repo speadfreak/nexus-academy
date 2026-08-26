@@ -270,6 +270,8 @@ const schema = defineSchema(
       avatarStorageId: v.optional(v.string()),
       themePreference: v.union(v.literal("dark"), v.literal("light")),
       stream: v.optional(streamValidator),
+      hasCompletedTour: v.optional(v.boolean()),
+      tourSkippedAt: v.optional(v.number()),
     })
       .index("by_user", ["userId"])
       .index("by_username", ["username"]),
