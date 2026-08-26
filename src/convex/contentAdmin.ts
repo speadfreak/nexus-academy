@@ -13,6 +13,7 @@ import { CONTENT_TYPE_SLUGS, type ContentType } from "./constants";
 import { logEventAction } from "./systemEvents";
 import {
   deleteFile,
+  ensureBucketCors,
   getR2Config,
   type R2Config,
   getPresignedUploadUrl,
@@ -300,5 +301,19 @@ export const getR2Status = action({
   handler: async (ctx): Promise<R2Config> => {
     const overrides = await getR2Overrides(ctx);
     return getR2Config(overrides);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Ensure R2 CORS (enables PDF.js range requests for fast streaming)
+// ---------------------------------------------------------------------------
+
+export const ensureR2Cors = action({
+  args: {},
+  handler: async (ctx): Promise<{ ok: boolean }> => {
+    await requireAdminAction(ctx);
+    const overrides = await getR2Overrides(ctx);
+    await ensureBucketCors(overrides);
+    return { ok: true };
   },
 });

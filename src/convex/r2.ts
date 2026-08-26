@@ -11,8 +11,11 @@
 "use node";
 
 import {
+  CORSConfiguration,
   DeleteObjectCommand,
+  GetBucketCorsCommand,
   GetObjectCommand,
+  PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -42,6 +45,7 @@ export function getR2Config(overrides?: R2ConfigOverrides): R2Config {
 
 let cachedClient: S3Client | null = null;
 let lastUsedKey = "";
+let corsEnsuredFor = new Set<string>(); // Track which override keys had CORS set
 
 function envOrOverride(key: string, overrides?: R2ConfigOverrides): string {
   return overrides?.[key] || process.env[key] || "";
@@ -77,6 +81,42 @@ function getBucket(overrides?: R2ConfigOverrides): string {
   return envOrOverride("R2_BUCKET_NAME", overrides);
 }
 
+/**
+ * Ensure the R2 bucket has CORS configured so browsers can make cross-origin
+ * range requests (HTTP 206) for PDF.js streaming. Without this, PDF.js falls
+ * back to downloading the ENTIRE file as an ArrayBuffer — catastrophic for
+ * large textbooks (50+ MB → 10+ seconds).
+ *
+ * Idempotent: checks first, only writes if needed. Cached per override key
+ * so subsequent calls are no-ops within the same Convex isolate.
+ */
+export async function ensureBucketCors(overrides?: R2ConfigOverrides): Promise<void> {
+  const cacheKey = JSON.stringify(overrides ?? {});
+  if (corsEnsuredFor.has(cacheKey)) return;
+  const client = getClient(overrides);
+  const bucket = getBucket(overrides);
+  try {
+    const existing = await client.send(new GetBucketCorsCommand({ Bucket: bucket }));
+    if (existing.CORSRules && existing.CORSRules.length > 0) {
+      corsEnsuredFor.add(cacheKey);
+      return; // Already configured
+    }
+  } catch {
+    // NoCORSConfiguration — expected for new buckets
+  }
+  const corsConfig: CORSConfiguration = {
+    CORSRules: [{
+      AllowedOrigins: ["*"],
+      AllowedMethods: ["GET", "HEAD", "OPTIONS"],
+      AllowedHeaders: ["Range", "Content-Range", "Content-Type", "Accept", "Origin"],
+      ExposeHeaders: ["Content-Range", "Accept-Ranges", "Content-Length", "Content-Type"],
+      MaxAgeSeconds: 86400,
+    }],
+  };
+  await client.send(new PutBucketCorsCommand({ Bucket: bucket, CORSConfiguration: corsConfig }));
+  corsEnsuredFor.add(cacheKey);
+}
+
 /** Build the public URL for an object key, normalizing a trailing slash. */
 export function publicUrlForKey(key: string, overrides?: R2ConfigOverrides): string {
   const base = (envOrOverride("R2_PUBLIC_URL", overrides) ?? "").replace(/\/+$/, "");
@@ -91,6 +131,7 @@ export async function uploadFile(
   overrides?: R2ConfigOverrides,
 ): Promise<string> {
   const client = getClient(overrides);
+  await ensureBucketCors(overrides).catch(() => {}); // Fire-and-forget, don't block uploads
   await client.send(
     new PutObjectCommand({
       Bucket: getBucket(overrides),
@@ -98,6 +139,7 @@ export async function uploadFile(
       Body: body,
       ContentType: contentType,
       CacheControl: "public, max-age=31536000, immutable",
+      ContentDisposition: "inline",
     }),
   );
   return publicUrlForKey(key, overrides);
@@ -122,6 +164,7 @@ export async function getPresignedUploadUrl(
   overrides?: R2ConfigOverrides,
 ): Promise<{ uploadUrl: string; key: string; fileUrl: string }> {
   const client = getClient(overrides);
+  await ensureBucketCors(overrides).catch(() => {}); // Ensure CORS for future reads
   const uploadUrl = await getSignedUrl(
     client,
     new PutObjectCommand({
@@ -131,6 +174,7 @@ export async function getPresignedUploadUrl(
       // Immutable cache: textbooks never change at the same URL.
       // A new upload gets a new key, so this is safe and maximises CDN hit rate.
       CacheControl: "public, max-age=31536000, immutable",
+      ContentDisposition: "inline",
     }),
     { expiresIn: 60 * 10 }, // 10 minutes
   );
