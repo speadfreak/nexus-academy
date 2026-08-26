@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { Toaster } from "@/components/ui/sonner";
+import { TourProvider } from "@/components/tour";
 import AppPreloader from "@/components/AppPreloader";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -519,6 +520,7 @@ if (rootEl) {
             <MusicProvider>
               <PreloaderGate>
                 <BrowserRouter>
+                  <TourProvider>
                   <RouteSyncer />
                   <ContentSafetyNet />
                   <GlobalErrorCaptor />
@@ -672,6 +674,7 @@ if (rootEl) {
                       </PageTransition>
                     </LazyErrorBoundary>
                   </Suspense>
+                  </TourProvider>
                 </BrowserRouter>
               </PreloaderGate>
               <Toaster />
