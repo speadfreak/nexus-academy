@@ -8,7 +8,7 @@ export const emailOtp = Email({
   // This function can be asynchronous
   async generateVerificationToken() {
     const random: RandomReader = {
-      read(bytes: Uint8Array) {
+      read(bytes: Uint8Array<ArrayBuffer>) {
         crypto.getRandomValues(bytes);
       },
     };
