@@ -342,7 +342,7 @@ export default function Landing() {
           className="flex flex-col items-start"
         >
           <motion.div variants={fadeUp}>
-            <Badge className="glass-chip gap-2 rounded-full px-3 py-1 type-caption font-semibold text-primary">
+            <Badge variant="outline" className="glass-chip gap-2 rounded-full px-3 py-1 type-caption font-semibold text-primary">
               <span className="relative flex size-1.5">
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
