@@ -127,12 +127,73 @@ export default function Reader() {
   const [scale, setScale] = useState(1.4);
   const [iframeZoom, setIframeZoom] = useState<IframeZoomMode>("fit-width");
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [pageAnimating, setPageAnimating] = useState(false);
+  // Track whether we've already attempted the ArrayBuffer fallback
+  // to prevent infinite loops between URL → ArrayBuffer → iframe.
+  const arrayBufferAttempted = useRef(false);
   const readerItemId = reader?.item?._id;
 
-  // Fetch PDF as ArrayBuffer to bypass CORS issues with pdfjs.
-  // R2 public URLs can still block cross-origin fetches that pdfjs does
-  // internally. By fetching ourselves and passing raw bytes, we avoid that.
+  // ── PDF loading: URL-first for range requests, ArrayBuffer fallback ──────
+  // PERFORMANCE CRITICAL: We pass the URL to react-pdf FIRST so that
+  // PDF.js can use HTTP range requests (206 Partial Content) to fetch
+  // only the pages it needs. This means a 50 MB PDF shows page 1 in
+  // ~500ms instead of downloading all 50 MB first.
+  //
+  // Fallback chain: URL mode (range requests) → ArrayBuffer (full download
+  // with progress bar) → iframe (native browser PDF viewer).
+  //
+  // The previous code fetched the entire PDF as an ArrayBuffer BEFORE
+  // passing it to react-pdf, which defeated range requests entirely.
+
+  /** ArrayBuffer fallback: downloads the full PDF with progress tracking. */
+  const loadAsArrayBuffer = useCallback(async (url: string) => {
+    setLoadingPdf(true);
+    setLoadProgress(0);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const contentLength = res.headers.get('content-length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No readable stream');
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (total > 0) {
+          const pct = Math.min(99, Math.round((received / total) * 100));
+          setLoadProgress(pct);
+        }
+      }
+      // Combine chunks into a single ArrayBuffer
+      const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+      const combined = new Uint8Array(totalLen);
+      let off = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, off);
+        off += chunk.length;
+      }
+      // Validate PDF magic bytes
+      if (combined[0] === 0x25 && combined[1] === 0x50 && combined[2] === 0x44 && combined[3] === 0x46) {
+        setPdfData(combined.buffer as ArrayBuffer);
+        setUseUrlFallback(false);
+      } else {
+        console.warn('[Reader] ArrayBuffer data is not a valid PDF, falling back to iframe');
+        setUseIframeFallback(true);
+      }
+    } catch (err) {
+      console.warn('[Reader] ArrayBuffer download failed, falling back to iframe:', err);
+      setUseIframeFallback(true);
+    } finally {
+      setLoadProgress(100);
+      setLoadingPdf(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!readerItemId) {
       setPdfUrl(null);
@@ -147,43 +208,26 @@ export default function Reader() {
     setUseIframeFallback(false);
     setNumPages(null);
     setPageNumber(1);
-    setPageInput("1");
+    setPageInput('1');
     setLoadingPdf(true);
+    setLoadProgress(0);
+    arrayBufferAttempted.current = false;
+
     const load = async () => {
       try {
         const { url } = await getDownloadUrl({ contentId: readerItemId });
         if (cancelled) return;
         setPdfUrl(url);
-
-        // Try ArrayBuffer first (avoids CORS issues pdfjs has with cross-origin URLs).
-        // If the fetch itself fails (CORS / network), fall back to passing the URL
-        // directly to react-pdf — pdfjs will fetch it with its own loader.
-        try {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-          const buffer = await res.arrayBuffer();
-          if (!cancelled) {
-            // Validate PDF magic bytes
-            const view = new Uint8Array(buffer);
-            if (view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46) {
-              setPdfData(buffer);
-            } else {
-              console.warn("[Reader] Fetched data is not a valid PDF, falling back to URL");
-              setUseUrlFallback(true);
-            }
-          }
-        } catch (fetchErr) {
-          // ArrayBuffer fetch failed (CORS, network, etc.) — fall back to URL
-          console.warn("[Reader] ArrayBuffer fetch failed, falling back to URL:", fetchErr);
-          if (!cancelled) setUseUrlFallback(true);
-        }
+        // URL mode (range requests) — pass URL directly to react-pdf.
+        // PDF.js will fetch only the pages it needs via HTTP range requests.
+        // No ArrayBuffer download upfront.
+        setUseUrlFallback(true);
       } catch (error) {
         if (!cancelled) {
           const msg = error instanceof Error ? error.message : String(error);
-          console.error("[Reader] PDF load failed:", msg);
-          // Detect premium gate errors and show upgrade prompt
-          if (msg.includes("Premium") || msg.includes("premium") || msg.includes("trial")) {
-            setPdfError("premium_required");
+          console.error('[Reader] PDF load failed:', msg);
+          if (msg.includes('Premium') || msg.includes('premium') || msg.includes('trial')) {
+            setPdfError('premium_required');
           } else {
             setPdfError(msg);
           }
@@ -193,9 +237,7 @@ export default function Reader() {
       }
     };
     void load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [readerItemId, getDownloadUrl]);
 
   // --- Panel -------------------------------------------------------------
@@ -664,6 +706,32 @@ export default function Reader() {
                 </div>
               )}
 
+              {/* ArrayBuffer download progress bar (shown during fallback download) */}
+              {loadingPdf && pdfUrl && loadProgress > 0 && (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-6">
+                  <div className="relative">
+                    <div className="absolute -inset-8 rounded-full bg-primary/5 blur-2xl animate-pulse" />
+                    <div className="relative flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
+                      <Loader2 className="size-6 animate-spin text-primary" />
+                    </div>
+                  </div>
+                  <div className="w-64 text-center">
+                    <p className="type-mono text-sm tracking-widest text-muted-foreground/80 uppercase">
+                      Downloading… {loadProgress}%
+                    </p>
+                    <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
+                        style={{ width: `${loadProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 type-mono text-[10px] text-muted-foreground/40">
+                      {loadProgress < 100 ? 'Loading via direct download (range requests unavailable)' : 'Preparing renderer…'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Error state — cinematic + real error + fallback */ }
               {pdfError && (
                 <div className="mx-auto mt-20 flex flex-col items-center gap-6">
@@ -724,8 +792,9 @@ export default function Reader() {
                 </div>
               )}
 
-              {/* PDF document — try ArrayBuffer first, fallback to URL */}
-              {(pdfData || (pdfUrl && useUrlFallback)) && !pdfError && (
+              {/* PDF document — URL mode (range requests) primary, ArrayBuffer fallback */}
+              {/* Hide Document during ArrayBuffer download so progress bar shows */}
+              {!loadingPdf && (pdfData || (pdfUrl && useUrlFallback)) && !pdfError && (
                 <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
                   <Document
                     file={pdfData ? { data: pdfData } : { url: pdfUrl! }}
@@ -739,16 +808,15 @@ export default function Reader() {
                       const msg = error?.message || String(error);
                       if (msg.includes("worker") || msg.includes("Worker")) {
                         setPdfError("PDF worker failed to load. Try refreshing the page.");
-                      } else if (pdfData && !useUrlFallback) {
-                        // ArrayBuffer rendering failed — try URL fallback
-                        console.warn("[Reader] ArrayBuffer render failed, trying URL fallback");
-                        setPdfData(null);
-                        setUseUrlFallback(true);
-                      } else if (pdfUrl && !useIframeFallback) {
-                        // URL fallback also failed — use iframe as last resort
-                        // (browsers handle embedded PDFs natively, bypassing CORS)
-                        console.warn("[Reader] URL render failed, falling back to iframe");
-                        setUseUrlFallback(false);
+                      } else if (useUrlFallback && !pdfData && !arrayBufferAttempted.current) {
+                        // URL mode (range requests) failed — try ArrayBuffer fallback
+                        // with full download + progress tracking.
+                        console.warn("[Reader] URL mode failed, trying ArrayBuffer fallback");
+                        arrayBufferAttempted.current = true;
+                        void loadAsArrayBuffer(pdfUrl!);
+                      } else if (pdfData) {
+                        // ArrayBuffer mode also failed — try iframe as last resort
+                        console.warn("[Reader] ArrayBuffer render failed, falling back to iframe");
                         setUseIframeFallback(true);
                       } else {
                         setPdfError("The document could not be rendered. Try refreshing or opening in a new tab.");

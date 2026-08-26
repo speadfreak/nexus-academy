@@ -128,6 +128,9 @@ export async function getPresignedUploadUrl(
       Bucket: getBucket(overrides),
       Key: key,
       ContentType: contentType,
+      // Immutable cache: textbooks never change at the same URL.
+      // A new upload gets a new key, so this is safe and maximises CDN hit rate.
+      CacheControl: "public, max-age=31536000, immutable",
     }),
     { expiresIn: 60 * 10 }, // 10 minutes
   );
