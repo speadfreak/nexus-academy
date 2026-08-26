@@ -377,7 +377,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">Joseph James</span>
               </span>
             </div>
-            <p className="type-caption text-muted-foreground/30">&copy; 2025 Nexus Academy</p>
+            <p className="type-caption text-muted-foreground/30">&copy; 2026 Nexus Academy</p>
           </div>
         </footer>
       </div>
