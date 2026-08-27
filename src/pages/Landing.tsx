@@ -1,4 +1,4 @@
-import { motion, type Variants } from "framer-motion";
+import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
   ArrowRight,
   Atom,
@@ -20,6 +20,7 @@ import {
   Lock,
   Map,
   NotebookPen,
+  Plus,
   Presentation,
   Search,
   Sigma,
@@ -854,29 +855,102 @@ export default function Landing() {
         </motion.div>
       </section>
 
-      {/* ------- FAQ ------- */}
-      <section className="mx-auto max-w-3xl px-4 pb-20">
+      {/* ------- FAQ (cinematic) ------- */}
+      <section className="relative mx-auto max-w-5xl px-4 pb-28">
+        {/* Background layers */}
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2.5rem]">
+          {/* Grid */}
+          <div
+            className="absolute inset-0 opacity-[0.06]"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgb(255 255 255 / 0.5) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.5) 1px, transparent 1px)",
+              backgroundSize: "64px 64px",
+              maskImage:
+                "radial-gradient(ellipse at center, black 30%, transparent 75%)",
+              WebkitMaskImage:
+                "radial-gradient(ellipse at center, black 30%, transparent 75%)",
+            }}
+          />
+          {/* Giant floating ? mark */}
+          <motion.div
+            aria-hidden
+            initial={{ opacity: 0, scale: 0.85 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 1, ease: "easeOut" }}
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+          >
+            <motion.div
+              animate={{ rotate: [0, 4, -4, 0], y: [0, -12, 0] }}
+              transition={{
+                duration: 14,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+              className="select-none text-[18rem] font-black leading-none text-foreground/[0.035] sm:text-[22rem]"
+            >
+              ?
+            </motion.div>
+          </motion.div>
+          {/* Orbs */}
+          <div className="pointer-events-none absolute -left-20 top-10 size-80 rounded-full bg-primary/15 blur-[100px]" />
+          <div className="pointer-events-none absolute -right-20 bottom-10 size-72 rounded-full bg-amber-400/10 blur-[100px]" />
+        </div>
+
+        {/* Header */}
         <motion.div
           variants={stagger}
           initial="hidden"
           whileInView="show"
-          viewport={{ once: true, margin: "-60px" }}
-          className="mx-auto text-center"
+          viewport={{ once: true, margin: "-80px" }}
+          className="mx-auto max-w-2xl text-center"
         >
-          <motion.p variants={fadeUp} className="type-mono uppercase tracking-[0.2em] text-primary">
-            // questions
-          </motion.p>
-          <motion.h2 variants={fadeUp} className="type-h1 mt-3">
-            Frequently asked
+          <motion.div
+            variants={fadeUp}
+            className="inline-flex items-center gap-2 rounded-full glass-chip px-4 py-1.5"
+          >
+            <motion.span
+              animate={{ rotate: 360 }}
+              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+              className="inline-flex size-4 items-center justify-center text-primary"
+            >
+              <HelpCircle className="size-4" />
+            </motion.span>
+            <p className="type-mono uppercase tracking-[0.2em] text-primary">
+              // questions
+            </p>
+          </motion.div>
+          <motion.h2 variants={fadeUp} className="type-h1 mt-6">
+            Frequently{" "}
+            <span className="relative inline-block">
+              <span className="text-gradient">asked</span>
+              <motion.span
+                aria-hidden
+                initial={{ scaleX: 0 }}
+                whileInView={{ scaleX: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
+                className="absolute -bottom-1 left-0 h-[3px] w-full origin-left rounded-full bg-gradient-to-r from-primary via-amber-400 to-primary"
+              />
+            </span>
           </motion.h2>
+          <motion.p
+            variants={fadeUp}
+            className="mx-auto mt-4 max-w-md text-muted-foreground"
+          >
+            Everything you need to know before you commit to smarter study. Tap
+            a question to unfold the answer.
+          </motion.p>
         </motion.div>
 
+        {/* Accordion list */}
         <motion.div
           variants={stagger}
           initial="hidden"
           whileInView="show"
-          viewport={{ once: true, margin: "-60px" }}
-          className="mt-10 space-y-3"
+          viewport={{ once: true, margin: "-80px" }}
+          className="mt-14 space-y-3"
         >
           {[
             {
@@ -896,11 +970,34 @@ export default function Landing() {
               a: "Your free features stay forever: library browsing, todos, focus timer, streaks and limited tutoring. Premium content (past papers, plans, unlimited tutor) pauses until you upgrade.",
             },
           ].map((faq, i) => (
-            <motion.div key={i} variants={fadeUp} className="glass-soft rounded-2xl px-6 py-5">
-              <p className="type-h3 font-semibold">{faq.q}</p>
-              <p className="type-body mt-2 text-muted-foreground">{faq.a}</p>
-            </motion.div>
+            <FaqItem
+              key={i}
+              index={i + 1}
+              question={faq.q}
+              answer={faq.a}
+            />
           ))}
+        </motion.div>
+
+        {/* Footer CTA */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
+          className="mt-10 flex flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left"
+        >
+          <p className="type-body text-muted-foreground">Still have questions?</p>
+          <Link to="/auth">
+            <Button
+              variant="outline"
+              className="group glass-soft cursor-pointer rounded-full px-5 py-2.5 text-sm font-medium transition-all hover:border-primary/40 hover:bg-primary/5"
+            >
+              <Sparkles className="mr-2 size-4 text-primary transition-transform group-hover:scale-110" />
+              Ask the AI Tutor
+              <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
+            </Button>
+          </Link>
         </motion.div>
       </section>
 
@@ -1028,5 +1125,86 @@ function BackToTop() {
     >
       <ChevronUp className="size-5" />
     </motion.button>
+  );
+}
+
+function FaqItem({
+  index,
+  question,
+  answer,
+}: {
+  index: number;
+  question: string;
+  answer: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const padded = String(index).padStart(2, "0");
+  return (
+    <motion.div
+      variants={fadeUp}
+      whileHover={{ y: -2 }}
+      className={`group relative overflow-hidden rounded-2xl border transition-colors duration-300 ${
+        open
+          ? "border-primary/40 bg-primary/[0.04]"
+          : "border-border/60 bg-card/30 hover:border-primary/20 hover:bg-card/50"
+      }`}
+    >
+      {/* Glow when open */}
+      <motion.div
+        aria-hidden
+        animate={{
+          opacity: open ? 1 : 0,
+        }}
+        transition={{ duration: 0.4 }}
+        className="pointer-events-none absolute -left-px top-0 h-full w-[2px] bg-gradient-to-b from-primary via-amber-400 to-primary"
+      />
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-4 px-5 py-5 text-left sm:px-6"
+      >
+        {/* Number badge */}
+        <span
+          className={`type-mono shrink-0 text-sm font-semibold transition-colors duration-300 ${
+            open ? "text-primary" : "text-muted-foreground/60 group-hover:text-muted-foreground"
+          }`}
+        >
+          {padded}
+        </span>
+        {/* Question */}
+        <span className="type-h3 flex-1 font-semibold">{question}</span>
+        {/* Plus / Minus icon */}
+        <motion.span
+          animate={{ rotate: open ? 45 : 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className={`flex size-8 shrink-0 items-center justify-center rounded-full border transition-colors duration-300 ${
+            open
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border/60 text-muted-foreground group-hover:border-primary/30 group-hover:text-primary"
+          }`}
+        >
+          <Plus className="size-4" />
+        </motion.span>
+      </button>
+      {/* Answer */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-6 pl-[3.75rem] sm:px-6 sm:pl-[4.5rem]">
+              <p className="type-body max-w-2xl text-muted-foreground">
+                {answer}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
