@@ -12,6 +12,7 @@ import type * as achievements from "../achievements.js";
 import type * as admin from "../admin.js";
 import type * as adminCenter from "../adminCenter.js";
 import type * as adminManagement from "../adminManagement.js";
+import type * as adminTopics from "../adminTopics.js";
 import type * as ai from "../ai.js";
 import type * as auth from "../auth.js";
 import type * as auth_emailOtp from "../auth/emailOtp.js";
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   adminCenter: typeof adminCenter;
   adminManagement: typeof adminManagement;
+  adminTopics: typeof adminTopics;
   ai: typeof ai;
   auth: typeof auth;
   "auth/emailOtp": typeof auth_emailOtp;

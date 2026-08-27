@@ -62,6 +62,7 @@ import { toast } from "sonner";
 import { AdminAdminsSection } from "@/components/admin/AdminAdminsSection";
 import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
+import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -1606,8 +1607,9 @@ export default function Admin() {
 
             {/* ══════ CONTENT ══════ */}
             {tab === "content" && (
-              <div className="min-w-0">
+              <div className="min-w-0 flex flex-col gap-6">
                 <AdminContentSection />
+                <AdminTopicsSection />
               </div>
             )}
 
