@@ -70,6 +70,16 @@ function getClient(overrides?: R2ConfigOverrides): S3Client {
         accessKeyId: envOrOverride("R2_ACCESS_KEY_ID", overrides),
         secretAccessKey: envOrOverride("R2_SECRET_ACCESS_KEY", overrides),
       },
+      // CRITICAL: force path-style addressing for R2.
+      // Without this, the SDK uses virtual-hosted-style and puts the bucket
+      // name as a subdomain: <bucket>.<accountId>.r2.cloudflarestorage.com.
+      // That hostname has TWO subdomain levels, and R2's SSL cert
+      // (*.r2.cloudflarestorage.com) only covers ONE. The browser rejects
+      // the SSL handshake and masks it as a "CORS error" — even when the
+      // bucket's CORS policy is correct. With path-style, the URL becomes
+      // <accountId>.r2.cloudflarestorage.com/<bucket>/... which is one
+      // subdomain level and matches the cert cleanly.
+      forcePathStyle: true,
     });
     lastUsedKey = currentKey;
   }
@@ -178,29 +188,29 @@ export async function ensureBucketCors(overrides?: R2ConfigOverrides): Promise<v
  * include that origin — no manual Cloudflare dashboard edits needed.
  *
  * Idempotent: if the origin is already covered by `*` or an exact match,
- * no write happens. Cached per (overrides, origin) pair within the isolate.
+ * no write happens.
  *
  * Error handling: throws a typed error with `code: "access_denied"` when
  * the R2 API token doesn't have permission to manage bucket CORS. Callers
  * can detect this and show a helpful message to the admin (e.g. "recreate
  * your R2 token with broader permissions" or "set CORS manually in the
  * Cloudflare dashboard").
+ *
+ * NOTE: We intentionally do NOT cache the result here. Convex isolates are
+ * reused across requests, and a stale "cached" state would prevent admins
+ * from re-syncing after they manually fix CORS in the dashboard. The
+ * underlying R2 calls are fast and idempotent.
  */
-const corsMergedFor = new Set<string>();
 export async function ensureCorsForOrigin(
   origin: string,
   overrides?: R2ConfigOverrides,
 ): Promise<{ updated: boolean; reason: string }> {
   if (!origin) return { updated: false, reason: "no_origin" };
-  const cacheKey = `${JSON.stringify(overrides ?? {})}::${origin}`;
-  if (corsMergedFor.has(cacheKey)) return { updated: false, reason: "cached" };
 
-  const client = getClient(overrides);
   const bucket = getBucket(overrides);
   const existing = await getBucketCorsRules(overrides);
 
   if (isOriginAllowedForMethod(existing, origin, "PUT")) {
-    corsMergedFor.add(cacheKey);
     return { updated: false, reason: "already_allowed" };
   }
 
@@ -215,7 +225,7 @@ export async function ensureCorsForOrigin(
   const mergedRules = [newRule, ...existing];
 
   try {
-    await client.send(
+    await getClient(overrides).send(
       new PutBucketCorsCommand({
         Bucket: bucket,
         CORSConfiguration: { CORSRules: mergedRules },
@@ -245,7 +255,6 @@ export async function ensureCorsForOrigin(
     }
     throw err;
   }
-  corsMergedFor.add(cacheKey);
   return { updated: true, reason: "merged" };
 }
 
