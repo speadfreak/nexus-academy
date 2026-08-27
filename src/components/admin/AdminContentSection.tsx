@@ -69,7 +69,6 @@ import {
 import {
   CONTENT_TYPES,
   CONTENT_TYPE_LABELS,
-  CONTENT_TYPE_SLUGS,
   type ContentType,
 } from "@/convex/constants";
 import type { ContentItemWithSubject } from "@/convex/content";
@@ -198,11 +197,15 @@ export function AdminContentSection() {
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Direct browser→R2 upload via presigned URLs. The file never passes through
-  // the Convex action runtime, so large files won’t cause “Connection lost while
-  // action was in flight” errors. Only lightweight metadata calls go through Convex.
-  const getPresignedR2UploadUrl = useAction(api.contentAdmin.getPresignedR2UploadUrl);
-  const finalizeUpload = useAction(api.contentAdmin.finalizeUpload);
+  // Browser→Convex storage→R2 flow. Convex handles the browser-side CORS
+  // for the upload POST (same project, no cross-origin signature issues),
+  // and the backend copies the file from Convex storage to R2 using the
+  // AWS SDK server-side (no browser in the loop, no presigned URL needed).
+  // Used as the primary upload path because it sidesteps every R2 presigned
+  // URL signature edge case (Content-Type signing, browser auto-headers,
+  // R2 token enforcement levels, etc.).
+  const generateUploadUrl = useAction(api.contentAdmin.generateUploadUrl);
+  const adminUploadContent = useAction(api.contentAdmin.adminUploadContent);
   const classifyContentText = useAction(api.contentAI.classifyContentText);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<Awaited<
@@ -375,16 +378,42 @@ export function AdminContentSection() {
       toast.error("Only PDF files are supported for now.");
       return;
     }
-    if (next && next.size > 200 * 1024 * 1024) {
-      toast.error("File too large — maximum 200 MB.");
+    // 50 MB max — the upload goes through Convex storage + a Convex action
+    // that reads the bytes and re-uploads to R2 server-side. Convex actions
+    // have a 128 MB memory budget, so files larger than ~50 MB risk OOM.
+    // (The previous 200 MB limit was for the direct-to-R2 presigned URL flow
+    // which we've replaced — see handleUpload for the rationale.)
+    if (next && next.size > 50 * 1024 * 1024) {
+      toast.error("File too large — maximum 50 MB. Split the PDF or contact support for larger uploads.");
       return;
     }
     setFile(next);
   };
 
-  /** Upload the file directly to R2 via a presigned URL, then finalize metadata.
-   *  This avoids sending large file bytes through the Convex action runtime,
-   *  which causes “Connection lost while action was in flight” on bigger files. */
+  /** Upload the file via Convex storage → R2.
+   *
+   *  Flow:
+   *    1. Frontend calls generateUploadUrl() to get a one-time Convex storage URL.
+   *    2. Frontend POSTs the file to that URL (same-project, no CORS signature issues).
+   *    3. Frontend calls adminUploadContent(storageId, metadata) — the backend
+   *       reads the file from Convex storage, uploads to R2 via the AWS SDK
+   *       (server-side, no browser in the loop, no presigned URL), saves the
+   *       DB row, and deletes the Convex storage copy.
+   *
+   *  Why this flow and not direct browser→R2 presigned URL:
+   *    The presigned URL approach kept failing with 403 SignatureDoesNotMatch
+   *    because the browser auto-adds headers (accept, accept-encoding,
+   *    accept-language, referer, sec-ch-ua, sec-fetch-*, user-agent) that
+   *    aren't in SignedHeaders. Some R2 token enforcement levels reject
+   *    unsigned headers. We can't stop the browser from adding them, so we
+   *    route through Convex storage instead — the browser→Convex POST is
+   *    same-project (Convex handles CORS automatically), and Convex→R2 is
+   *    server-side (uses IAM credentials directly, no signature validation).
+   *
+   *  Trade-off: the file passes through the Convex action runtime, so very
+   *    large files (>50 MB) can OOM the action. The handleFile cap enforces
+   *    this. For most PDFs (textbooks, past papers, worksheets) this is fine.
+   */
   const handleUpload = () => {
     if (!file) {
       toast.error("Choose a PDF file first.");
@@ -411,32 +440,26 @@ export function AdminContentSection() {
       return;
     }
 
-    // We use a non-async runner so the XHR progress callbacks can drive state
-    // without competing with an async chain.
     (async () => {
       setUploading(true);
       setUploadProgress(0);
       try {
-        // Step 1 — get a presigned PUT URL (fast, tiny payload through Convex).
-        // Also auto-merges the browser origin into R2 CORS AllowedOrigins
-        // for PUT if not already covered — self-heals the most common upload
-        // failure ("CORS configuration issue") when an admin uploads from a
-        // new deployment URL.
-        toast.info("Getting upload URL…");
-        const { uploadUrl, fileUrl } = await getPresignedR2UploadUrl({
-          filename: file.name,
-          contentType: file.type || "application/pdf",
-          grade: Number(grade),
-          subjectId: subjectId as never,
-          contentSlug: CONTENT_TYPE_SLUGS[contentType as ContentType],
-          origin: currentOrigin,
-        });
+        // Step 1 — get a one-time upload URL from Convex storage.
+        // Returns just a URL string. After we POST the file to it, the
+        // response body contains { storageId } JSON that we pass to the
+        // adminUploadContent action to copy the file to R2.
+        toast.info("Preparing upload…");
+        const convexUploadUrl = await generateUploadUrl({});
 
-        // Step 2 — upload file directly from browser to R2 (no Convex in the loop).
-        await new Promise<void>((resolve, reject) => {
+        // Step 2 — POST the file to the Convex storage URL.
+        // Convex handles CORS for this endpoint (same project), so no
+        // presigned URL signature / unsigned-headers issue.
+        // We use XHR to get upload progress events.
+        const { storageId } = await new Promise<{ storageId: string }>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          xhr.open("PUT", uploadUrl);
-          xhr.setRequestHeader("Content-Type", file.type || "application/pdf");
+          xhr.open("POST", convexUploadUrl);
+          // Don't set Content-Type — let the browser set the multipart
+          // boundary automatically. Convex storage accepts the raw body.
           xhr.upload.addEventListener("progress", (e) => {
             if (e.lengthComputable) {
               const pct = Math.round((e.loaded / e.total) * 100);
@@ -445,60 +468,44 @@ export function AdminContentSection() {
           });
           xhr.addEventListener("load", () => {
             if (xhr.status >= 200 && xhr.status < 300) {
-              resolve();
+              try {
+                const response = JSON.parse(xhr.responseText) as { storageId: string };
+                if (!response.storageId) {
+                  reject(new Error(`Convex storage upload succeeded but response had no storageId. Body: ${xhr.responseText?.slice(0, 300) ?? ""}`));
+                  return;
+                }
+                resolve({ storageId: response.storageId });
+              } catch (parseErr) {
+                reject(new Error(`Convex storage upload returned HTTP ${xhr.status} but response was not JSON. Body: ${xhr.responseText?.slice(0, 300) ?? ""}`));
+              }
             } else {
-              // We got an HTTP response, but it's not 2xx. R2 returns 4xx/5xx
-              // WITHOUT Access-Control-Allow-Origin headers (R2 only adds CORS
-              // headers to 2xx responses), so the browser masks this as a
-              // generic 'error' event. Surface the actual status + body so
-              // we can diagnose real issues (403 SignatureDoesNotMatch, 502
-              // gateway, etc.) instead of guessing CORS.
-              const body = xhr.responseText || "";
-              reject(
-                new Error(
-                  `R2 upload returned HTTP ${xhr.status}. ` +
-                  (body ? `Body: ${body.slice(0, 500)} ` : "") +
-                  `URL host: ${(() => { try { return new URL(uploadUrl).host; } catch { return "unknown"; } })()}.`,
-                ),
-              );
+              reject(new Error(`Convex storage upload returned HTTP ${xhr.status}. ${xhr.responseText?.slice(0, 300) ?? ""}`));
             }
           });
           xhr.addEventListener("error", () => {
-            // A network-level error (usually CORS) — the browser never got a
-            // response from R2. Show a helpful, origin-aware message so the
-            // admin knows exactly what to add to the bucket's CORS policy.
-            const bucketHost = (() => {
-              try { return new URL(uploadUrl).host; } catch { return "your R2 bucket"; }
-            })();
-            reject(
-              new Error(
-                `Upload to R2 failed — this is usually a CORS configuration issue. ` +
-                `Your browser origin is "${currentOrigin}" and the bucket host is ${bucketHost}. ` +
-                `Go to your Cloudflare R2 bucket → Settings → CORS Policy and ensure a rule ` +
-                `with AllowedOrigins including "${currentOrigin}", AllowedMethods including "PUT", ` +
-                `and AllowedHeaders ["*"]. ` +
-                `Or click "Sync CORS for this origin" below — the app can update the bucket for you.`,
-              ),
-            );
+            reject(new Error("Upload to Convex storage failed (network error). Check your connection and try again."));
           });
           xhr.addEventListener("timeout", () => {
-            reject(new Error("Upload to R2 timed out. Check your connection and try again."));
+            reject(new Error("Upload timed out. Check your connection and try again."));
           });
           xhr.timeout = 10 * 60 * 1000; // 10 minutes
           xhr.send(file);
         });
 
-        // Step 3 — save metadata to the DB (fast, tiny payload through Convex).
+        // Step 3 — finalize: backend copies file from Convex storage to R2,
+        // saves the DB row, deletes the Convex storage copy. This is the
+        // only step that touches R2, and it happens server-side using IAM
+        // credentials — no browser, no presigned URL, no CORS.
         toast.info("Saving to library…");
-        await finalizeUpload({
+        setUploadProgress(100); // R2 copy is server-side, no progress events
+        await adminUploadContent({
           title: title.trim(),
           contentType,
           grade: Number(grade),
           subjectId: subjectId as never,
           examYear: contentType === "past_exam" ? Number(examYear) : undefined,
           isPremium,
-          fileUrl,
-          fileSizeBytes: file.size,
+          storageId,
           filename: file.name,
           topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
           sourceName: sourceName.trim() || undefined,
