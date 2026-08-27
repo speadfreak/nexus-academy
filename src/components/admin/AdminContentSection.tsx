@@ -447,7 +447,20 @@ export function AdminContentSection() {
             if (xhr.status >= 200 && xhr.status < 300) {
               resolve();
             } else {
-              reject(new Error(`R2 upload returned HTTP ${xhr.status}`));
+              // We got an HTTP response, but it's not 2xx. R2 returns 4xx/5xx
+              // WITHOUT Access-Control-Allow-Origin headers (R2 only adds CORS
+              // headers to 2xx responses), so the browser masks this as a
+              // generic 'error' event. Surface the actual status + body so
+              // we can diagnose real issues (403 SignatureDoesNotMatch, 502
+              // gateway, etc.) instead of guessing CORS.
+              const body = xhr.responseText || "";
+              reject(
+                new Error(
+                  `R2 upload returned HTTP ${xhr.status}. ` +
+                  (body ? `Body: ${body.slice(0, 500)} ` : "") +
+                  `URL host: ${(() => { try { return new URL(uploadUrl).host; } catch { return "unknown"; } })()}.`,
+                ),
+              );
             }
           });
           xhr.addEventListener("error", () => {

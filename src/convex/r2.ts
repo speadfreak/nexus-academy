@@ -312,7 +312,13 @@ export async function getSignedDownloadUrl(key: string, overrides?: R2ConfigOver
  * If `origin` is provided (the browser's window.location.origin), we also
  * ensure the bucket CORS allows PUT from that origin — auto-merging a rule
  * if needed. This self-heals the common "CORS issue" error when an admin
- * uploads from a new deployment URL. */
+ * uploads from a new deployment URL.
+ *
+ * The presigned URL is signed to include 'content-type' and 'content-disposition'
+ * in SignedHeaders, so the browser MUST send those exact header values. If
+ * the browser sends a Content-Type that doesn't match the one we signed
+ * with, R2 will reject the PUT with 403 SignatureDoesNotMatch. The admin
+ * UI is responsible for sending the same Content-Type it asked us to sign. */
 export async function getPresignedUploadUrl(
   key: string,
   contentType: string,
@@ -335,7 +341,12 @@ export async function getPresignedUploadUrl(
       CacheControl: "public, max-age=31536000, immutable",
       ContentDisposition: "inline",
     }),
-    { expiresIn: 60 * 10 }, // 10 minutes
+    {
+      expiresIn: 60 * 10, // 10 minutes
+      // Sign content-type so the browser MUST send the same value. Without
+      // this, some R2 deployments reject unsigned Content-Type as 403.
+      signableHeaders: new Set(["content-type"]),
+    },
   );
   return { uploadUrl, key, fileUrl: publicUrlForKey(key, overrides) };
 }

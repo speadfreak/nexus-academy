@@ -390,3 +390,117 @@ export const syncR2CorsForOrigin = action({
     return ensureCorsForOrigin(args.origin, overrides);
   },
 });
+
+/**
+ * DIAGNOSTIC: Generate a presigned PUT URL using the exact same flow as
+ * getPresignedR2UploadUrl, then attempt a server-side PUT with a 1-byte test
+ * payload and return the full HTTP response. This bypasses the browser and
+ * tells us exactly what R2 is rejecting when uploads fail with 403.
+ *
+ * Usage: npx convex run contentAdmin:diagnoseR2Upload '{"filename":"test.txt"}'
+ *
+ * Returns the presigned URL, the PUT response status, response headers, and
+ * response body so we can see R2's actual error message (which the browser
+ * masks as a 'CORS error').
+ */
+export const diagnoseR2Upload = action({
+  args: {
+    filename: v.string(),
+    contentType: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{
+    uploadUrl: string;
+    putStatus: number;
+    putResponseHeaders: Record<string, string>;
+    putResponseBody: string;
+    preflightStatus: number;
+    preflightHeaders: Record<string, string>;
+    preflightBody: string;
+    directPutStatus: number | null;
+    directPutError: string | null;
+  }> => {
+    await requireAdminAction(ctx);
+    const overrides = await getR2Overrides(ctx);
+    const config = getR2Config(overrides);
+    if (!config.configured) {
+      throw new ConvexError({ message: `R2 not configured: ${config.missing.join(", ")}`, code: "storage_not_configured" });
+    }
+
+    const contentType = args.contentType || "text/plain";
+    const testKey = `_diagnostic/${Date.now()}-${args.filename}`;
+    const { uploadUrl } = await getPresignedUploadUrl(testKey, contentType, overrides);
+
+    // Try the presigned PUT from the server side using global fetch.
+    let putStatus = 0;
+    let putResponseHeaders: Record<string, string> = {};
+    let putResponseBody = "";
+    try {
+      const res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": contentType,
+          "Content-Disposition": "inline",
+          // Simulate a browser request from the production origin to detect
+          // CORS-related 403s (R2 only adds CORS headers to 2xx responses,
+          // so a CORS preflight failure returns 403 with no ACAO header).
+          "Origin": "https://nexus-academy-5nfg.onrender.com",
+        },
+        body: "diagnostic test payload",
+      });
+      putStatus = res.status;
+      res.headers.forEach((value, key) => {
+        putResponseHeaders[key] = value;
+      });
+      putResponseBody = await res.text();
+    } catch (err) {
+      putResponseBody = `fetch threw: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    // Also try OPTIONS preflight (the browser always does this before PUT
+    // when the request has non-simple headers like Content-Disposition).
+    let preflightStatus = 0;
+    let preflightHeaders: Record<string, string> = {};
+    let preflightBody = "";
+    try {
+      const pres = await fetch(uploadUrl, {
+        method: "OPTIONS",
+        headers: {
+          "Origin": "https://nexus-academy-5nfg.onrender.com",
+          "Access-Control-Request-Method": "PUT",
+          "Access-Control-Request-Headers": "content-disposition,content-type",
+        },
+      });
+      preflightStatus = pres.status;
+      pres.headers.forEach((value, key) => {
+        preflightHeaders[key] = value;
+      });
+      preflightBody = await pres.text();
+    } catch (err) {
+      preflightBody = `preflight fetch threw: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    // Also try a direct PutObject through the SDK (bypasses presigned URL).
+    let directPutStatus: number | null = null;
+    let directPutError: string | null = null;
+    try {
+      const url = await uploadFile(testKey, Buffer.from("diagnostic test payload"), contentType, overrides);
+      directPutStatus = 200; // if uploadFile didn't throw, it succeeded
+      directPutError = null;
+    } catch (err) {
+      directPutStatus = null;
+      directPutError = err instanceof Error ? err.message : String(err);
+    }
+
+    return {
+      uploadUrl,
+      putStatus,
+      putResponseHeaders,
+      putResponseBody,
+      preflightStatus,
+      preflightHeaders,
+      preflightBody,
+      directPutStatus,
+      directPutError,
+    };
+  },
+});
