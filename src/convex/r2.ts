@@ -179,6 +179,12 @@ export async function ensureBucketCors(overrides?: R2ConfigOverrides): Promise<v
  *
  * Idempotent: if the origin is already covered by `*` or an exact match,
  * no write happens. Cached per (overrides, origin) pair within the isolate.
+ *
+ * Error handling: throws a typed error with `code: "access_denied"` when
+ * the R2 API token doesn't have permission to manage bucket CORS. Callers
+ * can detect this and show a helpful message to the admin (e.g. "recreate
+ * your R2 token with broader permissions" or "set CORS manually in the
+ * Cloudflare dashboard").
  */
 const corsMergedFor = new Set<string>();
 export async function ensureCorsForOrigin(
@@ -208,12 +214,37 @@ export async function ensureCorsForOrigin(
   };
   const mergedRules = [newRule, ...existing];
 
-  await client.send(
-    new PutBucketCorsCommand({
-      Bucket: bucket,
-      CORSConfiguration: { CORSRules: mergedRules },
-    }),
-  );
+  try {
+    await client.send(
+      new PutBucketCorsCommand({
+        Bucket: bucket,
+        CORSConfiguration: { CORSRules: mergedRules },
+      }),
+    );
+  } catch (err) {
+    // Detect AccessDenied and rethrow with a typed code so the UI can show
+    // a more helpful message (the user needs to widen their R2 token scope
+    // or set CORS manually in the Cloudflare dashboard).
+    const msg = err instanceof Error ? err.message.toLowerCase() : "";
+    if (msg.includes("accessdenied") || msg.includes("access denied")) {
+      throw new Error(
+        "AccessDenied: your R2 API token can write objects but cannot manage bucket CORS. " +
+          "Open your Cloudflare R2 bucket → Settings → CORS Policy and add this rule manually:\n" +
+          JSON.stringify(
+            {
+              AllowedOrigins: [origin],
+              AllowedMethods: ["PUT", "GET", "HEAD"],
+              AllowedHeaders: ["*"],
+              MaxAgeSeconds: 86400,
+            },
+            null,
+            2,
+          ) +
+          "\n\nOr recreate your R2 API token with the 'Admin Read & Write' bucket permission (which includes CORS management) and update it in the Keys tab.",
+      );
+    }
+    throw err;
+  }
   corsMergedFor.add(cacheKey);
   return { updated: true, reason: "merged" };
 }

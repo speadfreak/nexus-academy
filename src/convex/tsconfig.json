@@ -12,6 +12,10 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
 
+    /* Node.js runtime types — Convex actions with "use node" use process.env,
+     * Buffer, crypto, node:https, etc. Without these types tsc fails. */
+    "types": ["node"],
+
     /* These compiler options are required by Convex */
     "target": "ESNext",
     "lib": ["ES2021", "dom"],

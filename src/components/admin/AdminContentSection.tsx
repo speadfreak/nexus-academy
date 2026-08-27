@@ -147,7 +147,39 @@ export function AdminContentSection() {
       // Refresh status so the UI reflects the new rule.
       refreshR2Status();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to sync R2 CORS.");
+      const msg = error instanceof Error ? error.message : "Failed to sync R2 CORS.";
+      // If the R2 token can't manage CORS (AccessDenied), show a special toast
+      // with the exact JSON to paste into the Cloudflare dashboard + a deep link.
+      if (msg.includes("AccessDenied")) {
+        const ruleJson = JSON.stringify(
+          [{
+            AllowedOrigins: [currentOrigin],
+            AllowedMethods: ["PUT", "GET", "HEAD"],
+            AllowedHeaders: ["*"],
+            MaxAgeSeconds: 86400,
+          }],
+          null,
+          2,
+        );
+        toast.error("R2 token can't edit CORS — set it manually", {
+          duration: 12000,
+          description:
+            "Your R2 API token lacks bucket-CORS permissions. Open Cloudflare → R2 → your bucket → Settings → CORS Policy and paste this rule.",
+          action: {
+            label: "Copy rule",
+            onClick: () => {
+              navigator.clipboard.writeText(ruleJson).then(
+                () => toast.success("CORS rule JSON copied — paste into the Cloudflare dashboard."),
+                () => toast.error("Couldn't copy — copy it from the console."),
+              );
+              // Also log to console as a backup.
+              console.log("[R2 CORS] Paste this into Cloudflare dashboard:\n" + ruleJson);
+            },
+          },
+        });
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setCorsSyncing(false);
     }
