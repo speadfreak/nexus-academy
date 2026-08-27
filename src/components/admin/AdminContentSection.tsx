@@ -13,8 +13,10 @@ import {
   FileUp,
   Loader2,
   Pencil,
+  Plus,
   RotateCcw,
   Search,
+  ShieldAlert,
   Sparkles,
   Trash2,
   UploadCloud,
@@ -93,11 +95,29 @@ export function AdminContentSection() {
 
   // --- R2 configuration status -----------------------------------------
   const getR2Status = useAction(api.contentAdmin.getR2Status);
-  const [r2Status, setR2Status] = useState<{ configured: boolean; missing: string[] } | null>(null);
+  const syncR2CorsForOrigin = useAction(api.contentAdmin.syncR2CorsForOrigin);
+  // Capture the admin's current browser origin once — this is what needs to
+  // be in the R2 CORS AllowedOrigins for PUT to succeed.
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  type R2StatusResult = {
+    configured: boolean;
+    missing: string[];
+    corsRules?: { allowedOrigins: string[]; allowedMethods: string[]; allowedHeaders?: string[] }[];
+    callerOrigin?: string;
+    putAllowedForCaller?: boolean;
+  };
+  const [r2Status, setR2Status] = useState<R2StatusResult | null>(null);
+  const [corsSyncing, setCorsSyncing] = useState(false);
+
+  const refreshR2Status = useCallback(() => {
+    getR2Status({ origin: currentOrigin })
+      .then((status) => setR2Status(status))
+      .catch(() => setR2Status({ configured: false, missing: [] }));
+  }, [getR2Status, currentOrigin]);
 
   useEffect(() => {
     let cancelled = false;
-    getR2Status()
+    getR2Status({ origin: currentOrigin })
       .then((status) => {
         if (!cancelled) setR2Status(status);
       })
@@ -107,7 +127,31 @@ export function AdminContentSection() {
     return () => {
       cancelled = true;
     };
-  }, [getR2Status]);
+  }, [getR2Status, currentOrigin]);
+
+  // Manually sync R2 CORS to include this origin. Useful when uploads have
+  // already failed (e.g. admin opened the page before CORS auto-healed) or
+  // when previewing a new deployment URL before the first upload.
+  const handleSyncCors = async () => {
+    if (!currentOrigin) return;
+    setCorsSyncing(true);
+    try {
+      const result = await syncR2CorsForOrigin({ origin: currentOrigin });
+      if (result.updated) {
+        toast.success(`Added ${currentOrigin} to R2 CORS AllowedOrigins for PUT.`);
+      } else if (result.reason === "already_allowed") {
+        toast.info(`${currentOrigin} is already allowed — no change needed.`);
+      } else {
+        toast.message(`CORS sync: ${result.reason}`);
+      }
+      // Refresh status so the UI reflects the new rule.
+      refreshR2Status();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to sync R2 CORS.");
+    } finally {
+      setCorsSyncing(false);
+    }
+  };
 
   // --- Upload form state ------------------------------------------------
   const [file, setFile] = useState<File | null>(null);
@@ -342,6 +386,10 @@ export function AdminContentSection() {
       setUploadProgress(0);
       try {
         // Step 1 — get a presigned PUT URL (fast, tiny payload through Convex).
+        // Also auto-merges the browser origin into R2 CORS AllowedOrigins
+        // for PUT if not already covered — self-heals the most common upload
+        // failure ("CORS configuration issue") when an admin uploads from a
+        // new deployment URL.
         toast.info("Getting upload URL…");
         const { uploadUrl, fileUrl } = await getPresignedR2UploadUrl({
           filename: file.name,
@@ -349,6 +397,7 @@ export function AdminContentSection() {
           grade: Number(grade),
           subjectId: subjectId as never,
           contentSlug: CONTENT_TYPE_SLUGS[contentType as ContentType],
+          origin: currentOrigin,
         });
 
         // Step 2 — upload file directly from browser to R2 (no Convex in the loop).
@@ -371,11 +420,19 @@ export function AdminContentSection() {
           });
           xhr.addEventListener("error", () => {
             // A network-level error (usually CORS) — the browser never got a
-            // response from R2. Show a helpful message instead of a generic error.
+            // response from R2. Show a helpful, origin-aware message so the
+            // admin knows exactly what to add to the bucket's CORS policy.
+            const bucketHost = (() => {
+              try { return new URL(uploadUrl).host; } catch { return "your R2 bucket"; }
+            })();
             reject(
               new Error(
-                "Upload to R2 failed — this is usually a CORS configuration issue. " +
-                  "Go to your Cloudflare R2 bucket → Settings → CORS Policy and add a rule allowing PUT from your site’s origin.",
+                `Upload to R2 failed — this is usually a CORS configuration issue. ` +
+                `Your browser origin is "${currentOrigin}" and the bucket host is ${bucketHost}. ` +
+                `Go to your Cloudflare R2 bucket → Settings → CORS Policy and ensure a rule ` +
+                `with AllowedOrigins including "${currentOrigin}", AllowedMethods including "PUT", ` +
+                `and AllowedHeaders ["*"]. ` +
+                `Or click "Sync CORS for this origin" below — the app can update the bucket for you.`,
               ),
             );
           });
@@ -466,13 +523,117 @@ export function AdminContentSection() {
         </Alert>
       )}
       {r2Status && r2Status.configured && (
-        <Alert className="glass-soft border-emerald-400/25 bg-emerald-400/10">
-          <CheckCircle2 className="size-4 text-emerald-300" />
-          <AlertTitle className="text-emerald-300">R2 storage is connected</AlertTitle>
-          <AlertDescription className="text-emerald-200/80">
-            Files are stored under the human-browsable key layout.
-          </AlertDescription>
-        </Alert>
+        <div className="glass-soft flex flex-col gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+          {/* Top row: connection status + sync button */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
+              <div>
+                <p className="text-sm font-semibold text-emerald-300">
+                  R2 storage is connected
+                </p>
+                <p className="mt-0.5 text-xs text-emerald-200/70">
+                  Files are stored under the human-browsable key layout.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSyncCors}
+              disabled={corsSyncing}
+              className="cursor-pointer gap-2 self-start border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20"
+            >
+              {corsSyncing ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Plus className="size-3.5" />
+              )}
+              Sync CORS for this origin
+            </Button>
+          </div>
+
+          {/* Origin + PUT permission status */}
+          {currentOrigin && (
+            <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="type-mono uppercase tracking-[0.15em] text-muted-foreground">
+                  Current origin:
+                </span>
+                <code className="rounded bg-white/10 px-1.5 py-0.5 text-foreground">
+                  {currentOrigin}
+                </code>
+                {r2Status.putAllowedForCaller === true ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2 py-0.5 text-emerald-300">
+                    <Check className="size-3" /> PUT allowed
+                  </span>
+                ) : r2Status.putAllowedForCaller === false ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-amber-300">
+                    <ShieldAlert className="size-3" /> PUT not in CORS for this origin
+                  </span>
+                ) : null}
+              </div>
+              {r2Status.putAllowedForCaller === false && (
+                <p className="text-amber-200/80">
+                  Click <span className="font-semibold">Sync CORS for this origin</span> to
+                  auto-add it to the bucket&apos;s AllowedOrigins. After sync, retry the upload.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Current CORS rules (collapsible list) */}
+          {r2Status.corsRules && r2Status.corsRules.length > 0 && (
+            <details className="group rounded-xl border border-white/10 bg-white/[0.02] p-3 text-xs">
+              <summary className="flex cursor-pointer items-center gap-2 text-muted-foreground hover:text-foreground">
+                <RotateCcw className="size-3.5 transition-transform group-open:rotate-90" />
+                <span className="type-mono uppercase tracking-[0.15em]">
+                  Current R2 CORS rules ({r2Status.corsRules.length})
+                </span>
+              </summary>
+              <div className="mt-3 flex flex-col gap-2">
+                {r2Status.corsRules.map((rule, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-white/5 bg-black/20 p-2.5"
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="type-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                        Origins:
+                      </span>
+                      {rule.allowedOrigins.map((o) => (
+                        <code
+                          key={o}
+                          className={`rounded px-1.5 py-0.5 text-[10px] ${
+                            o === currentOrigin
+                              ? "bg-emerald-400/20 text-emerald-300"
+                              : "bg-white/10 text-foreground/80"
+                          }`}
+                        >
+                          {o}
+                        </code>
+                      ))}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="type-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                        Methods:
+                      </span>
+                      {rule.allowedMethods.map((m) => (
+                        <code
+                          key={m}
+                          className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-foreground/80"
+                        >
+                          {m}
+                        </code>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
       )}
 
       {/* Upload form */}

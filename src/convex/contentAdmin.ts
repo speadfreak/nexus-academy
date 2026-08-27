@@ -14,10 +14,13 @@ import { logEventAction } from "./systemEvents";
 import {
   deleteFile,
   ensureBucketCors,
+  ensureCorsForOrigin,
+  getBucketCorsRules,
   getR2Config,
   type R2Config,
   getPresignedUploadUrl,
   getSignedDownloadUrl,
+  isOriginAllowedForMethod,
   keyFromUrl,
   publicUrlForKey,
   uploadFile,
@@ -64,6 +67,7 @@ export const getPresignedR2UploadUrl = action({
   args: {
     filename: v.string(), contentType: v.string(), grade: v.number(),
     subjectId: v.id("subjects"), contentSlug: v.string(),
+    origin: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ uploadUrl: string; key: string; fileUrl: string }> => {
     await requireAdminAction(ctx);
@@ -73,7 +77,7 @@ export const getPresignedR2UploadUrl = action({
     const config = getR2Config(overrides);
     if (!config.configured) throw new ConvexError({ message: `R2 not configured: ${config.missing.join(", ")}`, code: "storage_not_configured" });
     const key = buildKey(subject.stream, args.grade, subject.slug, args.contentSlug as ContentType, args.filename);
-    return getPresignedUploadUrl(key, args.contentType, overrides);
+    return getPresignedUploadUrl(key, args.contentType, overrides, args.origin);
   },
 });
 
@@ -293,14 +297,51 @@ export const getDownloadUrl = action({
 });
 
 // ---------------------------------------------------------------------------
-// R2 configuration status
+// R2 configuration status + CORS diagnostics
 // ---------------------------------------------------------------------------
 
+type R2CorsStatus = {
+  configured: boolean;
+  missing: string[];
+  corsRules?: {
+    allowedOrigins: string[];
+    allowedMethods: string[];
+    allowedHeaders?: string[];
+  }[];
+  callerOrigin?: string;
+  putAllowedForCaller?: boolean;
+};
+
 export const getR2Status = action({
-  args: {},
-  handler: async (ctx): Promise<R2Config> => {
+  args: { origin: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<R2CorsStatus> => {
     const overrides = await getR2Overrides(ctx);
-    return getR2Config(overrides);
+    const config = getR2Config(overrides);
+    if (!config.configured) {
+      return { configured: false, missing: config.missing };
+    }
+    let corsRules: R2CorsStatus["corsRules"] = [];
+    let putAllowedForCaller = false;
+    try {
+      const rules = await getBucketCorsRules(overrides);
+      corsRules = rules.map((r) => ({
+        allowedOrigins: r.AllowedOrigins ?? [],
+        allowedMethods: r.AllowedMethods ?? [],
+        allowedHeaders: r.AllowedHeaders,
+      }));
+      if (args.origin) {
+        putAllowedForCaller = isOriginAllowedForMethod(rules, args.origin, "PUT");
+      }
+    } catch {
+      // ignore — CORS not configured yet
+    }
+    return {
+      configured: true,
+      missing: [],
+      corsRules,
+      callerOrigin: args.origin,
+      putAllowedForCaller,
+    };
   },
 });
 
@@ -315,5 +356,20 @@ export const ensureR2Cors = action({
     const overrides = await getR2Overrides(ctx);
     await ensureBucketCors(overrides);
     return { ok: true };
+  },
+});
+
+/**
+ * Sync R2 CORS to allow PUT from `origin`. Merges into existing rules without
+ * removing the user's manual config. This is the self-healing fix for the
+ * "Upload to R2 failed — CORS issue" error — call from the admin UI when
+ * an upload fails, or before a known-new deployment URL.
+ */
+export const syncR2CorsForOrigin = action({
+  args: { origin: v.string() },
+  handler: async (ctx, args): Promise<{ updated: boolean; reason: string }> => {
+    await requireAdminAction(ctx);
+    const overrides = await getR2Overrides(ctx);
+    return ensureCorsForOrigin(args.origin, overrides);
   },
 });

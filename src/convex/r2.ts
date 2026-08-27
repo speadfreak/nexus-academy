@@ -80,6 +80,53 @@ function getBucket(overrides?: R2ConfigOverrides): string {
   return envOrOverride("R2_BUCKET_NAME", overrides);
 }
 
+// R2 CORS rules come back from the SDK in a slightly different shape than the
+// SDK expects for PUT. We normalise both directions.
+type CorsRule = {
+  AllowedOrigins: string[];
+  AllowedMethods: string[];
+  AllowedHeaders?: string[];
+  MaxAgeSeconds?: number;
+};
+
+/** Read the current bucket CORS rules. Returns [] if no CORS configured. */
+export async function getBucketCorsRules(
+  overrides?: R2ConfigOverrides,
+): Promise<CorsRule[]> {
+  const client = getClient(overrides);
+  const bucket = getBucket(overrides);
+  try {
+    const result = await client.send(new GetBucketCorsCommand({ Bucket: bucket }));
+    return (result.CORSRules ?? []) as CorsRule[];
+  } catch {
+    // NoCORSConfiguration — expected for new buckets
+    return [];
+  }
+}
+
+/** Returns true if `origin` is allowed for `method` (PUT/GET/HEAD) in any
+ * existing CORS rule. Wildcard `*` matches any origin. */
+export function isOriginAllowedForMethod(
+  rules: CorsRule[],
+  origin: string,
+  method: string,
+): boolean {
+  if (!origin) return false;
+  for (const rule of rules) {
+    if (!rule.AllowedMethods?.includes(method)) continue;
+    for (const allowed of rule.AllowedOrigins ?? []) {
+      if (allowed === "*") return true;
+      if (allowed === origin) return true;
+      // R2 supports a single wildcard at the start (e.g. "https://*.example.com")
+      if (allowed.startsWith("*.")) {
+        const suffix = allowed.slice(1); // ".example.com"
+        if (origin.endsWith(suffix)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Ensure the R2 bucket has CORS configured so browsers can make cross-origin
  * range requests (HTTP 206) for PDF.js streaming. Without this, PDF.js falls
@@ -88,6 +135,9 @@ function getBucket(overrides?: R2ConfigOverrides): string {
  *
  * Idempotent: checks first, only writes if needed. Cached per override key
  * so subsequent calls are no-ops within the same Convex isolate.
+ *
+ * NOTE: This NEVER overwrites an existing CORS policy. If the user has set
+ * CORS rules manually in the Cloudflare dashboard, those are preserved.
  */
 export async function ensureBucketCors(overrides?: R2ConfigOverrides): Promise<void> {
   const cacheKey = JSON.stringify(overrides ?? {});
@@ -98,21 +148,74 @@ export async function ensureBucketCors(overrides?: R2ConfigOverrides): Promise<v
     const existing = await client.send(new GetBucketCorsCommand({ Bucket: bucket }));
     if (existing.CORSRules && existing.CORSRules.length > 0) {
       corsEnsuredFor.add(cacheKey);
-      return; // Already configured
+      return; // Already configured — never overwrite user's manual setup
     }
   } catch {
     // NoCORSConfiguration — expected for new buckets
   }
+  // Default for brand-new buckets: permissive so uploads work without manual config.
+  // The user can tighten this in the Cloudflare dashboard if they want.
   const corsConfig = {
     CORSRules: [{
       AllowedOrigins: ["*"],
-      AllowedMethods: ["GET", "HEAD"],
+      AllowedMethods: ["PUT", "GET", "HEAD"],
       AllowedHeaders: ["*"],
       MaxAgeSeconds: 86400,
     }],
   };
   await client.send(new PutBucketCorsCommand({ Bucket: bucket, CORSConfiguration: corsConfig }));
   corsEnsuredFor.add(cacheKey);
+}
+
+/**
+ * Ensure `origin` is allowed to make PUT requests to the bucket. If the
+ * existing CORS rules don't already cover this origin, MERGE a new rule into
+ * the policy without removing the user's existing rules.
+ *
+ * This is the self-healing fix for "Upload to R2 failed — CORS issue":
+ * every time an admin uploads from a new deployment URL (e.g. a preview
+ * deploy or a new production domain), the bucket CORS auto-updates to
+ * include that origin — no manual Cloudflare dashboard edits needed.
+ *
+ * Idempotent: if the origin is already covered by `*` or an exact match,
+ * no write happens. Cached per (overrides, origin) pair within the isolate.
+ */
+const corsMergedFor = new Set<string>();
+export async function ensureCorsForOrigin(
+  origin: string,
+  overrides?: R2ConfigOverrides,
+): Promise<{ updated: boolean; reason: string }> {
+  if (!origin) return { updated: false, reason: "no_origin" };
+  const cacheKey = `${JSON.stringify(overrides ?? {})}::${origin}`;
+  if (corsMergedFor.has(cacheKey)) return { updated: false, reason: "cached" };
+
+  const client = getClient(overrides);
+  const bucket = getBucket(overrides);
+  const existing = await getBucketCorsRules(overrides);
+
+  if (isOriginAllowedForMethod(existing, origin, "PUT")) {
+    corsMergedFor.add(cacheKey);
+    return { updated: false, reason: "already_allowed" };
+  }
+
+  // Merge: keep all existing rules + add a dedicated rule for this origin.
+  // We put it BEFORE any wildcard-GET-only rule so it takes precedence for PUT.
+  const newRule: CorsRule = {
+    AllowedOrigins: [origin],
+    AllowedMethods: ["PUT", "GET", "HEAD"],
+    AllowedHeaders: ["*"],
+    MaxAgeSeconds: 86400,
+  };
+  const mergedRules = [newRule, ...existing];
+
+  await client.send(
+    new PutBucketCorsCommand({
+      Bucket: bucket,
+      CORSConfiguration: { CORSRules: mergedRules },
+    }),
+  );
+  corsMergedFor.add(cacheKey);
+  return { updated: true, reason: "merged" };
 }
 
 /** Build the public URL for an object key, normalizing a trailing slash. */
@@ -155,14 +258,23 @@ export async function getSignedDownloadUrl(key: string, overrides?: R2ConfigOver
 
 /** Generate a presigned PUT URL for direct browser→R2 upload. The browser
  * uploads the file bytes straight to R2, bypassing Convex temp storage.
- * Returns { uploadUrl, key, fileUrl } where fileUrl is the final public URL. */
+ * Returns { uploadUrl, key, fileUrl } where fileUrl is the final public URL.
+ *
+ * If `origin` is provided (the browser's window.location.origin), we also
+ * ensure the bucket CORS allows PUT from that origin — auto-merging a rule
+ * if needed. This self-heals the common "CORS issue" error when an admin
+ * uploads from a new deployment URL. */
 export async function getPresignedUploadUrl(
   key: string,
   contentType: string,
   overrides?: R2ConfigOverrides,
+  origin?: string,
 ): Promise<{ uploadUrl: string; key: string; fileUrl: string }> {
   const client = getClient(overrides);
   await ensureBucketCors(overrides).catch(() => {}); // Ensure CORS for future reads
+  if (origin) {
+    await ensureCorsForOrigin(origin, overrides).catch(() => {}); // Auto-merge origin
+  }
   const uploadUrl = await getSignedUrl(
     client,
     new PutObjectCommand({
