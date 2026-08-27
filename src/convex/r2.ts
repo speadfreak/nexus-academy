@@ -80,6 +80,15 @@ function getClient(overrides?: R2ConfigOverrides): S3Client {
       // <accountId>.r2.cloudflarestorage.com/<bucket>/... which is one
       // subdomain level and matches the cert cleanly.
       forcePathStyle: true,
+      // CRITICAL: disable automatic checksum headers added by AWS SDK v3.679+.
+      // Newer SDK versions add x-amz-checksum-crc32 and x-amz-sdk-checksum-algorithm
+      // to every PutObject by default. R2's S3-compatible API doesn't support
+      // these checksum headers and returns 403 Forbidden, which the browser
+      // masks as a "CORS error" because R2 doesn't add CORS headers to error
+      // responses. Setting this to "WHEN_REQUIRED" tells the SDK to only
+      // compute/send checksums when the operation explicitly requires it.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
     lastUsedKey = currentKey;
   }

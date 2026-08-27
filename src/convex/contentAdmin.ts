@@ -49,6 +49,23 @@ function buildKey(stream: string, grade: number, subjectSlug: string, contentTyp
   return `${stream}/${grade}/${subjectSlug}/${CONTENT_TYPE_SLUGS[contentType]}/${sanitizeFilename(filename)}`;
 }
 
+/**
+ * Build the R2 object key from a contentSlug directly (e.g. "past-exam"),
+ * validating it against the known slug set first. Used by direct-to-R2
+ * uploads where the frontend already resolves ContentType → slug before
+ * calling the action.
+ */
+function buildKeyFromSlug(stream: string, grade: number, subjectSlug: string, contentSlug: string, filename: string): string {
+  const validSlugs = Object.values(CONTENT_TYPE_SLUGS);
+  if (!validSlugs.includes(contentSlug)) {
+    throw new ConvexError({
+      message: `Invalid content slug "${contentSlug}". Expected one of: ${validSlugs.join(", ")}.`,
+      code: "invalid",
+    });
+  }
+  return `${stream}/${grade}/${subjectSlug}/${contentSlug}/${sanitizeFilename(filename)}`;
+}
+
 function contentTypeForFilename(filename: string): string {
   if (/\.pdf$/i.test(filename)) return "application/pdf";
   return "application/octet-stream";
@@ -76,7 +93,7 @@ export const getPresignedR2UploadUrl = action({
     const overrides = await getR2Overrides(ctx);
     const config = getR2Config(overrides);
     if (!config.configured) throw new ConvexError({ message: `R2 not configured: ${config.missing.join(", ")}`, code: "storage_not_configured" });
-    const key = buildKey(subject.stream, args.grade, subject.slug, args.contentSlug as ContentType, args.filename);
+    const key = buildKeyFromSlug(subject.stream, args.grade, subject.slug, args.contentSlug, args.filename);
     return getPresignedUploadUrl(key, args.contentType, overrides, args.origin);
   },
 });
