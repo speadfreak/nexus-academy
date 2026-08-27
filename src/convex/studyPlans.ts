@@ -221,7 +221,7 @@ export const getActivePlan = query({
       .first();
     if (!plan) return null;
 
-    let weeks: { week: number; topicIds: Id<"topics">[]; focusHours: number }[] = [];
+    let weeks: { week: number; topics?: Id<"topics">[]; topicIds?: Id<"topics">[]; focusHours: number }[] = [];
     try {
       weeks = JSON.parse(plan.planJson) as typeof weeks;
     } catch {
@@ -232,8 +232,19 @@ export const getActivePlan = query({
     const subject = await ctx.db.get(subjectId);
     const weeksWithNames = [];
     for (const week of weeks) {
+      // Defensive: stored plans use the 'topics' field (an array of Id<"topics">),
+      // but tolerate older plans that used 'topicIds' — and skip any malformed
+      // week entry entirely so one bad week doesn't break the whole plan view.
+      const rawTopicIds: Id<"topics">[] = Array.isArray(week.topics)
+        ? week.topics
+        : Array.isArray(week.topicIds)
+          ? week.topicIds
+          : [];
+      if (typeof week.week !== "number" || typeof week.focusHours !== "number") {
+        continue;
+      }
       const topics = [];
-      for (const topicId of week.topicIds) {
+      for (const topicId of rawTopicIds) {
         let topic = topicCache.get(topicId);
         if (!topic) {
           topic = (await ctx.db.get(topicId)) ?? undefined;
@@ -309,7 +320,7 @@ export const notifyDuePlanWeeks = internalAction({
     const today = addisDateKey();
     let notified = 0;
     for (const plan of plans) {
-      let weeks: { week: number; topicIds: Id<"topics">[]; focusHours: number }[] = [];
+      let weeks: { week: number; topics?: Id<"topics">[]; topicIds?: Id<"topics">[]; focusHours: number }[] = [];
       try {
         weeks = JSON.parse(plan.planJson) as typeof weeks;
       } catch {
@@ -317,6 +328,7 @@ export const notifyDuePlanWeeks = internalAction({
       }
       const completed = new Set(plan.completedWeeks ?? []);
       for (const week of weeks) {
+        if (typeof week.week !== "number" || typeof week.focusHours !== "number") continue;
         if (completed.has(week.week)) continue;
         const weekStartMs = plan.generatedAt + (week.week - 1) * 7 * DAY_MS;
         if (addisDateKey(weekStartMs) !== today) continue;
