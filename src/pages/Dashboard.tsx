@@ -454,30 +454,30 @@ function BookTile({
       </TiltCard>
 
       {/* Action row */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 px-3.5 pb-3.5 pl-5">
         <Button
           size="sm"
           variant="outline"
-          className="h-9 flex-1 cursor-pointer rounded-xl bg-white/5 type-caption interactive-press"
+          className="h-8 sm:h-9 min-w-0 flex-1 cursor-pointer gap-1 rounded-xl bg-white/5 px-2 text-[11px] sm:text-xs interactive-press"
           onClick={() => onOpen(item)}
         >
-          <BookOpen className="size-3.5" />
-          {item.isPremium && locked ? "Locked" : "Read"}
+          <BookOpen className="size-3 sm:size-3.5 shrink-0" />
+          <span className="truncate">{item.isPremium && locked ? "Locked" : "Read"}</span>
         </Button>
         <Link
           to={`/tutor?subject=${encodeURIComponent(item.subjectSlug)}&contentId=${item._id}`}
           title={`Ask the tutor about ${item.title}`}
-          className="interactive-press flex size-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          className="interactive-press flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
         >
-          <MessageSquare className="size-3.5" />
+          <MessageSquare className="size-3 sm:size-3.5" />
         </Link>
         <button
           type="button"
           onClick={() => onQuiz(item)}
           title={`Quick check on ${item.subjectName}`}
-          className="interactive-press flex size-9 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          className="interactive-press flex size-8 sm:size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
         >
-          <HelpCircle className="size-3.5" />
+          <HelpCircle className="size-3 sm:size-3.5" />
         </button>
       </div>
     </motion.div>
@@ -519,7 +519,7 @@ function WeeklyRecap() {
   };
 
   return (
-    <div className="glass-panel rounded-2xl p-5">
+    <div className="glass-panel rounded-2xl p-4 sm:p-5">
       <div className="flex items-center justify-between">
         <span className="type-caption text-muted-foreground/70">This week</span>
         <Sparkles className="size-3.5 text-amber-400/60" />
@@ -853,10 +853,10 @@ export default function Dashboard() {
 
   return (
     <DashboardShell>
-      <div className="student-dashboard mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+      <div className="student-dashboard flex w-full flex-col gap-4 sm:gap-6">
         {/* ═══ CINEMATIC HERO / GREETING ═══ */}
         <motion.div
-          className="student-hero glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8"
+          className="student-hero glass-panel relative overflow-hidden rounded-3xl p-4 sm:p-6 lg:p-8"
           initial={{ opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as const }}
@@ -981,20 +981,20 @@ export default function Dashboard() {
             </div>
 
             {/* Library stats */}
-            <div className="w-full max-w-sm shrink-0 rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl">
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl sm:shrink-0">
               <div className="flex items-center justify-between">
                 <span className="type-caption font-semibold text-foreground/60">Your Library</span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
+                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2 sm:p-2.5">
                   <p className="type-caption text-muted-foreground/70">Resources</p>
                   <p className="mt-1 type-h2 text-amber-300">{totalContent}</p>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
+                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2 sm:p-2.5">
                   <p className="type-caption text-muted-foreground/70">Saved</p>
                   <p className="mt-1 type-h2 text-emerald-300">{bookmarkIds?.length ?? 0}</p>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2.5">
+                <div className="rounded-xl border border-white/10 bg-white/[0.05] p-2 sm:p-2.5">
                   <p className="type-caption text-muted-foreground/70">Subjects</p>
                   <p className="mt-1 type-h2 text-amber-300">{subjects?.length ?? 0}</p>
                 </div>
@@ -1046,7 +1046,7 @@ export default function Dashboard() {
             <p className="type-caption text-muted-foreground/60">{totalContent} resource{totalContent !== 1 ? "s" : ""} · {bookmarkIds?.length ?? 0} saved</p>
           </div>
 
-          <div className="relative mt-5 grid gap-3 md:grid-cols-3">
+          <div className="relative mt-4 grid gap-2.5 sm:gap-3 sm:mt-5 md:grid-cols-3">
             {[
               {
                 label: "Core textbooks",
@@ -1117,7 +1117,7 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const, delay: 0.3 }}
-            className="glass-panel flex items-start gap-4 rounded-2xl px-5 py-4"
+            className="glass-panel flex items-start gap-3 sm:gap-4 rounded-2xl px-4 sm:px-5 py-4"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
               <Quote className="size-4.5" />
@@ -1238,7 +1238,7 @@ export default function Dashboard() {
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
         >
-          <div className="student-stat-card student-stat-streak glass-panel hover-lift rounded-2xl p-4">
+          <div className="student-stat-card student-stat-streak glass-panel hover-lift rounded-2xl p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <span className="type-caption text-muted-foreground/70">Streak</span>
               <motion.div
@@ -1259,7 +1259,7 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div className="student-stat-card student-stat-study glass-panel hover-lift rounded-2xl p-4">
+          <div className="student-stat-card student-stat-study glass-panel hover-lift rounded-2xl p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <span className="type-caption text-muted-foreground/70">Studied</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
@@ -1273,7 +1273,7 @@ export default function Dashboard() {
             <p className="type-caption mt-1 text-muted-foreground">all time</p>
           </div>
 
-          <div className="student-stat-card student-stat-week glass-panel hover-lift rounded-2xl p-4">
+          <div className="student-stat-card student-stat-week glass-panel hover-lift rounded-2xl p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <span className="type-caption text-muted-foreground/70">This week</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
@@ -1287,7 +1287,7 @@ export default function Dashboard() {
             <p className="type-caption mt-1 text-muted-foreground">last 7 days</p>
           </div>
 
-          <Link to="/todos" className="student-stat-card student-stat-todos glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
+          <Link to="/todos" className="student-stat-card student-stat-todos glass-panel hover-lift group rounded-2xl p-3 sm:p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
               <span className="type-caption text-muted-foreground/70">To-dos</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-300">
@@ -1301,7 +1301,7 @@ export default function Dashboard() {
             <p className="type-caption mt-1 text-muted-foreground group-hover:text-amber-300">manage tasks</p>
           </Link>
 
-          <Link to="/achievements" className="student-stat-card student-stat-level glass-panel hover-lift group rounded-2xl p-4 transition-colors hover:border-primary/30">
+          <Link to="/achievements" className="student-stat-card student-stat-level glass-panel hover-lift group rounded-2xl p-3 sm:p-4 transition-colors hover:border-primary/30">
             <div className="flex items-center justify-between">
               <span className="type-caption text-muted-foreground/70">Level</span>
               <div className="flex size-8 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
@@ -1319,7 +1319,7 @@ export default function Dashboard() {
         </motion.div>
 
         {/* ═══ XP PROGRESS + SUBJECT QUICK TABS ═══ */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4">
           <XPProgressBar
             currentLevel={level?.currentLevel ?? 1}
             totalXp={level?.totalXp ?? 0}
@@ -1375,7 +1375,7 @@ export default function Dashboard() {
 
         {/* ═══ WEEK ACTIVITY STRIP ═══ */}
         <motion.div
-          className="student-focus-panel glass-panel rounded-2xl p-5"
+          className="student-focus-panel glass-panel rounded-2xl p-4 sm:p-5"
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
@@ -1429,7 +1429,7 @@ export default function Dashboard() {
         {/* ═══ DAILY CHALLENGE ═══ */}
         {dailyChallenges !== undefined && dailyChallenges.length > 0 && activeChallenge && (
           <motion.div
-            className="student-challenge glass-panel hover-lift rounded-2xl p-5"
+            className="student-challenge glass-panel hover-lift rounded-2xl p-4 sm:p-5"
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-60px" }}
@@ -1539,7 +1539,7 @@ export default function Dashboard() {
 
         {/* ═══ SEARCH + FILTERS ═══ */}
         <motion.div
-          className="glass-panel rounded-2xl p-5"
+          className="glass-panel rounded-2xl p-4 sm:p-5"
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
@@ -1610,7 +1610,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
             <div className="flex flex-col gap-1.5">
               <span className="type-caption font-semibold text-muted-foreground">Grade</span>
               <Select value={grade} onValueChange={(v) => setGrade(v === "all" ? "" : v)}>
@@ -1706,7 +1706,7 @@ export default function Dashboard() {
         )}
 
         {!hasFilters && content && content.length > 0 && (
-          <div className="grid gap-5 xl:grid-cols-2">
+          <div className="grid gap-3 sm:gap-5 xl:grid-cols-2">
             {savedContent.length > 0 && (
               <section className="library-section glass-soft rounded-2xl p-4 sm:p-5">
                 <div className="mb-3 flex items-center justify-between">
@@ -1716,9 +1716,9 @@ export default function Dashboard() {
                   </div>
                   <BookmarkCheck className="size-4 text-emerald-300" />
                 </div>
-                <div className="flex gap-3 overflow-x-auto pb-1">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:flex sm:overflow-x-auto sm:pb-1">
                   {savedContent.map((item) => (
-                    <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-[190px] max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-emerald-300/30 hover:bg-white/[0.07]">
+                    <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-0 sm:min-w-[190px] sm:max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-emerald-300/30 hover:bg-white/[0.07]">
                       <p className="line-clamp-2 type-caption font-bold">{item.title}</p>
                       <p className="mt-2 type-caption text-emerald-200/60">{item.subjectName} · Grade {item.grade}</p>
                     </button>
@@ -1734,9 +1734,9 @@ export default function Dashboard() {
                 </div>
                 <Sparkles className="size-4 text-amber-300" />
               </div>
-              <div className="flex gap-3 overflow-x-auto pb-1">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:flex sm:overflow-x-auto sm:pb-1">
                 {recentContent.map((item) => (
-                  <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-[190px] max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-amber-300/30 hover:bg-white/[0.07]">
+                  <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-0 sm:min-w-[190px] sm:max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-amber-300/30 hover:bg-white/[0.07]">
                     <p className="line-clamp-2 type-caption font-bold">{item.title}</p>
                     <p className="mt-2 type-caption text-amber-200/60">{CONTENT_TYPE_LABELS[item.contentType]} · {item.subjectName}</p>
                   </button>
@@ -1748,7 +1748,7 @@ export default function Dashboard() {
 
         {/* ═══ CONTENT GALLERY ═══ */}
         {content === undefined ? (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {Array.from({ length: 8 }).map((_, i) => (
               <BookSkeleton key={i} />
             ))}
@@ -1793,7 +1793,7 @@ export default function Dashboard() {
 
             <motion.div
               layout
-              className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+              className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
             >
               <AnimatePresence mode="popLayout">
                 {(visibleContent ?? []).map((item) => (
