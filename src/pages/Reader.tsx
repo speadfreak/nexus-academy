@@ -55,34 +55,22 @@ import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
 import { PDFJS_OPTIONS } from "@/lib/pdfjs-options";
 
-// ─── PDF.js setup — worker + cmaps + standard fonts ───────────────────
-// react-pdf bundles its own pdfjs-dist (v5.4.296). We override the worker
-// URL globally here ONCE so every <Document> instance in the app inherits
-// it. The cMapUrl / standardFontDataUrl / streaming options are configured
+// ─── PDF.js worker setup ───────────────────────────────────────────────
+// react-pdf bundles its own pdfjs-dist (v5.4.296). The worker is served
+// same-origin (public/pdf.worker.min.mjs) so we avoid CDN/CORS issues.
+//
+// The cMapUrl / standardFontDataUrl / streaming options are configured
 // separately in @/lib/pdfjs-options.ts (imported above) so the ReaderExamMode
 // component can reuse the same config without a circular import.
 //
-// Worker: probe /pdf.worker.min.mjs first; fall back to the cdnjs CDN
-// matching the pdfjs version if the local copy is missing. The previous
-// try/catch around the assignment was dead code — assignment never throws.
-// The fetch probe here is real and runs once at module load.
+// We set workerSrc synchronously to the local file. The previous attempt
+// to "probe" with fetch(HEAD) at module load was a regression — it ran
+// AFTER pdf.js may have already started loading, and on Render the
+// HEAD request can be slow or return a non-200 (auth redirect), causing
+// a race that left pdf.js with no usable worker. Synchronous assignment
+// is the safe path; if /pdf.worker.min.mjs ever 404s we'll see it as a
+// console error from pdf.js and can fix the deploy.
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-if (typeof window !== "undefined") {
-  void fetch("/pdf.worker.min.mjs", { method: "HEAD" })
-    .then((res) => {
-      if (!res.ok) {
-        // Local worker missing — use the version-matched CDN fallback.
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
-        console.warn(
-          `[Reader] /pdf.worker.min.mjs returned ${res.status} — falling back to CDN worker. ` +
-            `This is slower; redeploy the app to restore the local worker.`,
-        );
-      }
-    })
-    .catch(() => {
-      pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
-    });
-}
 
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -905,8 +893,10 @@ export default function Reader() {
                       // Real page-shaped skeleton (not a generic spinner).
                       // Matches the eventual page render's size + position so
                       // the layout doesn't shift when the page appears.
+                      // Uses a fixed width (not w-full) so it can't grow huge
+                      // and visually push the eventual page render off-screen.
                       <div className="flex flex-col items-center justify-center gap-4 py-16">
-                        <div className="relative aspect-[1/1.414] w-full max-w-md overflow-hidden rounded-md border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.04)]">
+                        <div className="relative aspect-[1/1.414] w-64 max-w-full overflow-hidden rounded-md border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.04)]">
                           {/* Animated skeleton lines mimicking page content */}
                           <div className="absolute inset-0 flex flex-col gap-3 p-6">
                             <div className="h-3 w-1/2 animate-pulse rounded bg-white/[0.06]" />
