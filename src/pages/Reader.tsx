@@ -53,19 +53,37 @@ import {
 import type { ContentItemWithSubject } from "@/convex/content";
 import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
+import { PDFJS_OPTIONS } from "@/lib/pdfjs-options";
 
-// ─── PDF Worker Fix ─────────────────────────────────────────────────────
-// react-pdf bundles its own pdfjs-dist (v5.4.296). The relative path
-// 'pdf.worker.mjs' it sets by default doesn't resolve in production on
-// Render. Override with the matching CDN version.
-// Use a same-origin worker copy (public/pdf.worker.min.mjs) to avoid CORS/
-// version-mismatch issues with CDN-hosted workers on Render.
-// Falls back to the CDN if the local file is missing (dev mode).
-try {
-  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-} catch {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+// ─── PDF.js setup — worker + cmaps + standard fonts ───────────────────
+// react-pdf bundles its own pdfjs-dist (v5.4.296). We override the worker
+// URL globally here ONCE so every <Document> instance in the app inherits
+// it. The cMapUrl / standardFontDataUrl / streaming options are configured
+// separately in @/lib/pdfjs-options.ts (imported above) so the ReaderExamMode
+// component can reuse the same config without a circular import.
+//
+// Worker: probe /pdf.worker.min.mjs first; fall back to the cdnjs CDN
+// matching the pdfjs version if the local copy is missing. The previous
+// try/catch around the assignment was dead code — assignment never throws.
+// The fetch probe here is real and runs once at module load.
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+if (typeof window !== "undefined") {
+  void fetch("/pdf.worker.min.mjs", { method: "HEAD" })
+    .then((res) => {
+      if (!res.ok) {
+        // Local worker missing — use the version-matched CDN fallback.
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+        console.warn(
+          `[Reader] /pdf.worker.min.mjs returned ${res.status} — falling back to CDN worker. ` +
+            `This is slower; redeploy the app to restore the local worker.`,
+        );
+      }
+    })
+    .catch(() => {
+      pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+    });
 }
+
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 type PanelTab = "companion" | "videos" | "scratchpad";
@@ -846,11 +864,26 @@ export default function Reader() {
                 <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
                   <Document
                     file={pdfData ? { data: pdfData } : { url: pdfUrl! }}
+                    // PDF.js options — cMapUrl + standardFontDataUrl are the
+                    // big text-layer perf wins. disableRange:false + disableAutoFetch:true
+                    // = stream page 1 fast, don't pre-fetch the rest.
+                    options={PDFJS_OPTIONS}
+                    // onLoadProgress is fired by pdf.js during URL-mode
+                    // streaming. Drives the real progress bar at lines 757-781
+                    // so users get feedback during long loads (was 0% the whole
+                    // time before — see the audit notes in the file header).
+                    onLoadProgress={(progress) => {
+                      if (progress && typeof progress.loaded === "number" && typeof progress.total === "number" && progress.total > 0) {
+                        const pct = Math.min(99, Math.round((progress.loaded / progress.total) * 100));
+                        setLoadProgress(pct);
+                      }
+                    }}
                     onLoadSuccess={(pdf) => {
                       setNumPages(pdf.numPages);
                       setPageNumber(1);
                       setPageInput("1");
                       setPdfDocProxy(pdf);
+                      setLoadProgress(100);
                     }}
                     onLoadError={(error) => {
                       console.error("[Reader] PDF load failed:", error);
@@ -869,12 +902,29 @@ export default function Reader() {
                       }
                     }}
                     loading={
-                      <div className="flex flex-col items-center justify-center gap-4 py-20">
-                        <div className="relative">
-                          <div className="absolute -inset-6 rounded-2xl bg-primary/5 blur-xl animate-pulse" />
-                          <Loader2 className="relative size-8 animate-spin text-primary" />
+                      // Real page-shaped skeleton (not a generic spinner).
+                      // Matches the eventual page render's size + position so
+                      // the layout doesn't shift when the page appears.
+                      <div className="flex flex-col items-center justify-center gap-4 py-16">
+                        <div className="relative aspect-[1/1.414] w-full max-w-md overflow-hidden rounded-md border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.04)]">
+                          {/* Animated skeleton lines mimicking page content */}
+                          <div className="absolute inset-0 flex flex-col gap-3 p-6">
+                            <div className="h-3 w-1/2 animate-pulse rounded bg-white/[0.06]" />
+                            <div className="mt-2 h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "60ms" }} />
+                            <div className="h-2 w-5/6 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "120ms" }} />
+                            <div className="h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "180ms" }} />
+                            <div className="h-2 w-3/4 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "240ms" }} />
+                            <div className="mt-2 h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "300ms" }} />
+                            <div className="h-2 w-4/5 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "360ms" }} />
+                          </div>
+                          {/* Top shimmer sweep */}
+                          <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer-slide_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />
                         </div>
-                        <p className="type-mono text-xs tracking-widest text-muted-foreground/60 uppercase">Rendering pages…</p>
+                        <p className="type-mono text-xs tracking-widest text-muted-foreground/60 uppercase">
+                          {loadProgress > 0 && loadProgress < 100
+                            ? `Loading… ${loadProgress}%`
+                            : "Rendering page…"}
+                        </p>
                       </div>
                     }
                     className="flex flex-col items-center gap-4"
@@ -886,11 +936,19 @@ export default function Reader() {
                         renderTextLayer={showTextLayers}
                         renderAnnotationLayer={showTextLayers}
                         loading={
-                          <div className="flex size-48 items-center justify-center bg-white/[0.02]">
-                            <div className="flex flex-col items-center gap-3">
-                              <Loader2 className="size-5 animate-spin text-muted-foreground/50" />
-                              <p className="type-mono text-[10px] tracking-widest text-muted-foreground/40 uppercase">Page {pageNumber}</p>
+                          // Page-shaped skeleton — matches the eventual page
+                          // size so layout doesn't shift on first render.
+                          <div className="relative aspect-[1/1.414] w-48 overflow-hidden rounded-md border border-white/[0.04] bg-white/[0.02]">
+                            <div className="absolute inset-0 flex flex-col gap-2 p-4">
+                              <div className="h-2 w-1/2 animate-pulse rounded bg-white/[0.06]" />
+                              <div className="mt-1 h-1.5 w-full animate-pulse rounded bg-white/[0.04]" />
+                              <div className="h-1.5 w-5/6 animate-pulse rounded bg-white/[0.04]" />
+                              <div className="h-1.5 w-full animate-pulse rounded bg-white/[0.04]" />
+                              <div className="h-1.5 w-3/4 animate-pulse rounded bg-white/[0.04]" />
+                              <div className="mt-1 h-1.5 w-full animate-pulse rounded bg-white/[0.04]" />
+                              <div className="h-1.5 w-4/5 animate-pulse rounded bg-white/[0.04]" />
                             </div>
+                            <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer-slide_1.4s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
                           </div>
                         }
                       />

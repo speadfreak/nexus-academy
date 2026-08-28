@@ -174,11 +174,18 @@ export async function ensureBucketCors(overrides?: R2ConfigOverrides): Promise<v
   }
   // Default for brand-new buckets: permissive so uploads work without manual config.
   // The user can tighten this in the Cloudflare dashboard if they want.
+  //
+  // ExposeHeaders: Content-Range + Accept-Ranges are explicitly exposed so
+  // pdf.js (in browser CORS mode) can read them from 206 Partial responses.
+  // Without ExposeHeaders, the browser hides these headers from JS even
+  // though they're sent on the wire — pdf.js then can't tell the response
+  // was a partial content response and may fall back to whole-file fetch.
   const corsConfig = {
     CORSRules: [{
       AllowedOrigins: ["*"],
       AllowedMethods: ["PUT", "GET", "HEAD"],
       AllowedHeaders: ["*"],
+      ExposeHeaders: ["Content-Range", "Accept-Ranges", "Content-Length", "ETag"],
       MaxAgeSeconds: 86400,
     }],
   };
