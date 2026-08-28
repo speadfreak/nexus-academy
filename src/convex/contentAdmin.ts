@@ -221,6 +221,9 @@ export const updateContentItem = action({
     isPremium: v.optional(v.boolean()),
     sourceName: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
+    // Optional link from a past_exam to its answer-key content item.
+    // Pass null to clear. Only valid when contentType = "past_exam".
+    answerKeyContentId: v.optional(v.id("contentItems")),
   },
  handler: async (ctx, args) => {
     const { user: adminUser } = await requireAdminAction(ctx);
@@ -239,6 +242,30 @@ export const updateContentItem = action({
     if (updates.sourceName !== undefined) patch.sourceName = updates.sourceName?.trim() || undefined;
     if (updates.sourceUrl !== undefined) patch.sourceUrl = updates.sourceUrl?.trim() || undefined;
     if (updates.examYear !== undefined) patch.examYear = updates.examYear;
+    // Allow setting/clearing the answer-key link. Validation: only past_exams
+    // should have an answer key, and the linked item must exist + not be a
+    // self-reference (would create a circular link).
+    if (updates.answerKeyContentId !== undefined) {
+      const linkedId = updates.answerKeyContentId;
+      if (linkedId === null) {
+        patch.answerKeyContentId = undefined;
+      } else if (linkedId === contentId) {
+        throw new ConvexError({
+          message: "Answer-key content cannot be the same item as the exam.",
+          code: "invalid",
+        });
+      } else {
+        // Confirm the linked item exists before storing the reference.
+        const linked = await ctx.runQuery(internal.content.getContentItemById, { contentId: linkedId });
+        if (!linked) {
+          throw new ConvexError({
+            message: "Answer-key content item not found.",
+            code: "not_found",
+          });
+        }
+        patch.answerKeyContentId = linkedId;
+      }
+    }
 
     if (Object.keys(patch).length > 0) {
       await ctx.runMutation(internal.content.updateContentItem, { contentId: args.contentId, patch });

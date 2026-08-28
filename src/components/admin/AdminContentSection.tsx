@@ -262,6 +262,7 @@ export function AdminContentSection() {
   const [editContentType, setEditContentType] = useState("");
   const [editExamYear, setEditExamYear] = useState("");
   const [editIsPremium, setEditIsPremium] = useState(false);
+  const [editAnswerKeyId, setEditAnswerKeyId] = useState<string>("");
   const [editSaving, setEditSaving] = useState(false);
 
   const openEditDialog = useCallback((item: ContentItemWithSubject) => {
@@ -272,13 +273,21 @@ export function AdminContentSection() {
     setEditContentType(item.contentType);
     setEditExamYear(item.examYear ? String(item.examYear) : "");
     setEditIsPremium(item.isPremium);
+    // Pre-fill the answer-key link if one exists. The Reader query exposes
+    // it as part of `item` via the spread (answerKeyContentId is on the
+    // contentItems row), so we can read it directly here.
+    setEditAnswerKeyId(
+      (item as ContentItemWithSubject & { answerKeyContentId?: string }).answerKeyContentId ?? "",
+    );
   }, []);
 
   const handleEditSave = async () => {
     if (!editItem) return;
     setEditSaving(true);
     try {
-      await updateContentItem({
+      // Pass the answer-key link only when the user explicitly changed it
+      // (string compare handles the "cleared" case where editAnswerKeyId === "").
+      const patch: Record<string, unknown> = {
         contentId: editItem._id,
         title: editTitle.trim(),
         grade: Number(editGrade),
@@ -286,7 +295,14 @@ export function AdminContentSection() {
         contentType: editContentType as ContentType,
         examYear: editContentType === "past_exam" ? (editExamYear ? Number(editExamYear) : undefined) : undefined,
         isPremium: editIsPremium,
-      });
+      };
+      // Only pass answerKeyContentId if it changed (avoids unnecessary
+      // validation calls on items where it isn't being touched).
+      const previousAnswerKeyId = (editItem as ContentItemWithSubject & { answerKeyContentId?: string }).answerKeyContentId ?? "";
+      if (editAnswerKeyId !== previousAnswerKeyId) {
+        patch.answerKeyContentId = editAnswerKeyId === "" ? null : (editAnswerKeyId as never);
+      }
+      await updateContentItem(patch as never);
       toast.success(`Updated "${editTitle.trim()}".`);
       setEditItem(null);
     } catch (err) {
@@ -1334,6 +1350,41 @@ export function AdminContentSection() {
                 </div>
                 <Switch checked={editIsPremium} onCheckedChange={setEditIsPremium} />
               </div>
+              {/* Answer-key link — only for past exams. Lets the admin pick
+                  another content item (typically an answer-key PDF uploaded
+                  separately) so the Reader's Exam Mode can offer a
+                  "self-grade" button after the student submits. */}
+              {editContentType === "past_exam" && (
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">
+                    Answer key (optional)
+                  </Label>
+                  <Select value={editAnswerKeyId} onValueChange={setEditAnswerKeyId}>
+                    <SelectTrigger className="h-9 rounded-xl bg-white/5">
+                      <SelectValue placeholder="None — no answer key linked" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— None —</SelectItem>
+                      {adminContent
+                        ?.filter(
+                          (c: ContentItemWithSubject) =>
+                            c._id !== editItem?._id &&
+                            c.subjectId === editSubjectId &&
+                            c.grade === Number(editGrade),
+                        )
+                        .map((c: ContentItemWithSubject) => (
+                          <SelectItem key={c._id} value={c._id}>
+                            {c.title}
+                          </SelectItem>
+                        )) ?? []}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Pick another library item (same subject + grade) to surface
+                    as the answer key in the Reader&apos;s Exam Mode.
+                  </p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>

@@ -206,6 +206,102 @@ export const recordStudyDay = internalMutation({
   },
 });
 
+/**
+ * Internal version of logSession for use by node actions (which have an
+ * explicit userId but no auth context). Inserts a studySessions row, runs
+ * the streak math via recordStudyDay, and awards XP for the session.
+ *
+ * Used by:
+ *   - mockExam.completeMockExam  → logs one synthetic session per completed
+ *     mock exam (subjectId = the first section's subject, duration = total
+ *     time spent across all sections).
+ *   - Reader Exam Mode submission → logs the timed past-exam PDF session
+ *     as a focus session so it counts toward streaks and study history.
+ *
+ * Same validation as logSession but the caller is responsible for auth.
+ *
+ * Return type is annotated explicitly to break a TypeScript type-recursion:
+ * the body calls `internal.studySessions.logSessionFromAction`, which would
+ * otherwise infer the return type from the function's own body.
+ */
+export type LogSessionFromActionResult = {
+  ok: true;
+  xpAwarded: number;
+  levelUp: boolean;
+  newLevel: number;
+  newAchievements: { id: string; name: string; tier: "bronze" | "silver" | "gold" }[];
+};
+
+export const logSessionFromAction = internalMutation({
+  args: {
+    userId: v.id("users"),
+    subjectId: v.id("subjects"),
+    durationSeconds: v.number(),
+    startedAt: v.number(),
+    endedAt: v.number(),
+    localDate: v.string(),
+    xpReason: v.optional(v.string()), // defaults to "focus_session"
+    xpAmount: v.optional(v.number()), // defaults to XP_VALUES.focus_session
+  },
+  handler: async (ctx, args): Promise<LogSessionFromActionResult> => {
+    if (args.durationSeconds <= 0 || args.durationSeconds > 12 * 60 * 60) {
+      throw new ConvexError({ message: "Duration out of range.", code: "invalid" });
+    }
+    if (args.endedAt < args.startedAt) {
+      throw new ConvexError({ message: "endedAt before startedAt.", code: "invalid" });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.localDate)) {
+      throw new ConvexError({ message: "Invalid date format.", code: "invalid" });
+    }
+
+    await ctx.db.insert("studySessions", {
+      userId: args.userId,
+      subjectId: args.subjectId,
+      durationSeconds: args.durationSeconds,
+      startedAt: args.startedAt,
+      endedAt: args.endedAt,
+    });
+
+    await ctx.runMutation(internal.studySessions.recordStudyDay, {
+      userId: args.userId,
+      localDate: args.localDate,
+      hours: args.durationSeconds / 3600,
+    });
+
+    const reason = args.xpReason ?? "focus_session";
+    const amount = args.xpAmount ?? XP_VALUES.focus_session;
+    let xpAwarded = 0;
+    let levelUp = false;
+    let newLevel = 1;
+    if (amount > 0) {
+      const award = await ctx.runMutation(internal.xp.awardXp, {
+        userId: args.userId,
+        amount,
+        reason,
+      });
+      xpAwarded = award.xpAwarded;
+      levelUp = award.levelUp;
+      newLevel = award.level;
+    }
+
+    const newly = await ctx.runMutation(internal.achievements.checkAndAward, {
+      userId: args.userId,
+    });
+
+    return {
+      ok: true,
+      xpAwarded,
+      levelUp,
+      newLevel,
+      newAchievements: newly.map((a) => ({
+        id: a.id,
+        name: a.name,
+        tier: a.tier,
+      })),
+    };
+  },
+});
+
 export const getStreak = query({
   args: {},
   handler: async (ctx) => {

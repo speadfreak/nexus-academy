@@ -38,7 +38,8 @@ export type GateReason =
   | "premium_content"
   | "premium_plans"
   | "premium_quizzes"
-  | "premium_analytics";
+  | "premium_analytics"
+  | "premium_mock_exams";
 
 export function isPremiumStatus(status: string | undefined): boolean {
   return status === "trial" || status === "active";

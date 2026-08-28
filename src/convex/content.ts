@@ -335,6 +335,18 @@ export const getReaderContent = query({
         q.eq("userId", userId).eq("contentId", contentId),
       )
       .first();
+    // If this item is a past_exam with an answer-key link, prefetch the
+    // answer-key row so the Reader's Exam Mode can offer a "view answer key"
+    // button after submit. Returns only public fields — no file URL gating
+    // is done here (the student must still pass through getDownloadUrl when
+    // they actually open the answer key, if it's premium).
+    let answerKey: { _id: Id<"contentItems">; title: string; isPremium: boolean } | null = null;
+    if (item.answerKeyContentId) {
+      const ak = await ctx.db.get(item.answerKeyContentId);
+      if (ak) {
+        answerKey = { _id: ak._id, title: ak.title, isPremium: ak.isPremium };
+      }
+    }
     return {
       item: {
         ...item,
@@ -344,6 +356,7 @@ export const getReaderContent = query({
       },
       topics,
       bookmarked: Boolean(bookmark),
+      answerKey,
     };
   },
 });

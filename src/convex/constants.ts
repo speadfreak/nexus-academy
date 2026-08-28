@@ -77,6 +77,9 @@ export const XP_VALUES = {
   streak_day: 10,
   plan_week_complete: 30,
   daily_challenge: 10,
+  mock_exam_complete_base: 50, // completed a full mock exam sitting
+  mock_exam_per_correct: 2, // +2 per correct answer across all sections
+  exam_mode_session: 20, // completed a timed past-exam PDF session in the Reader
 } as const;
 
 // Level curve: level n requires 50 * (n-1)^2 total XP.
@@ -96,6 +99,8 @@ export const XP_REASON_LABELS: Record<string, string> = {
   focus_session: "Focus session",
   plan_week_complete: "Plan week completed",
   daily_challenge: "Daily challenge",
+  mock_exam_complete: "Mock exam completed",
+  exam_mode_session: "Exam-mode session",
 };
 
 // The three stream-specific subjects per track (used by the

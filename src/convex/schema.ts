@@ -79,6 +79,11 @@ const schema = defineSchema(
       grade: v.number(), // 9-12
       subjectId: v.id("subjects"),
       examYear: v.optional(v.number()), // only populated when contentType = "past_exam"
+      // Optional link from a past_exam item to its answer-key PDF (another
+      // contentItems row). Set by the admin when uploading/curating the
+      // library. Surfaced in the Reader's Exam Mode for self-grading after
+      // the timer expires or the student submits.
+      answerKeyContentId: v.optional(v.id("contentItems")),
       fileUrl: v.string(),
       fileSizeBytes: v.optional(v.number()),
       pageCount: v.optional(v.number()),
@@ -92,7 +97,8 @@ const schema = defineSchema(
       .index("by_grade", ["grade"])
       .index("by_contentType", ["contentType"])
       .index("by_subject_grade", ["subjectId", "grade"])
-      .index("by_createdAt", ["createdAt"]),
+      .index("by_createdAt", ["createdAt"])
+      .index("by_answerKey", ["answerKeyContentId"]),
 
     // Topics per subject/grade — built now for the future AI topic-correlation
     // feature so we don't need a migration later.
@@ -670,6 +676,77 @@ const schema = defineSchema(
       createdAt: v.number(),
       claimed: v.boolean(),  // true after the email signs up and role is applied
     }).index("by_email", ["email"]),
+
+    // ------------------------------------------------------------------
+    // National exam simulation — full mock exams + per-section answer state
+    // ------------------------------------------------------------------
+    //
+    // A mock exam is a full simulated EHEEE sitting: 6 sections (English,
+    // Mathematics, Aptitude/SAT + the 3 stream-specific subjects), each with
+    // ~50 (40 for Aptitude) ORIGINAL AI-generated multiple-choice questions
+    // grounded in the curriculum topics already in the topics table. The
+    // structure mirrors the real exam — ~340 questions, ~5 hours total — but
+    // every question is freshly written by the model, never extracted from a
+    // real past paper.
+    //
+    // One mockExam = one full sitting. Sections are stored as separate rows
+    // so the student's per-section answer state can be saved independently
+    // (an interrupted session isn't fully lost) and scored server-side.
+
+    mockExams: defineTable({
+      userId: v.id("users"),
+      stream: streamValidator, // "natural" | "social" (compulsory subjects use the stream's natural/social tag for consistency)
+      status: v.union(
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("abandoned"),
+      ),
+      startedAt: v.number(),
+      completedAt: v.optional(v.number()),
+      // Aggregate score 0–100 across all completed sections, computed
+      // server-side by completeMockExam once all sections are done. Null
+      // while in_progress.
+      totalScore: v.optional(v.number()),
+      // JSON string — per-subject breakdown, e.g.
+      //   [{ subjectId, subjectName, score, totalQuestions, correctCount, timeSpentSeconds }]
+      sectionResults: v.optional(v.string()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_startedAt", ["userId", "startedAt"])
+      .index("by_user_status", ["userId", "status"]),
+
+    // Per-section row. questionsJson stores the AI-generated question set
+    // (same shape as quizzes: { question, options[4], correctIndex, explanation }[]).
+    // answers is the student's selected option indices, filled as they go
+    // (length matches questions, -1 for unanswered). score is computed
+    // server-side by completeSection — never trusted from the client.
+    mockExamSections: defineTable({
+      mockExamId: v.id("mockExams"),
+      subjectId: v.id("subjects"),
+      // Section ordering within the exam: 0 = first section, 5 = last.
+      sectionIndex: v.number(),
+      questionsJson: v.string(),
+      // Selected option index per question, -1 for unanswered. Updated by
+      // submitSectionAnswers as the student progresses.
+      answers: v.array(v.number()),
+      // Per-question flag-for-review state (true = flagged). Same length as
+      // questions; default false. Lets the student revisit flagged questions
+      // before submitting, like real CBT exams.
+      flagged: v.array(v.boolean()),
+      timeAllottedSeconds: v.number(),
+      timeSpentSeconds: v.number(), // updated on each save and on completion
+      score: v.optional(v.number()), // 0..100, server-computed on completion
+      correctCount: v.optional(v.number()),
+      totalQuestions: v.optional(v.number()),
+      status: v.union(
+        v.literal("in_progress"),
+        v.literal("completed"),
+      ),
+      completedAt: v.optional(v.number()),
+    })
+      .index("by_mockExam", ["mockExamId"])
+      .index("by_mockExam_sectionIndex", ["mockExamId", "sectionIndex"])
+      .index("by_mockExam_status", ["mockExamId", "status"]),
   },
 );
 

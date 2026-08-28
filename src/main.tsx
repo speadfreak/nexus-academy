@@ -94,6 +94,7 @@ const Settings = lazy(() => import("./pages/Settings.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
+const MockExam = lazy(() => import("./pages/MockExam.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -634,6 +635,14 @@ if (rootEl) {
                             element={
                               <RequireAuth>
                                 <Reader />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/mock-exam"
+                            element={
+                              <RequireAuth>
+                                <MockExam />
                               </RequireAuth>
                             }
                           />

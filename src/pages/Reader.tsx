@@ -52,6 +52,7 @@ import {
 } from "@/convex/constants";
 import type { ContentItemWithSubject } from "@/convex/content";
 import { cn } from "@/lib/utils";
+import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
 
 // ─── PDF Worker Fix ─────────────────────────────────────────────────────
 // react-pdf bundles its own pdfjs-dist (v5.4.296). The relative path
@@ -271,6 +272,13 @@ export default function Reader() {
   // --- Panel -------------------------------------------------------------
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelTab, setPanelTab] = useState<PanelTab>("companion");
+
+  // --- Exam Mode (Feature 1) --------------------------------------------
+  // Only relevant when item.contentType === "past_exam". When active, hides
+  // the sidebar/nav and shows a fullscreen focused timed view over the
+  // same PDF. See src/components/reader/ReaderExamMode.tsx for the overlay.
+  const [examMode, setExamMode] = useState(false);
+  const answerKey: AnswerKeyInfo | null = reader?.answerKey ?? null;
 
   // --- AI companion ------------------------------------------------------
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -531,6 +539,18 @@ export default function Reader() {
               aria-label="Make flashcards"
             >
               <FileText className="size-4" />
+            </Button>
+          )}
+          {item.contentType === "past_exam" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setExamMode(true)}
+              aria-label="Enter exam mode"
+              title="Exam mode — timed, no pausing"
+              className="size-9 rounded-xl text-amber-300 hover:bg-amber-400/10 hover:text-amber-200 transition-all duration-200"
+            >
+              <Maximize2 className="size-4" />
             </Button>
           )}
           <div className="mx-1 h-5 w-px bg-white/10" />
@@ -1309,6 +1329,21 @@ export default function Reader() {
             </div>
           </div>
         </footer>
+      )}
+
+      {/* ══════ Exam Mode overlay (Feature 1) ══════ */}
+      {examMode && item && (
+        <ReaderExamMode
+          pdfData={pdfData}
+          pdfUrl={pdfUrl}
+          numPages={numPages ?? 0}
+          contentId={item._id}
+          subjectId={item.subjectId}
+          contentTitle={item.title}
+          subjectName={item.subjectName}
+          answerKey={answerKey}
+          onClose={() => setExamMode(false)}
+        />
       )}
     </div>
   );
