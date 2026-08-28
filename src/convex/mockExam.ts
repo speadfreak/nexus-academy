@@ -451,6 +451,68 @@ export const getMockExamForOwner = internalQuery({
 });
 
 // ---------------------------------------------------------------------------
+// getLatestMockExamSummary — used by the AI tutor (ai.ts buildSystemPrompt)
+// to ground its advice in the student's most recent exam performance. Returns
+// null if the student has never completed a mock exam, so the tutor skips the
+// context block cleanly.
+//
+// Returns: { latestCompletedAt, latestScore, latestStream, weakestSubjectName,
+//            weakestSubjectScore, totalAttempts } | null
+// ---------------------------------------------------------------------------
+
+export const getLatestMockExamSummary = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }): Promise<{
+    latestCompletedAt: number;
+    latestScore: number;
+    latestStream: string;
+    weakestSubjectName: string;
+    weakestSubjectScore: number;
+    totalAttempts: number;
+  } | null> => {
+    // Fetch the user's completed mock exams, most recent first.
+    const exams = await ctx.db
+      .query("mockExams")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", userId).eq("status", "completed"),
+      )
+      .collect();
+    if (exams.length === 0) return null;
+    // Sort by completedAt desc — by_user_status isn't ordered by date.
+    exams.sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+    const latest = exams[0];
+    if (!latest || latest.totalScore === undefined) return null;
+
+    // Parse the sectionResults JSON to find the weakest subject.
+    let weakestSubjectName = "Unknown";
+    let weakestSubjectScore = 100;
+    try {
+      const results = JSON.parse(latest.sectionResults ?? "[]") as {
+        subjectName: string;
+        score: number;
+      }[];
+      for (const r of results) {
+        if (typeof r.score === "number" && r.score < weakestSubjectScore) {
+          weakestSubjectScore = r.score;
+          weakestSubjectName = r.subjectName;
+        }
+      }
+    } catch {
+      // ignore — keep defaults
+    }
+
+    return {
+      latestCompletedAt: latest.completedAt ?? latest.startedAt,
+      latestScore: latest.totalScore,
+      latestStream: latest.stream,
+      weakestSubjectName,
+      weakestSubjectScore,
+      totalAttempts: exams.length,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Mark abandoned (called when all sections fail)
 // ---------------------------------------------------------------------------
 

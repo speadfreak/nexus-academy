@@ -182,6 +182,13 @@ const COMPANION = [
       "Rain, deep focus or breeze — a persistent ambient player tuned for concentration. Never autoplays; always your call.",
     tag: "vibe",
   },
+  {
+    icon: GraduationCap,
+    title: "Full mock exams under real conditions",
+    description:
+      "AI generates ~340 original questions across all 6 EHEEE subjects — 50 min per section, no pausing, auto-graded per subject with progress tracking across attempts.",
+    tag: "mock-exam",
+  },
 ];
 
 const STEPS = [
@@ -525,6 +532,9 @@ export default function Landing() {
           ))}
         </motion.div>
       </section>
+
+      {/* ------- Mock Exam flagship showcase ------- */}
+      <MockExamShowcase libraryHref={libraryHref} isAuthenticated={isAuthenticated} />
 
       {/* ------- Founder note ------- */}
       <section className="mx-auto max-w-6xl px-4 py-16">
@@ -1127,6 +1137,326 @@ function BackToTop() {
     </motion.button>
   );
 }
+
+// ─── Mock Exam flagship showcase ───────────────────────────────────────
+// A dedicated cinematic section that puts the AI mock exam front-and-center
+// as the platform's flagship premium feature. Distinct visual treatment
+// from the regular companion grid — a "exam room" aesthetic that mirrors
+// what the student will actually see when they take a mock exam: a calm,
+// focused, slightly clinical tone (vs the warm library feel everywhere
+// else). Includes a mock exam-room preview card so the visitor can SEE
+// what the experience looks like before they sign up.
+function MockExamShowcase({
+  libraryHref,
+  isAuthenticated,
+}: {
+  libraryHref: string;
+  isAuthenticated: boolean;
+}) {
+  // The mock-exam-room preview — a static, animated representation of the
+  // actual exam-taking UI. Lets visitors SEE the timer, the section
+  // navigator, and the question card before they sign up. Builds desire
+  // by showing the experience, not just describing it.
+  const examHref = isAuthenticated ? "/mock-exam" : "/auth?returnTo=%2Fmock-exam";
+
+  return (
+    <section id="mock-exam" className="relative mx-auto max-w-6xl scroll-mt-24 px-4 py-24">
+      {/* Background layers — calmer than the rest of the page to evoke
+          exam-room focus. Subtle grid + a single amber orb (the timer
+          glow) instead of the dual-orb pattern used elsewhere. */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2.5rem]">
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgb(255 255 255 / 0.5) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.5) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+            maskImage:
+              "radial-gradient(ellipse at center, black 40%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse at center, black 40%, transparent 80%)",
+          }}
+        />
+        <div className="pointer-events-none absolute left-1/2 top-1/3 size-96 -translate-x-1/2 rounded-full bg-amber-400/15 blur-[120px]" />
+      </div>
+
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: "-100px" }}
+        className="relative"
+      >
+        {/* Eyebrow + heading */}
+        <div className="mx-auto max-w-3xl text-center">
+          <motion.div
+            variants={fadeUp}
+            className="inline-flex items-center gap-2 rounded-full glass-chip px-3 py-1"
+          >
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-60" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-amber-400" />
+            </span>
+            <p className="type-mono uppercase tracking-[0.22em] text-amber-300 font-semibold">
+              // flagship · ai mock exam
+            </p>
+          </motion.div>
+          <motion.h2 variants={fadeUp} className="type-h1 mt-5">
+            Sit the real exam.{" "}
+            <span className="text-gradient">Before you sit it.</span>
+          </motion.h2>
+          <motion.p
+            variants={fadeUp}
+            className="mx-auto mt-4 max-w-2xl text-muted-foreground"
+          >
+            Our AI writes <span className="font-semibold text-foreground">~340 original questions</span>{" "}
+            across all 6 EHEEE subjects — English, Mathematics, Aptitude, and your three
+            stream subjects. Real timing. Real conditions. Real scoring. Then it grades you
+            per subject so you know exactly where you stand.
+          </motion.p>
+        </div>
+
+        {/* Two-column: stats + exam-room preview */}
+        <div className="mt-12 grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+          {/* Left: format stats */}
+          <motion.div variants={fadeUp} className="flex flex-col gap-3">
+            <ExamStatRow
+              icon={<GraduationCap className="size-4 text-amber-300" />}
+              label="Sections"
+              value="6"
+              hint="English · Math · Aptitude · 3 stream subjects"
+            />
+            <ExamStatRow
+              icon={<FileText className="size-4 text-amber-300" />}
+              label="Questions"
+              value="~340"
+              hint="50 per section · 40 for Aptitude"
+            />
+            <ExamStatRow
+              icon={<Timer className="size-4 text-amber-300" />}
+              label="Duration"
+              value="~5h"
+              hint="50 min per section · no pausing"
+            />
+            <ExamStatRow
+              icon={<TrendingUp className="size-4 text-amber-300" />}
+              label="Scoring"
+              value="Per subject"
+              hint="Server-side graded · progress tracked across attempts"
+            />
+          </motion.div>
+
+          {/* Right: exam-room preview card — a snapshot of the real
+              taking UI so visitors see what they'll get */}
+          <motion.div
+            variants={fadeUp}
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#0b0f17]/80 shadow-[0_40px_100px_-30px_rgba(0,0,0,0.8)] backdrop-blur-xl"
+          >
+            {/* Top exam-conditions bar */}
+            <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-white/5">
+                  <GraduationCap className="size-4 text-foreground/80" />
+                </div>
+                <div>
+                  <p className="truncate text-xs font-semibold text-foreground">
+                    Section 1 of 6 · English
+                  </p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    Mock exam · Natural stream
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 type-mono text-xs font-semibold tabular-nums text-foreground">
+                <Timer className="size-3.5" />
+                42:18
+              </div>
+            </div>
+
+            {/* Body — fake question + options */}
+            <div className="p-6">
+              <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                Question 14 of 50
+              </p>
+              <h3 className="mt-3 text-base font-semibold text-foreground">
+                Choose the word that correctly completes the sentence:
+                &ldquo;The scientist&apos;s _____ to the problem was praised
+                by her peers.&rdquo;
+              </h3>
+              <div className="mt-5 flex flex-col gap-2">
+                {[
+                  { letter: "A", text: "analysis", selected: false },
+                  { letter: "B", text: "analytical", selected: false },
+                  { letter: "C", text: "analytically", selected: true },
+                  { letter: "D", text: "analyst", selected: false },
+                ].map((opt) => (
+                  <div
+                    key={opt.letter}
+                    className={
+                      "flex items-center gap-3 rounded-xl border p-3 text-sm transition-all " +
+                      (opt.selected
+                        ? "border-amber-400/40 bg-amber-400/[0.08] text-foreground"
+                        : "border-white/10 bg-white/[0.02] text-foreground/80")
+                    }
+                  >
+                    <span
+                      className={
+                        "flex size-7 shrink-0 items-center justify-center rounded-full type-mono text-xs font-semibold " +
+                        (opt.selected
+                          ? "bg-amber-400 text-amber-950"
+                          : "bg-white/5 text-muted-foreground")
+                      }
+                    >
+                      {opt.letter}
+                    </span>
+                    {opt.text}
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer — question navigator preview */}
+              <div className="mt-5 flex items-center justify-between border-t border-white/[0.06] pt-4">
+                <div className="flex gap-1">
+                  {/* 8 dots — answered/flagged/current states */}
+                  {Array.from({ length: 8 }, (_, i) => {
+                    const answered = i < 5;
+                    const current = i === 5;
+                    return (
+                      <div
+                        key={i}
+                        className={
+                          "size-2.5 rounded-md transition-all " +
+                          (current
+                            ? "bg-amber-400"
+                            : answered
+                              ? "bg-emerald-400/40"
+                              : "bg-white/5")
+                        }
+                      />
+                    );
+                  })}
+                  <span className="type-mono text-[9px] text-muted-foreground">
+                    +42
+                  </span>
+                </div>
+                <span className="type-mono text-[10px] text-muted-foreground">
+                  14 / 50 answered
+                </span>
+              </div>
+            </div>
+
+            {/* Subtle glow line at the top */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
+          </motion.div>
+        </div>
+
+        {/* Why it matters — three short value props */}
+        <motion.div
+          variants={fadeUp}
+          className="mt-12 grid gap-4 sm:grid-cols-3"
+        >
+          <MockExamValueCard
+            icon={<Sparkles className="size-4 text-amber-300" />}
+            title="Original questions, every time"
+            body="The model writes fresh questions grounded in the real syllabus — never copied from a past paper. Take it 100 times, never see the same exam twice."
+          />
+          <MockExamValueCard
+            icon={<Timer className="size-4 text-amber-300" />}
+            title="No pausing. No lingering."
+            body="When a section's timer expires, it auto-submits and you advance to the next one. Mirrors real exam conditions so you build the pacing muscle."
+          />
+          <MockExamValueCard
+            icon={<TrendingUp className="size-4 text-amber-300" />}
+            title="Track readiness over time"
+            body="Every attempt is stored with a per-subject breakdown. See your Physics score climb from 58% to 74% across attempts — genuine, measurable progress."
+          />
+        </motion.div>
+
+        {/* CTA */}
+        <motion.div
+          variants={fadeUp}
+          className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
+        >
+          <Button asChild size="lg" className="cursor-pointer gap-2 rounded-xl bg-amber-500 text-amber-950 hover:bg-amber-400">
+            <Link to={examHref}>
+              <GraduationCap className="size-4" />
+              {isAuthenticated ? "Take a mock exam" : "Try the mock exam"}
+            </Link>
+          </Button>
+          <Button asChild size="lg" variant="outline" className="cursor-pointer rounded-xl bg-white/5">
+            <Link to={libraryHref}>
+              <FileText className="size-4" />
+              Browse the library
+            </Link>
+          </Button>
+        </motion.div>
+
+        {/* Premium hint */}
+        <motion.p
+          variants={fadeUp}
+          className="mt-6 text-center text-[11px] text-muted-foreground"
+        >
+          <Lock className="mr-1 inline size-3 text-primary" />
+          Mock exams are a premium feature — included in your free 14-day trial.
+        </motion.p>
+      </motion.div>
+    </section>
+  );
+}
+
+function ExamStatRow({
+  icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 transition-colors hover:border-amber-400/20 hover:bg-amber-400/[0.03]">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="type-mono text-base font-bold text-foreground">{value}</p>
+      </div>
+      <p className="hidden max-w-[40%] truncate text-[10px] text-muted-foreground sm:block">
+        {hint}
+      </p>
+    </div>
+  );
+}
+
+function MockExamValueCard({
+  icon,
+  title,
+  body,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="glass-soft group rounded-2xl border border-white/[0.06] p-5 transition-all hover:border-amber-400/20 hover:bg-amber-400/[0.04]">
+      <div className="flex items-center gap-2">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10">
+          {icon}
+        </div>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      </div>
+      <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
+        {body}
+      </p>
+    </div>
+  );
+}
+
 
 function FaqItem({
   index,

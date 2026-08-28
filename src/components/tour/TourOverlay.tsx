@@ -248,7 +248,7 @@ export function TourWelcomeCard({
             Let&apos;s take a look around
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            A quick tour of your study toolkit — 12 features, about a
+            A quick tour of your study toolkit — 13 features, about a
             minute.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">

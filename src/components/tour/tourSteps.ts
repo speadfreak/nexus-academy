@@ -87,6 +87,13 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     step: 12,
+    route: "/mock-exam",
+    title: "Mock Exams",
+    description: "Take a full AI-generated mock exam — 6 sections, ~340 original questions, real timing. Auto-graded per subject.",
+    icon: "🎓",
+  },
+  {
+    step: 13,
     route: "/settings",
     title: "Settings",
     description: "Customize your profile, theme, and subscription. You can replay this tour anytime from here.",

@@ -187,6 +187,13 @@ export default function Tutor() {
   const subjects = useQuery(api.subjects.getAll);
   const conversations = useQuery(api.ai.listConversations);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
+  // Mock exam history — used to show a "latest mock exam" callout in the
+  // empty state + a "review weaknesses" starter chip. The AI tutor's system
+  // prompt is also injected with this summary server-side (see ai.ts
+  // buildSystemPrompt), so the tutor's replies will reference the student's
+  // latest score + weakest subject without any client-side context being
+  // sent in the message.
+  const mockExamHistory = useQuery(api.mockExam.getMyMockExams, {});
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [capPromptOpen, setCapPromptOpen] = useState(false);
@@ -238,6 +245,26 @@ export default function Tutor() {
       ...(STARTERS[scopeSubject.stream] ?? []),
     ].slice(0, 4);
   }, [scopeSubject]);
+
+  // The student's latest completed mock exam — drives the callout card +
+  // the "review weaknesses" starter chip in the empty state.
+  const latestMock = useMemo(() => {
+    if (!mockExamHistory) return null;
+    const completed = mockExamHistory.filter(
+      (h) => h.status === "completed" && h.totalScore !== undefined,
+    );
+    if (completed.length === 0) return null;
+    // history is most-recent-first from the backend
+    return completed[0];
+  }, [mockExamHistory]);
+
+  // When a latest mock exam exists, surface a "review weaknesses" prompt
+  // as the FIRST starter chip — it's the highest-value next action.
+  const startersWithMock = useMemo(() => {
+    if (!latestMock) return starters;
+    const mockPrompt = `I scored ${latestMock.totalScore}% on my last mock exam — what should I focus on to improve?`;
+    return [mockPrompt, ...starters].slice(0, 4);
+  }, [starters, latestMock]);
 
   const threadRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -603,6 +630,51 @@ export default function Tutor() {
                     9–12, grounded in your stream&apos;s syllabus.
                   </p>
                 </motion.div>
+
+                {/* ── Latest mock exam callout ─────────────────────────────
+                    Shows when the student has at least one completed mock
+                    exam. Mirrors the amber "Discussing:" pill style used in
+                    the header. Clickable — opens the mock exam page so they
+                    can review the full breakdown or take another.
+                */}
+                {latestMock && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.5,
+                      delay: 0.1,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="w-full max-w-lg"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => navigate("/mock-exam")}
+                      className="group flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-3.5 text-left transition-all hover:border-amber-400/40 hover:bg-amber-400/[0.1]"
+                    >
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300">
+                        <GraduationCap className="size-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 type-mono text-[10px] uppercase tracking-[0.16em] text-amber-300">
+                          <Sparkles className="size-3" />
+                          Latest mock exam
+                        </p>
+                        <p className="mt-0.5 truncate text-sm font-semibold text-foreground">
+                          {latestMock.totalScore}% overall ·{" "}
+                          <span className="text-muted-foreground">
+                            tap to view breakdown
+                          </span>
+                        </p>
+                      </div>
+                      <div className="type-mono text-xs text-amber-300 opacity-60 transition-opacity group-hover:opacity-100">
+                        →
+                      </div>
+                    </button>
+                  </motion.div>
+                )}
+
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -613,7 +685,7 @@ export default function Tutor() {
                   }}
                   className="grid w-full max-w-lg gap-2.5"
                 >
-                  {starters.map((prompt, i) => (
+                  {startersWithMock.map((prompt, i) => (
                     <motion.button
                       key={prompt}
                       type="button"
@@ -626,9 +698,20 @@ export default function Tutor() {
                       }}
                       onClick={() => handleSend(prompt)}
                       disabled={isAwaiting}
-                      className="glass-soft cursor-pointer rounded-xl px-4 py-3.5 text-left text-[13px] leading-5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground hover:border-primary/10 disabled:opacity-50 interactive-press border border-transparent"
+                      className={cn(
+                        "cursor-pointer rounded-xl px-4 py-3.5 text-left text-[13px] leading-5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground hover:border-primary/10 disabled:opacity-50 interactive-press border border-transparent",
+                        // Highlight the mock-exam-review chip when present.
+                        i === 0 && latestMock
+                          ? "border-amber-400/20 bg-amber-400/[0.06] text-foreground hover:border-amber-400/40 hover:bg-amber-400/[0.1]"
+                          : "glass-soft",
+                      )}
                     >
-                      <span className="mr-2.5 font-mono text-[10px] text-amber-300">
+                      <span
+                        className={cn(
+                          "mr-2.5 font-mono text-[10px]",
+                          i === 0 && latestMock ? "text-amber-300" : "text-amber-300",
+                        )}
+                      >
                         $
                       </span>
                       {prompt}

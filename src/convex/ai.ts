@@ -244,6 +244,46 @@ async function buildSystemPrompt(
   }
   lines.push("");
 
+  // ── Latest mock exam performance ─────────────────────────────────────
+  // Grounds the tutor's advice in the student's most recent simulated
+  // EHEEE sitting. Lets the tutor proactively suggest reviewing weak
+  // subjects, taking another mock exam, or revisiting topics that
+  // dragged down their score. Skipped cleanly if they've never taken one.
+  try {
+    const latestMock = await ctx.runQuery(
+      internal.mockExam.getLatestMockExamSummary,
+      { userId },
+    );
+    if (latestMock) {
+      const daysAgo = Math.floor(
+        (Date.now() - latestMock.latestCompletedAt) / (24 * 60 * 60 * 1000),
+      );
+      const whenLabel =
+        daysAgo <= 0
+          ? "today"
+          : daysAgo === 1
+            ? "yesterday"
+            : `${daysAgo} days ago`;
+      lines.push(
+        `The student completed their most recent full mock exam ${whenLabel} (${latestMock.totalAttempts} attempt${latestMock.totalAttempts === 1 ? "" : "s"} total).`,
+        `Overall score: ${latestMock.latestScore}%. Weakest subject: ${latestMock.weakestSubjectName} at ${latestMock.weakestSubjectScore}%.`,
+        `When the student asks for what to study or how to prepare, prioritise ${latestMock.weakestSubjectName} — it's the biggest gap in their readiness.`,
+        `You can also suggest they take another mock exam at /mock-exam to track progress, especially if some time has passed since the last attempt.`,
+        "",
+      );
+    } else {
+      // Never taken one — nudge gently when the student asks about exam
+      // readiness or practice, but don't push on every turn.
+      lines.push(
+        "The student has not yet taken a mock exam on the platform. If they ask about exam readiness, past papers, or full-length practice, suggest they try a mock exam at /mock-exam — it generates ~340 original AI questions across all 6 EHEEE subjects and grades them per section.",
+        "",
+      );
+    }
+  } catch {
+    // Non-fatal: if the query fails for any reason, skip the mock-exam
+    // context block. The tutor still works without it.
+  }
+
   if (subjectId) {
     const subject = await ctx.runQuery(internal.ai.getSubjectById, { subjectId });
     if (subject) {
