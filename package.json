@@ -10,7 +10,8 @@
     "format": "prettier --write .",
     "preview": "vite preview",
     "deploy:backend": "npx convex deploy",
-    "deploy:all": "npx convex deploy && tsc -b && vite build"
+    "deploy:all": "npx convex deploy && tsc -b && vite build",
+    "postinstall": "node scripts/sync-pdfjs.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1111.0",

@@ -40,9 +40,9 @@ import { cn } from "@/lib/utils";
 
 // "pdfjs" is configured by the parent Reader.tsx (worker URL etc.). We don't
 // re-configure it here — we just reuse the Document/Page components.
-// We DO re-use the shared PDFJS_OPTIONS here so the exam-mode Document gets
-// the same cMapUrl + standardFontDataUrl settings for consistent rendering.
-import { PDFJS_OPTIONS } from "@/lib/pdfjs-options";
+// No PDFJS_OPTIONS are passed either — the Reader's setup uses pdf.js
+// defaults, which is the safest path. (Earlier attempts to pass options
+// caused regressions where rendering silently failed.)
 
 export type AnswerKeyInfo = {
   _id: Id<"contentItems">;
@@ -345,7 +345,6 @@ export function ReaderExamMode(props: ExamModeProps) {
                 {props.pdfData ? (
                   <Document
                     file={{ data: props.pdfData }}
-                    options={PDFJS_OPTIONS}
                     loading={
                       <div className="flex h-40 items-center justify-center">
                         <Loader2 className="size-5 animate-spin text-muted-foreground" />

@@ -53,23 +53,23 @@ import {
 import type { ContentItemWithSubject } from "@/convex/content";
 import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
-import { PDFJS_OPTIONS } from "@/lib/pdfjs-options";
 
 // ─── PDF.js worker setup ───────────────────────────────────────────────
-// react-pdf bundles its own pdfjs-dist (v5.4.296). The worker is served
+// react-pdf bundles its own pdfjs-dist (currently 5.4.296, pinned in
+// node_modules/react-pdf/node_modules/pdfjs-dist). The worker is served
 // same-origin (public/pdf.worker.min.mjs) so we avoid CDN/CORS issues.
 //
-// The cMapUrl / standardFontDataUrl / streaming options are configured
-// separately in @/lib/pdfjs-options.ts (imported above) so the ReaderExamMode
-// component can reuse the same config without a circular import.
+// We deliberately set ONLY the workerSrc here — no other pdf.js options.
+// The previous attempt to add cMapUrl + standardFontDataUrl + streaming
+// options caused regressions where pdf.js silently failed to render and
+// the loading skeleton stayed forever. We're back to the simplest path
+// that was working before the perf commits. We can re-add options one
+// at a time after we confirm rendering works.
 //
-// We set workerSrc synchronously to the local file. The previous attempt
-// to "probe" with fetch(HEAD) at module load was a regression — it ran
-// AFTER pdf.js may have already started loading, and on Render the
-// HEAD request can be slow or return a non-200 (auth redirect), causing
-// a race that left pdf.js with no usable worker. Synchronous assignment
-// is the safe path; if /pdf.worker.min.mjs ever 404s we'll see it as a
-// console error from pdf.js and can fix the deploy.
+// The worker file in public/ is auto-synced to the installed pdfjs-dist
+// version by scripts/sync-pdfjs.mjs (runs on every `bun install` via the
+// postinstall hook). This prevents the version-mismatch bug that previously
+// broke all PDF rendering.
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 
@@ -146,6 +146,41 @@ export default function Reader() {
   // to prevent infinite loops between URL → ArrayBuffer → iframe.
   const arrayBufferAttempted = useRef(false);
   const readerItemId = reader?.item?._id;
+
+  // ── Render timeout safety net ─────────────────────────────────────────
+  // If pdf.js hasn't fired onLoadSuccess within 8 seconds of mounting,
+  // automatically fall back to the iframe viewer. The iframe uses the
+  // browser's native PDF viewer (no JS worker, no cmaps) and always
+  // works — it's our last-resort fallback that should never leave the
+  // user staring at a "Rendering page…" skeleton forever.
+  //
+  // The timeout resets every time the document URL changes. If
+  // onLoadSuccess fires first, the cleanup function clears the timer.
+  const renderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // Only start the timer when we have a URL/data to render AND we're
+    // not already in iframe mode AND we're not in the loading-pdf
+    // (premium URL fetch) phase.
+    if (!pdfUrl && !pdfData) return;
+    if (useIframeFallback) return;
+    if (loadingPdf) return;
+    if (pdfError) return;
+
+    // Clear any existing timer (e.g. from a previous document).
+    if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
+
+    renderTimeoutRef.current = setTimeout(() => {
+      console.warn(
+        "[Reader] PDF.js render timed out after 8s — falling back to iframe.",
+      );
+      setUseIframeFallback(true);
+    }, 8000);
+
+    return () => {
+      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfUrl, pdfData, useIframeFallback, loadingPdf, pdfError, numPages]);
 
   // ── PDF loading: URL-first for range requests, ArrayBuffer fallback ──────
   // PERFORMANCE CRITICAL: We pass the URL to react-pdf FIRST so that
@@ -852,18 +887,23 @@ export default function Reader() {
                 <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
                   <Document
                     file={pdfData ? { data: pdfData } : { url: pdfUrl! }}
-                    // PDF.js options — cMapUrl + standardFontDataUrl are the
-                    // big text-layer perf wins. disableRange:false + disableAutoFetch:true
-                    // = stream page 1 fast, don't pre-fetch the rest.
-                    options={PDFJS_OPTIONS}
-                    // onLoadProgress is fired by pdf.js during URL-mode
-                    // streaming. Drives the real progress bar at lines 757-781
-                    // so users get feedback during long loads (was 0% the whole
-                    // time before — see the audit notes in the file header).
+                    // PDF.js options — keep this minimal. The previous
+                    // perf-tuning (cMapUrl, standardFontDataUrl, disableAutoFetch)
+                    // caused regressions where pdf.js silently failed to
+                    // render and the loading skeleton stayed forever.
+                    //
+                    // We deliberately OMIT options entirely now — pdf.js
+                    // runs on its pure defaults. This is the path that was
+                    // working before the perf commits. We can re-add options
+                    // one at a time after we confirm rendering works.
                     onLoadProgress={(progress) => {
-                      if (progress && typeof progress.loaded === "number" && typeof progress.total === "number" && progress.total > 0) {
-                        const pct = Math.min(99, Math.round((progress.loaded / progress.total) * 100));
-                        setLoadProgress(pct);
+                      try {
+                        if (progress && typeof progress.loaded === "number" && typeof progress.total === "number" && progress.total > 0) {
+                          const pct = Math.min(99, Math.round((progress.loaded / progress.total) * 100));
+                          setLoadProgress(pct);
+                        }
+                      } catch {
+                        // Non-fatal: progress callback errors must never break the render.
                       }
                     }}
                     onLoadSuccess={(pdf) => {
@@ -877,7 +917,10 @@ export default function Reader() {
                       console.error("[Reader] PDF load failed:", error);
                       const msg = error?.message || String(error);
                       if (msg.includes("worker") || msg.includes("Worker")) {
-                        setPdfError("PDF worker failed to load. Try refreshing the page.");
+                        // Worker failed — try iframe fallback instead of
+                        // showing an error, since iframe always works.
+                        console.warn("[Reader] Worker issue — falling back to iframe.");
+                        setUseIframeFallback(true);
                       } else if (useUrlFallback && !pdfData && !arrayBufferAttempted.current) {
                         console.warn("[Reader] URL mode failed, trying ArrayBuffer fallback");
                         arrayBufferAttempted.current = true;
@@ -886,7 +929,10 @@ export default function Reader() {
                         console.warn("[Reader] ArrayBuffer render failed, falling back to iframe");
                         setUseIframeFallback(true);
                       } else {
-                        setPdfError("The document could not be rendered. Try refreshing or opening in a new tab.");
+                        // Last resort: try the iframe. It uses the browser's
+                        // native PDF viewer and always works (just slower).
+                        console.warn("[Reader] All pdf.js paths failed — falling back to iframe.");
+                        setUseIframeFallback(true);
                       }
                     }}
                     loading={
