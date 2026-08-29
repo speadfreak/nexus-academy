@@ -30,6 +30,10 @@ import {
   Terminal,
   Timer,
   TrendingUp,
+  Send,
+  Users,
+  Bell,
+  MessageCircle,
 } from "lucide-react";
 import { useState, useEffect as useEff } from "react";
 import { Link, useNavigate } from "react-router";
@@ -1011,6 +1015,9 @@ export default function Landing() {
         </motion.div>
       </section>
 
+      {/* ------- Telegram Community ------- */}
+      <TelegramCommunitySection />
+
       {/* ------- CTA ------- */}
       <section className="mx-auto max-w-6xl px-4 pb-24">
         <motion.div
@@ -1097,6 +1104,27 @@ export default function Landing() {
               © {new Date().getFullYear()} Nexus Academy · EHEEE exam prep, grades 9–12
             </p>
             <div className="flex items-center gap-4">
+              {/* Telegram links — quick access from the footer */}
+              <a
+                href="https://t.me/NexusAcademyET"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
+                title="Nexus Academy Telegram channel"
+              >
+                <Send className="size-3" /> Channel
+              </a>
+              <span className="text-muted-foreground/30">·</span>
+              <a
+                href="https://t.me/NexusETCommunity"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
+                title="Nexus Community Telegram group"
+              >
+                <Users className="size-3" /> Community
+              </a>
+              <span className="text-muted-foreground/30">·</span>
               <span className="type-caption text-muted-foreground">TeleBirr</span>
               <span className="text-muted-foreground/30">·</span>
               <span className="type-caption text-muted-foreground">M-Pesa</span>
@@ -1112,6 +1140,310 @@ export default function Landing() {
       {/* ------- Back to top ------- */}
       <BackToTop />
     </div>
+  );
+}
+
+// ─── Telegram community section ──────────────────────────────────────
+// A cinematic "join our community" call-to-action linking to the Telegram
+// channel + community discussion group. Uses Telegram's signature blue
+// (#0088cc / #229ED9) as the accent — distinct from the app's amber theme
+// but still feels like part of the same dark, glassy design language.
+//
+// Two cards: the official channel (announcements, study tips, exam
+// updates) and the community group (discussion, Q&A, peer support).
+// Each card has a custom Telegram paper-plane SVG, a name, a
+// description, a "Join on Telegram" button, and a hover glow.
+//
+// Background: a deep blue gradient with animated floating paper-plane
+// SVGs drifting upward — creates a "messages flying" feel that's
+// unmistakably Telegram.
+
+function TelegramPaperPlane({ className }: { className?: string }) {
+  // Telegram's paper-plane logo as an inline SVG. Uses currentColor so
+  // it inherits the parent's text color — lets us style it via Tailwind.
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" />
+    </svg>
+  );
+}
+
+function TelegramCommunitySection() {
+  // Channel + community group links.
+  const channelUrl = "https://t.me/NexusAcademyET";
+  const communityUrl = "https://t.me/NexusETCommunity";
+  const channelName = "⟡ NEXUS ACADEMY | ET 🇪🇹";
+  const communityName = "⟡ NEXUS COMMUNITY 🇪🇹";
+
+  // Floating paper-plane animation: a few SVG planes drifting upward
+  // at different speeds. Pure CSS animation via Tailwind's animate-*
+  // utilities + inline style delays.
+  const floatingPlanes = [
+    { left: "8%", delay: "0s", duration: "18s", size: "size-6", opacity: "opacity-[0.06]" },
+    { left: "22%", delay: "3s", duration: "22s", size: "size-4", opacity: "opacity-[0.04]" },
+    { left: "45%", delay: "1.5s", duration: "16s", size: "size-7", opacity: "opacity-[0.08]" },
+    { left: "68%", delay: "5s", duration: "20s", size: "size-5", opacity: "opacity-[0.05]" },
+    { left: "85%", delay: "2s", duration: "24s", size: "size-6", opacity: "opacity-[0.06]" },
+    { left: "55%", delay: "7s", duration: "19s", size: "size-3", opacity: "opacity-[0.03]" },
+  ];
+
+  return (
+    <section className="relative mx-auto max-w-6xl px-4 py-24">
+      {/* Background: Telegram-blue gradient + floating paper planes */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2.5rem]">
+        {/* Deep blue gradient — distinct from the app's amber accent,
+            signalling "this is the Telegram section" */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(60rem 30rem at 50% 30%, oklch(0.45 0.12 230 / 0.12), transparent 70%)",
+          }}
+        />
+        {/* Grid overlay matching the rest of the app */}
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgb(255 255 255 / 0.5) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.5) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+            maskImage:
+              "radial-gradient(ellipse at center, black 40%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse at center, black 40%, transparent 80%)",
+          }}
+        />
+        {/* Floating paper planes drifting upward */}
+        {floatingPlanes.map((plane, i) => (
+          <div
+            key={i}
+            className={`absolute bottom-0 ${plane.size} ${plane.opacity}`}
+            style={{
+              left: plane.left,
+              animation: `telegram-float ${plane.duration} linear infinite`,
+              animationDelay: plane.delay,
+            }}
+          >
+            <TelegramPaperPlane className="size-full text-[#229ED9]" />
+          </div>
+        ))}
+      </div>
+
+      {/* Keyframe animation for floating planes — defined inline so it
+          doesn't need a separate CSS file. */}
+      <style>{`
+        @keyframes telegram-float {
+          0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+          10% { opacity: var(--plane-opacity, 0.06); }
+          90% { opacity: var(--plane-opacity, 0.06); }
+          100% { transform: translateY(-80vh) rotate(-15deg); opacity: 0; }
+        }
+      `}</style>
+
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: "-80px" }}
+        className="relative"
+      >
+        {/* Header */}
+        <div className="mx-auto max-w-2xl text-center">
+          <motion.div
+            variants={fadeUp}
+            className="inline-flex items-center gap-2 rounded-full glass-chip px-4 py-1.5"
+          >
+            {/* Telegram-blue pulsing dot */}
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#229ED9] opacity-60" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-[#229ED9]" />
+            </span>
+            <p className="type-mono uppercase tracking-[0.22em] text-[#229ED9] font-semibold">
+              // join the movement
+            </p>
+          </motion.div>
+          <motion.h2 variants={fadeUp} className="type-h1 mt-5">
+            Study together.{" "}
+            <span className="text-gradient">Rise together.</span>
+          </motion.h2>
+          <motion.p
+            variants={fadeUp}
+            className="mx-auto mt-4 max-w-xl text-muted-foreground"
+          >
+            Nexus Academy isn&apos;t just a library — it&apos;s a community of
+            Ethiopian students preparing for the same exam, at the same time,
+            with the same dream. Join our Telegram channel for study tips and
+            exam updates, and hop into the community group to ask questions,
+            share resources, and find study partners.
+          </motion.p>
+        </div>
+
+        {/* Two-card layout: channel + community group */}
+        <div className="mt-12 grid gap-5 sm:grid-cols-2">
+          {/* ── Channel card ───────────────────────────────────────── */}
+          <motion.div
+            variants={fadeUp}
+            whileHover={{ y: -4 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          >
+            <a
+              href={channelUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative block h-full overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.02] p-6 transition-all duration-300 hover:border-[#229ED9]/30 hover:bg-[#229ED9]/[0.03]"
+            >
+              {/* Top glow line — Telegram-blue on hover */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#229ED9]/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+              {/* Background glow blob */}
+              <div className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-[#229ED9]/[0.04] blur-3xl transition-opacity duration-500 group-hover:bg-[#229ED9]/[0.08]" />
+
+              {/* Icon + tag */}
+              <div className="relative flex items-center justify-between">
+                <div className="flex size-14 items-center justify-center rounded-2xl border border-[#229ED9]/20 bg-[#229ED9]/10 text-[#229ED9] shadow-[0_0_30px_-8px_rgba(34,158,217,0.5)] transition-all duration-300 group-hover:shadow-[0_0_40px_-6px_rgba(34,158,217,0.6)]">
+                  <TelegramPaperPlane className="size-7" />
+                </div>
+                <span className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  channel
+                </span>
+              </div>
+
+              {/* Name + description */}
+              <h3 className="mt-5 text-lg font-bold tracking-tight text-foreground">
+                {channelName}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Official announcements, study tips, exam-date reminders, and
+                new-resource alerts. Follow for the latest from Nexus Academy —
+                straight to your Telegram.
+              </p>
+
+              {/* Feature bullets */}
+              <div className="mt-4 flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Bell className="size-3.5 text-[#229ED9]" />
+                  Exam dates & deadline reminders
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Sparkles className="size-3.5 text-[#229ED9]" />
+                  New resource & feature alerts
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <FileText className="size-3.5 text-[#229ED9]" />
+                  Weekly study tips & strategies
+                </div>
+              </div>
+
+              {/* CTA button */}
+              <div className="mt-6">
+                <div className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#229ED9] px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 group-hover:bg-[#1A8CD4] group-hover:shadow-[0_8px_24px_-6px_rgba(34,158,217,0.5)]">
+                  <TelegramPaperPlane className="size-4" />
+                  Join channel
+                </div>
+              </div>
+
+              {/* URL hint */}
+              <p className="mt-3 type-mono text-[10px] text-muted-foreground/50">
+                t.me/NexusAcademyET
+              </p>
+            </a>
+          </motion.div>
+
+          {/* ── Community group card ──────────────────────────────── */}
+          <motion.div
+            variants={fadeUp}
+            whileHover={{ y: -4 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          >
+            <a
+              href={communityUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative block h-full overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.02] p-6 transition-all duration-300 hover:border-[#229ED9]/30 hover:bg-[#229ED9]/[0.03]"
+            >
+              {/* Top glow line */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#229ED9]/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+              {/* Background glow blob */}
+              <div className="pointer-events-none absolute -left-12 -top-12 size-40 rounded-full bg-[#229ED9]/[0.04] blur-3xl transition-opacity duration-500 group-hover:bg-[#229ED9]/[0.08]" />
+
+              {/* Icon + tag */}
+              <div className="relative flex items-center justify-between">
+                <div className="flex size-14 items-center justify-center rounded-2xl border border-[#229ED9]/20 bg-[#229ED9]/10 text-[#229ED9] shadow-[0_0_30px_-8px_rgba(34,158,217,0.5)] transition-all duration-300 group-hover:shadow-[0_0_40px_-6px_rgba(34,158,217,0.6)]">
+                  <Users className="size-7" />
+                </div>
+                <span className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  community
+                </span>
+              </div>
+
+              {/* Name + description */}
+              <h3 className="mt-5 text-lg font-bold tracking-tight text-foreground">
+                {communityName}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                A discussion group for Ethiopian students. Ask questions, share
+                study resources, find study partners, discuss difficult topics,
+                and support each other through exam season.
+              </p>
+
+              {/* Feature bullets */}
+              <div className="mt-4 flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <MessageCircle className="size-3.5 text-[#229ED9]" />
+                  Ask questions & get help
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Users className="size-3.5 text-[#229ED9]" />
+                  Find study partners
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Send className="size-3.5 text-[#229ED9]" />
+                  Share resources & tips
+                </div>
+              </div>
+
+              {/* CTA button */}
+              <div className="mt-6">
+                <div className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#229ED9] px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 group-hover:bg-[#1A8CD4] group-hover:shadow-[0_8px_24px_-6px_rgba(34,158,217,0.5)]">
+                  <Users className="size-4" />
+                  Join community
+                </div>
+              </div>
+
+              {/* URL hint */}
+              <p className="mt-3 type-mono text-[10px] text-muted-foreground/50">
+                t.me/NexusETCommunity
+              </p>
+            </a>
+          </motion.div>
+        </div>
+
+        {/* Bottom callout — "it's free, it's instant, it's your people" */}
+        <motion.div
+          variants={fadeUp}
+          className="mx-auto mt-8 flex max-w-lg items-center justify-center gap-6 text-center"
+        >
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Check className="size-3.5 text-[#229ED9]" />
+            Free forever
+          </div>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Check className="size-3.5 text-[#229ED9]" />
+            No sign-up needed
+          </div>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Check className="size-3.5 text-[#229ED9]" />
+            Your people
+          </div>
+        </motion.div>
+      </motion.div>
+    </section>
   );
 }
 
