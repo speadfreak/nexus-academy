@@ -31,6 +31,7 @@ import type * as groq from "../groq.js";
 import type * as groupChat from "../groupChat.js";
 import type * as http from "../http.js";
 import type * as journey from "../journey.js";
+import type * as manualPayments from "../manualPayments.js";
 import type * as media from "../media.js";
 import type * as mockExam from "../mockExam.js";
 import type * as notes from "../notes.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   groupChat: typeof groupChat;
   http: typeof http;
   journey: typeof journey;
+  manualPayments: typeof manualPayments;
   media: typeof media;
   mockExam: typeof mockExam;
   notes: typeof notes;

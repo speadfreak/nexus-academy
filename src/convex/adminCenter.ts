@@ -202,13 +202,20 @@ export const listUsers = query({
 /**
  * Manually grant / expire / cancel premium for a user (support cases).
  * Only admins can call this, and it only touches the subscription row.
+ *
+ * The optional `durationMs` arg lets callers grant a custom period
+ * (e.g. 30 days + 24 hours of goodwill bonus for an SLA-breached payment
+ * submission). When omitted, defaults to SUBSCRIPTION_MS (30 days). The
+ * stacking behavior is preserved: new days are added on top of any
+ * existing active period, never truncating it.
  */
 export const setUserPremium = mutation({
   args: {
     userId: v.id("users"),
     action: v.union(v.literal("activate"), v.literal("expire"), v.literal("cancel")),
+    durationMs: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, action }) => {
+  handler: async (ctx, { userId, action, durationMs }) => {
     await requireAdmin(ctx);
     const target = await ctx.db.get(userId);
     if (!target) {
@@ -225,9 +232,10 @@ export const setUserPremium = mutation({
 
     if (action === "activate") {
       const base = Math.max(Date.now(), sub.currentPeriodEnd ?? 0);
+      const period = durationMs ?? SUBSCRIPTION_MS;
       await ctx.db.patch(sub._id, {
         status: "active",
-        currentPeriodEnd: base + SUBSCRIPTION_MS,
+        currentPeriodEnd: base + period,
         planTier: "premium",
       });
     } else if (action === "expire") {

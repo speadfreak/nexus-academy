@@ -747,6 +747,67 @@ const schema = defineSchema(
       .index("by_mockExam", ["mockExamId"])
       .index("by_mockExam_sectionIndex", ["mockExamId", "sectionIndex"])
       .index("by_mockExam_status", ["mockExamId", "status"]),
+
+    // ------------------------------------------------------------------
+    // Manual payment system — TeleBirr personal transfers + admin review
+    // ------------------------------------------------------------------
+    //
+    // Students transfer ETB to a personal TeleBirr number, upload a screenshot
+    // + transaction reference, and submit. Admins review in a queue. On
+    // approval, premium is granted via the existing setUserPremium function.
+    //
+    // An automated SMS webhook (Priority 3) can also auto-approve by
+    // matching the transaction reference against an incoming TeleBirr SMS.
+
+    manualPaymentSubmissions: defineTable({
+      userId: v.id("users"),
+      // Snapshotted at submission time — never looked up live. A later
+      // price change doesn't retroactively affect pending submissions.
+      expectedAmount: v.number(),
+      currency: v.string(), // default "ETB"
+      method: v.union(
+        v.literal("telebirr_personal"),
+        v.literal("other"),
+      ),
+      transactionRef: v.string(),
+      proofStorageId: v.string(), // Convex storage ID of the screenshot
+      status: v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("rejected"),
+      ),
+      submittedAt: v.number(),
+      reviewedAt: v.optional(v.number()),
+      // Real userId for manual review, or a fixed system marker string
+      // (e.g. "system:sms-auto") for automated approval. The audit trail
+      // must be unambiguous about WHO approved.
+      reviewedBy: v.optional(v.string()),
+      rejectionReason: v.optional(v.string()),
+      slaBreached: v.boolean(), // set true by the SLA cron
+      goodwillBonusHoursApplied: v.optional(v.number()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_status", ["status"])
+      .index("by_status_submittedAt", ["status", "submittedAt"])
+      .index("by_transactionRef", ["transactionRef"]),
+
+    // Unmatched incoming SMS — when the SMS webhook receives a valid
+    // TeleBirr payment notification but no pending submission matches
+    // the transaction reference, we store it here for admin visibility.
+    // Admins can manually investigate and match it to a submission.
+    unmatchedIncomingPayments: defineTable({
+      rawSmsText: v.string(),
+      parsedSenderName: v.optional(v.string()),
+      parsedAccountHolder: v.optional(v.string()),
+      parsedAmount: v.optional(v.number()),
+      parsedTransactionRef: v.optional(v.string()),
+      parsedDate: v.optional(v.string()),
+      parsedTime: v.optional(v.string()),
+      receivedAt: v.number(),
+      matchedAt: v.optional(v.number()),
+    })
+      .index("by_receivedAt", ["receivedAt"])
+      .index("by_parsedTransactionRef", ["parsedTransactionRef"]),
   },
 );
 

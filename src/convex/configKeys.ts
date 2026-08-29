@@ -39,7 +39,32 @@ export const INTEGRATION_KEYS = [
   { key: "LIVEKIT_API_KEY", label: "LiveKit API Key", category: "video", description: "From LiveKit Cloud project settings" },
   { key: "LIVEKIT_API_SECRET", label: "LiveKit API Secret", category: "video", description: "From LiveKit Cloud project settings" },
   { key: "GITHUB_TOKEN", label: "GitHub Token", category: "integrations", description: "Personal access token with repo scope", helpUrl: "https://github.com/settings/tokens", helpLabel: "github.com/settings/tokens" },
+  // ── Manual payment system ──────────────────────────────────────────
+  { key: "PREMIUM_PRICE_ETB", label: "Premium Price (ETB)", category: "payments", description: "Price in ETB for a premium subscription period (30 days). Snapshotted into each submission at submission time — changing this doesn't affect pending submissions." },
+  { key: "SLA_HOURS", label: "Review SLA (hours)", category: "payments", description: "Hours within which an admin should review a payment submission. Overdue submissions trigger goodwill compensation. Default: 24." },
+  { key: "GOODWILL_BONUS_HOURS", label: "Goodwill Bonus (hours)", category: "payments", description: "Extra premium hours granted on top of the normal period when a submission's SLA is breached — an apology for the delay. Default: 24." },
+  { key: "MANUAL_PAYMENT_TELEBIRR_NUMBER", label: "TeleBirr Receiver Number", category: "payments", description: "The personal TeleBirr phone number students send their payment to. Shown on the /upgrade page." },
+  { key: "MANUAL_PAYMENT_TELEBIRR_NAME", label: "TeleBirr Account Holder Name", category: "payments", description: "Name shown on the receiving TeleBirr account (so students can verify they're sending to the right person)." },
+  { key: "SMS_WEBHOOK_SECRET", label: "SMS Webhook HMAC Secret", category: "payments", description: "Shared secret for HMAC-SHA-256 signature verification on the /webhooks/sms endpoint. Must match the secret configured in the SMS-to-URL-Forwarder Android app. Sensitive — never expose to the client." },
+  { key: "TELEGRAM_ADMIN_CHAT_ID", label: "Telegram Admin Chat ID", category: "comms", description: "Chat ID where payment-submission notifications are sent. Use @userinfobot to find your personal chat ID, or use a channel ID (starts with -100...)." },
 ] as const;
+
+/**
+ * Default values for config keys that have sensible defaults. When
+ * resolveConfigValue returns undefined (no DB row, no env var), the
+ * caller can fall back to these. This keeps the manual-payment system
+ * working out-of-the-box without requiring the admin to set every key
+ * before the first submission.
+ */
+export const CONFIG_DEFAULTS: Record<string, string> = {
+  PREMIUM_PRICE_ETB: "500",
+  SLA_HOURS: "24",
+  GOODWILL_BONUS_HOURS: "24",
+  MANUAL_PAYMENT_TELEBIRR_NUMBER: "",
+  MANUAL_PAYMENT_TELEBIRR_NAME: "",
+  SMS_WEBHOOK_SECRET: "",
+  TELEGRAM_ADMIN_CHAT_ID: "",
+};
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
   ai: { label: "AI Providers", icon: "brain" },

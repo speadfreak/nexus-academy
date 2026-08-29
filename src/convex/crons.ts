@@ -36,4 +36,15 @@ crons.hourly(
   internal.todos.notifyDueTodos,
 );
 
+// Hourly: SLA breach check for pending manual payment submissions.
+// Finds submissions older than SLA_HOURS (default 24h) that haven't been
+// flagged yet, marks slaBreached=true, notifies the student (warm tone),
+// and escalates to the admin via Telegram. NEVER auto-rejects — breach
+// means apologize and compensate, never deny.
+crons.hourly(
+  "check-sla-breach",
+  { minuteUTC: 15 },
+  internal.manualPayments.checkSlaBreach,
+);
+
 export default crons;
