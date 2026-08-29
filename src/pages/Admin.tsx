@@ -35,6 +35,7 @@ import {
   Timer,
   Trash2,
   TrendingUp,
+  Receipt,
   Trophy,
   UserRound,
   Users,
@@ -63,6 +64,7 @@ import { AdminAdminsSection } from "@/components/admin/AdminAdminsSection";
 import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
+import { PaymentReviewsSection } from "@/components/admin/PaymentReviewsSection";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -147,11 +149,12 @@ const ADMIN_TABS = [
   { id: "admins", label: "Admins", index: "04", icon: ShieldCheck },
   { id: "keys", label: "Keys", index: "05", icon: KeyRound },
   { id: "finance", label: "Finance", index: "06", icon: Wallet },
-  { id: "reports", label: "Reports", index: "07", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "08", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "09", icon: Send },
-  { id: "system", label: "System", index: "10", icon: Plug },
-  { id: "audit", label: "Audit Log", index: "11", icon: ScrollText },
+  { id: "payments", label: "Payment Reviews", index: "07", icon: Receipt },
+  { id: "reports", label: "Reports", index: "08", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "09", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "10", icon: Send },
+  { id: "system", label: "System", index: "11", icon: Plug },
+  { id: "audit", label: "Audit Log", index: "12", icon: ScrollText },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -159,7 +162,7 @@ type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const ADMIN_TAB_GROUPS = [
   { label: "OVERVIEW", ids: ["dashboard"] as const },
   { label: "CONTENT", ids: ["content"] as const },
-  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance"] as const },
+  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments"] as const },
   { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
 ] as const;
 
@@ -1776,6 +1779,11 @@ export default function Admin() {
                   </>
                 )}
               </div>
+            )}
+
+            {/* ══════ PAYMENT REVIEWS ══════ */}
+            {tab === "payments" && (
+              <PaymentReviewsSection />
             )}
 
             {/* ══════ REPORTS ══════ */}
