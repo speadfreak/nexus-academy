@@ -26,6 +26,12 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { isAdmin, hasMinRole } from "./admin";
 import { ROLES } from "./schema";
 import { CONFIG_DEFAULTS } from "./configKeys";
+import { parseTeleBirrSms as parseTeleBirrSmsImpl, type ParsedTeleBirrSms } from "./smsParser";
+
+// Re-export for backward compatibility — other modules that imported
+// parseTeleBirrSms from manualPayments.ts still work.
+export type { ParsedTeleBirrSms };
+export const parseTeleBirrSms = parseTeleBirrSmsImpl;
 
 // 30 days in ms — matches the default premium period in adminCenter.ts.
 const SUBSCRIPTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -616,153 +622,9 @@ export const rejectSubmission = mutation({
 //   - TRANSACTION_REF: alphanumeric ("DHA1O2T6RN", "DF48LMJJKW") — PRIMARY KEY.
 // ---------------------------------------------------------------------------
 
-export interface ParsedTeleBirrSms {
-  accountHolder: string;
-  senderName: string;
-  maskedPhone: string; // raw parenthesized block, e.g. "(2519****2511)"
-  amount: number; // parsed float, e.g. 1100.00
-  date: string; // raw string, e.g. "28/08/2026"
-  time: string; // raw string, e.g. "14:30:00"
-  transactionRef: string; // e.g. "DHA1O2T6RN"
-  balance: string; // raw string, e.g. "5,300.00"
-  dateImplausible: boolean; // true if month field > 12 (possible MM/DD/YYYY)
-}
-
-/**
- * Parse a TeleBirr received-payment SMS notification.
- * Returns null if the SMS doesn't match the expected format at all.
- * Returns a ParsedTeleBirrSms with all fields extracted if it matches.
- * Sets `dateImplausible` to true if the second date component (month in
- * DD/MM/YYYY) is > 12 (possible MM/DD/YYYY instead) — flagged for manual review.
- */
-export function parseTeleBirrSms(smsText: string): ParsedTeleBirrSms | null {
-  const text = smsText.trim();
-
-  // --- Fixed template phrases that MUST be present ---
-  // If any of these are missing, the SMS is NOT a TeleBirr received-payment
-  // notification — return null, don't attempt a partial parse.
-  const REQUIRED_PHRASES = [
-    "ተቀብለዋል፡፡", // "received"
-    "የሂሳብ እንቅስቃሴ ቁጥርዎ", // "account movement number"
-    "ቀሪ ሂሳብ", // "remaining balance"
-    "በቴሌብር ስለተገለገሉ", // "for using TeleBirr"
-    "ኢትዮ ቴሌኮም", // "Ethio Telecom"
-  ];
-  for (const phrase of REQUIRED_PHRASES) {
-    if (!text.includes(phrase)) return null;
-  }
-
-  // --- Line 1: ውድ [ACCOUNT_HOLDER_NAME] ---
-  // The account holder name is on the first line after "ውድ ".
-  const lines = text.split("\n").map((l) => l.trim());
-  let accountHolder = "";
-  for (const line of lines) {
-    if (line.startsWith("ውድ ")) {
-      accountHolder = line.slice("ውድ ".length).trim();
-      break;
-    }
-  }
-  if (!accountHolder) return null;
-
-  // --- Line 2: ከ [SENDER_NAME]([MASKED_PHONE]) [AMOUNT] ብር በ [DATE] [TIME] ተቀብለዋል፡፡ ---
-  // This line has the most complex structure. We use a regex that captures:
-  //   - sender name (everything between "ከ " and the "(" of the masked phone)
-  //   - masked phone (the parenthesized block, including the parens)
-  //   - amount (digits + commas + decimal)
-  //   - date (DD/MM/YYYY or MM/DD/YYYY)
-  //   - time (HH:MM:SS)
-  //
-  // The Amharic text around the fields:
-  //   ከ [SENDER]([PHONE]) [AMOUNT] ብር በ [DATE] [TIME] ተቀብለዋል፡፡
-  //
-  // We match from "ከ " up to " ተቀብልላል፡፡" or " ተቀብለዋል፡፡"
-  //
-  // Regex breakdown:
-  //   ከ\s+          — "ከ " prefix
-  //   (.+?)          — sender name (non-greedy)
-  //   \((.+?)\)      — masked phone in parens (non-greedy, captures inside parens)
-  //   \s+            — space
-  //   ([\d,]+\.\d{2}) — amount: digits+commas, 2 decimal places
-  //   \s+ብር\s+በ\s+  — " ብር በ "
-  //   (\d{2}/\d{2}/\d{4}) — date: DD/MM/YYYY
-  //   \s+
-  //   (\d{2}:\d{2}:\d{2}) — time: HH:MM:SS
-
-  const line2Regex =
-    /ከ\s+(.+?)\((.+?)\)\s+([\d,]+\.\d{2})\s+ብር\s+በ\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/;
-
-  let senderName = "";
-  let maskedPhone = "";
-  let amountStr = "";
-  let date = "";
-  let time = "";
-  let matchedLine2 = false;
-
-  for (const line of lines) {
-    const m = line.match(line2Regex);
-    if (m) {
-      senderName = m[1].trim();
-      maskedPhone = `(${m[2]})`;
-      amountStr = m[3];
-      date = m[4];
-      time = m[5];
-      matchedLine2 = true;
-      break;
-    }
-  }
-  if (!matchedLine2) return null;
-
-  // Parse amount: strip commas, convert to float.
-  const amount = parseFloat(amountStr.replace(/,/g, ""));
-  if (!Number.isFinite(amount)) return null;
-
-  // --- Line 3: የሂሳብ እንቅስቃሴ ቁጥርዎ [TRANSACTION_REF] ነዉ፡፡ ---
-  // Transaction ref is alphanumeric, between "ቁጥርዎ " and " ነዉ፡፡"
-  const txRefRegex = /ቁጥርዎ\s+([A-Za-z0-9]+)\s+ነዉ/;
-  let transactionRef = "";
-  let matchedTxRef = false;
-  for (const line of lines) {
-    const m = line.match(txRefRegex);
-    if (m) {
-      transactionRef = m[1];
-      matchedTxRef = true;
-      break;
-    }
-  }
-  if (!matchedTxRef || !transactionRef) return null;
-
-  // --- Line 4: አሁን ያለዎት ቀሪ ሂሳብ [BALANCE] ብር ነዉ፡፡ ---
-  // Balance is optional for matching — we capture it but don't require it.
-  const balanceRegex = /ቀሪ ሂሳብ\s+([\d,]+\.\d{2})\s+ብር/;
-  let balance = "";
-  for (const line of lines) {
-    const m = line.match(balanceRegex);
-    if (m) {
-      balance = m[1];
-      break;
-    }
-  }
-
-  // --- Date plausibility check ---
-  // In DD/MM/YYYY format, the SECOND field is the month (1-12).
-  // If the second field > 12, the date might actually be MM/DD/YYYY.
-  // Flag for manual review — don't silently trust it.
-  const dateParts = date.split("/");
-  const monthPart = parseInt(dateParts[1] ?? "0", 10);
-  const dateImplausible = monthPart > 12;
-
-  return {
-    accountHolder,
-    senderName,
-    maskedPhone,
-    amount,
-    date,
-    time,
-    transactionRef,
-    balance,
-    dateImplausible,
-  };
-}
+// parseTeleBirrSms + ParsedTeleBirrSms are now in ./smsParser.ts (pure
+// function, no Convex dependencies). They're re-exported above for backward
+// compatibility.
 
 // ---------------------------------------------------------------------------
 // findPendingByTxRef — internal query used by the SMS webhook to find a

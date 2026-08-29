@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import { auth } from "./auth";
 import * as telebirr from "./providers/telebirr";
 import * as mpesa from "./providers/mpesa";
+import { parseTeleBirrSms } from "./smsParser";
 
 const http = httpRouter();
 
@@ -11,7 +12,7 @@ auth.addHttpRoutes(http);
 
 // One-time seed endpoint for the subjects table. Idempotent (safe to call
 // multiple times): POST /seed-subjects
-//   curl -X POST <CONVEX_URL>/seed-subjects
+//   curl -X POST <CONVEX_URL>/http/seed-subjects
 http.route({
   path: "/seed-subjects",
   method: "POST",
@@ -25,15 +26,10 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
-// Payment webhooks — async confirmation from the providers.
-//
-// Both handlers verify server-to-server with the provider before settling
-// (never trust the callback payload alone), then settle idempotently via
-// confirmPaymentInternal. Any non-2xx response tells the provider to retry.
+// TeleBirr webhook (merchant API — not currently in use, kept for future)
+// POST <CONVEX_URL>/http/webhooks/telebirr
 // ---------------------------------------------------------------------------
 
-// TeleBirr POSTs a JSON notification to the configured notifyUrl. The body is
-// sometimes wrapped in a `data` envelope. Acknowledge with {"success": true}.
 http.route({
   path: "/webhooks/telebirr",
   method: "POST",
@@ -41,33 +37,27 @@ http.route({
     try {
       const raw = await request.text();
       const body = JSON.parse(raw) as Record<string, unknown>;
-      // Unwrap the documented data envelope if present.
       const data =
         body && typeof body.data === "object" && body.data !== null
           ? (body.data as Record<string, unknown>)
           : body;
       const merchOrderId =
-        (data.merch_order_id as string | undefined) ??
-        (data.merchOrderId as string | undefined) ??
-        (body.merch_order_id as string | undefined);
-
+        (data.merchOrderId as string) ??
+        (data.out_trade_no as string) ??
+        (body.out_trade_no as string);
       if (!merchOrderId) {
         return new Response(JSON.stringify({ success: false }), { status: 400 });
       }
-
       const payment = await ctx.runQuery(
         internal.paymentsDb.getPaymentByProviderTransactionId,
         { providerTransactionId: merchOrderId },
       );
       if (!payment) {
-        // Unknown order — acknowledge but don't settle.
         return new Response(JSON.stringify({ success: true }), { status: 200 });
       }
       if (payment.status === "completed") {
         return new Response(JSON.stringify({ success: true }), { status: 200 });
       }
-
-      // Confirm server-to-server with TeleBirr, then settle idempotently.
       const verified = await telebirr.verifyTransaction(merchOrderId);
       if (verified.status === "completed") {
         await ctx.runMutation(internal.paymentsDb.confirmPaymentInternal, {
@@ -77,14 +67,16 @@ http.route({
       }
       return new Response(JSON.stringify({ success: true }), { status: 200 });
     } catch {
-      // Return non-2xx so TeleBirr retries the notification.
       return new Response(JSON.stringify({ success: false }), { status: 500 });
     }
   }),
 });
 
-// M-Pesa STK push callback: { Body: { stkCallback: { CheckoutRequestID,
-// ResultCode, ResultDesc, CallbackMetadata } } }. ResultCode 0 = success.
+// ---------------------------------------------------------------------------
+// M-Pesa webhook (merchant API — not currently in use, kept for future)
+// POST <CONVEX_URL>/http/webhooks/mpesa
+// ---------------------------------------------------------------------------
+
 http.route({
   path: "/webhooks/mpesa",
   method: "POST",
@@ -92,7 +84,13 @@ http.route({
     try {
       const raw = await request.text();
       const body = JSON.parse(raw) as {
-        Body?: { stkCallback?: { CheckoutRequestID?: string; ResultCode?: number; ResultDesc?: string } };
+        Body?: {
+          stkCallback?: {
+            CheckoutRequestID?: string;
+            ResultCode?: number;
+            ResultDesc?: string;
+          };
+        };
       };
       const callback = body.Body?.stkCallback;
       const checkoutRequestId = callback?.CheckoutRequestID;
@@ -102,27 +100,26 @@ http.route({
           { status: 400 },
         );
       }
-
       const payment = await ctx.runQuery(
         internal.paymentsDb.getPaymentByProviderTransactionId,
         { providerTransactionId: checkoutRequestId },
       );
-      if (!payment) {
+      if (!payment || payment.status === "completed") {
         return new Response(
-          JSON.stringify({ ResultCode: 1, ResultDesc: "Unknown transaction" }),
-          { status: 400 },
+          JSON.stringify({ ResultCode: 0, ResultDesc: "Success" }),
+          { status: 200 },
         );
       }
-
-      if (callback?.ResultCode === 0 && payment.status !== "completed") {
-        // Cross-check with M-Pesa, then settle idempotently.
-        const verified = await mpesa.verifyTransaction(checkoutRequestId);
-        if (verified.status === "completed") {
-          await ctx.runMutation(internal.paymentsDb.confirmPaymentInternal, {
-            paymentId: payment._id,
-            providerTransactionId: checkoutRequestId,
-          });
-        }
+      if (callback.ResultCode === 0) {
+        await ctx.runMutation(internal.paymentsDb.confirmPaymentInternal, {
+          paymentId: payment._id,
+          providerTransactionId: checkoutRequestId,
+        });
+      } else {
+        await ctx.runMutation(internal.paymentsDb.setPaymentStatus, {
+          paymentId: payment._id,
+          status: "failed",
+        });
       }
       return new Response(
         JSON.stringify({ ResultCode: 0, ResultDesc: "Success" }),
@@ -142,34 +139,25 @@ http.route({
 // (tech.bogomolov.incomingsmsgateway on F-Droid). The admin has this app
 // installed on the phone that receives TeleBirr payment notifications.
 //
-// The app signs each request with HMAC-SHA-256 using a shared secret.
-// We recompute the signature server-side over the raw request body using
-// SMS_WEBHOOK_SECRET (from configKeys) and compare with a constant-time
-// comparison. Any missing/mismatched signature is rejected and logged
-// to systemEvents — this endpoint grants real monetary value, treat it
-// as a sensitive financial surface.
+// HMAC-SHA-256 VERIFICATION REQUIRED: the app signs each request with
+// HMAC-SHA-256 using a shared secret. We recompute the signature server-side
+// over the raw request body using SMS_WEBHOOK_SECRET (from configKeys) and
+// compare with a constant-time comparison.
 //
 // On a successfully parsed TeleBirr SMS with a matching transactionRef,
 // we auto-approve the pending submission. On no match, we store it as
 // an unmatched incoming payment for admin visibility.
 //
-// The SMS forwarder app sends a JSON body: { "from": "...", "text": "...", "timestamp": "..." }
-// and signs it with an HMAC-SHA-256 hex digest in the "X-Signature" header
-// (or sometimes "x-signature" — we check both, case-insensitive).
-//
 // Test with curl:
 //   SIGNATURE=$(echo -n '{"from":"+251911234567","text":"..."}' | openssl dgst -sha256 -hmac '<secret>' | sed 's/.*= //')
-//   curl -X POST -H "Content-Type: application/json" -H "X-Signature: $SIGNATURE" -d '{"from":"+251911234567","text":"..."}' <CONVEX_URL>/webhooks/sms
+//   curl -X POST -H "Content-Type: application/json" -H "X-Signature: $SIGNATURE" -d '{"from":"+251911234567","text":"..."}' <CONVEX_URL>/http/webhooks/sms
 // ---------------------------------------------------------------------------
-
-import { parseTeleBirrSms } from "./manualPayments";
 
 http.route({
   path: "/webhooks/sms",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      // Read the raw body ONCE — used for both HMAC verification and JSON parsing.
       const raw = await request.text();
 
       // --- HMAC-SHA-256 verification ---
@@ -184,7 +172,6 @@ http.route({
       );
 
       if (!secret) {
-        // Webhook secret not configured — log and reject.
         await ctx.runMutation(internal.systemEvents.logEvent, {
           eventType: "auth_event",
           source: "smsWebhook",
@@ -212,7 +199,6 @@ http.route({
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
 
-      // Constant-time-ish comparison.
       if (
         signatureHeader.length !== expected.length ||
         signatureHeader.toLowerCase() !== expected
@@ -252,12 +238,9 @@ http.route({
       const parsed = parseTeleBirrSms(body.text);
 
       if (!parsed) {
-        // SMS doesn't match the TeleBirr format — log as unparseable.
         await ctx.runMutation(
           internal.manualPayments.insertUnmatchedIncomingPayment,
-          {
-            rawSmsText: body.text,
-          },
+          { rawSmsText: body.text },
         );
         await ctx.runMutation(internal.systemEvents.logEvent, {
           eventType: "payment_event",
@@ -266,7 +249,6 @@ http.route({
           metadata: JSON.stringify({ result: "unparseable", from: body.from }),
           durationMs: 0,
         });
-        // Return 200 so the forwarder app doesn't retry.
         return new Response(
           JSON.stringify({ ok: true, result: "unparseable" }),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -280,16 +262,10 @@ http.route({
       );
 
       if (match) {
-        // --- EXACT MATCH: auto-approve ---
-        // Check amount consistency — the parsed SMS amount should match
-        // the expected amount on the submission (within 1 ETB tolerance
-        // for rounding differences in different display formats).
         const amountConsistent =
           Math.abs(parsed.amount - match.expectedAmount) <= 1;
 
         if (amountConsistent) {
-          // Auto-approve via the same approveFromSms mutation that
-          // grants premium + handles goodwill bonus.
           await ctx.runMutation(internal.manualPayments.approveFromSms, {
             submissionId: match._id,
           });
@@ -311,7 +287,6 @@ http.route({
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
         } else {
-          // Amount mismatch — store as unmatched for manual review.
           await ctx.runMutation(
             internal.manualPayments.insertUnmatchedIncomingPayment,
             {
@@ -342,7 +317,6 @@ http.route({
           );
         }
       } else {
-        // --- NO MATCH: store as unmatched for admin visibility ---
         await ctx.runMutation(
           internal.manualPayments.insertUnmatchedIncomingPayment,
           {
@@ -372,7 +346,7 @@ http.route({
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
-    } catch (e) {
+    } catch {
       return new Response(
         JSON.stringify({ ok: false, error: "internal" }),
         { status: 500, headers: { "Content-Type": "application/json" } },

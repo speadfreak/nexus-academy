@@ -52,6 +52,7 @@ import type * as roomsActions from "../roomsActions.js";
 import type * as safety from "../safety.js";
 import type * as sampleContent from "../sampleContent.js";
 import type * as scratchpads from "../scratchpads.js";
+import type * as smsParser from "../smsParser.js";
 import type * as studyGroups from "../studyGroups.js";
 import type * as studyPlans from "../studyPlans.js";
 import type * as studySessions from "../studySessions.js";
@@ -116,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   safety: typeof safety;
   sampleContent: typeof sampleContent;
   scratchpads: typeof scratchpads;
+  smsParser: typeof smsParser;
   studyGroups: typeof studyGroups;
   studyPlans: typeof studyPlans;
   studySessions: typeof studySessions;
