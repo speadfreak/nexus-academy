@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowUp,
   Bot,
+  CheckCircle2,
   FileText,
   MessageSquarePlus,
   Sparkles,
@@ -16,6 +17,7 @@ import {
   BrainCircuit,
   GraduationCap,
   MessageCircle,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -205,12 +207,21 @@ export default function Tutor() {
   const [sending, setSending] = useState<{ content: string } | null>(null);
   const [isAwaiting, setIsAwaiting] = useState(false);
 
+  // Follow-up suggestions + mini-check state
+  const [followUps, setFollowUps] = useState<string[]>([]);
+  const [miniCheck, setMiniCheck] = useState<{
+    question: string; options: string[]; correctIndex: number; explanation: string;
+  } | null>(null);
+  const [miniCheckAnswer, setMiniCheckAnswer] = useState<number | null>(null);
+  const [fetchingFollowUps, setFetchingFollowUps] = useState(false);
+
   const contentMeta = useQuery(
     api.content.getContentItemMeta,
     contentId ? { contentId: contentId as never } : "skip",
   );
 
   const sendMessage = useAction(api.ai.sendMessage);
+  const generateFollowUps = useAction(api.ai.generateFollowUps);
   const messages = useQuery(
     api.ai.getMessages,
     selectedId ? { conversationId: selectedId as never } : "skip",
@@ -286,6 +297,10 @@ export default function Tutor() {
     setInput("");
     setSending({ content });
     setIsAwaiting(true);
+    // Clear previous follow-ups when sending a new message
+    setFollowUps([]);
+    setMiniCheck(null);
+    setMiniCheckAnswer(null);
     try {
       const result = await sendMessage({
         conversationId: (selectedId || undefined) as never,
@@ -294,6 +309,21 @@ export default function Tutor() {
         contentId: (contentId || undefined) as never,
       });
       if (!selectedId) setSelectedId(result.conversationId as string);
+
+      // Fetch follow-up suggestions + mini-check (non-blocking, fire-and-forget)
+      setFetchingFollowUps(true);
+      try {
+        const fu = await generateFollowUps({
+          conversationId: result.conversationId as never,
+          subjectId: (scopeSubjectId || undefined) as never,
+        });
+        setFollowUps(fu.followUps ?? []);
+        setMiniCheck(fu.miniCheck ?? null);
+      } catch {
+        // Non-fatal — follow-ups are a nice-to-have, not critical
+      } finally {
+        setFetchingFollowUps(false);
+      }
     } catch (error) {
       if (errorCode(error) === "daily_limit_reached") {
         setCapPromptOpen(true);
@@ -359,7 +389,7 @@ export default function Tutor() {
             </span>
           </div>
 
-          <div className="mt-2 flex-1 space-y-1 overflow-y-auto pr-0.5">
+          <div className="mt-2 flex-1 space-y-1 overflow-y-auto pr-0.5" data-lenis-prevent-wheel>
             {conversations === undefined ? (
               <div className="flex justify-center py-6">
                 <motion.div
@@ -601,7 +631,8 @@ export default function Tutor() {
           {/* Thread */}
           <div
             ref={threadRef}
-            className=" data-lenis-prevent-wheelrelative z-10 min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5"
+            className="relative z-10 min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5"
+            data-lenis-prevent-wheel
           >
             {selectedId === null ? (
               <div className="flex h-full flex-col items-center justify-center gap-8">
@@ -763,6 +794,85 @@ export default function Tutor() {
             <AnimatePresence>
               {isAwaiting && <ThinkingIndicator />}
             </AnimatePresence>
+
+            {/* Follow-up suggestions + mini-check */}
+            {selectedId && !isAwaiting && !sending && (followUps.length > 0 || miniCheck) && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col gap-3 px-1"
+              >
+                {/* Follow-up question chips */}
+                {followUps.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {followUps.map((q, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleSend(q)}
+                        className="cursor-pointer rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-foreground interactive-press"
+                      >
+                        <span className="mr-1.5 font-mono text-[9px] text-primary/60">→</span>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Inline mini-check */}
+                {miniCheck && (
+                  <div className="rounded-2xl border border-primary/15 bg-primary/[0.03] p-3">
+                    {miniCheckAnswer === null ? (
+                      <>
+                        <p className="flex items-center gap-2 text-xs font-semibold text-primary">
+                          <Sparkles className="size-3.5" />
+                          Test yourself — quick check
+                        </p>
+                        <p className="mt-2 text-sm text-foreground/90">{miniCheck.question}</p>
+                        <div className="mt-3 flex flex-col gap-1.5">
+                          {miniCheck.options.map((opt, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setMiniCheckAnswer(idx)}
+                              className="cursor-pointer rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-left text-xs transition-colors hover:border-primary/30 hover:bg-primary/5"
+                            >
+                              <span className="mr-2 font-mono text-[10px] text-muted-foreground">
+                                {String.fromCharCode(65 + idx)}
+                              </span>
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className={cn(
+                        "rounded-xl border px-3 py-2.5",
+                        miniCheckAnswer === miniCheck.correctIndex
+                          ? "border-emerald-400/25 bg-emerald-400/5"
+                          : "border-rose-400/25 bg-rose-400/5",
+                      )}>
+                        <p className="flex items-center gap-2 text-xs font-bold">
+                          {miniCheckAnswer === miniCheck.correctIndex ? (
+                            <><CheckCircle2 className="size-4 text-emerald-300" /> Correct!</>
+                          ) : (
+                            <><XCircle className="size-4 text-rose-300" /> Not quite.</>
+                          )}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">{miniCheck.explanation}</p>
+                        <button
+                          type="button"
+                          onClick={() => { setMiniCheckAnswer(null); }}
+                          className="mt-2 cursor-pointer text-[10px] text-primary hover:underline"
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            )}
           </div>
 
           {/* Input */}

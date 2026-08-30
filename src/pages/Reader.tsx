@@ -8,6 +8,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { motion } from "framer-motion";
 import { evaluate } from "mathjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -327,9 +328,48 @@ export default function Reader() {
   const [asking, setAsking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
+  // Highlight-to-ask: when the student selects text in the PDF, we show
+  // a floating "Ask about this" button. Clicking it sends the highlighted
+  // text as context to the AI companion.
+  const [highlightedText, setHighlightedText] = useState<string | null>(null);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
+
+  // Listen for text selection on the entire document — the PDF text layer
+  // enables native browser selection. When the user selects text, we
+  // capture it and show the floating button.
+  useEffect(() => {
+    const handleSelection = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        setHighlightedText(null);
+        return;
+      }
+      const text = sel.toString().trim();
+      if (text.length < 5 || text.length > 2000) {
+        setHighlightedText(null);
+        return;
+      }
+      // Check if the selection is inside the PDF viewer area
+      const range = sel.getRangeAt(0);
+      const container = document.querySelector("[data-page='read']") ?? document.querySelector(".react-pdf__Page");
+      if (container && container.contains(range.commonAncestorContainer)) {
+        setHighlightedText(text);
+      } else {
+        // Also check if it's in the PDF Document container
+        const pdfContainer = document.querySelector(".react-pdf__Document");
+        if (pdfContainer && pdfContainer.contains(range.commonAncestorContainer)) {
+          setHighlightedText(text);
+        } else {
+          setHighlightedText(null);
+        }
+      }
+    };
+    document.addEventListener("selectionchange", handleSelection);
+    return () => document.removeEventListener("selectionchange", handleSelection);
+  }, []);
 
   const handleAsk = async () => {
     if (!contentId || !question.trim() || asking) return;
@@ -772,7 +812,7 @@ export default function Reader() {
               </div>
             ) : (
             /* ══ REACT-PDF MODE — inside max-w-fit for centered pages ══ */
-            <div className="relative mx-auto flex h-full min-h-full max-w-fit flex-col items-center gap-4 p-4 sm:p-8 overflow-y-auto">
+            <div className="relative mx-auto flex h-full min-h-full max-w-fit flex-col items-center gap-4 p-4 sm:p-8 overflow-y-auto" data-lenis-prevent-wheel>
               {/* Loading state */}
               {loadingPdf && !pdfUrl && (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-6">
@@ -1009,6 +1049,34 @@ export default function Reader() {
           </div>
         </main>
 
+        {/* Highlight-to-ask floating button — appears when the student
+            selects text in the PDF. Clicking it opens the companion
+            panel, prefills the question with "Explain: [highlighted
+            text]", and sends it with the highlightedText context. */}
+        {highlightedText && !examMode && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            type="button"
+            onClick={() => {
+              if (!panelOpen) setPanelOpen(true);
+              if (panelTab !== "companion") setPanelTab("companion");
+              const shortHighlight = highlightedText.length > 100
+                ? highlightedText.slice(0, 100) + "…"
+                : highlightedText;
+              setQuestion(`Explain this passage:\n"${shortHighlight}"`);
+              setHighlightedText(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+            className="fixed bottom-24 right-8 z-[60] flex items-center gap-2 rounded-full border border-primary/30 bg-primary/15 px-4 py-2.5 text-sm font-medium text-primary shadow-lg backdrop-blur-md transition-all hover:bg-primary/25 interactive-press"
+            title="Ask the AI companion about the selected text"
+          >
+            <Sparkles className="size-4" />
+            Ask about this
+          </motion.button>
+        )}
+
         {/* ═══ SIDE PANEL ═══ */}
         {panelOpen && (
           <>
@@ -1071,11 +1139,11 @@ export default function Reader() {
               </div>
 
               {/* Tab content */}
-              <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel">
+              <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-lenis-prevent-wheel>
                 {/* ── AI Companion ── */}
                 {panelTab === "companion" && (
                   <div id="reader-panel-companion" className="flex h-full flex-col">
-                    <div className=" data-lenis-prevent-wheelflex-1 space-y-3 overflow-y-auto p-3">
+                    <div className="flex-1 space-y-3 overflow-y-auto p-3" data-lenis-prevent-wheel>
                       {/* Info card */}
                       <div className="relative overflow-hidden rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] to-transparent p-3.5">
                         <div className="absolute -top-6 -right-6 size-20 rounded-full bg-primary/5 blur-2xl" />
