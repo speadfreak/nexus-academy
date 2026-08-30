@@ -353,6 +353,38 @@ export const getPendingSubmissions = query({
 });
 
 // ---------------------------------------------------------------------------
+// getPendingCount — lightweight query returning just the pending count
+// and the most recent pending submission ID. Used by the real-time
+// notification poller on the admin Payment Reviews tab to detect new
+// submissions without re-fetching the full queue every 10 seconds.
+// ---------------------------------------------------------------------------
+
+export const getPendingCount = query({
+  args: {},
+  handler: async (ctx): Promise<{ count: number; latestId: string | null; latestSubmittedAt: number | null }> => {
+    await requireAdmin(ctx);
+    // Get the newest pending submission (for detecting new arrivals).
+    const pending = await ctx.db
+      .query("manualPaymentSubmissions")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .order("desc") // newest first
+      .take(1);
+    // Get the total count by collecting all pending and checking length.
+    // Convex doesn't have a .count() method, so we take 500 (safe upper bound)
+    // and use the array length. For 99% of cases this is < 10 items.
+    const allPending = await ctx.db
+      .query("manualPaymentSubmissions")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .take(500);
+    return {
+      count: allPending.length,
+      latestId: pending[0]?._id ?? null,
+      latestSubmittedAt: pending[0]?.submittedAt ?? null,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // getProofUrl — admin gets a URL to view the uploaded screenshot
 // ---------------------------------------------------------------------------
 
