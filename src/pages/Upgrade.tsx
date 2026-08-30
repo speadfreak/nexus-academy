@@ -255,6 +255,36 @@ function ManualPaymentSection({
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  // ── Discount code state ────────────────────────────────────────────
+  // Live-validate the discount code with a debounced query. The student
+  // sees the adjusted price immediately, and the validated code is sent
+  // along with submitPaymentProof — which calls redeemDiscountCode on the
+  // server to atomically increment the code's usedCount.
+  const [discountInput, setDiscountInput] = useState("");
+  const trimmedCode = discountInput.trim();
+  const validateQuery = useQuery(
+    api.marketing.validateDiscountCode,
+    trimmedCode ? { code: trimmedCode } : "skip",
+  );
+  const validatedDiscount =
+    validateQuery && "valid" in validateQuery && validateQuery.valid
+      ? {
+          code: trimmedCode.toUpperCase(),
+          adjustedAmount: validateQuery.adjustedAmount!,
+          discountType: validateQuery.discountType!,
+          value: validateQuery.value!,
+        }
+      : null;
+  const discountError =
+    validateQuery && "valid" in validateQuery && !validateQuery.valid && trimmedCode
+      ? validateQuery.reason ?? "Invalid code."
+      : null;
+  const validatingCode = validateQuery === undefined && trimmedCode.length > 0;
+
+  // The effective price — discounted if a valid code is applied.
+  const effectivePrice = validatedDiscount ? validatedDiscount.adjustedAmount : priceEtb;
+  const savedAmount = priceEtb - effectivePrice;
+
   // The latest pending submission (or the most recent one).
   const latestSubmission = submissions[0]; // submissions are desc by date
 
@@ -322,11 +352,13 @@ function ManualPaymentSection({
         transactionRef: transactionRef.trim(),
         proofStorageId: storageId,
         method: "telebirr_personal",
+        discountCode: validatedDiscount ? validatedDiscount.code : undefined,
       });
 
       toast.success("Payment proof submitted! An admin will review it shortly.");
       setFile(null);
       setTransactionRef("");
+      setDiscountInput("");
       setUploadProgress(0);
     } catch (error) {
       toast.error(errorMessage(error, "Could not submit your payment proof."));
@@ -373,11 +405,35 @@ function ManualPaymentSection({
               </div>
             </div>
             <div className="mt-4 flex items-baseline gap-1.5">
-              <span className="font-mono text-4xl font-extrabold tabular-nums text-gradient">
-                {priceEtb}
-              </span>
-              <span className="font-mono text-sm text-muted-foreground">ETB</span>
+              {validatedDiscount ? (
+                <>
+                  <span className="font-mono text-2xl font-bold tabular-nums text-muted-foreground line-through opacity-60">
+                    {priceEtb}
+                  </span>
+                  <span className="font-mono text-4xl font-extrabold tabular-nums text-gradient">
+                    {effectivePrice}
+                  </span>
+                  <span className="font-mono text-sm text-muted-foreground">ETB</span>
+                  <Badge className="ml-1.5 bg-emerald-400/15 text-emerald-300">
+                    {validatedDiscount.discountType === "percent"
+                      ? `−${validatedDiscount.value}%`
+                      : `−${validatedDiscount.value} ETB`}
+                  </Badge>
+                </>
+              ) : (
+                <>
+                  <span className="font-mono text-4xl font-extrabold tabular-nums text-gradient">
+                    {priceEtb}
+                  </span>
+                  <span className="font-mono text-sm text-muted-foreground">ETB</span>
+                </>
+              )}
             </div>
+            {validatedDiscount && savedAmount > 0 && (
+              <p className="mt-1.5 font-mono text-[11px] text-emerald-300">
+                You save {savedAmount} ETB with code {validatedDiscount.code}
+              </p>
+            )}
             <ul className="mt-4 space-y-1.5 text-xs text-muted-foreground">
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-premium" />
@@ -442,7 +498,7 @@ function ManualPaymentSection({
             {/* Numbered instructions */}
             <div className="mt-4 space-y-2.5">
               {[
-                { n: 1, text: `Send ${priceEtb} ETB to the TeleBirr number above.` },
+                { n: 1, text: `Send ${effectivePrice} ETB to the TeleBirr number above.${savedAmount > 0 ? ` (${priceEtb} ETB minus your ${savedAmount} ETB discount.)` : ""}` },
                 { n: 2, text: "Screenshot the confirmation SMS you receive." },
                 { n: 3, text: "Enter the transaction reference below (e.g. DHA1O2T6RN)." },
                 { n: 4, text: "Upload the screenshot and submit. An admin reviews it — usually within " + slaHours + " hours." },
@@ -457,6 +513,51 @@ function ManualPaymentSection({
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* Discount code input — live validation, shows adjusted amount */}
+        <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 sm:p-5">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
+            // discount code
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Got a promo or discount code from an admin or friend? Enter it here
+            to lower your payment amount.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Input
+                value={discountInput}
+                onChange={(e) => setDiscountInput(e.target.value.toUpperCase())}
+                placeholder="e.g. STUDY2026"
+                className="h-10 rounded-xl bg-white/5 font-mono text-sm tracking-wider"
+                disabled={submitting}
+                autoCapitalize="characters"
+              />
+              {validatingCode && (
+                <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+              )}
+            </div>
+            {discountInput.trim() && !validatingCode && (
+              <div className="flex items-center gap-2 font-mono text-xs">
+                {validatedDiscount ? (
+                  <>
+                    <CheckCircle2 className="size-4 text-emerald-300" />
+                    <span className="text-emerald-300">
+                      −{validatedDiscount.discountType === "percent"
+                        ? `${validatedDiscount.value}%`
+                        : `${validatedDiscount.value} ETB`}
+                    </span>
+                  </>
+                ) : discountError ? (
+                  <>
+                    <XCircle className="size-4 text-rose-300" />
+                    <span className="text-rose-300">{discountError}</span>
+                  </>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
 

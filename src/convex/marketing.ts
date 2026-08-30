@@ -475,6 +475,26 @@ export const deactivateDiscountCode = mutation({
   },
 });
 
+// Toggle a discount code active/inactive (admin UI: pause / re-activate)
+export const toggleDiscountCode = mutation({
+  args: { codeId: v.id("discountCodes"), isActive: v.boolean() },
+  handler: async (ctx, { codeId, isActive }): Promise<{ ok: boolean }> => {
+    await requireAdmin(ctx);
+    await ctx.db.patch(codeId, { isActive });
+    return { ok: true };
+  },
+});
+
+// Delete a discount code permanently (admin "trash" action)
+export const deleteDiscountCode = mutation({
+  args: { codeId: v.id("discountCodes") },
+  handler: async (ctx, { codeId }): Promise<{ ok: boolean }> => {
+    await requireAdmin(ctx);
+    await ctx.db.delete(codeId);
+    return { ok: true };
+  },
+});
+
 // ===========================================================================
 // ANNOUNCEMENTS
 // ===========================================================================
@@ -527,6 +547,81 @@ export const deactivateAnnouncement = mutation({
     await requireAdmin(ctx);
     await ctx.db.patch(announcementId, { isActive: false });
     return { ok: true };
+  },
+});
+
+// Toggle an announcement active/inactive (pause / resume)
+export const toggleAnnouncement = mutation({
+  args: { announcementId: v.id("announcements"), isActive: v.boolean() },
+  handler: async (ctx, { announcementId, isActive }): Promise<{ ok: boolean }> => {
+    await requireAdmin(ctx);
+    await ctx.db.patch(announcementId, { isActive });
+    return { ok: true };
+  },
+});
+
+// Delete an announcement permanently
+export const deleteAnnouncement = mutation({
+  args: { announcementId: v.id("announcements") },
+  handler: async (ctx, { announcementId }): Promise<{ ok: boolean }> => {
+    await requireAdmin(ctx);
+    await ctx.db.delete(announcementId);
+    return { ok: true };
+  },
+});
+
+// Edit an existing announcement (title, body, type, expiry)
+export const updateAnnouncement = mutation({
+  args: {
+    announcementId: v.id("announcements"),
+    title: v.optional(v.string()),
+    body: v.optional(v.string()),
+    type: v.optional(
+      v.union(
+        v.literal("info"),
+        v.literal("feature"),
+        v.literal("event"),
+        v.literal("referral"),
+      ),
+    ),
+    expiresAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ ok: boolean }> => {
+    await requireAdmin(ctx);
+    const patch: Record<string, unknown> = {};
+    if (args.title !== undefined) patch.title = args.title.trim();
+    if (args.body !== undefined) patch.body = args.body.trim();
+    if (args.type !== undefined) patch.type = args.type;
+    if (args.expiresAt !== undefined) patch.expiresAt = args.expiresAt;
+    await ctx.db.patch(args.announcementId, patch);
+    return { ok: true };
+  },
+});
+
+// Get the current marketing config (admin only) — exposes the current
+// values of the referral/discount config keys so the Marketing tab can
+// render a populated form.
+export const getMarketingConfig = query({
+  args: {},
+  handler: async (ctx): Promise<{
+    referralEnabled: boolean;
+    referrerRewardDays: number;
+    refereeRewardDays: number;
+    premiumPriceEtb: number;
+  }> => {
+    await requireAdmin(ctx);
+    const [enabled, referrer, referee, price] = await Promise.all([
+      getConfigValue(ctx, "REFERRAL_PROGRAM_ENABLED"),
+      getConfigNumber(ctx, "REFERRER_REWARD_DAYS", 7),
+      getConfigNumber(ctx, "REFEREE_REWARD_DAYS", 3),
+      getConfigNumber(ctx, "PREMIUM_PRICE_ETB", 500),
+    ]);
+    return {
+      referralEnabled: enabled === "true",
+      referrerRewardDays: referrer,
+      refereeRewardDays: referee,
+      premiumPriceEtb: price,
+    };
   },
 });
 

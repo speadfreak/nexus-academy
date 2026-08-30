@@ -1455,11 +1455,29 @@ function TelegramCommunitySection() {
 // ─── Announcement banner ───────────────────────────────────────────────
 // Shows admin-controllable announcements (new features, events, referral
 // program highlights) at the very top of the landing page, above the hero.
-// Admins create these from the /admin Marketing tab.
+// Admins create these from the /admin Marketing tab. Cycles through ALL
+// active announcements with a cinematic auto-rotate — each announcement
+// gets its own color treatment based on type (info / feature / event / referral).
 function AnnouncementBanner() {
   const announcements = useQuery(api.marketing.getActiveAnnouncements, {});
+  const [index, setIndex] = useState(0);
+
+  // Reset index if announcements shrink
+  useEff(() => {
+    if (announcements && index >= announcements.length) setIndex(0);
+  }, [announcements, index]);
+
+  // Auto-rotate every 6s when more than one announcement is active
+  useEff(() => {
+    if (!announcements || announcements.length <= 1) return;
+    const t = setInterval(() => {
+      setIndex((i) => (i + 1) % announcements.length);
+    }, 6000);
+    return () => clearInterval(t);
+  }, [announcements]);
+
   if (!announcements || announcements.length === 0) return null;
-  const latest = announcements[0];
+
   const typeStyles: Record<string, string> = {
     info: "border-sky-400/30 bg-sky-400/[0.06] text-sky-300",
     feature: "border-amber-400/30 bg-amber-400/[0.06] text-amber-300",
@@ -1472,21 +1490,55 @@ function AnnouncementBanner() {
     event: "🎉",
     referral: "🤝",
   };
-  const style = typeStyles[latest.type] ?? typeStyles.info;
+  const typeLabels: Record<string, string> = {
+    info: "Info",
+    feature: "New feature",
+    event: "Event",
+    referral: "Affiliate",
+  };
+
+  const current = announcements[Math.min(index, announcements.length - 1)];
+  const style = typeStyles[current.type] ?? typeStyles.info;
+
   return (
     <div className="mx-auto max-w-6xl px-4 pt-4">
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-sm ${style}`}
-      >
-        <span className="text-lg">{typeIcons[latest.type] ?? "💡"}</span>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-foreground">{latest.title}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{latest.body}</p>
-        </div>
-      </motion.div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={current._id}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className={`flex items-center gap-3 rounded-2xl border p-3.5 text-sm ${style}`}
+        >
+          <span className="text-lg">{typeIcons[current.type] ?? "💡"}</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[9px] uppercase tracking-[0.18em] opacity-70">
+                {typeLabels[current.type] ?? "Info"}
+              </span>
+              <span className="opacity-30">·</span>
+              <p className="font-semibold text-foreground">{current.title}</p>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{current.body}</p>
+          </div>
+          {announcements.length > 1 && (
+            <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+              {announcements.map((a, i) => (
+                <button
+                  key={a._id}
+                  type="button"
+                  aria-label={`Show announcement ${i + 1}`}
+                  onClick={() => setIndex(i)}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    i === index ? "w-5 bg-current opacity-80" : "w-1.5 bg-current opacity-30 hover:opacity-50"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

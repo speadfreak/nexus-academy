@@ -34,7 +34,7 @@ import {
   UserX,
   Zap,
 } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -437,6 +437,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
   const profile = useQuery(api.profile.getProfile);
   const saveStream = useMutation(api.profile.updateProfile);
+  const recordReferral = useMutation(api.marketing.recordReferralSignup);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(
@@ -449,6 +450,42 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Referral capture ────────────────────────────────────────────────
+  // When the page is loaded with ?ref=CODE, persist the code in localStorage
+  // so it survives the redirect to email-OTP / Google OAuth and back. After
+  // the user is authenticated AND their profile is loaded, fire a one-shot
+  // call to recordReferralSignup — this creates the referral row (and the
+  // backend blocks self-referrals + duplicate attributions).
+  const referralCapturedRef = useRef(false);
+  useEffect(() => {
+    const refFromUrl = searchParams.get("ref");
+    if (refFromUrl) {
+      const clean = refFromUrl.trim().toLowerCase();
+      if (clean && !localStorage.getItem("nexus_ref_code")) {
+        localStorage.setItem("nexus_ref_code", clean);
+      }
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && profile !== undefined && !referralCapturedRef.current) {
+      const refCode = localStorage.getItem("nexus_ref_code");
+      if (refCode) {
+        referralCapturedRef.current = true; // one-shot — never retry
+        recordReferral({ referralCode: refCode })
+          .then(() => {
+            // Attribution recorded — clear the stored code so it can't be reused.
+            localStorage.removeItem("nexus_ref_code");
+          })
+          .catch(() => {
+            // Backend rejects silently for self-referrals / invalid codes / duplicates.
+            // Either way, we clear the stored code so we don't keep retrying.
+            localStorage.removeItem("nexus_ref_code");
+          });
+      }
+    }
+  }, [authLoading, isAuthenticated, profile, recordReferral]);
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
