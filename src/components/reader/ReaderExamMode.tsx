@@ -336,6 +336,7 @@ export function ReaderExamMode(props: ExamModeProps) {
 
             {/* PDF */}
             <div
+              data-lenis-prevent-wheel
               className={cn(
                 "relative flex-1 overflow-auto bg-[#0b0f17] py-6 pb-20",
                 phase === "submitted" && "pointer-events-none opacity-60",

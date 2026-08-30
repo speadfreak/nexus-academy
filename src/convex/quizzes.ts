@@ -60,16 +60,43 @@ export async function requestQuestions(
   count: number,
 ): Promise<string> {
   const systemPrompt =
-    "You write multiple-choice exam questions for the Ethiopian national exams " +
-    "(ESLCE), grades 9-12. Questions must be precise, exam-realistic, and match " +
-    "the official syllabus. Respond ONLY with valid JSON and nothing else.";
+    "You write multiple-choice exam questions for the Ethiopian Higher Education " +
+    "Entrance Examination (EHEEE/ESSLCE), grades 9-12. These are HIGH-STAKES " +
+    "national matric exams — questions must be at the ACTUAL difficulty level " +
+    "of the real exam, not simplified or elementary.\n\n" +
+    "DIFFICULTY REQUIREMENTS:\n" +
+    "- Target cognitive level: Application and Analysis (Bloom's taxonomy), NOT " +
+    "mere recall. A student who memorized the textbook should still have to THINK " +
+    "to answer correctly.\n" +
+    "- Distractors (wrong options) must be PLAUSIBLE — based on common student " +
+    "misconceptions, partial truths, or near-miss calculations. Avoid obviously " +
+    "wrong options that a guessing student could eliminate instantly.\n" +
+    "- NEVER use 'All of the above' or 'None of the above' — these are not used " +
+    "in the real EHEEE.\n" +
+    "- The explanation must explain WHY the correct answer is correct AND why " +
+    "the key distractors are wrong — but must NOT reveal which option letter " +
+    "is correct within the explanation text itself.\n" +
+    "- For Mathematics/Physics/Chemistry: include real numerical computations " +
+    "that require multi-step problem solving, not single-formula recall.\n" +
+    "- For Biology: test understanding of processes and relationships, not just " +
+    "definitions.\n" +
+    "- For English: test grammar in context, reading comprehension inference, " +
+    "and vocabulary in actual usage — not isolated definitions.\n" +
+    "- For Social Sciences (History/Geography/Economics): test cause-and-effect " +
+    "relationships, comparative analysis, and application of concepts to new " +
+    "scenarios — not simple date/name recall.\n\n" +
+    "Respond ONLY with valid JSON and nothing else.";
 
   const userMessage =
-    `Write exactly ${count} multiple-choice questions for ${subjectName} (${stream} stream). ` +
-    "Sequence them from easier to harder. Each question must have exactly 4 options " +
-    "with exactly one correct answer, plus a short explanation of why it's correct. " +
-    "Ground every question in the topics below; do not invent topics outside the list.\n" +
-    "Respond with a JSON array only, no markdown, in exactly this shape:\n" +
+    `Write exactly ${count} multiple-choice questions for ${subjectName} (${stream} stream) ` +
+    `at the DIFFICULTY LEVEL OF THE ACTUAL ETHIOPIAN NATIONAL EXAM (EHEEE) for grades 9-12. ` +
+    `These questions should be challenging enough that a student who only memorized ` +
+    `would struggle, but a student who deeply understands the concepts would answer correctly.\n\n` +
+    `Each question must have exactly 4 options with exactly one correct answer, plus ` +
+    `a concise explanation (2-3 sentences max) of why the correct answer is correct and ` +
+    `why the most tempting wrong answer is wrong.\n\n` +
+    `Ground every question in the topics below; do not invent topics outside the list.\n` +
+    `Respond with a JSON array only, no markdown, in exactly this shape:\n` +
     '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
     `Topics to cover: ${topicNames.join(", ")}`;
 
@@ -391,5 +418,35 @@ export const getQuizHistory = query({
       });
     }
     return result;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// testGenerateQuestion — admin-only action for testing question difficulty
+// Callable via CLI: npx convex run quizzes:testGenerateQuestion '{"subjectId":"...","count":1}'
+// ---------------------------------------------------------------------------
+
+export const testGenerateQuestion = action({
+  args: {
+    subjectId: v.id("subjects"),
+    count: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ questions: QuizQuestion[] }> => {
+    // Temporarily skip auth for CLI testing
+    const subject = await ctx.runQuery(internal.ai.getSubjectById, { subjectId: args.subjectId });
+    if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
+    const topics: Doc<"topics">[] = await ctx.runQuery(internal.ai.listTopicsBySubject, { subjectId: args.subjectId });
+    const topicNames = topics.map((t) => t.name);
+    const count = args.count ?? 1;
+    let questions: QuizQuestion[] = [];
+    for (let attempt = 0; attempt < 2 && questions.length === 0; attempt++) {
+      try {
+        const raw = await requestQuestions(ctx, subject.name, subject.stream, topicNames, count);
+        questions = parseAndValidate(raw, count);
+      } catch (error) {
+        console.error("Attempt", attempt, "failed:", error);
+      }
+    }
+    return { questions };
   },
 });

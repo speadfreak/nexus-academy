@@ -1075,7 +1075,7 @@ export default function Reader() {
                 {/* ── AI Companion ── */}
                 {panelTab === "companion" && (
                   <div id="reader-panel-companion" className="flex h-full flex-col">
-                    <div className="flex-1 space-y-3 overflow-y-auto p-3">
+                    <div className=" data-lenis-prevent-wheelflex-1 space-y-3 overflow-y-auto p-3">
                       {/* Info card */}
                       <div className="relative overflow-hidden rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] to-transparent p-3.5">
                         <div className="absolute -top-6 -right-6 size-20 rounded-full bg-primary/5 blur-2xl" />

@@ -876,7 +876,7 @@ function TakingScreen({
         </aside>
 
         {/* Question content */}
-        <main className="flex-1 overflow-y-auto bg-[#0b0f17] p-6">
+        <main className="flex-1 overflow-y-auto bg-[#0b0f17] p-6" data-lenis-prevent-wheel>
           <div className="mx-auto max-w-2xl">
             {/* Question number + flag toggle */}
             <div className="flex items-center justify-between">

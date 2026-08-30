@@ -633,7 +633,7 @@ export default function Focus() {
                   <p className="type-body mt-1 max-w-xs text-muted-foreground">Complete a focus session and your history appears here.</p>
                 </motion.div>
               ) : (
-                <div className="mt-3 space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                <div className=" data-lenis-prevent-wheelmt-3 space-y-2 max-h-[320px] overflow-y-auto pr-1">
                   {recentSessions.slice(0, 15).map((s, i) => {
                     const d = new Date(s.startedAt);
                     const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

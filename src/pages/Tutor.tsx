@@ -601,7 +601,7 @@ export default function Tutor() {
           {/* Thread */}
           <div
             ref={threadRef}
-            className="relative z-10 min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5"
+            className=" data-lenis-prevent-wheelrelative z-10 min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5"
           >
             {selectedId === null ? (
               <div className="flex h-full flex-col items-center justify-center gap-8">

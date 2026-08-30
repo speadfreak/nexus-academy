@@ -448,7 +448,7 @@ export default function Room() {
                       ✕
                     </button>
                   </div>
-                  <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                  <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3" data-lenis-prevent-wheel>
                     {visibleMessages.length === 0 ? (
                       <p className="pt-10 text-center text-xs text-muted-foreground">
                         No messages yet — say hi and share what you're studying.
@@ -535,7 +535,7 @@ export default function Room() {
                       </button>
                     </div>
                   </div>
-                  <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
+                  <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3" data-lenis-prevent-wheel>
                     {visibleSharedItems.length === 0 ? (
                       <p className="pt-10 text-center text-xs leading-5 text-muted-foreground">
                         Nothing shared yet.
@@ -689,7 +689,7 @@ export default function Room() {
                 placeholder="Search textbooks, past exams, guides…"
                 className="h-10 rounded-xl bg-white/5"
               />
-              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
+              <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto" data-lenis-prevent-wheel>
                 {contentOptions === undefined ? (
                   <div className="h-24 animate-pulse rounded-xl bg-white/5" />
                 ) : contentOptions.length === 0 ? (
@@ -722,7 +722,7 @@ export default function Room() {
               </div>
             </div>
           ) : (
-            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
+            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto" data-lenis-prevent-wheel>
               {myNotes === undefined ? (
                 <div className="h-24 animate-pulse rounded-xl bg-white/5" />
               ) : myNotes.length === 0 ? (

@@ -4,7 +4,15 @@ import Lenis from "@studio-freight/lenis";
 /**
  * Initializes Lenis smooth scrolling for the entire app.
  * The instance is created on mount and destroyed on unmount.
- * Renders with ` RAF ` for optimal performance.
+ *
+ * WHEEL-SCROLL EXCLUSION: Lenis has a built-in `data-lenis-prevent-wheel`
+ * attribute that stops it from hijacking wheel events inside nested
+ * scrollable containers (chat threads, PDF viewers, AI panels, etc.).
+ * We ALSO add a `prevent` callback as defense-in-depth — if a future
+ * developer forgets the attribute, the callback catches any element
+ * with `overflow-y-auto` or `overflow-auto` and lets the browser handle
+ * it natively. This stops the recurring class-of-bug where new scroll
+ * containers don't get the attribute.
  */
 export function useLenis() {
   useEffect(() => {
