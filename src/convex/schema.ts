@@ -808,6 +808,81 @@ const schema = defineSchema(
     })
       .index("by_receivedAt", ["receivedAt"])
       .index("by_parsedTransactionRef", ["parsedTransactionRef"]),
+
+    // ------------------------------------------------------------------
+    // Referral + discount code system
+    // ------------------------------------------------------------------
+
+    // Referral codes — one per user, auto-generated on first request.
+    referralCodes: defineTable({
+      userId: v.id("users"),
+      code: v.string(), // short unique code (e.g. "joseph7xk")
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_code", ["code"]),
+
+    // Referral relationships — tracks who referred whom + reward status.
+    referrals: defineTable({
+      referrerUserId: v.id("users"),
+      referredUserId: v.id("users"),
+      status: v.union(
+        v.literal("signed_up"),
+        v.literal("converted"),
+        v.literal("rewarded"),
+      ),
+      signedUpAt: v.number(),
+      convertedAt: v.optional(v.number()), // set when referred user's first payment is approved
+      rewardedAt: v.optional(v.number()),
+    })
+      .index("by_referrer", ["referrerUserId"])
+      .index("by_referred", ["referredUserId"])
+      .index("by_status", ["status"]),
+
+    // Admin-created discount codes for the manual payment system.
+    discountCodes: defineTable({
+      code: v.string(), // unique, e.g. "STUDY2026"
+      discountType: v.union(v.literal("percent"), v.literal("fixed_etb")),
+      value: v.number(), // percentage (e.g. 20 = 20% off) or ETB amount (e.g. 100 = 100 ETB off)
+      maxUses: v.optional(v.number()), // null = unlimited
+      usedCount: v.number(), // default 0
+      expiresAt: v.optional(v.number()), // epoch ms, null = never expires
+      isActive: v.boolean(),
+      createdBy: v.id("users"),
+      createdAt: v.number(),
+    })
+      .index("by_code", ["code"])
+      .index("by_active", ["isActive"]),
+
+    // Tracks who used which discount code — prevents double-redemption
+    // and gives a real usage audit trail.
+    discountRedemptions: defineTable({
+      codeId: v.id("discountCodes"),
+      userId: v.id("users"),
+      redeemedAt: v.number(),
+      submissionId: v.optional(v.id("manualPaymentSubmissions")),
+    })
+      .index("by_code", ["codeId"])
+      .index("by_user", ["userId"])
+      .index("by_code_user", ["codeId", "userId"]),
+
+    // Admin-controllable announcements shown on the landing page.
+    announcements: defineTable({
+      title: v.string(),
+      body: v.string(),
+      type: v.union(
+        v.literal("info"),
+        v.literal("feature"),
+        v.literal("event"),
+        v.literal("referral"),
+      ),
+      isActive: v.boolean(),
+      createdAt: v.number(),
+      expiresAt: v.optional(v.number()),
+      createdBy: v.id("users"),
+    })
+      .index("by_active", ["isActive"])
+      .index("by_createdAt", ["createdAt"]),
   },
 );
 

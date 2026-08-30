@@ -127,6 +127,7 @@ export const submitPaymentProof = action({
     transactionRef: v.string(),
     proofStorageId: v.string(),
     method: v.optional(v.union(v.literal("telebirr_personal"), v.literal("other"))),
+    discountCode: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ submissionId: string }> => {
     const userId = await getAuthUserId(ctx);
@@ -145,7 +146,7 @@ export const submitPaymentProof = action({
     // Snapshot the current premium price — the KEY design decision: the
     // expectedAmount is frozen at submission time. A later price change
     // doesn't retroactively affect pending submissions.
-    const priceEtb = await getConfigNumber(ctx, "PREMIUM_PRICE_ETB", 500);
+    let priceEtb = await getConfigNumber(ctx, "PREMIUM_PRICE_ETB", 500);
     const method = args.method ?? "telebirr_personal";
 
     // Insert the submission via an internal mutation.
@@ -156,6 +157,27 @@ export const submitPaymentProof = action({
       transactionRef: txRef,
       proofStorageId: args.proofStorageId,
     });
+
+    // Apply discount code if provided
+    if (args.discountCode && args.discountCode.trim().length > 0) {
+      try {
+        const result = await ctx.runMutation(internal.marketing.redeemDiscountCode, {
+          code: args.discountCode,
+          userId,
+          submissionId: submissionId as Id<"manualPaymentSubmissions">,
+        });
+        if (result.ok && result.adjustedAmount !== priceEtb) {
+          // Update the submission's expectedAmount to the discounted price
+          await ctx.runMutation(internal.manualPayments.updateExpectedAmount, {
+            submissionId: submissionId as Id<"manualPaymentSubmissions">,
+            expectedAmount: result.adjustedAmount,
+          });
+          priceEtb = result.adjustedAmount;
+        }
+      } catch {
+        // Non-fatal — discount code errors don't block submission
+      }
+    }
 
     // Send a Telegram notification to the admin (fire-and-forget).
     try {
@@ -463,6 +485,18 @@ export const approveSubmission = mutation({
       // Non-fatal.
     }
 
+    // Process referral rewards — grants bonus days to both referrer
+    // and referee IF this user was referred and this is their first
+    // payment approval. Fraud-safe: rewards only fire on payment
+    // approval, never on signup alone.
+    try {
+      await ctx.runMutation(internal.marketing.processReferralReward, {
+        userId: sub.userId,
+      });
+    } catch {
+      // Non-fatal — referral processing must never block approval.
+    }
+
     // Log to systemEvents.
     try {
       await ctx.runMutation(internal.systemEvents.logEvent, {
@@ -537,6 +571,15 @@ export const approveFromSms = internalMutation({
       });
     } catch {
       // Non-fatal.
+    }
+
+    // Process referral rewards (same hook as manual approval).
+    try {
+      await ctx.runMutation(internal.marketing.processReferralReward, {
+        userId: sub.userId,
+      });
+    } catch {
+      // Non-fatal
     }
 
     try {
@@ -841,5 +884,20 @@ export const testSmsParser = action({
     // No auth check — this is a test function. The admin calls it via CLI.
     const result = parseTeleBirrSms(args.sms);
     return { parsed: result };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// updateExpectedAmount — internal mutation to adjust the expectedAmount
+// after a discount code is applied. Called from submitPaymentProof.
+// ---------------------------------------------------------------------------
+
+export const updateExpectedAmount = internalMutation({
+  args: {
+    submissionId: v.id("manualPaymentSubmissions"),
+    expectedAmount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.submissionId, { expectedAmount: args.expectedAmount });
   },
 });

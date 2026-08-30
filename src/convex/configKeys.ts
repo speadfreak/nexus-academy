@@ -47,6 +47,10 @@ export const INTEGRATION_KEYS = [
   { key: "MANUAL_PAYMENT_TELEBIRR_NAME", label: "TeleBirr Account Holder Name", category: "payments", description: "Name shown on the receiving TeleBirr account (so students can verify they're sending to the right person)." },
   { key: "SMS_WEBHOOK_SECRET", label: "SMS Webhook HMAC Secret", category: "payments", description: "Shared secret for HMAC-SHA-256 signature verification on the /webhooks/sms endpoint. Must match the secret configured in the SMS-to-URL-Forwarder Android app. Sensitive — never expose to the client." },
   { key: "TELEGRAM_ADMIN_CHAT_ID", label: "Telegram Admin Chat ID", category: "comms", description: "Chat ID where payment-submission notifications are sent. Use @userinfobot to find your personal chat ID, or use a channel ID (starts with -100...)." },
+  // ── Referral + discount program ────────────────────────────────────
+  { key: "REFERRAL_PROGRAM_ENABLED", label: "Referral Program Enabled", category: "payments", description: "When true, students can generate and share referral links. When false, the referral section is hidden." },
+  { key: "REFERRER_REWARD_DAYS", label: "Referrer Reward (days)", category: "payments", description: "Premium days granted to the referrer when their referral's first payment is approved. Default: 7." },
+  { key: "REFEREE_REWARD_DAYS", label: "Referee Reward (days)", category: "payments", description: "Bonus premium days granted to the referred user on top of their first payment. Default: 3." },
 ] as const;
 
 /**
@@ -64,6 +68,9 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   MANUAL_PAYMENT_TELEBIRR_NAME: "",
   SMS_WEBHOOK_SECRET: "",
   TELEGRAM_ADMIN_CHAT_ID: "",
+  REFERRAL_PROGRAM_ENABLED: "true",
+  REFERRER_REWARD_DAYS: "7",
+  REFEREE_REWARD_DAYS: "3",
 };
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
