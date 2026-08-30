@@ -9,11 +9,11 @@
 //
 // Flow:
 //   1. generateMockExam(stream) — premium-gated action. Creates a
-//      mockExams row, then for each of the 6 sections, calls Groq to
-//      generate the question set with per-section 2-attempt retry, parses
-//      + validates the JSON (reusing the quizzes.ts validator shape), and
-//      inserts a mockExamSections row in "in_progress" status. Returns
-//      the mockExamId.
+//      mockExams row, then for each of the 6 sections, calls Gemini to
+//      generate the question set with per-section retry (3 attempts + a
+//      rate-limit backoff), parses + validates the JSON (reusing the
+//      quizzes.ts validator shape), and inserts a mockExamSections row
+//      in "in_progress" status. Returns the mockExamId.
 //
 //   2. Student takes the exam section by section in the UI. The frontend
 //      calls submitSectionAnswers({ sectionId, answers, flagged,
@@ -33,11 +33,20 @@
 //
 //   5. getMyMockExams() returns the student's history with scores, for
 //      progress tracking across attempts.
+//
+// PROVIDER CHOICE: Mock exams use Gemini (not Groq) because a single
+// section's ~7K-token generation request would consume nearly all of
+// Groq's 8,000 TPM free-tier budget by itself, leaving no room for
+// concurrent tutor / quizzes / flashcards / daily-challenge traffic.
+// Gemini's free tier has a much higher TPM ceiling (~1M TPM, ~15 RPM,
+// ~1,500 RPD), and its binding constraint is requests-per-day — which
+// fits mock exam generation perfectly (infrequent but heavy). All other
+// AI features stay on Groq.
 
 // NOTE: This file intentionally does NOT have "use node" — it contains a
-// mix of actions (generateMockExam, which calls Groq via fetch — fetch is
+// mix of actions (generateMockExam, which calls Gemini via fetch — fetch is
 // available in the Convex V8 isolate too) and queries/mutations (which
-// Convex runs in its V8 isolate, not Node.js). The Groq HTTP call uses
+// Convex runs in its V8 isolate, not Node.js). The Gemini HTTP call uses
 // global fetch which works in both runtimes, so no Node-only APIs are
 // needed. Keeping this file out of "use node" lets us co-locate all the
 // mock-exam logic in one module.
@@ -48,7 +57,7 @@ import { action, internalMutation, internalQuery, mutation, query, type ActionCt
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireActiveSubscriptionAction } from "./subscriptions";
-import { callGroq } from "./groq";
+import { callGemini, GeminiRateLimitError } from "./gemini";
 import { XP_VALUES } from "./constants";
 
 // ---------------------------------------------------------------------------
@@ -91,10 +100,12 @@ const SECTION_DURATION_SECONDS = 50 * 60;
 const MAX_SECTION_ATTEMPTS = 3;
 
 // Output token budget per section call. 50 MCQs with explanations ≈ 6–8K
-// tokens. We cap at 7000 to stay under Groq's free-tier TPM limit (8000 TPM
-// on the openai/gpt-oss-120b model) — going over returns HTTP 413 and
-// fails the whole section. The model will still produce ~50 questions in
-// 7000 tokens (just slightly shorter explanations where needed).
+// tokens. Gemini's free-tier TPM ceiling is ~1M, so 7K is well within a
+// single request. The model will produce ~50 questions in 7000 tokens
+// (just slightly shorter explanations where needed). If you raise this,
+// watch the per-day RPD budget — each section call counts as 1 RPD, and
+// a full 6-section exam counts as 6 RPD (~250 exams/day on the 1,500 RPD
+// free tier).
 const TOKENS_PER_SECTION = 7000;
 
 // ---------------------------------------------------------------------------
@@ -146,7 +157,7 @@ async function requestSectionQuestions(
     '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
     `Topics to cover: ${topicNames.join(", ")}`;
 
-  return await callGroq(ctx, {
+  return await callGemini(ctx, {
     systemPrompt,
     userMessage,
     maxTokens: TOKENS_PER_SECTION,
@@ -229,6 +240,33 @@ export const insertMockExamSection = internalMutation({
     timeAllottedSeconds: v.number(),
   },
   handler: async (ctx, args): Promise<Id<"mockExamSections">> => {
+    // Upsert-like behavior: if a row already exists for this
+    // (mockExamId, sectionIndex) — e.g. from a previous failed-generation
+    // retry — overwrite it with the freshly-generated questions instead
+    // of inserting a duplicate. This keeps retrying a single section safe
+    // (no duplicate section rows that would skew the sectionResults JSON
+    // and the final score aggregation).
+    const existing = await ctx.db
+      .query("mockExamSections")
+      .withIndex("by_mockExam", (q) => q.eq("mockExamId", args.mockExamId))
+      .filter((q) => q.eq(q.field("sectionIndex"), args.sectionIndex))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        subjectId: args.subjectId,
+        questionsJson: args.questionsJson,
+        totalQuestions: args.totalQuestions,
+        answers: new Array(args.totalQuestions).fill(-1),
+        flagged: new Array(args.totalQuestions).fill(false),
+        timeSpentSeconds: 0,
+        status: "in_progress",
+        // Clear any stale completion metadata from a prior attempt.
+        score: undefined,
+        correctCount: undefined,
+        completedAt: undefined,
+      });
+      return existing._id;
+    }
     const { totalQuestions, ...rest } = args;
     return await ctx.db.insert("mockExamSections", {
       ...rest,
@@ -241,20 +279,19 @@ export const insertMockExamSection = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
-// Mock exam generation — split into two actions because of the Groq TPM
-// limit (~8000 tokens per minute on the free tier). A single 6-section
-// generation would request 42K tokens in <5 minutes and 413 every time.
-// Splitting lets each section fit under the TPM budget on its own action
-// invocation, and lets the frontend show real progress to the student.
+// Mock exam generation — split into two actions for resilience + progress UX.
 //
 // Flow:
 //   1. startMockExam(stream) — premium-gated. Resolves all 6 subjects,
 //      creates the parent mockExams row, returns the mockExamId + the
 //      plan of section indexes → subject IDs.
 //   2. generateSection(mockExamId, sectionIndex) — generates ONE
-//      section's questions via Groq (with 3-attempt retry), persists the
-//      section row. Returns success/failure. The frontend calls this
-//      sequentially for each section, showing progress.
+//      section's questions via Gemini (with 3-attempt retry + automatic
+//      backoff on rate-limit 429s), persists the section row. Returns
+//      success/failure + a retryable flag so the frontend can let the
+//      student retry JUST that failed section without restarting the
+//      whole exam. The frontend calls this sequentially for each
+//      section, showing real progress.
 // ---------------------------------------------------------------------------
 
 export const startMockExam = action({
@@ -329,6 +366,7 @@ export const generateSection = action({
     questionCount: number;
     success: boolean;
     reason?: string;
+    retryable?: boolean; // true when the failure was a transient rate-limit
     generationMs: number;
   }> => {
     const userId = await getAuthUserId(ctx);
@@ -382,9 +420,23 @@ export const generateSection = action({
       // ignore — generation will proceed without topic grounding
     }
 
-    // Retry loop: 3 attempts per section. Save the last error.
+    // Retry loop: 3 attempts per section.
+    //
+    // - On JSON parse / validation failures → retry immediately.
+    // - On GeminiRateLimitError (HTTP 429) → back off using the
+    //   retryAfterMs hint from Gemini's RetryInfo (default 30s, capped at
+    //   45s to avoid blowing the action wall clock) and retry. This
+    //   converts a hard 429 into a soft, eventually-recoverable failure.
+    // - On other errors (network, malformed) → retry immediately, but
+    //   remember the error so we can surface it if all 3 attempts fail.
+    //
+    // After 3 failed attempts, we return { success: false, retryable: true }
+    // for rate-limit failures and { success: false, retryable: false } for
+    // other failures. The frontend can let the student retry just this
+    // section — no need to restart the whole 6-section exam.
     let questions: MockExamQuestion[] = [];
     let lastError = "Unknown parsing error.";
+    let lastRetryable = false;
     for (let attempt = 0; attempt < MAX_SECTION_ATTEMPTS && questions.length === 0; attempt++) {
       try {
         const raw = await requestSectionQuestions(
@@ -397,6 +449,20 @@ export const generateSection = action({
         questions = parseAndValidateQuestions(raw, questionCount);
       } catch (error) {
         lastError = error instanceof Error ? error.message : "Unknown parsing error.";
+        if (error instanceof GeminiRateLimitError) {
+          // Back off before the next attempt. Cap at 45s so a 3-attempt
+          // section worst-case doesn't exceed ~135s of wall clock —
+          // the Convex action timeout is 5 minutes, so this stays safe.
+          const backoff = Math.min(error.retryAfterMs, 45_000);
+          lastRetryable = true;
+          if (attempt < MAX_SECTION_ATTEMPTS - 1) {
+            await new Promise((resolve) => setTimeout(resolve, backoff));
+          }
+        } else {
+          // Non-rate-limit error — likely a JSON parse issue. Retry
+          // immediately, no backoff needed.
+          lastRetryable = false;
+        }
       }
     }
 
@@ -408,6 +474,7 @@ export const generateSection = action({
         questionCount: 0,
         success: false,
         reason: lastError,
+        retryable: lastRetryable,
         generationMs: Date.now() - startTime,
       };
     }

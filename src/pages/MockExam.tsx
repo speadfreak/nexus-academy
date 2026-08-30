@@ -141,9 +141,17 @@ export default function MockExamPage() {
     subjectName: string;
     success: boolean;
     reason?: string;
+    retryable?: boolean;
   }[]>([]);
   const [genCurrent, setGenCurrent] = useState<string>("");
   const [genError, setGenError] = useState<string | null>(null);
+  const [activeSectionPlan, setActiveSectionPlan] = useState<{
+    sectionIndex: number;
+    subjectId: Id<"subjects">;
+    subjectName: string;
+    questionCount: number;
+  }[] | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const subjectNames = useSubjectNames();
 
@@ -161,23 +169,23 @@ export default function MockExamPage() {
   // Previous attempts — for the start screen + results comparison
   const history = useQuery(api.mockExam.getMyMockExams, {});
 
-  // Auto-transition to "taking" once all sections are generated.
-  // The generation loop in handleBegin sets genProgress; when it finishes,
-  // we check that the exam has at least one section ready and move on.
-  // The exam query will refresh with the new sections automatically.
+  // Auto-transition to "taking" once ALL sections have generated
+  // successfully. We deliberately DON'T auto-transition if any section
+  // failed — the student gets the chance to retry the failed section(s)
+  // via the GeneratingScreen's retry buttons, or to proceed anyway with
+  // the successfully-generated sections via the Proceed button.
   useEffect(() => {
     if (phase === "generating" && activeExamId && exam && genProgress.length > 0) {
-      // Check if all sections have been processed (success or failure)
-      // and at least one succeeded. The exam.sections array updates
-      // automatically when the mutation commits.
-      const successfulSections = genProgress.filter((p) => p.success);
-      if (successfulSections.length > 0 && exam.sections.length > 0) {
-        // Give it a moment to settle, then move to taking.
+      const totalExpected = activeSectionPlan?.length ?? 6;
+      const allDone = genProgress.length >= totalExpected;
+      const failedSections = genProgress.filter((p) => !p.success);
+      const successfulSections = genProgress.length - failedSections.length;
+      if (allDone && failedSections.length === 0 && successfulSections > 0 && exam.sections.length > 0) {
         const t = setTimeout(() => setPhase("taking"), 800);
         return () => clearTimeout(t);
       }
     }
-  }, [phase, activeExamId, exam, genProgress]);
+  }, [phase, activeExamId, exam, genProgress, activeSectionPlan]);
 
   // Auto-transition to "results" once the exam status becomes "completed".
   useEffect(() => {
@@ -191,6 +199,7 @@ export default function MockExamPage() {
     setGenError(null);
     setGenProgress([]);
     setGenCurrent("");
+    setRetrying(false);
     try {
       // Step 1 — start the mock exam (creates the parent row + returns
       // the section plan).
@@ -199,13 +208,15 @@ export default function MockExamPage() {
         sections: { sectionIndex: number; subjectId: Id<"subjects">; subjectName: string; questionCount: number }[];
       };
       setActiveExamId(start.mockExamId);
+      setActiveSectionPlan(start.sections);
 
       // Step 2 — generate each section sequentially via the split
-      // generateSection action. We wait between sections to respect
-      // Groq's TPM limit (8000/min on the free tier); each section is
-      // ~7000 tokens, so we need ~52s of recovery before the next call.
-      // The frontend shows real progress as each section is generated.
-      const SECTION_DELAY_MS = 60000; // 60s
+      // generateSection action. Mock exams use Gemini (not Groq) — its
+      // ~1M TPM free-tier ceiling means each ~7K-token section fits in a
+      // single request without exhausting the budget. The previous 60s
+      // inter-section delay was a Groq TPM recovery shim and is no longer
+      // needed. We keep a tiny 1.5s gap for UI/animation polish only.
+      const SECTION_DELAY_MS = 1500; // 1.5s — UI polish only, NOT for rate limits
       const progress: typeof genProgress = [];
       for (let i = 0; i < start.sections.length; i++) {
         const section = start.sections[i];
@@ -217,12 +228,14 @@ export default function MockExamPage() {
           })) as {
             success: boolean;
             reason?: string;
+            retryable?: boolean;
           };
           progress.push({
             sectionIndex: section.sectionIndex,
             subjectName: section.subjectName,
             success: result.success,
             reason: result.reason,
+            retryable: result.retryable,
           });
           setGenProgress([...progress]);
           if (!result.success) {
@@ -241,7 +254,7 @@ export default function MockExamPage() {
           });
           setGenProgress([...progress]);
         }
-        // Throttle between sections (skip after the last one).
+        // Brief pause between sections for UI polish (skip after the last one).
         if (i < start.sections.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, SECTION_DELAY_MS));
         }
@@ -257,7 +270,7 @@ export default function MockExamPage() {
       }
       if (failed > 0) {
         toast.warning(
-          `${failed} section(s) failed to generate. You can take the remaining ${successful}.`,
+          `${failed} section(s) failed to generate. You can take the remaining ${successful}, or retry the failed section(s) below.`,
           { duration: 6000 },
         );
       } else {
@@ -270,10 +283,59 @@ export default function MockExamPage() {
       const data = (error as { data?: { code?: string } })?.data;
       if (data?.code === "premium_mock_exams" || msg.toLowerCase().includes("premium")) {
         setGenError("premium");
+      } else if (data?.code === "ai_not_configured" || msg.toLowerCase().includes("gemini")) {
+        setGenError("gemini_not_configured");
       } else {
         setGenError(msg);
       }
       setPhase("start");
+    }
+  };
+
+  // Retry ONE specific failed section. Reuses the same mockExamId + the
+  // stored section plan, calls generateSection for that index only, and
+  // patches the genProgress entry in place. The upsert-like behavior of
+  // insertMockExamSection means there's no duplicate row risk.
+  const handleRetrySection = async (sectionIndex: number) => {
+    if (!activeExamId || !activeSectionPlan) return;
+    const section = activeSectionPlan.find((s) => s.sectionIndex === sectionIndex);
+    if (!section) return;
+    setRetrying(true);
+    setGenCurrent(section.subjectName);
+    try {
+      const result = (await generateSection({
+        mockExamId: activeExamId,
+        sectionIndex,
+      })) as {
+        success: boolean;
+        reason?: string;
+        retryable?: boolean;
+      };
+      setGenProgress((prev) =>
+        prev.map((p) =>
+          p.sectionIndex === sectionIndex
+            ? {
+                sectionIndex,
+                subjectName: section.subjectName,
+                success: result.success,
+                reason: result.reason,
+                retryable: result.retryable,
+              }
+            : p,
+        ),
+      );
+      if (result.success) {
+        toast.success(`${section.subjectName} section is now ready.`);
+      } else {
+        toast.error(`${section.subjectName} section failed again: ${result.reason ?? "unknown"}`);
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not retry this section.",
+      );
+    } finally {
+      setRetrying(false);
+      setGenCurrent("");
     }
   };
 
@@ -292,7 +354,17 @@ export default function MockExamPage() {
           />
         )}
         {phase === "generating" && (
-          <GeneratingScreen progress={genProgress} current={genCurrent} />
+          <GeneratingScreen
+            progress={genProgress}
+            current={genCurrent}
+            onRetry={handleRetrySection}
+            retrying={retrying}
+            onProceed={() => setPhase("taking")}
+            canProceed={
+              !!activeExamId &&
+              genProgress.filter((p) => p.success).length > 0
+            }
+          />
         )}
         {phase === "taking" && exam && (
           <TakingScreen
@@ -321,6 +393,53 @@ export default function MockExamPage() {
         )}
         {phase === "start" && genError === "premium" && (
           <PremiumGateOverlay onClose={() => setGenError(null)} />
+        )}
+        {phase === "start" && genError === "gemini_not_configured" && (
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-6 text-center">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
+              // gemini key not configured
+            </p>
+            <h3 className="mt-2 text-lg font-extrabold tracking-tight">
+              Mock exams need a Gemini API key
+            </h3>
+            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+              Mock exam generation uses Google's Gemini API because of its
+              higher token-per-minute ceiling. Ask the admin to add a
+              Gemini API key in the Keys tab — get one free at{" "}
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-amber-300 underline underline-offset-2"
+              >
+                aistudio.google.com/apikey
+              </a>
+              . Other AI features (tutor, quizzes, flashcards) are
+              unaffected and still use Groq.
+            </p>
+            <Button
+              className="mt-4"
+              variant="outline"
+              onClick={() => setGenError(null)}
+            >
+              Got it
+            </Button>
+          </div>
+        )}
+        {phase === "start" && genError && genError !== "premium" && genError !== "gemini_not_configured" && (
+          <div className="rounded-2xl border border-rose-400/30 bg-rose-400/[0.06] p-6 text-center">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-rose-300">
+              // generation failed
+            </p>
+            <p className="mt-2 text-sm text-foreground">{genError}</p>
+            <Button
+              className="mt-4"
+              variant="outline"
+              onClick={() => setGenError(null)}
+            >
+              Try again
+            </Button>
+          </div>
         )}
       </div>
     </DashboardShell>
@@ -550,30 +669,50 @@ function StreamOption({
 function GeneratingScreen({
   progress,
   current,
+  onRetry,
+  retrying,
+  onProceed,
+  canProceed,
 }: {
-  progress: { sectionIndex: number; subjectName: string; success: boolean; reason?: string }[];
+  progress: { sectionIndex: number; subjectName: string; success: boolean; reason?: string; retryable?: boolean }[];
   current: string;
+  onRetry: (sectionIndex: number) => void;
+  retrying: boolean;
+  onProceed: () => void;
+  canProceed: boolean;
 }) {
   const total = 6;
   const done = progress.length;
+  const failedCount = progress.filter((p) => !p.success).length;
+  const allDone = done >= total;
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-12">
       <div className="relative flex size-20 items-center justify-center">
         <div className="absolute inset-0 rounded-full bg-amber-400/20 blur-2xl animate-pulse" />
-        <Loader2 className="size-10 animate-spin text-amber-300" />
+        {allDone ? (
+          <CheckCircle2 className="size-10 text-emerald-300" />
+        ) : (
+          <Loader2 className="size-10 animate-spin text-amber-300" />
+        )}
       </div>
       <div className="text-center">
         <p className="type-mono uppercase tracking-[0.22em] text-amber-300 font-semibold">
-          // generating your mock exam
+          {allDone ? "// your mock exam is ready" : "// generating your mock exam"}
         </p>
         <h2 className="type-h1 mt-2">
-          {current ? `Building ${current}…` : "Building 6 sections of original questions"}
+          {allDone
+            ? failedCount > 0
+              ? `${failedCount} section${failedCount > 1 ? "s" : ""} need${failedCount === 1 ? "s" : ""} a retry`
+              : "All sections ready"
+            : current
+              ? `Building ${current}…`
+              : "Building 6 sections of original questions"}
         </h2>
         <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
           The AI writes ~340 fresh multiple-choice questions grounded in the
           Ethiopian curriculum — one section at a time. Each section takes
-          ~15s, plus a brief pause between sections to respect rate limits.
-          This typically takes ~6 minutes total. Please keep this tab open.
+          ~10–20s, plus a brief pause between sections. This typically
+          takes ~2 minutes total. Please keep this tab open.
         </p>
       </div>
 
@@ -603,7 +742,7 @@ function GeneratingScreen({
               <div
                 key={i}
                 className={cn(
-                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+                  "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs",
                   item.success
                     ? "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200"
                     : "border-rose-400/20 bg-rose-400/[0.06] text-rose-200",
@@ -611,16 +750,55 @@ function GeneratingScreen({
               >
                 {item.success ? (
                   <CheckCircle2 className="size-3.5 text-emerald-300" />
+                ) : retrying && current === item.subjectName ? (
+                  <Loader2 className="size-3.5 animate-spin text-rose-300" />
                 ) : (
                   <X className="size-3.5 text-rose-300" />
                 )}
-                <span>
+                <span className="flex-1">
                   {item.subjectName} — {item.success ? "ready" : "failed"}
                 </span>
+                {!item.success && (
+                  <button
+                    type="button"
+                    onClick={() => onRetry(item.sectionIndex)}
+                    disabled={retrying}
+                    className={cn(
+                      "rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-200 transition-colors hover:bg-rose-400/20",
+                      retrying && "opacity-50",
+                    )}
+                  >
+                    {retrying && current === item.subjectName ? "Retrying…" : "Retry"}
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
+
+        {/* Failure explanation + retry-all + proceed-anyway controls */}
+        {allDone && failedCount > 0 && (
+          <div className="mt-4 space-y-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3.5">
+            <p className="text-xs leading-5 text-muted-foreground">
+              Some sections couldn't be generated (often a transient rate-limit
+              from the AI provider). You can retry individual sections above, or
+              proceed with the {done - failedCount} ready section
+              {done - failedCount === 1 ? "" : "s"} — the failed sections will be
+              skipped in the final score.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={!canProceed}
+                onClick={onProceed}
+              >
+                <CheckCircle2 className="size-3.5" />
+                Proceed with {done - failedCount} section{done - failedCount === 1 ? "" : "s"}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

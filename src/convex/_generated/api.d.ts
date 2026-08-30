@@ -26,6 +26,7 @@ import type * as contentAdmin from "../contentAdmin.js";
 import type * as crons from "../crons.js";
 import type * as dailyChallenge from "../dailyChallenge.js";
 import type * as flashcards from "../flashcards.js";
+import type * as gemini from "../gemini.js";
 import type * as github from "../github.js";
 import type * as groq from "../groq.js";
 import type * as groupChat from "../groupChat.js";
@@ -92,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   dailyChallenge: typeof dailyChallenge;
   flashcards: typeof flashcards;
+  gemini: typeof gemini;
   github: typeof github;
   groq: typeof groq;
   groupChat: typeof groupChat;
