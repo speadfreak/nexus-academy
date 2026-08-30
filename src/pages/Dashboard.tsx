@@ -2,6 +2,7 @@ import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowRight,
   ArrowUp,
   Atom,
   BellRing,
@@ -1525,6 +1526,20 @@ export default function Dashboard() {
                       )}
                     </p>
                     <p className="type-body mt-1 text-muted-foreground">{activeChallenge.explanation}</p>
+
+                    {/* "Want more practice?" — bridges into the existing Quiz system */}
+                    {activeChallenge.answered && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <Link
+                          to={`/flashcards?subject=${activeChallenge.subjectId}&quiz=true`}
+                          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                        >
+                          <Sparkles className="size-3" />
+                          Want more practice on this subject?
+                          <ArrowRight className="size-3" />
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

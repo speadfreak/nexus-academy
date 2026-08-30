@@ -13,7 +13,7 @@
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { action } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
@@ -124,5 +124,90 @@ ${trimmed}`;
     }
 
     return { reply, provider: "groq" };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// askReaderQuestionWithHighlight — same as askReaderQuestion but accepts
+// an optional `highlightedText` arg for the "highlight-to-ask" feature.
+// The highlighted text is injected into the system prompt as extra
+// grounding context, so the AI can answer about a specific passage
+// the student selected in the PDF.
+// ---------------------------------------------------------------------------
+
+export const askReaderQuestionWithHighlight = internalAction({
+  args: {
+    contentId: v.id("contentItems"),
+    question: v.string(),
+    highlightedText: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ reply: string; provider: string }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+
+    const content = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
+    if (!content) {
+      throw new ConvexError({ message: "Content item not found.", code: "not_found" });
+    }
+    const subject = content.subjectId
+      ? await ctx.runQuery(internal.content.getSubjectById, { subjectId: content.subjectId })
+      : null;
+
+    const trimmed = args.question.trim().slice(0, 4000);
+    if (!trimmed) {
+      throw new ConvexError({ message: "Question is empty.", code: "invalid" });
+    }
+
+    const systemPrompt =
+      "You are the Nexus Academy reading companion — an expert guide for Ethiopian " +
+      "students in grades 9-12 studying for the national matric exams. The student is " +
+      "reading a document RIGHT NOW and has highlighted a specific passage they want " +
+      "to ask about. Answer directly, warmly and precisely. Focus on the highlighted " +
+      "passage as the primary context. Tie explanations to the document when you can. " +
+      "Show step-by-step working for math and sciences. Never invent facts or exam " +
+      "statistics. Keep answers focused (short sections, bullets), around 100-200 words.";
+
+    const highlightLine = args.highlightedText
+      ? `\nThe student highlighted this passage from the document:\n"${args.highlightedText.slice(0, 2000)}"\n`
+      : "";
+
+    const userPrompt = `The student is reading:
+- Title: ${content.title}
+- Type: ${content.contentType}${content.examYear ? ` · Year: ${content.examYear}` : ""}
+- Grade: ${content.grade}
+- Subject: ${subject?.name ?? "Unknown"}
+${highlightLine}
+Their question about what they're reading:
+${trimmed}`;
+
+    try {
+      const reply = await callGroq(ctx, {
+        systemPrompt,
+        userMessage: userPrompt,
+        maxTokens: 600,
+        temperature: 0.5,
+      });
+      await logEventAction(ctx, {
+        eventType: "api_call",
+        source: "reader.askHighlight",
+        status: "success",
+        userId,
+        metadata: { provider: "groq", contentId: args.contentId, hasHighlight: Boolean(args.highlightedText) },
+        durationMs: 0,
+      });
+      return { reply, provider: "groq" };
+    } catch (error) {
+      await logEventAction(ctx, {
+        eventType: "error",
+        source: "reader.askHighlight",
+        status: "error",
+        userId,
+        metadata: { error: error instanceof Error ? error.message : "unknown" },
+        durationMs: 0,
+      });
+      throw new ConvexError({ message: "The AI companion couldn't reply. Try again.", code: "ai_error" });
+    }
   },
 });

@@ -560,6 +560,102 @@ export const sendMessage = action({
 });
 
 // ---------------------------------------------------------------------------
+// Generate follow-up suggestions + optional inline mini-check after a
+// tutor response. This is a lightweight second call (256 tokens, temp 0.6)
+// that generates 2-3 suggested next questions + an optional 1-question
+// mini-check. The student sees these as clickable chips + a "Test yourself"
+// button in the chat UI.
+// ---------------------------------------------------------------------------
+
+export const generateFollowUps = action({
+  args: {
+    conversationId: v.id("conversations"),
+    subjectId: v.optional(v.id("subjects")),
+  },
+  handler: async (ctx, args): Promise<{
+    followUps: string[];
+    miniCheck: { question: string; options: string[]; correctIndex: number; explanation: string } | null;
+  }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return { followUps: [], miniCheck: null };
+
+    // Get the last assistant message in the conversation.
+    const messages = await ctx.runQuery(internal.ai.getMessagesByConversation, {
+      conversationId: args.conversationId,
+    });
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!lastAssistant) return { followUps: [], miniCheck: null };
+
+    // Get subject for grounding.
+    let subjectName = "the subject";
+    if (args.subjectId) {
+      const subject = await ctx.runQuery(internal.ai.getSubjectById, { subjectId: args.subjectId });
+      if (subject) subjectName = subject.name;
+    }
+
+    const systemPrompt =
+      "You are a study companion generating follow-up questions and an optional " +
+      "quick check for a student who just received an explanation. Generate exactly " +
+      "2 short follow-up questions the student might ask next (max 12 words each), " +
+      "and 1 multiple-choice mini-check question testing the concept just explained. " +
+      "The mini-check must have 4 options, 1 correct answer, and a 1-sentence explanation. " +
+      "Respond ONLY with valid JSON in this shape: " +
+      '{"followUps": ["q1", "q2"], "miniCheck": {"question": "...", "options": ["A","B","C","D"], "correctIndex": 0, "explanation": "..."}}. ' +
+      "If the topic doesn't lend itself to a quick check, set miniCheck to null.";
+
+    const userMessage = `The student just received this explanation about ${subjectName}:\n\n${lastAssistant.content.slice(0, 1500)}\n\nGenerate 2 follow-up questions and an optional mini-check.`;
+
+    try {
+      const raw = await callGroq(ctx, {
+        systemPrompt,
+        userMessage,
+        maxTokens: 512,
+        temperature: 0.6,
+      });
+      const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+      const parsed = JSON.parse(cleaned) as {
+        followUps?: string[];
+        miniCheck?: { question: string; options: string[]; correctIndex: number; explanation: string } | null;
+      };
+      return {
+        followUps: Array.isArray(parsed.followUps) ? parsed.followUps.slice(0, 3) : [],
+        miniCheck: parsed.miniCheck && Array.isArray(parsed.miniCheck.options) && parsed.miniCheck.options.length === 4
+          ? parsed.miniCheck
+          : null,
+      };
+    } catch {
+      return { followUps: [], miniCheck: null };
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Add highlighted text support to the Reader AI companion
+// ---------------------------------------------------------------------------
+
+export const askWithHighlight = action({
+  args: {
+    contentId: v.id("contentItems"),
+    question: v.string(),
+    highlightedText: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ reply: string }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+
+    // Reuse the readerAI flow but inject the highlighted text.
+    const result = await ctx.runAction(internal.readerAI.askReaderQuestionWithHighlight, {
+      contentId: args.contentId,
+      question: args.question,
+      highlightedText: args.highlightedText,
+    });
+    return { reply: result.reply };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Read API — conversation list + thread, both ownership-checked
 // ---------------------------------------------------------------------------
 
