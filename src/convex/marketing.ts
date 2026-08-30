@@ -79,7 +79,7 @@ function generateReferralCode(name: string | undefined, username: string | undef
 // getMyReferralCode — auto-generate if not exists, return the code
 // ---------------------------------------------------------------------------
 
-export const getMyReferralCode = mutation({
+export const getMyReferralCode = query({
   args: {},
   handler: async (ctx): Promise<{ code: string | null; enabled: boolean }> => {
     const userId = await getAuthUserId(ctx);
@@ -94,7 +94,29 @@ export const getMyReferralCode = mutation({
       .first();
     if (existing) return { code: existing.code, enabled: true };
 
-    // Auto-generate — need user info for the base name
+    // Auto-generate — need user info for the base name. We use a mutation
+    // via ctx since queries can't insert. Return null code with enabled=true
+    // so the frontend knows to call getOrCreateReferralCode mutation.
+    return { code: null, enabled: true };
+  },
+});
+
+export const getOrCreateReferralCode = mutation({
+  args: {},
+  handler: async (ctx): Promise<{ code: string | null; enabled: boolean }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return { code: null, enabled: false };
+
+    const enabled = (await getConfigValue(ctx, "REFERRAL_PROGRAM_ENABLED")) === "true";
+    if (!enabled) return { code: null, enabled: false };
+
+    const existing = await ctx.db
+      .query("referralCodes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (existing) return { code: existing.code, enabled: true };
+
+    // Auto-generate
     const user = await ctx.db.get(userId);
     const code = generateReferralCode(user?.name, undefined);
     await ctx.db.insert("referralCodes", { userId, code, createdAt: Date.now() });

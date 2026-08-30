@@ -1,4 +1,6 @@
 import { AnimatePresence, motion, type Variants } from "framer-motion";
+import { api } from "@/convex/_generated/api";
+import { useQuery } from "convex/react";
 import {
   ArrowRight,
   Atom,
@@ -344,6 +346,9 @@ export default function Landing() {
           className="absolute left-1/2 top-56 size-[24rem] -translate-x-1/2 rounded-full bg-amber-400/[0.07] blur-3xl"
         />
       </div>
+
+      {/* ------- Announcement banner ------- */}
+      <AnnouncementBanner />
 
       {/* ------- Hero ------- */}
       <section className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 lg:grid-cols-[1.02fr_0.98fr] lg:pt-20">
@@ -1444,6 +1449,45 @@ function TelegramCommunitySection() {
         </motion.div>
       </motion.div>
     </section>
+  );
+}
+
+// ─── Announcement banner ───────────────────────────────────────────────
+// Shows admin-controllable announcements (new features, events, referral
+// program highlights) at the very top of the landing page, above the hero.
+// Admins create these from the /admin Marketing tab.
+function AnnouncementBanner() {
+  const announcements = useQuery(api.marketing.getActiveAnnouncements, {});
+  if (!announcements || announcements.length === 0) return null;
+  const latest = announcements[0];
+  const typeStyles: Record<string, string> = {
+    info: "border-sky-400/30 bg-sky-400/[0.06] text-sky-300",
+    feature: "border-amber-400/30 bg-amber-400/[0.06] text-amber-300",
+    event: "border-emerald-400/30 bg-emerald-400/[0.06] text-emerald-300",
+    referral: "border-primary/30 bg-primary/[0.06] text-primary",
+  };
+  const typeIcons: Record<string, string> = {
+    info: "💡",
+    feature: "✨",
+    event: "🎉",
+    referral: "🤝",
+  };
+  const style = typeStyles[latest.type] ?? typeStyles.info;
+  return (
+    <div className="mx-auto max-w-6xl px-4 pt-4">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-sm ${style}`}
+      >
+        <span className="text-lg">{typeIcons[latest.type] ?? "💡"}</span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-foreground">{latest.title}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{latest.body}</p>
+        </div>
+      </motion.div>
+    </div>
   );
 }
 

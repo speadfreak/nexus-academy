@@ -17,9 +17,11 @@ import {
   LogOut,
   Moon,
   Sun,
+  Copy,
+  Share2,
   UserRound,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
@@ -481,7 +483,117 @@ export default function Settings() {
             <LogOut className="size-4" /> Sign out
           </Button>
         </motion.div>
+
+        {/* ═══ REFER FRIENDS ═══ */}
+        <ReferralSection />
       </div>
     </DashboardShell>
+  );
+}
+
+// ─── Referral section ──────────────────────────────────────────────────
+function ReferralSection() {
+  const referralInfo = useQuery(api.marketing.getMyReferralCode, {});
+  const getOrCreate = useMutation(api.marketing.getOrCreateReferralCode);
+  const referralStats = useQuery(api.marketing.getMyReferralStats, {});
+  const [copied, setCopied] = useState(false);
+
+  // If enabled but no code yet, auto-generate
+  useEffect(() => {
+    if (referralInfo?.enabled && !referralInfo.code) {
+      void getOrCreate({});
+    }
+  }, [referralInfo, getOrCreate]);
+
+  if (!referralInfo || !referralInfo.enabled) return null;
+  if (!referralInfo.code) return null;
+
+  const referralLink = `https://nexus-academy-5nfg.onrender.com/?ref=${referralInfo.code}`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
+    toast.success("Referral link copied!");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Nexus Academy — Ethiopian Exam Prep",
+          text: "Join me on Nexus Academy for the best EHEEE exam prep. Use my referral link!",
+          url: referralLink,
+        });
+      } catch {
+        // User cancelled — non-fatal
+      }
+    } else {
+      handleCopy();
+    }
+  };
+
+  const stats = referralStats ?? { signedUp: 0, converted: 0, rewarded: 0, totalRewardDays: 0 };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      className="glass-panel relative overflow-hidden rounded-2xl p-6"
+    >
+      <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-primary/5 blur-3xl" />
+      <div className="relative">
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
+          // refer friends
+        </p>
+        <h2 className="mt-2 text-lg font-extrabold tracking-tight">Refer friends, earn premium</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Share your link. When a friend upgrades to premium, you both get bonus days — free premium time, no cost.
+        </p>
+
+        {/* Referral link */}
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2">
+          <span className="flex-1 truncate font-mono text-xs text-foreground/80">{referralLink}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="cursor-pointer gap-1.5 rounded-lg bg-white/5"
+            onClick={handleCopy}
+          >
+            {copied ? <Check className="size-3.5 text-emerald-300" /> : <Copy className="size-3.5" />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+          <Button
+            size="sm"
+            className="cursor-pointer gap-1.5 rounded-lg"
+            onClick={handleShare}
+          >
+            <Share2 className="size-3.5" />
+            Share
+          </Button>
+        </div>
+
+        {/* Stats */}
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-center">
+            <p className="font-mono text-2xl font-bold text-gradient">{stats.signedUp}</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Signed up</p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-center">
+            <p className="font-mono text-2xl font-bold text-emerald-300">{stats.converted}</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Converted</p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-center">
+            <p className="font-mono text-2xl font-bold text-amber-300">{stats.totalRewardDays}</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Days earned</p>
+          </div>
+        </div>
+
+        <p className="mt-3 text-[10px] text-muted-foreground/60">
+          How it works: your friend must sign up via your link AND upgrade to premium. When their payment is confirmed, you both get bonus days. Self-referrals are blocked.
+        </p>
+      </div>
+    </motion.div>
   );
 }
