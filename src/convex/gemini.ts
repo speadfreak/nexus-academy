@@ -11,11 +11,18 @@
 //                    (get one free at https://aistudio.google.com/apikey)
 //
 // Optional env var:
-//   GEMINI_MODEL     defaults to "gemini-2.5-flash"
+//   GEMINI_MODEL     defaults to "gemini-3.6-flash"
 //                    (overridable per-call via opts.model)
 //
-// Free-tier rate limits (community-cited for 2.5-flash as of mid-2026):
-//   ~15 RPM  ·  ~1,000,000 TPM  ·  ~1,500 RPD
+// NOTE on model names: gemini-2.5-flash is no longer available to new API
+// keys as of late Aug 2026 — Google returns 404 NOT_FOUND with the message
+// "This model is no longer available to new users. Please update your code
+// to use models/gemini-3.6-flash for the latest features and improvements."
+// If you pinned GEMINI_MODEL=gemini-2.5-flash in your Keys tab, change it
+// to gemini-3.6-flash (or unset it to fall back to the new default).
+//
+// Free-tier rate limits (community-cited for the 3.x-flash family as of
+// mid-2026): ~15 RPM  ·  ~1,000,000 TPM  ·  ~1,500 RPD
 // The binding constraint for us is RPD (requests per day), since mock
 // exam generation is infrequent (a handful of times per student per
 // month) but each call is heavy (~7K tokens output). 1,500 RPD is plenty.
@@ -28,7 +35,11 @@ import { ConvexError } from "convex/values";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// Default to gemini-3.6-flash — the model Google's API explicitly
+// recommends in the "gemini-2.5-flash is no longer available" 404 message.
+// If a newer model ships in the future, the admin can override via the
+// GEMINI_MODEL config key in the Keys tab without code changes.
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 const GEMINI_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -77,6 +88,23 @@ export class GeminiRateLimitError extends Error {
     super(message);
     this.name = "GeminiRateLimitError";
     this.retryAfterMs = retryAfterMs;
+  }
+}
+
+/**
+ * Error class for "Gemini is not available from this deployment" failures
+ * — most commonly the FAILED_PRECONDITION "User location is not supported
+ * for the API use" error returned when the API key was created from a
+ * region Gemini's free tier doesn't serve (e.g. Ethiopia). Callers should
+ * treat this as a signal to fall back to another provider, NOT to retry
+ * Gemini — retrying won't help.
+ */
+export class GeminiUnavailableError extends Error {
+  status: string;
+  constructor(message: string, status: string) {
+    super(message);
+    this.name = "GeminiUnavailableError";
+    this.status = status;
   }
 }
 
@@ -134,6 +162,36 @@ export async function callGemini(ctx: ActionCtx, opts: GeminiCallOptions): Promi
         `Gemini rate-limit (429). Retry after ${retryAfterMs}ms. Raw: ${raw.slice(0, 200)}`,
         retryAfterMs,
       );
+    }
+    // Detect "Gemini is not available from this deployment" — the two
+    // shapes we care about:
+    //   - 400 FAILED_PRECONDITION "User location is not supported for the
+    //     API use" (the API key was created from an unsupported region).
+    //   - 404 NOT_FOUND "This model is no longer available to new users"
+    //     (the model name is deprecated; the admin needs to update
+    //     GEMINI_MODEL in the Keys tab, OR we fall back to Groq).
+    // In both cases, retrying Gemini won't help — the caller should fall
+    // back to another provider (Groq in our case).
+    try {
+      const parsed = JSON.parse(raw) as {
+        error?: { status?: string; message?: string; code?: number };
+      };
+      const status = parsed.error?.status;
+      if (
+        status === "FAILED_PRECONDITION" ||
+        parsed.error?.code === 404 ||
+        response.status === 404
+      ) {
+        throw new GeminiUnavailableError(
+          `Gemini unavailable (${status ?? response.status}): ${parsed.error?.message ?? raw.slice(0, 200)}`,
+          status ?? String(response.status),
+        );
+      }
+    } catch (parseErr) {
+      // If JSON.parse itself threw, rethrow the parse error (only if it's
+      // not a GeminiUnavailableError we just threw above).
+      if (parseErr instanceof GeminiUnavailableError) throw parseErr;
+      // else fall through to the generic error below
     }
     throw new Error(
       `Gemini API error ${response.status}${raw ? `: ${raw.slice(0, 300)}` : ""}`,

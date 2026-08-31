@@ -15,7 +15,7 @@ import { isAdminDoc } from "./admin";
 export const INTEGRATION_KEYS = [
   { key: "GROQ_API_KEY", label: "Groq AI (Primary AI)", category: "ai", description: "AI tutor, quizzes, plans, flashcards, content classification, recaps, quotes", helpUrl: "https://console.groq.com/keys", helpLabel: "console.groq.com" },
   { key: "GEMINI_API_KEY", label: "Gemini AI (Mock Exams)", category: "ai", description: "Used ONLY for mock exam generation — Gemini's higher TPM ceiling handles the ~7K-token-per-section output that would blow Groq's 8,000 TPM free-tier limit. Tutor, quizzes, flashcards and daily challenge still use Groq.", helpUrl: "https://aistudio.google.com/apikey", helpLabel: "aistudio.google.com/apikey" },
-  { key: "GEMINI_MODEL", label: "Gemini Model (optional)", category: "ai", description: "Optional model override. Defaults to gemini-2.5-flash. Change only if you want to pin a different stable Gemini model name." },
+  { key: "GEMINI_MODEL", label: "Gemini Model (optional)", category: "ai", description: "Optional model override. Defaults to gemini-3.6-flash. gemini-2.5-flash is no longer available to new API keys — if you pinned it here, change it to gemini-3.6-flash (or unset it to fall back to the default)." },
   { key: "YOUTUBE_API_KEY", label: "YouTube Data API", category: "ai", description: "Related videos in reader", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console" },
   { key: "R2_ACCOUNT_ID", label: "R2 Account ID", category: "storage", description: "Cloudflare R2 bucket access" },
   { key: "R2_ACCESS_KEY_ID", label: "R2 Access Key", category: "storage", description: "Cloudflare R2 credentials" },

@@ -142,6 +142,8 @@ export default function MockExamPage() {
     success: boolean;
     reason?: string;
     retryable?: boolean;
+    providerUsed?: "gemini" | "groq";
+    generationMs?: number;
   }[]>([]);
   const [genCurrent, setGenCurrent] = useState<string>("");
   const [genError, setGenError] = useState<string | null>(null);
@@ -211,13 +213,18 @@ export default function MockExamPage() {
       setActiveSectionPlan(start.sections);
 
       // Step 2 — generate each section sequentially via the split
-      // generateSection action. Mock exams use Gemini (not Groq) — its
+      // generateSection action. Mock exams try Gemini first — its
       // ~1M TPM free-tier ceiling means each ~7K-token section fits in a
-      // single request without exhausting the budget. The previous 60s
-      // inter-section delay was a Groq TPM recovery shim and is no longer
-      // needed. We keep a tiny 1.5s gap for UI/animation polish only.
-      const SECTION_DELAY_MS = 1500; // 1.5s — UI polish only, NOT for rate limits
+      // single request without exhausting the budget. If Gemini is
+      // unavailable from this region (e.g. Ethiopia), the backend silently
+      // falls back to Groq and returns providerUsed="groq" so we know to
+      // re-apply the 60s inter-section TPM recovery delay (Groq's free
+      // tier is 8,000 TPM — each section eats ~7K of it, so we need ~52s
+      // of recovery before the next Groq call).
+      const GEMINI_DELAY_MS = 1500; // UI polish only — Gemini has plenty of TPM headroom
+      const GROQ_DELAY_MS = 60000; // TPM recovery — required when falling back to Groq
       const progress: typeof genProgress = [];
+      let lastProvider: "gemini" | "groq" | undefined = undefined;
       for (let i = 0; i < start.sections.length; i++) {
         const section = start.sections[i];
         setGenCurrent(section.subjectName);
@@ -229,13 +236,18 @@ export default function MockExamPage() {
             success: boolean;
             reason?: string;
             retryable?: boolean;
+            providerUsed?: "gemini" | "groq";
+            generationMs?: number;
           };
+          lastProvider = result.providerUsed ?? "gemini";
           progress.push({
             sectionIndex: section.sectionIndex,
             subjectName: section.subjectName,
             success: result.success,
             reason: result.reason,
             retryable: result.retryable,
+            providerUsed: result.providerUsed,
+            generationMs: result.generationMs,
           });
           setGenProgress([...progress]);
           if (!result.success) {
@@ -254,9 +266,11 @@ export default function MockExamPage() {
           });
           setGenProgress([...progress]);
         }
-        // Brief pause between sections for UI polish (skip after the last one).
+        // Adaptive inter-section delay: 1.5s for Gemini, 60s for Groq
+        // fallback. Skip after the last section.
         if (i < start.sections.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, SECTION_DELAY_MS));
+          const delay = lastProvider === "groq" ? GROQ_DELAY_MS : GEMINI_DELAY_MS;
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
 
@@ -310,6 +324,8 @@ export default function MockExamPage() {
         success: boolean;
         reason?: string;
         retryable?: boolean;
+        providerUsed?: "gemini" | "groq";
+        generationMs?: number;
       };
       setGenProgress((prev) =>
         prev.map((p) =>
@@ -320,6 +336,8 @@ export default function MockExamPage() {
                 success: result.success,
                 reason: result.reason,
                 retryable: result.retryable,
+                providerUsed: result.providerUsed,
+                generationMs: result.generationMs,
               }
             : p,
         ),
@@ -674,7 +692,7 @@ function GeneratingScreen({
   onProceed,
   canProceed,
 }: {
-  progress: { sectionIndex: number; subjectName: string; success: boolean; reason?: string; retryable?: boolean }[];
+  progress: { sectionIndex: number; subjectName: string; success: boolean; reason?: string; retryable?: boolean; providerUsed?: "gemini" | "groq"; generationMs?: number }[];
   current: string;
   onRetry: (sectionIndex: number) => void;
   retrying: boolean;
@@ -685,6 +703,14 @@ function GeneratingScreen({
   const done = progress.length;
   const failedCount = progress.filter((p) => !p.success).length;
   const allDone = done >= total;
+  // Detect if any section fell back to Groq — if so, the next inter-section
+  // delay is 60s instead of 1.5s, so the remaining time estimate needs to
+  // account for that.
+  const groqFallbackActive = progress.some((p) => p.providerUsed === "groq");
+  const remainingSections = Math.max(0, total - done);
+  const estimatedRemainingMs = groqFallbackActive
+    ? remainingSections * 65_000 // ~5s generation + 60s TPM recovery per remaining section
+    : remainingSections * 15_000; // ~15s per Gemini section including 1.5s polish delay
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-12">
       <div className="relative flex size-20 items-center justify-center">
@@ -709,10 +735,24 @@ function GeneratingScreen({
               : "Building 6 sections of original questions"}
         </h2>
         <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-          The AI writes ~340 fresh multiple-choice questions grounded in the
-          Ethiopian curriculum — one section at a time. Each section takes
-          ~10–20s, plus a brief pause between sections. This typically
-          takes ~2 minutes total. Please keep this tab open.
+          {allDone ? (
+            "All requested sections have been processed. Review any failures above, or proceed to take the exam."
+          ) : groqFallbackActive ? (
+            <>
+              Gemini isn't available from your region, so the AI is using the
+              Groq fallback path — each section needs a ~60s cooldown between
+              calls to respect Groq's free-tier rate limit. Estimated time
+              remaining: <span className="font-mono text-amber-300">~{Math.ceil(estimatedRemainingMs / 60_000)} min</span>.
+              Please keep this tab open.
+            </>
+          ) : (
+            <>
+              The AI writes ~340 fresh multiple-choice questions grounded in the
+              Ethiopian curriculum — one section at a time. Each section takes
+              ~10–20s. Estimated time remaining: <span className="font-mono text-amber-300">~{Math.max(1, Math.round(estimatedRemainingMs / 1000))}s</span>.
+              Please keep this tab open.
+            </>
+          )}
         </p>
       </div>
 
@@ -758,6 +798,24 @@ function GeneratingScreen({
                 <span className="flex-1">
                   {item.subjectName} — {item.success ? "ready" : "failed"}
                 </span>
+                {/* Provider badge — shows which AI actually served this section */}
+                {item.success && item.providerUsed && (
+                  <span
+                    className={cn(
+                      "rounded-md px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider",
+                      item.providerUsed === "gemini"
+                        ? "bg-sky-400/15 text-sky-300"
+                        : "bg-violet-400/15 text-violet-300",
+                    )}
+                    title={
+                      item.providerUsed === "gemini"
+                        ? "Generated via Google Gemini (primary provider)"
+                        : "Generated via Groq fallback (Gemini unavailable from this region)"
+                    }
+                  >
+                    {item.providerUsed === "gemini" ? "Gemini" : "Groq fallback"}
+                  </span>
+                )}
                 {!item.success && (
                   <button
                     type="button"

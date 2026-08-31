@@ -57,7 +57,8 @@ import { action, internalMutation, internalQuery, mutation, query, type ActionCt
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireActiveSubscriptionAction } from "./subscriptions";
-import { callGemini, GeminiRateLimitError } from "./gemini";
+import { callGemini, GeminiRateLimitError, GeminiUnavailableError } from "./gemini";
+import { callGroq } from "./groq";
 import { XP_VALUES } from "./constants";
 
 // ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ async function requestSectionQuestions(
   stream: string,
   topicNames: string[],
   count: number,
-): Promise<string> {
+): Promise<{ text: string; provider: "gemini" | "groq" }> {
   const systemPrompt =
     "You write multiple-choice exam questions for the Ethiopian national exams " +
     "(EHEEE/ESSLCE), grades 9-12. Questions must be precise, exam-realistic, and " +
@@ -157,12 +158,64 @@ async function requestSectionQuestions(
     '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
     `Topics to cover: ${topicNames.join(", ")}`;
 
-  return await callGemini(ctx, {
-    systemPrompt,
-    userMessage,
-    maxTokens: TOKENS_PER_SECTION,
-    temperature: 0.4,
-  });
+  // ── Provider routing ──────────────────────────────────────────────
+  // Try Gemini first — its free tier's ~1M TPM ceiling handles the
+  // ~7K-token-per-section output that would blow Groq's 8,000 TPM
+  // free-tier limit.
+  //
+  // FALLBACK: If Gemini is unavailable from this deployment (most often
+  // the FAILED_PRECONDITION "User location is not supported" error
+  // returned when the API key was created from a region Gemini's free
+  // tier doesn't serve — e.g. Ethiopia — or the model name was
+  // deprecated), we silently fall back to Groq with the original 7000-
+  // token budget. This is a degraded experience (slower, consumes more
+  // of the shared Groq TPM pool that other features also use), but it
+  // means the student always gets a working exam even if Gemini isn't
+  // reachable from their region. The retry loop in generateSection will
+  // still apply the inter-section delay so concurrent tutor/quiz
+  // traffic on Groq isn't starved.
+  try {
+    const text = await callGemini(ctx, {
+      systemPrompt,
+      userMessage,
+      maxTokens: TOKENS_PER_SECTION,
+      temperature: 0.4,
+    });
+    return { text, provider: "gemini" };
+  } catch (err) {
+    if (err instanceof GeminiUnavailableError) {
+      // Fall back to Groq. We log to systemEvents so the admin can see
+      // when this fallback is being relied on (and fix the Gemini key
+      // / region if possible). The existing systemEvents logEvent only
+      // accepts a fixed enum of eventType values, so we use "error" with
+      // a structured metadata payload to record the fallback.
+      try {
+        await ctx.runMutation(internal.systemEvents.logEvent, {
+          eventType: "error",
+          source: "mockExam.gemini_fallback",
+          status: "error",
+          metadata: JSON.stringify({
+            reason: err.message,
+            provider: "groq",
+            subject: subjectName,
+          }),
+          durationMs: 0,
+        });
+      } catch {
+        // Non-fatal — systemEvents is best-effort logging.
+      }
+      const text = await callGroq(ctx, {
+        systemPrompt,
+        userMessage,
+        maxTokens: TOKENS_PER_SECTION,
+        temperature: 0.4,
+      });
+      return { text, provider: "groq" };
+    }
+    // Other errors (rate-limit, JSON parse, network) propagate up to
+    // generateSection's retry loop, which already handles them.
+    throw err;
+  }
 }
 
 function parseAndValidateQuestions(raw: string, expectedCount: number): MockExamQuestion[] {
@@ -367,6 +420,7 @@ export const generateSection = action({
     success: boolean;
     reason?: string;
     retryable?: boolean; // true when the failure was a transient rate-limit
+    providerUsed?: "gemini" | "groq"; // which AI provider actually served the call
     generationMs: number;
   }> => {
     const userId = await getAuthUserId(ctx);
@@ -437,16 +491,18 @@ export const generateSection = action({
     let questions: MockExamQuestion[] = [];
     let lastError = "Unknown parsing error.";
     let lastRetryable = false;
+    let providerUsed: "gemini" | "groq" | undefined = undefined;
     for (let attempt = 0; attempt < MAX_SECTION_ATTEMPTS && questions.length === 0; attempt++) {
       try {
-        const raw = await requestSectionQuestions(
+        const result = await requestSectionQuestions(
           ctx,
           subject.name,
           exam.stream,
           topicNames.length > 0 ? topicNames : ["general " + subject.name + " syllabus, grades 9-12"],
           questionCount,
         );
-        questions = parseAndValidateQuestions(raw, questionCount);
+        providerUsed = result.provider;
+        questions = parseAndValidateQuestions(result.text, questionCount);
       } catch (error) {
         lastError = error instanceof Error ? error.message : "Unknown parsing error.";
         if (error instanceof GeminiRateLimitError) {
@@ -475,6 +531,7 @@ export const generateSection = action({
         success: false,
         reason: lastError,
         retryable: lastRetryable,
+        providerUsed,
         generationMs: Date.now() - startTime,
       };
     }
@@ -495,6 +552,7 @@ export const generateSection = action({
       subjectName: subject.name,
       questionCount: questions.length,
       success: true,
+      providerUsed,
       generationMs: Date.now() - startTime,
     };
   },
