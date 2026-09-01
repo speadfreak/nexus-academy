@@ -10,6 +10,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   ChevronRight,
   Crown,
@@ -65,6 +66,7 @@ import { AdminAdminsSection } from "@/components/admin/AdminAdminsSection";
 import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { AdminMarketingSection } from "@/components/admin/AdminMarketingSection";
+import { AdminSubscriptionsSection } from "@/components/admin/AdminSubscriptionsSection";
 import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
 import { PaymentReviewsSection } from "@/components/admin/PaymentReviewsSection";
 import { DashboardShell } from "@/components/DashboardShell";
@@ -153,11 +155,12 @@ const ADMIN_TABS = [
   { id: "finance", label: "Finance", index: "06", icon: Wallet },
   { id: "payments", label: "Payment Reviews", index: "07", icon: Receipt },
   { id: "marketing", label: "Marketing", index: "08", icon: Megaphone },
-  { id: "reports", label: "Reports", index: "09", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "10", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "11", icon: Send },
-  { id: "system", label: "System", index: "12", icon: Plug },
-  { id: "audit", label: "Audit Log", index: "13", icon: ScrollText },
+  { id: "subscriptions", label: "Subscriptions", index: "09", icon: CalendarClock },
+  { id: "reports", label: "Reports", index: "10", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "11", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "12", icon: Send },
+  { id: "system", label: "System", index: "13", icon: Plug },
+  { id: "audit", label: "Audit Log", index: "14", icon: ScrollText },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -165,7 +168,7 @@ type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const ADMIN_TAB_GROUPS = [
   { label: "OVERVIEW", ids: ["dashboard"] as const },
   { label: "CONTENT", ids: ["content"] as const },
-  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "marketing"] as const },
+  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "marketing", "subscriptions"] as const },
   { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
 ] as const;
 
@@ -1792,6 +1795,11 @@ export default function Admin() {
             {/* ══════ MARKETING — referral + discounts + announcements ══════ */}
             {tab === "marketing" && (
               <AdminMarketingSection />
+            )}
+
+            {/* ══════ SUBSCRIPTIONS — trial program control ══════ */}
+            {tab === "subscriptions" && (
+              <AdminSubscriptionsSection />
             )}
 
             {/* ══════ REPORTS ══════ */}

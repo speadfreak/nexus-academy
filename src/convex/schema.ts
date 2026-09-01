@@ -201,7 +201,9 @@ const schema = defineSchema(
       trialEndsAt: v.optional(v.number()),
       currentPeriodEnd: v.optional(v.number()),
       planTier: v.string(),
-    }).index("by_user", ["userId"]),
+    })
+      .index("by_user", ["userId"])
+      .index("by_status", ["status"]),
 
     // Payment attempts, one row per initiation.
     payments: defineTable({

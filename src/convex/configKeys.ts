@@ -53,6 +53,8 @@ export const INTEGRATION_KEYS = [
   { key: "REFERRAL_PROGRAM_ENABLED", label: "Referral Program Enabled", category: "payments", description: "When true, students can generate and share referral links. When false, the referral section is hidden." },
   { key: "REFERRER_REWARD_DAYS", label: "Referrer Reward (days)", category: "payments", description: "Premium days granted to the referrer when their referral's first payment is approved. Default: 7." },
   { key: "REFEREE_REWARD_DAYS", label: "Referee Reward (days)", category: "payments", description: "Bonus premium days granted to the referred user on top of their first payment. Default: 3." },
+  // ── Trial / subscription program ───────────────────────────────────
+  { key: "FREE_TRIAL_DAYS", label: "Free Trial Days (active days)", category: "payments", description: "Number of ACTIVE-usage days new users get as a free premium trial. The trial counts days the student actually opens the app, not calendar days since signup. Default: 14. Changing this does NOT retroactively affect users whose trial already expired — use the Subscriptions tab → 'Bulk extend all trials' for that." },
 ] as const;
 
 /**
@@ -73,6 +75,7 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   REFERRAL_PROGRAM_ENABLED: "true",
   REFERRER_REWARD_DAYS: "7",
   REFEREE_REWARD_DAYS: "3",
+  FREE_TRIAL_DAYS: "14",
 };
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
