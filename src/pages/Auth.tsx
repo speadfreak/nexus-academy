@@ -586,42 +586,28 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       const frontendUrl = window.location.origin + redirect;
       const result = await signIn("google", { redirectTo: frontendUrl });
       if (result.redirect) {
-        // ── Popup-based OAuth ─────────────────────────────────────────
-        // Open the Google OAuth flow in a popup so the user stays on
-        // the branded Nexus Academy page the entire time. The Convex
-        // "Continue to" page only flashes inside the popup.
-        const popup = window.open(
-          result.redirect.toString(),
-          "nexus-google-auth",
-          "width=500,height=700,left=200,top=100",
-        );
-        if (!popup) {
-          // Popup blocked — fall back to full-page redirect
-          window.location.assign(result.redirect.toString());
-          return;
-        }
-        // Poll popup: when it closes, the Convex session will already
-        // be established (or not). The existing auth useEffect will
-        // handle navigation if authenticated.
-        const poll = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(poll);
-            // Small delay for the Convex client to pick up the new session
-            setTimeout(() => setIsLoading(false), 800);
-          }
-        }, 400);
-        // Auto-cleanup after 5 minutes (timeout safety)
-        setTimeout(() => {
-          clearInterval(poll);
-          setIsLoading(false);
-        }, 5 * 60 * 1000);
-        return; // Don't setIsLoading(false) — popup is still open
+        // ── Full-page redirect OAuth flow ────────────────────────────
+        // Redirect the entire tab to Google's OAuth flow. After the user
+        // picks an account, Google redirects to the Convex callback URL,
+        // which then redirects back to this frontend with ?code=VERIFIER
+        // in the URL. The ConvexAuthProvider picks up the code on mount
+        // and completes the sign-in.
+        //
+        // We previously tried a popup-based flow, but it caused issues
+        // across domains (convex.site → google → convex.site → vercel)
+        // — the partitioned cookies and cross-origin popup restrictions
+        // made it unreliable. Full-page redirect is simpler and works
+        // everywhere.
+        window.location.assign(result.redirect.toString());
+        return;
       }
       setIsLoading(false);
     } catch (error) {
       console.error("Google sign-in error:", error);
       setError(
-        "Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the Keys tab, or use email instead.",
+        error instanceof Error
+          ? error.message
+          : "Google sign-in failed. Check your connection and try again, or use email instead.",
       );
       setIsLoading(false);
     }

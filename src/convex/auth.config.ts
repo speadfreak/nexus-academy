@@ -40,12 +40,6 @@ const siteUrl =
   process.env.CUSTOM_AUTH_SITE_URL ??
   process.env.CONVEX_SITE_URL ??
   "https://flexible-bloodhound-758.convex.site";
-if (!siteUrl) {
-  console.error(
-    "[auth.config] CONVEX_SITE_URL is not set. Convex Auth requires it. " +
-      "Set it in your Convex deployment env vars.",
-  );
-}
 
 export default {
   providers: [
