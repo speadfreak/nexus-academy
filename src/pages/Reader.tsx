@@ -41,7 +41,6 @@ import {
   FileText,
   Maximize2,
   Play,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,38 +62,13 @@ import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderEx
 // The previous attempt to add cMapUrl + standardFontDataUrl + streaming
 // options caused regressions where pdf.js silently failed to render and
 // the loading skeleton stayed forever. We're back to the simplest path
-// that was working before the perf commits. We can re-add options one
-// at a time after we confirm rendering works.
+// that was working before the perf commits.
 //
 // The worker file in public/ is auto-synced to the installed pdfjs-dist
 // version by scripts/sync-pdfjs.mjs (runs on every `bun install` via the
 // postinstall hook). This prevents the version-mismatch bug that previously
 // broke all PDF rendering.
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-
-// ─── Compatibility mode ────────────────────────────────────────────────
-// When enabled (via the error state's "Try compatibility mode" button),
-// we disable the pdf.js web worker and run pdf.js in the main thread.
-// This is slower (blocks the UI during rendering) but still canvas-based
-// (no download button from the browser's native PDF viewer). It's the
-// fallback when the worker fails to initialize (CORS, version mismatch,
-// browser extension blocking workers, etc.).
-//
-// We track this in a module-level variable so the Document component's
-// `options` prop can read it reactively. The variable is set by the
-// Reader component via setCompatMode().
-let _compatModeActive = false;
-export function setPdfCompatMode(enabled: boolean) {
-  _compatModeActive = enabled;
-  if (enabled) {
-    // Disable the worker — pdf.js will run in the main thread.
-    // Setting workerSrc to empty string forces the "fake worker" path.
-    pdfjs.GlobalWorkerOptions.workerSrc = '';
-  } else {
-    // Re-enable the worker.
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-  }
-}
 
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -168,65 +142,19 @@ export default function Reader() {
   const [loadProgress, setLoadProgress] = useState(0);
   const [pageAnimating, setPageAnimating] = useState(false);
   // Track whether we've already attempted the ArrayBuffer fallback
-  // to prevent infinite loops between URL → ArrayBuffer → iframe.
+  // to prevent infinite loops between URL → ArrayBuffer.
   const arrayBufferAttempted = useRef(false);
   const readerItemId = reader?.item?._id;
-  // Compatibility mode: when true, disables the pdf.js web worker and
-  // runs pdf.js in the main thread. Slower but still canvas-based (no
-  // download button). Used as a fallback when the worker fails to
-  // respond. See handleCompatibilityMode in the error state.
-  //
-  // AUTO-DETECT: If the worker has failed before (stored in localStorage),
-  // start in compatibility mode immediately so the user doesn't have to
-  // click the button every time. The flag is cleared if compat mode also
-  // fails (so we don't get stuck in a broken state).
-  const [compatMode, setCompatMode] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("nexus_pdf_compat_mode") === "true";
-  });
 
-  // ── Apply compat mode on mount ────────────────────────────────────────
-  // If we start in compat mode (from localStorage), apply it to pdf.js
-  // immediately so the first Document load uses main-thread rendering.
+  // ── Clean up stale compat mode flag ───────────────────────────────────
+  // Previous versions of this file had a broken "compatibility mode" that
+  // set workerSrc to '' — which caused "No GlobalWorkerOptions.workerSrc
+  // specified" errors. The flag was persisted in localStorage. Clear it
+  // on mount so users who clicked it before don't get stuck in a broken
+  // state.
   useEffect(() => {
-    if (compatMode) {
-      setPdfCompatMode(true);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Render timeout safety net ─────────────────────────────────────────
-  // If pdf.js hasn't fired onLoadSuccess within 120 seconds of mounting,
-  // show a proper in-app error state. 120s is generous — some PDFs are
-  // 5 MB+ and on slow connections (Ethiopia) they can take 60-90s to
-  // download + render. The old 30s timeout was too aggressive and fired
-  // false errors for large files.
-  //
-  // We deliberately do NOT fall back to an <iframe> pointing at the raw
-  // PDF URL — the browser's native PDF viewer includes a download button
-  // that bypasses the app's no-download policy. A canvas-based custom
-  // render is the only path; on failure we show a retry button + a
-  // "compatibility mode" button that disables the worker and runs pdf.js
-  // in the main thread (slower but still canvas-based, no download).
-  const renderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!pdfUrl && !pdfData) return;
-    if (loadingPdf) return;
-    if (pdfError) return;
-
-    if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-
-    renderTimeoutRef.current = setTimeout(() => {
-      console.warn(
-        "[Reader] PDF.js render timed out after 120s — showing error state.",
-      );
-      setPdfError("render_timeout");
-    }, 120000);
-
-    return () => {
-      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfUrl, pdfData, loadingPdf, pdfError, numPages]);
+    try { localStorage.removeItem("nexus_pdf_compat_mode"); } catch {}
+  }, []);
 
   // ── PDF loading: URL-first for range requests, ArrayBuffer fallback ──────
   // PERFORMANCE CRITICAL: We pass the URL to react-pdf FIRST so that
@@ -829,29 +757,28 @@ export default function Reader() {
                   <h3 className="mt-2 text-lg font-extrabold tracking-tight">
                     {pdfError === "premium_required"
                       ? "Premium access required"
-                      : pdfError === "render_timeout"
-                        ? "Rendering is taking too long"
-                        : pdfError === "worker_failed"
-                          ? "PDF worker failed to load"
-                          : pdfError === "invalid_pdf"
-                            ? "File is not a valid PDF"
-                            : "Couldn't open this document"}
+                      : pdfError === "worker_failed"
+                        ? "PDF worker failed to load"
+                        : pdfError === "invalid_pdf"
+                          ? "File is not a valid PDF"
+                          : "Couldn't open this document"}
                   </h3>
                   <p className="mt-2 text-sm text-muted-foreground">
                     {pdfError === "premium_required"
                       ? "Your free trial has ended. Upgrade to premium to read this resource."
-                      : pdfError === "render_timeout"
-                        ? "The PDF worker hasn't responded in 2 minutes. This usually means the worker failed to initialize. Try compatibility mode below — it runs the renderer in the main thread (slower but works without the worker)."
-                        : pdfError === "worker_failed"
-                          ? "The PDF rendering worker couldn't start. Try compatibility mode below — it runs the renderer in the main thread (slower but works without the worker)."
-                          : pdfError === "invalid_pdf"
-                            ? "The file doesn't have valid PDF magic bytes. It may be corrupted or the wrong format."
-                            : pdfError}
+                      : pdfError === "worker_failed"
+                        ? "The PDF rendering worker couldn't start. Try a hard refresh (Ctrl+Shift+R / Cmd+Shift+R) — if it keeps happening, your browser might be blocking web workers."
+                        : pdfError === "invalid_pdf"
+                          ? "The file doesn't have valid PDF magic bytes. It may be corrupted or the wrong format."
+                          : pdfError}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Button
                     onClick={() => {
+                      // Clear any stale compat mode flag from previous
+                      // broken versions of this code.
+                      try { localStorage.removeItem("nexus_pdf_compat_mode"); } catch {}
                       setPdfError(null);
                       setPdfUrl(null);
                       setPdfData(null);
@@ -883,72 +810,14 @@ export default function Reader() {
                     <RefreshCw className="size-4" />
                     Try again
                   </Button>
-                  {/* Compatibility mode — disables the pdf.js web worker
-                      and runs pdf.js in the main thread. Slower but still
-                      canvas-based (no download button). This is the fallback
-                      when the worker fails to initialize. */}
-                  {!compatMode && (pdfError === "render_timeout" || pdfError === "worker_failed") && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setCompatMode(true);
-                        setPdfCompatMode(true);
-                        // Persist to localStorage so all future PDF loads
-                        // use compatibility mode automatically — the user
-                        // only has to click this once.
-                        localStorage.setItem("nexus_pdf_compat_mode", "true");
-                        setPdfError(null);
-                        setPdfUrl(null);
-                        setPdfData(null);
-                        setUseUrlFallback(false);
-                        arrayBufferAttempted.current = false;
-                        // Re-load with worker disabled.
-                        if (readerItemId && item) {
-                          if (item.isPremium) {
-                            setLoadingPdf(true);
-                            void (async () => {
-                              try {
-                                const { url } = await getDownloadUrl({ contentId: readerItemId });
-                                setPdfUrl(url);
-                                setUseUrlFallback(true);
-                              } catch (e) {
-                                setPdfError(e instanceof Error ? e.message : "reload_failed");
-                              } finally {
-                                setLoadingPdf(false);
-                              }
-                            })();
-                          } else {
-                            setPdfUrl(item.fileUrl);
-                            setUseUrlFallback(true);
-                          }
-                        }
-                      }}
-                      className="gap-2"
-                    >
-                      <Zap className="size-4" />
-                      Try compatibility mode
-                    </Button>
-                  )}
-                  {compatMode && (
-                    <div className="flex flex-col items-center gap-2">
-                      <p className="text-xs text-amber-300">
-                        ⚡ Compatibility mode active (main-thread rendering)
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          localStorage.removeItem("nexus_pdf_compat_mode");
-                          setCompatMode(false);
-                          setPdfCompatMode(false);
-                          // Reload the page to reset everything cleanly.
-                          window.location.reload();
-                        }}
-                        className="text-[10px] text-muted-foreground underline hover:text-foreground"
-                      >
-                        Reset to worker mode
-                      </button>
-                    </div>
-                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => window.location.reload()}
+                    className="gap-2"
+                  >
+                    <RefreshCw className="size-4" />
+                    Reload page
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -1068,15 +937,18 @@ export default function Reader() {
                 <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
                   <Document
                     file={pdfData ? { data: pdfData } : { url: pdfUrl! }}
-                    // PDF.js options — keep this minimal. The previous
-                    // perf-tuning (cMapUrl, standardFontDataUrl, disableAutoFetch)
-                    // caused regressions where pdf.js silently failed to
-                    // render and the loading skeleton stayed forever.
-                    //
-                    // We deliberately OMIT options entirely now — pdf.js
-                    // runs on its pure defaults. This is the path that was
-                    // working before the perf commits. We can re-add options
-                    // one at a time after we confirm rendering works.
+                    // PDF.js options — cMapUrl and standardFontDataUrl are
+                    // REQUIRED for proper rendering of PDFs with non-Latin
+                    // fonts (CMaps) and standard PDF fonts (Helvetica, Times,
+                    // etc.). Without them, pdf.js silently falls back to
+                    // substitute fonts which can cause blank pages or missing
+                    // text. Both are served same-origin from public/ (auto-
+                    // synced by scripts/sync-pdfjs.mjs).
+                    options={{
+                      cMapUrl: '/cmaps/',
+                      cMapPacked: true,
+                      standardFontDataUrl: '/standard_fonts/',
+                    }}
                     onLoadProgress={(progress) => {
                       try {
                         if (progress && typeof progress.loaded === "number" && typeof progress.total === "number" && progress.total > 0) {
