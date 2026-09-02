@@ -4,15 +4,19 @@
 //    bundled internally. Its worker is configured in Reader.tsx using the
 //    pdfjs instance exported BY react-pdf — NOT this file.
 //
-// This file configures the TOP-LEVEL pdfjs-dist (v6.x) used only by the
-// admin upload form's AI classification (text extraction in browser).
+// This file uses the SAME pdfjs-dist that react-pdf bundles internally
+// (v5.4.296), imported via react-pdf's re-export. This ensures version
+// consistency — the worker URL matches the main thread library.
 // pdf.js crashes the Convex node analyzer, so it never runs server-side.
 
-import * as pdfjs from "pdfjs-dist";
+import { pdfjs } from "react-pdf";
 
-// Use cdnjs CDN — always available, no bundling issues.
-// The version is pinned to match package.json.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+// Use the same worker setup as Reader.tsx — Vite bundles the worker
+// from the correct pdfjs-dist version (the one react-pdf uses).
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
 
 /**
  * Extract a plain-text sample from the first pages of a PDF file.

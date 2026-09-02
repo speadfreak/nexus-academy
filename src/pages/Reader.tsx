@@ -54,21 +54,25 @@ import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
 
 // ─── PDF.js worker setup ───────────────────────────────────────────────
-// react-pdf bundles its own pdfjs-dist (currently 5.4.296, pinned in
-// node_modules/react-pdf/node_modules/pdfjs-dist). The worker is served
-// same-origin (public/pdf.worker.min.mjs) so we avoid CDN/CORS issues.
+// This is the OFFICIAL react-pdf recommended setup for Vite:
+//   https://github.com/wojtekmaj/react-pdf#configure-pdfjs-worker
 //
-// We deliberately set ONLY the workerSrc here — no other pdf.js options.
-// The previous attempt to add cMapUrl + standardFontDataUrl + streaming
-// options caused regressions where pdf.js silently failed to render and
-// the loading skeleton stayed forever. We're back to the simplest path
-// that was working before the perf commits.
+// `new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url)` tells
+// Vite to bundle the worker file and serve it with the correct MIME type
+// and module type. Vite handles:
+//   - Resolving the correct pdfjs-dist version (matches what react-pdf uses)
+//   - Serving the file with the correct Content-Type
+//   - Adding a content hash for cache busting
+//   - Ensuring the file is loadable as a module worker (pdf.js v5 uses
+//     `new Worker(url, { type: 'module' })`)
 //
-// The worker file in public/ is auto-synced to the installed pdfjs-dist
-// version by scripts/sync-pdfjs.mjs (runs on every `bun install` via the
-// postinstall hook). This prevents the version-mismatch bug that previously
-// broke all PDF rendering.
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+// IMPORTANT: This MUST be in the same file where <Document> is rendered,
+// NOT in a separate file like main.tsx — react-pdf's default workerSrc
+// ('pdf.worker.mjs') would overwrite it due to module execution order.
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 
 // ─── Helpers ────────────────────────────────────────────────────────────
