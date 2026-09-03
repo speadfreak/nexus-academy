@@ -162,13 +162,13 @@ async function callOpenAICompatible(
 // ---------------------------------------------------------------------------
 
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1/chat/completions";
-// Default model: nvidia/nemotron-3-super-120b-a12b:free — confirmed working
+// Default model: openrouter/free — confirmed working
 // as of Sep 2026. The old default (meta-llama/llama-3.3-70b-instruct:free)
 // was deprecated and returns 404 "This model is unavailable for free".
 // Other confirmed-working free models: nvidia/nemotron-3.5-lightning:free,
 // openrouter/free (auto-router that picks the best available free model).
 const OPENROUTER_DEFAULT_MODEL =
-  process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free";
+  process.env.OPENROUTER_MODEL || "openrouter/free";
 
 export async function callOpenRouter(
   ctx: ActionCtx,
