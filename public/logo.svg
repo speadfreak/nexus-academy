@@ -1,12 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="nexus-g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8EC5FF"/>
-      <stop offset="1" stop-color="#2A6FD8"/>
+    <linearGradient id="nxg" x1="8" y1="4" x2="56" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5b7cfa"/>
+      <stop offset="0.55" stop-color="#4f6ef2"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="etflag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#009A44"/>
+      <stop offset="0.5" stop-color="#FCDD09"/>
+      <stop offset="1" stop-color="#DA121A"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="#0B0F17"/>
-  <rect x="1.5" y="1.5" width="61" height="61" rx="12.5" fill="none" stroke="url(#nexus-g)" stroke-opacity="0.4" stroke-width="2"/>
-  <path d="M22 45 V19 L32 30 L42 19 V45" fill="none" stroke="url(#nexus-g)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M17 51 C24 55.5, 40 55.5, 47 51" fill="none" stroke="url(#nexus-g)" stroke-width="3.5" stroke-linecap="round" opacity="0.85"/>
+  <rect width="64" height="64" rx="17" fill="url(#nxg)"/>
+  <path d="M21 45V19l22 26V19" stroke="white" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="48.5" cy="15.5" r="3.4" fill="white" fill-opacity="0.9"/>
+  <rect x="3" y="3" width="6" height="58" rx="3" fill="url(#etflag)" opacity="0.9"/>
 </svg>

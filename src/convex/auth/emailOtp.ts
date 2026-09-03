@@ -22,7 +22,7 @@ export const emailOtp = Email({
         {
           to: email,
           otp: token,
-          appName: process.env.VLY_APP_NAME || "Nexus Academy",
+          appName: process.env.VLY_APP_NAME || "NexET",
         },
         {
           headers: {

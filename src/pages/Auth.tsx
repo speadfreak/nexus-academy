@@ -179,13 +179,13 @@ function ShowcasePanel() {
               <div className="absolute inset-0 animate-pulse rounded-xl bg-primary/20 blur-lg" />
               <img
                 src={logo}
-                alt="Nexus Academy"
+                alt="NexET 🇪🇹 logo"
                 width={52}
                 height={52}
                 className="relative rounded-xl"
               />
             </div>
-            <span className="type-display text-gradient">Nexus Academy</span>
+            <span className="type-display text-gradient">NexET 🇪🇹</span>
           </div>
           <p className="text-lg leading-relaxed text-amber-200/60">
             Where ambition meets intelligence — master any subject, crush every exam,
@@ -336,7 +336,7 @@ function Onboarding({
           >
             <img
               src={logo}
-              alt="Nexus Academy logo"
+              alt="NexET 🇪🇹 logo"
               width={64}
               height={64}
               className="mb-4 mt-2 rounded-xl"
@@ -711,7 +711,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                               <div className="absolute inset-0 animate-pulse rounded-2xl bg-primary/25 blur-xl" />
                               <img
                                 src={logo}
-                                alt="Nexus Academy"
+                                alt="NexET 🇪🇹 logo"
                                 width={56}
                                 height={56}
                                 className="relative rounded-2xl"
@@ -723,7 +723,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                           <motion.div variants={itemVariants} className="text-center">
                             <h1 className="text-2xl font-extrabold tracking-tight text-white">
                               Welcome to{" "}
-                              <span className="text-gradient">Nexus</span>
+                              <span className="text-gradient">NexET</span> 🇪🇹
                             </h1>
                             <p className="mt-2 text-sm text-white/40">
                               Sign in to access your learning dashboard

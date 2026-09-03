@@ -77,7 +77,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden"
           style={{ background: "#030308" }}
           role="status"
-          aria-label="Loading Nexus Academy"
+          aria-label="Loading NexET 🇪🇹"
         >
           {/* ══ LAYER 1: Deep ambient radial glow ══ */}
           <div
@@ -456,7 +456,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
             />
           ))}
 
-          <span className="sr-only">Loading Nexus Academy…</span>
+          <span className="sr-only">Loading NexET 🇪🇹…</span>
         </motion.div>
       )}
     </AnimatePresence>

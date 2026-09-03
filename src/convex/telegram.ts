@@ -165,7 +165,7 @@ export const getBroadcastTemplates = query({
 
 export const BROADCAST_TEMPLATES: Record<string, string> = {
   new_content: "📚 New in the library: {title} — {subject} Grade {grade} ({type}).",
-  maintenance: "🛠️ Nexus Academy will be briefly unavailable for maintenance.",
+  maintenance: "🛠️ NexET 🇪🇹 will be briefly unavailable for maintenance.",
   motivation: "🔥 Keep grinding, students. Every session counts toward exam day.",
   custom: "{custom}",
 };

@@ -137,7 +137,7 @@ export const postNewContent = internalAction({
     const text =
       `📚 New in the library: <b>${escapeHtml(args.title)}</b>\n` +
       `${escapeHtml(args.subjectName)} · Grade ${args.grade} · ${escapeHtml(label)}\n` +
-      `Open it in Nexus Academy →`;
+      `Open it in NexET 🇪🇹 →`;
 
     let failed = 0;
     for (const channel of channels) {

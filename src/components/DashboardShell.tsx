@@ -215,14 +215,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             )}
           >
             <span className="relative shrink-0">
-              <img src={logo} alt="Nexus Academy logo" className="size-10 rounded-xl transition-transform group-hover:scale-105" />
+              <img src={logo} alt="NexET 🇪🇹 logo" className="size-10 rounded-xl transition-transform group-hover:scale-105" />
               <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
             </span>
             <div className={cn(
               "sidebar-label min-w-0 leading-tight transition-all duration-300",
               collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
             )}>
-              <p className="text-sm font-extrabold tracking-tight">Nexus Academy</p>
+              <p className="text-sm font-extrabold tracking-tight">NexET 🇪🇹</p>
               <p className="text-[10px] text-muted-foreground">Exam prep & library</p>
             </div>
             {!collapsed && <NotificationBell />}
@@ -355,8 +355,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       <div className="student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch">
         <header className="student-mobile-header glass-panel relative z-30 flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
-            <img src={logo} alt="Nexus Academy logo" className="size-8 rounded-lg" />
-            <span className="text-sm font-extrabold tracking-tight">Nexus Academy</span>
+            <img src={logo} alt="NexET 🇪🇹 logo" className="size-8 rounded-lg" />
+            <span className="text-sm font-extrabold tracking-tight">NexET 🇪🇹</span>
           </Link>
           <div className="flex items-center gap-1">
             <NotificationBell />
@@ -379,7 +379,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">Joseph James</span>
               </span>
             </div>
-            <p className="type-caption text-muted-foreground/30">&copy; 2026 Nexus Academy</p>
+            <p className="type-caption text-muted-foreground/30">&copy; 2026 NexET 🇪🇹</p>
           </div>
         </footer>
       </div>

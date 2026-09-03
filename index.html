@@ -10,7 +10,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Nexus Academy — Ethiopian National Exam Prep Library</title>
+  <title>NexET 🇪🇹 — Ethiopian National Exam Prep Library</title>
 
   <!-- ═══════════════════════════════════════════════════════════════════
        INLINE RECOVERY SYSTEM — runs before ANY JS module loads.
@@ -107,7 +107,7 @@
         return;
       }
       setRetryCount(count + 1);
-      console.warn('[Nexus] Reloading (' + (count+1) + '/' + MAX_RETRIES + '): ' + reason);
+      console.warn('[NexET] Reloading (' + (count+1) + '/' + MAX_RETRIES + '): ' + reason);
       // Use location.replace with a cache-busting query param, then
       // immediately remove it via replaceState so the URL stays clean.
       var url = new URL(location.href);
@@ -124,14 +124,14 @@
 
       if (tag === 'SCRIPT' && src) {
         // Script failed to load — stale chunk, CORS, network error
-        console.error('[Nexus] Script failed to load:', src);
+        console.error('[NexET] Script failed to load:', src);
         e.preventDefault();
         forceReload('Script failed: ' + src);
       }
 
       if (tag === 'LINK' && el.rel === 'stylesheet' && src) {
         // CSS failed — page would be unstyled, force reload
-        console.error('[Nexus] Stylesheet failed to load:', src);
+        console.error('[NexET] Stylesheet failed to load:', src);
         e.preventDefault();
         forceReload('Stylesheet failed: ' + src);
       }
@@ -156,7 +156,7 @@
     window.__NEXUS_MOUNTED = false;
     setTimeout(function() {
       if (!window.__NEXUS_MOUNTED) {
-        console.error('[Nexus] React did not mount within 10 seconds');
+        console.error('[NexET] React did not mount within 10 seconds');
         var count = getRetryCount();
         if (count < MAX_RETRIES) {
           forceReload('React mount timeout (10s)');
@@ -206,13 +206,13 @@
   <!-- CSS-only boot screen: visible before React mounts -->
   <div id="nexus-boot-screen">
     <div class="nexus-boot-logo">N</div>
-    <div class="nexus-boot-text">Nexus Academy</div>
+    <div class="nexus-boot-text">NexET 🇪🇹</div>
   </div>
 
   <!-- Recovery UI: shown when boot fails after max retries -->
   <div id="nexus-recovery">
     <div class="nexus-recovery-card">
-      <div class="nexus-recovery-title">Failed to load Nexus Academy</div>
+      <div class="nexus-recovery-title">Failed to load NexET 🇪🇹</div>
       <div class="nexus-recovery-msg" id="nexus-recovery-message">Unknown error.</div>
       <button class="nexus-recovery-btn" onclick="sessionStorage.clear();location.href=location.pathname">Retry</button>
       <div class="nexus-recovery-count" id="nexus-recovery-count"></div>
@@ -224,7 +224,7 @@
     <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0B0F17;color:#94a3b8;font-family:system-ui,sans-serif;text-align:center;padding:1.5rem">
       <div>
         <p style="font-size:1.125rem;font-weight:600;color:#e2e8f0">JavaScript Required</p>
-        <p style="margin-top:.5rem;font-size:.875rem">Nexus Academy requires JavaScript to run. Please enable it and reload.</p>
+        <p style="margin-top:.5rem;font-size:.875rem">NexET 🇪🇹 requires JavaScript to run. Please enable it and reload.</p>
       </div>
     </div>
   </noscript>

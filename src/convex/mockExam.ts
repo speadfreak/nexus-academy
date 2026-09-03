@@ -147,8 +147,11 @@ async function requestSectionQuestions(
     "You write multiple-choice exam questions for the Ethiopian national exams " +
     "(EHEEE/ESSLCE), grades 9-12. Questions must be precise, exam-realistic, and " +
     "match the official syllabus. All questions must be ORIGINAL — never reproduce " +
-    "any specific real exam's actual questions. Respond ONLY with valid JSON and " +
-    "nothing else.";
+    "any specific real exam's actual questions. " +
+    "CRITICAL: Respond ONLY with a valid JSON array. Do NOT include any reasoning, " +
+    "explanation, thinking, or text before or after the JSON array. " +
+    "Do NOT wrap the JSON in markdown code fences. " +
+    "The very first character of your response must be '[' and the very last must be ']'.";
 
   // Embed the literal JSON shape so the model returns a parseable array.
   // Sequence easier→harder to mirror real exam pacing. Require grounding
@@ -271,8 +274,50 @@ async function requestSectionQuestions(
 }
 
 function parseAndValidateQuestions(raw: string, expectedCount: number): MockExamQuestion[] {
-  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-  const parsed: unknown = JSON.parse(cleaned);
+  // Clean up the raw response:
+  // 1. Strip markdown code fences (```json ... ```)
+  // 2. Some models (especially Nemotron) prepend "reasoning" text before
+  //    the JSON array (e.g., "We need to write 50 questions... [{...}]").
+  //    Extract the JSON array by finding the first '[' and last ']'.
+  let cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+
+  // If the response doesn't start with '[', try to extract the JSON array
+  // from within the text. This handles reasoning models that prepend
+  // chain-of-thought text before the actual JSON.
+  if (!cleaned.startsWith("[")) {
+    const firstBracket = cleaned.indexOf("[");
+    const lastBracket = cleaned.lastIndexOf("]");
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      cleaned = cleaned.slice(firstBracket, lastBracket + 1);
+    }
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // If JSON.parse still fails, try a more aggressive extraction:
+    // find the first '{' and try to parse from there as an array of objects
+    const firstBrace = cleaned.indexOf("{");
+    if (firstBrace > 0) {
+      cleaned = "[" + cleaned.slice(firstBrace);
+      // Try to fix trailing text after the last '}'
+      const lastBrace = cleaned.lastIndexOf("}");
+      if (lastBrace > 0) {
+        cleaned = cleaned.slice(0, lastBrace + 1) + "]";
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch {
+          throw new Error(`Could not parse AI response as JSON. First 200 chars: ${raw.slice(0, 200)}`);
+        }
+      } else {
+        throw new Error(`Could not parse AI response as JSON. First 200 chars: ${raw.slice(0, 200)}`);
+      }
+    } else {
+      throw new Error(`Could not parse AI response as JSON. First 200 chars: ${raw.slice(0, 200)}`);
+    }
+  }
+
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error("Question set is not a non-empty array.");
   }

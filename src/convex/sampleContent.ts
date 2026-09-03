@@ -49,7 +49,7 @@ function escapePdfText(text: string): string {
 function makeSamplePdf(title: string, lines: string[]): ArrayBuffer {
   const contentLines = [
     `BT /F1 20 Tf 72 740 Td (${escapePdfText(title)}) Tj ET`,
-    "BT /F1 11 Tf 72 700 Td (Nexus Academy - sample preview document) Tj ET",
+    "BT /F1 11 Tf 72 700 Td (NexET 🇪🇹 - sample preview document) Tj ET",
     "BT /F1 11 Tf 72 682 Td (NOT an official Ministry of Education document.) Tj ET",
     ...lines.map((line, index) => {
       const y = 640 - index * 22;

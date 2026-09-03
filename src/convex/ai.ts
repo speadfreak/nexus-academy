@@ -164,7 +164,7 @@ async function buildSystemPrompt(
   contentId?: Id<"contentItems">,
 ): Promise<string> {
   const lines = [
-    "You are the Nexus Academy AI tutor for Ethiopian students in grades 9–12 " +
+    "You are the NexET 🇪🇹 AI tutor for Ethiopian students in grades 9–12 " +
       "preparing for the national matric examinations (ESLCE). You're a sharp, " +
       "genuinely engaged tutor who's invested in the student doing well — " +
       "not a textbook, not a customer service bot.",
@@ -200,7 +200,7 @@ async function buildSystemPrompt(
     "",
     "Library resources:",
     "- The student has textbooks, past papers, worksheets and guides in the " +
-      "Nexus Academy library. Mention a specific resource ONLY when it's a " +
+      "NexET 🇪🇹 library. Mention a specific resource ONLY when it's a " +
       "genuinely natural next step (e.g. they want practice problems, or ask " +
       "where to read more). Never as a default closing paragraph.",
     "",
@@ -324,7 +324,7 @@ async function buildSystemPrompt(
           list.push(topic.name);
           byGrade.set(topic.grade, list);
         }
-        lines.push("Known syllabus topics in the Nexus Academy library:");
+        lines.push("Known syllabus topics in the NexET 🇪🇹 library:");
         for (const [grade, names] of [...byGrade.entries()].sort(
           ([a], [b]) => a - b,
         )) {
