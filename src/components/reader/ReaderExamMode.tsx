@@ -337,40 +337,70 @@ export function ReaderExamMode(props: ExamModeProps) {
             {/* PDF */}
             <div
               data-lenis-prevent-wheel
+              onContextMenu={(e) => e.preventDefault()}
               className={cn(
-                "relative flex-1 overflow-auto bg-[#0b0f17] py-6 pb-20",
+                "relative flex-1 overflow-auto bg-[#0b0f17] py-6 pb-20 select-none",
                 phase === "submitted" && "pointer-events-none opacity-60",
               )}
             >
               <div className="mx-auto w-fit shadow-2xl">
                 {props.pdfData ? (
-                  <Document
-                    file={{ data: props.pdfData }}
-                    loading={
-                      <div className="flex h-40 items-center justify-center">
-                        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                  <div className="relative" onContextMenu={(e) => e.preventDefault()}>
+                    <Document
+                      file={{ data: props.pdfData }}
+                      loading={
+                        <div className="flex h-40 items-center justify-center">
+                          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                        </div>
+                      }
+                      error={
+                        <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
+                          Could not render the PDF in exam mode.
+                        </div>
+                      }
+                    >
+                      <PdfPage
+                        pageNumber={pageNumber}
+                        scale={scale}
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                        className="rounded-sm"
+                      />
+                    </Document>
+                    {/* Watermark — same deterrent as the main Reader.
+                        Uses the contentTitle + timestamp since we don't
+                        have the user profile in exam mode. */}
+                    <div
+                      className="pointer-events-none absolute inset-0 select-none overflow-hidden"
+                      style={{ userSelect: "none" }}
+                      aria-hidden="true"
+                    >
+                      <div
+                        className="absolute whitespace-nowrap text-[10px] font-mono font-bold uppercase tracking-wider text-white/[0.07]"
+                        style={{
+                          top: "44%",
+                          left: "12%",
+                          transform: "translate(-50%, -50%) rotate(-28deg)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {props.contentTitle} · {new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} · page {pageNumber}
                       </div>
-                    }
-                    error={
-                      <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
-                        Could not render the PDF in exam mode.
-                      </div>
-                    }
-                  >
-                    <PdfPage
-                      pageNumber={pageNumber}
-                      scale={scale}
-                      renderTextLayer={false}
-                      renderAnnotationLayer={false}
-                      className="rounded-sm"
-                    />
-                  </Document>
+                    </div>
+                  </div>
                 ) : props.pdfUrl ? (
-                  <iframe
-                    src={`${props.pdfUrl}#page=${pageNumber}&zoom=${Math.round(scale * 100)}`}
-                    title="Exam PDF"
-                    className="h-[80vh] w-[80vw] max-w-4xl rounded-md bg-white"
-                  />
+                  /* No iframe fallback — the browser's native PDF viewer
+                     includes a download button that bypasses the app's
+                     no-download policy. If pdf.js fails to render in
+                     exam mode, show a clear error state instead. */
+                  <div className="flex h-40 flex-col items-center justify-center gap-3 text-xs text-muted-foreground">
+                    <p>PDF rendering unavailable in exam mode.</p>
+                    <p className="text-[10px] text-muted-foreground/60">
+                      Close exam mode and try opening this resource from the
+                      library. If the issue persists, the file may be
+                      corrupted.
+                    </p>
+                  </div>
                 ) : (
                   <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
                     PDF not loaded.
