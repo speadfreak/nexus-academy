@@ -22,7 +22,6 @@ import {
   Calculator,
   ChevronLeft,
   ChevronRight,
-  Download,
   ExternalLink,
   Loader2,
   Lock,
@@ -112,6 +111,11 @@ export default function Reader() {
   const related = useQuery(api.content.getRelatedContent, {
     contentId: contentId as never,
   });
+  // User profile — used for the watermark overlay on the iframe.
+  // This is a purely cosmetic sibling element layered on top of the
+  // iframe (pointer-events: none). It does NOT modify or interact with
+  // the iframe's content or rendering in any way.
+  const profile = useQuery(api.profile.getProfile);
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const [pdfDocProxy, setPdfDocProxy] = useState<any>(null);
   // Pre-render cache: stores rendered page canvases as blob URLs for instant back-nav
@@ -604,13 +608,10 @@ export default function Reader() {
               <Bookmark className="size-4" />
             )}
           </Button>
-          {pdfUrl && (
-            <Button asChild variant="ghost" size="icon" className="size-9 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200">
-              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" aria-label="Download PDF">
-                <Download className="size-4" />
-              </a>
-            </Button>
-          )}
+          {/* Download button removed — resources are for in-app reading
+              only. Applies to all users regardless of trial/premium status.
+              The iframe-based viewer is untouched and remains the only
+              rendering path. */}
           {item.subjectId && (
             <Button
               variant="ghost"
@@ -802,13 +803,41 @@ export default function Reader() {
                   ))}
                 </div>
                 {/* Iframe — takes FULL available height and width */}
+                {/* toolbar=0 hides Chrome/Edge's native PDF viewer toolbar
+                    (which includes download + print buttons). navpanes=0
+                    hides the bookmarks sidebar. This is a best-effort
+                    deterrent — Firefox and some mobile browsers may ignore
+                    these URL fragment parameters and still show their own
+                    toolbar. The iframe element itself and its loading
+                    logic are unchanged from the known-working state. */}
                 <iframe
                   key={`${pdfUrl}#${iframeZoom}`}
-                  src={`${pdfUrl}#${iframeZoom === "fit-width" ? "view=FitW&toolbar=1&navpanes=0" : iframeZoom === "fit-page" ? "view=FitH&toolbar=1&navpanes=0" : `zoom=${iframeZoom}&toolbar=1&navpanes=0`}`}
+                  src={`${pdfUrl}#${iframeZoom === "fit-width" ? "view=FitW&toolbar=0&navpanes=0" : iframeZoom === "fit-page" ? "view=FitH&toolbar=0&navpanes=0" : `zoom=${iframeZoom}&toolbar=0&navpanes=0`}`}
                   title={item?.title || "PDF document"}
                   className="flex-1 w-full border-0 bg-white/5"
                   style={{ minHeight: 0 }}
                 />
+                {/* Watermark overlay — purely cosmetic sibling element.
+                    Absolutely positioned, pointer-events: none, high z-index.
+                    Does NOT modify or interact with the iframe's content
+                    or rendering in any way. Shows the viewing student's
+                    name/email as a deterrent against redistribution. */}
+                <div
+                  className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+                  aria-hidden="true"
+                  style={{ userSelect: "none" }}
+                >
+                  <div
+                    className="rotate-[-28deg] text-[11px] font-mono font-bold uppercase tracking-wider text-black/[0.08] whitespace-nowrap"
+                    style={{ userSelect: "none" }}
+                  >
+                    {profile?.name && profile?.email
+                      ? `${profile.name} · ${profile.email}`
+                      : profile?.email ?? profile?.name ?? ""}
+                    {" · "}
+                    {new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                  </div>
+                </div>
               </div>
             ) : (
             /* ══ REACT-PDF MODE — inside max-w-fit for centered pages ══ */
@@ -908,13 +937,9 @@ export default function Reader() {
                         >
                           <RotateCcw className="size-3.5" /> Refresh
                         </Button>
-                        {pdfUrl && (
-                          <Button asChild size="sm" className="rounded-xl">
-                            <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="size-3.5" /> Open in new tab
-                            </a>
-                          </Button>
-                        )}
+                        {/* "Open in new tab" link removed — it pointed at the
+                            raw file URL, which would expose the download path.
+                            The iframe-based viewer is the only rendering path. */}
                       </>
                     )}
                   </div>
