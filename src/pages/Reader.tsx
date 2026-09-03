@@ -22,7 +22,6 @@ import {
   Calculator,
   ChevronLeft,
   ChevronRight,
-  Download,
   ExternalLink,
   Loader2,
   Lock,
@@ -42,7 +41,6 @@ import {
   FileText,
   Maximize2,
   Play,
-  Scan,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,27 +54,29 @@ import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
 
 // ─── PDF.js worker setup ───────────────────────────────────────────────
-// react-pdf bundles its own pdfjs-dist (currently 5.4.296, pinned in
-// node_modules/react-pdf/node_modules/pdfjs-dist). The worker is served
-// same-origin (public/pdf.worker.min.mjs) so we avoid CDN/CORS issues.
+// This is the OFFICIAL react-pdf recommended setup for Vite:
+//   https://github.com/wojtekmaj/react-pdf#configure-pdfjs-worker
 //
-// We deliberately set ONLY the workerSrc here — no other pdf.js options.
-// The previous attempt to add cMapUrl + standardFontDataUrl + streaming
-// options caused regressions where pdf.js silently failed to render and
-// the loading skeleton stayed forever. We're back to the simplest path
-// that was working before the perf commits. We can re-add options one
-// at a time after we confirm rendering works.
+// `new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url)` tells
+// Vite to bundle the worker file and serve it with the correct MIME type
+// and module type. Vite handles:
+//   - Resolving the correct pdfjs-dist version (matches what react-pdf uses)
+//   - Serving the file with the correct Content-Type
+//   - Adding a content hash for cache busting
+//   - Ensuring the file is loadable as a module worker (pdf.js v5 uses
+//     `new Worker(url, { type: 'module' })`)
 //
-// The worker file in public/ is auto-synced to the installed pdfjs-dist
-// version by scripts/sync-pdfjs.mjs (runs on every `bun install` via the
-// postinstall hook). This prevents the version-mismatch bug that previously
-// broke all PDF rendering.
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+// IMPORTANT: This MUST be in the same file where <Document> is rendered,
+// NOT in a separate file like main.tsx — react-pdf's default workerSrc
+// ('pdf.worker.mjs') would overwrite it due to module execution order.
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 type PanelTab = "companion" | "videos" | "scratchpad";
-type IframeZoomMode = "fit-width" | "fit-page" | "100" | "125" | "150" | "200";
 
 function subjectHue(subjectSlug: string): string {
   const hues: Record<string, string> = {
@@ -112,6 +112,10 @@ export default function Reader() {
   const related = useQuery(api.content.getRelatedContent, {
     contentId: contentId as never,
   });
+  // User profile — used for the per-page watermark overlay (name + email +
+  // timestamp). This is a deterrent against casual redistribution, not
+  // absolute prevention — see task notes for honest scope.
+  const profile = useQuery(api.profile.getProfile);
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const [pdfDocProxy, setPdfDocProxy] = useState<any>(null);
   // Pre-render cache: stores rendered page canvases as blob URLs for instant back-nav
@@ -131,7 +135,6 @@ export default function Reader() {
   const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [useUrlFallback, setUseUrlFallback] = useState(false);
-  const [useIframeFallback, setUseIframeFallback] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageInput, setPageInput] = useState("1");
@@ -139,49 +142,23 @@ export default function Reader() {
   // Deferred text-layer: render canvas first for instant visual, then text after delay
   const [showTextLayers, setShowTextLayers] = useState(false);
   const textLayerTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const [iframeZoom, setIframeZoom] = useState<IframeZoomMode>("fit-width");
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [pageAnimating, setPageAnimating] = useState(false);
   // Track whether we've already attempted the ArrayBuffer fallback
-  // to prevent infinite loops between URL → ArrayBuffer → iframe.
+  // to prevent infinite loops between URL → ArrayBuffer.
   const arrayBufferAttempted = useRef(false);
   const readerItemId = reader?.item?._id;
 
-  // ── Render timeout safety net ─────────────────────────────────────────
-  // If pdf.js hasn't fired onLoadSuccess within 8 seconds of mounting,
-  // automatically fall back to the iframe viewer. The iframe uses the
-  // browser's native PDF viewer (no JS worker, no cmaps) and always
-  // works — it's our last-resort fallback that should never leave the
-  // user staring at a "Rendering page…" skeleton forever.
-  //
-  // The timeout resets every time the document URL changes. If
-  // onLoadSuccess fires first, the cleanup function clears the timer.
-  const renderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Clean up stale compat mode flag ───────────────────────────────────
+  // Previous versions of this file had a broken "compatibility mode" that
+  // set workerSrc to '' — which caused "No GlobalWorkerOptions.workerSrc
+  // specified" errors. The flag was persisted in localStorage. Clear it
+  // on mount so users who clicked it before don't get stuck in a broken
+  // state.
   useEffect(() => {
-    // Only start the timer when we have a URL/data to render AND we're
-    // not already in iframe mode AND we're not in the loading-pdf
-    // (premium URL fetch) phase.
-    if (!pdfUrl && !pdfData) return;
-    if (useIframeFallback) return;
-    if (loadingPdf) return;
-    if (pdfError) return;
-
-    // Clear any existing timer (e.g. from a previous document).
-    if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-
-    renderTimeoutRef.current = setTimeout(() => {
-      console.warn(
-        "[Reader] PDF.js render timed out after 8s — falling back to iframe.",
-      );
-      setUseIframeFallback(true);
-    }, 8000);
-
-    return () => {
-      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfUrl, pdfData, useIframeFallback, loadingPdf, pdfError, numPages]);
+    try { localStorage.removeItem("nexus_pdf_compat_mode"); } catch {}
+  }, []);
 
   // ── PDF loading: URL-first for range requests, ArrayBuffer fallback ──────
   // PERFORMANCE CRITICAL: We pass the URL to react-pdf FIRST so that
@@ -190,7 +167,10 @@ export default function Reader() {
   // ~500ms instead of downloading all 50 MB first.
   //
   // Fallback chain: URL mode (range requests) → ArrayBuffer (full download
-  // with progress bar) → iframe (native browser PDF viewer).
+  // with progress bar) → in-app error state with retry button. We do NOT
+  // fall back to an <iframe> pointing at the raw PDF URL — the browser's
+  // native PDF viewer includes a download button that bypasses the app's
+  // no-download policy.
   //
   // The previous code fetched the entire PDF as an ArrayBuffer BEFORE
   // passing it to react-pdf, which defeated range requests entirely.
@@ -231,12 +211,12 @@ export default function Reader() {
         setPdfData(combined.buffer as ArrayBuffer);
         setUseUrlFallback(false);
       } else {
-        console.warn('[Reader] ArrayBuffer data is not a valid PDF, falling back to iframe');
-        setUseIframeFallback(true);
+        console.warn('[Reader] ArrayBuffer data is not a valid PDF — showing error state');
+        setPdfError("invalid_pdf");
       }
     } catch (err) {
-      console.warn('[Reader] ArrayBuffer download failed, falling back to iframe:', err);
-      setUseIframeFallback(true);
+      console.warn('[Reader] ArrayBuffer download failed:', err);
+      setPdfError(err instanceof Error ? err.message : "download_failed");
     } finally {
       setLoadProgress(100);
       setLoadingPdf(false);
@@ -270,7 +250,6 @@ export default function Reader() {
     setPdfUrl(null);
     setPdfData(null);
     setUseUrlFallback(false);
-    setUseIframeFallback(false);
     setNumPages(null);
     setPageNumber(1);
     setPageInput('1');
@@ -604,13 +583,12 @@ export default function Reader() {
               <Bookmark className="size-4" />
             )}
           </Button>
-          {pdfUrl && (
-            <Button asChild variant="ghost" size="icon" className="size-9 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200">
-              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" aria-label="Download PDF">
-                <Download className="size-4" />
-              </a>
-            </Button>
-          )}
+          {/* Download button intentionally removed — resources are for
+              in-app reading only, not downloading. Applies to all users
+              regardless of trial/premium status. See task notes for
+              honest scope: this removes convenient one-click paths but
+              cannot prevent screenshots / print-to-PDF / dev-tools
+              network extraction. */}
           {item.subjectId && (
             <Button
               variant="ghost"
@@ -661,8 +639,7 @@ export default function Reader() {
           {/* Subtle dot grid */}
           <div className="pointer-events-none absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, white 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
 
-          {/* ─── Page toolbar (react-pdf mode only) ─── */}
-          {!useIframeFallback && (
+          {/* ─── Page toolbar (canvas-render mode) ─── */}
           <div className="relative flex h-12 shrink-0 items-center justify-center gap-1 border-b border-white/[0.04] bg-black/30 backdrop-blur-xl px-3 z-10">
             {/* Zoom presets */}
             <div className="hidden sm:flex items-center gap-1 mr-2">
@@ -765,50 +742,87 @@ export default function Reader() {
               </>
             )}
           </div>
-          )}
 
           {/* ─── PDF body ─── */}
-          <div className="relative flex-1 overflow-hidden" id="pdf-scroll-area">
-            {/* ══ IFRAME MODE — full-width, outside max-w-fit ══ */}
-            {useIframeFallback && pdfUrl && !pdfError ? (
-              <div className="flex h-full flex-col">
-                {/* Iframe zoom toolbar */}
-                <div className="relative flex shrink-0 items-center justify-center gap-1.5 border-b border-white/[0.04] bg-black/30 backdrop-blur-xl px-3 py-2 z-10">
-                  <span className="type-caption text-[10px] tracking-widest text-muted-foreground/50 uppercase mr-2">Native viewer</span>
-                  {(
-                    [
-                      { id: "fit-width" as const, label: "Fit Width", icon: Scan },
-                      { id: "fit-page" as const, label: "Fit Page", icon: Maximize2 },
-                      { id: "100" as const, label: "100%", icon: null },
-                      { id: "125" as const, label: "125%", icon: null },
-                      { id: "150" as const, label: "150%", icon: null },
-                      { id: "200" as const, label: "200%", icon: null },
-                    ] as const
-                  ).map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => setIframeZoom(preset.id)}
-                      className={cn(
-                        "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-all duration-150 active:scale-95",
-                        iframeZoom === preset.id
-                          ? "bg-primary/15 text-primary border border-primary/25"
-                          : "text-muted-foreground/70 hover:bg-white/[0.06] hover:text-foreground border border-transparent"
-                      )}
-                    >
-                      {preset.icon && <preset.icon className="size-3" />}
-                      {preset.label}
-                    </button>
-                  ))}
+          <div className="relative flex-1 overflow-hidden" id="pdf-scroll-area" onContextMenu={(e) => e.preventDefault()}>
+            {/* ══ PDF ERROR STATE — in-app retry, never a native iframe ══ */}
+            {pdfError ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-6 p-8">
+                <div className="relative">
+                  <div className="absolute -inset-8 rounded-full bg-rose-400/5 blur-2xl" />
+                  <div className="relative flex size-16 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.04] backdrop-blur-xl">
+                    <Lock className="size-6 text-rose-300" />
+                  </div>
                 </div>
-                {/* Iframe — takes FULL available height and width */}
-                <iframe
-                  key={`${pdfUrl}#${iframeZoom}`}
-                  src={`${pdfUrl}#${iframeZoom === "fit-width" ? "view=FitW&toolbar=1&navpanes=0" : iframeZoom === "fit-page" ? "view=FitH&toolbar=1&navpanes=0" : `zoom=${iframeZoom}&toolbar=1&navpanes=0`}`}
-                  title={item?.title || "PDF document"}
-                  className="flex-1 w-full border-0 bg-white/5"
-                  style={{ minHeight: 0 }}
-                />
+                <div className="max-w-md text-center">
+                  <p className="type-mono text-[10px] uppercase tracking-[0.22em] text-rose-300">
+                    // rendering issue
+                  </p>
+                  <h3 className="mt-2 text-lg font-extrabold tracking-tight">
+                    {pdfError === "premium_required"
+                      ? "Premium access required"
+                      : pdfError === "worker_failed"
+                        ? "PDF worker failed to load"
+                        : pdfError === "invalid_pdf"
+                          ? "File is not a valid PDF"
+                          : "Couldn't open this document"}
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {pdfError === "premium_required"
+                      ? "Your free trial has ended. Upgrade to premium to read this resource."
+                      : pdfError === "worker_failed"
+                        ? "The PDF rendering worker couldn't start. Try a hard refresh (Ctrl+Shift+R / Cmd+Shift+R) — if it keeps happening, your browser might be blocking web workers."
+                        : pdfError === "invalid_pdf"
+                          ? "The file doesn't have valid PDF magic bytes. It may be corrupted or the wrong format."
+                          : pdfError}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    onClick={() => {
+                      // Clear any stale compat mode flag from previous
+                      // broken versions of this code.
+                      try { localStorage.removeItem("nexus_pdf_compat_mode"); } catch {}
+                      setPdfError(null);
+                      setPdfUrl(null);
+                      setPdfData(null);
+                      setUseUrlFallback(false);
+                      arrayBufferAttempted.current = false;
+                      // Force a re-load by toggling the readerItemId effect.
+                      if (readerItemId && item) {
+                        if (item.isPremium) {
+                          setLoadingPdf(true);
+                          void (async () => {
+                            try {
+                              const { url } = await getDownloadUrl({ contentId: readerItemId });
+                              setPdfUrl(url);
+                              setUseUrlFallback(true);
+                            } catch (e) {
+                              setPdfError(e instanceof Error ? e.message : "reload_failed");
+                            } finally {
+                              setLoadingPdf(false);
+                            }
+                          })();
+                        } else {
+                          setPdfUrl(item.fileUrl);
+                          setUseUrlFallback(true);
+                        }
+                      }
+                    }}
+                    className="gap-2"
+                  >
+                    <RefreshCw className="size-4" />
+                    Try again
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => window.location.reload()}
+                    className="gap-2"
+                  >
+                    <RefreshCw className="size-4" />
+                    Reload page
+                  </Button>
+                </div>
               </div>
             ) : (
             /* ══ REACT-PDF MODE — inside max-w-fit for centered pages ══ */
@@ -927,15 +941,18 @@ export default function Reader() {
                 <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
                   <Document
                     file={pdfData ? { data: pdfData } : { url: pdfUrl! }}
-                    // PDF.js options — keep this minimal. The previous
-                    // perf-tuning (cMapUrl, standardFontDataUrl, disableAutoFetch)
-                    // caused regressions where pdf.js silently failed to
-                    // render and the loading skeleton stayed forever.
-                    //
-                    // We deliberately OMIT options entirely now — pdf.js
-                    // runs on its pure defaults. This is the path that was
-                    // working before the perf commits. We can re-add options
-                    // one at a time after we confirm rendering works.
+                    // PDF.js options — cMapUrl and standardFontDataUrl are
+                    // REQUIRED for proper rendering of PDFs with non-Latin
+                    // fonts (CMaps) and standard PDF fonts (Helvetica, Times,
+                    // etc.). Without them, pdf.js silently falls back to
+                    // substitute fonts which can cause blank pages or missing
+                    // text. Both are served same-origin from public/ (auto-
+                    // synced by scripts/sync-pdfjs.mjs).
+                    options={{
+                      cMapUrl: '/cmaps/',
+                      cMapPacked: true,
+                      standardFontDataUrl: '/standard_fonts/',
+                    }}
                     onLoadProgress={(progress) => {
                       try {
                         if (progress && typeof progress.loaded === "number" && typeof progress.total === "number" && progress.total > 0) {
@@ -957,22 +974,26 @@ export default function Reader() {
                       console.error("[Reader] PDF load failed:", error);
                       const msg = error?.message || String(error);
                       if (msg.includes("worker") || msg.includes("Worker")) {
-                        // Worker failed — try iframe fallback instead of
-                        // showing an error, since iframe always works.
-                        console.warn("[Reader] Worker issue — falling back to iframe.");
-                        setUseIframeFallback(true);
+                        // Worker failed — show an in-app error with a retry
+                        // button. We do NOT fall back to an iframe pointing
+                        // at the raw PDF URL — the browser's native PDF
+                        // viewer includes a download button that bypasses
+                        // the app's no-download policy.
+                        console.warn("[Reader] Worker issue — showing error state.");
+                        setPdfError("worker_failed");
                       } else if (useUrlFallback && !pdfData && !arrayBufferAttempted.current) {
                         console.warn("[Reader] URL mode failed, trying ArrayBuffer fallback");
                         arrayBufferAttempted.current = true;
                         void loadAsArrayBuffer(pdfUrl!);
                       } else if (pdfData) {
-                        console.warn("[Reader] ArrayBuffer render failed, falling back to iframe");
-                        setUseIframeFallback(true);
+                        console.warn("[Reader] ArrayBuffer render failed — showing error state");
+                        setPdfError("render_failed");
                       } else {
-                        // Last resort: try the iframe. It uses the browser's
-                        // native PDF viewer and always works (just slower).
-                        console.warn("[Reader] All pdf.js paths failed — falling back to iframe.");
-                        setUseIframeFallback(true);
+                        // Last resort: show an in-app error. We do NOT use
+                        // the browser's native PDF viewer (no iframe) —
+                        // it includes a download button.
+                        console.warn("[Reader] All pdf.js paths failed — showing error state.");
+                        setPdfError("render_failed");
                       }
                     }}
                     loading={
@@ -1027,6 +1048,21 @@ export default function Reader() {
                             <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer-slide_1.4s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
                           </div>
                         }
+                      />
+                      {/* ─── Watermark overlay ──────────────────────────────────
+                          Subtle, low-opacity watermark showing the viewing
+                          student's name/email + a timestamp. Positioned
+                          diagonally across the page so it's visible without
+                          obscuring readable content. This is a deterrent
+                          against casual redistribution (if a screenshot or
+                          print-to-PDF is shared, the source account is
+                          visible) — it does NOT prevent saving, see task
+                          notes for honest scope.
+                          ──────────────────────────────────────────────────── */}
+                      <PdfWatermark
+                        name={profile?.name ?? undefined}
+                        email={profile?.email ?? undefined}
+                        pageNumber={pageNumber}
                       />
                       {/* Pre-render next page in hidden container for instant forward navigation */}
                       {numPages && pageNumber < numPages && (
@@ -1507,6 +1543,86 @@ export default function Reader() {
           onClose={() => setExamMode(false)}
         />
       )}
+    </div>
+  );
+}
+
+// ─── PdfWatermark ──────────────────────────────────────────────────────
+// Subtle, low-opacity overlay showing the viewing student's identity +
+// a timestamp + the page number. Rendered as an absolutely-positioned
+// layer on top of each PDF page canvas.
+//
+// DESIGN GOALS:
+//   - Visible enough to identify the source account if a screenshot or
+//     print-to-PDF is shared, but subtle enough not to obscure readable
+//     content.
+//   - Diagonal placement across the page so it can't be easily cropped
+//     out without also cropping content.
+//   - `pointer-events-none` so it doesn't interfere with text selection
+//     or click handling on the underlying canvas.
+//   - `select-none` + `user-select:none` so it can't be copy-pasted.
+//   - Slightly different position per page (offset by pageNumber) so a
+//     screenshotted set of pages can't be trivially de-watermarked by
+//     a fixed-position crop.
+//
+// HONEST SCOPE: This is a deterrent, not absolute prevention. A
+// determined user can still screenshot, print-to-PDF, or use dev tools
+// to extract the file. The watermark adds traceability if content is
+// redistributed, but does not stop redistribution itself.
+function PdfWatermark({
+  name,
+  email,
+  pageNumber,
+}: {
+  name?: string;
+  email?: string;
+  pageNumber: number;
+}) {
+  // Build the watermark text. Prefer name + email; fall back to just
+  // email; fall back to a generic label if profile hasn't loaded yet.
+  const identity = name && email ? `${name} · ${email}` : email ?? name ?? "";
+  const timestamp = new Date().toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const label = identity
+    ? `${identity} · ${timestamp} · page ${pageNumber}`
+    : `${timestamp} · page ${pageNumber}`;
+
+  // Slight position offset per page so the watermark isn't in the
+  // exact same spot on every page (makes bulk de-watermarking harder).
+  // Pseudo-random but deterministic from pageNumber.
+  const offset = (pageNumber * 13) % 7; // 0–6
+  const topPct = 40 + offset; // 40–46%
+  const leftPct = 8 + offset; // 8–14%
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 select-none overflow-hidden"
+      style={{ userSelect: "none" }}
+      aria-hidden="true"
+    >
+      {/* Diagonal repeating watermark — covers the whole page with
+          low-opacity text rotated -28°. */}
+      <div
+        className="absolute whitespace-nowrap text-[10px] font-mono font-bold uppercase tracking-wider text-white/[0.07]"
+        style={{
+          top: `${topPct}%`,
+          left: `${leftPct}%`,
+          transform: "translate(-50%, -50%) rotate(-28deg)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </div>
+      {/* Corner watermark — smaller, bottom-right, more visible.
+          Helps identify the page even at a glance. */}
+      <div
+        className="absolute bottom-1.5 right-2 whitespace-nowrap text-[8px] font-mono font-semibold uppercase tracking-wider text-white/[0.12]"
+        style={{ userSelect: "none" }}
+      >
+        {label}
+      </div>
     </div>
   );
 }
