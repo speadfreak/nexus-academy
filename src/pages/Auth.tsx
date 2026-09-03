@@ -451,6 +451,39 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Email pre-fill from URL (?email=...) ────────────────────────────
+  // When a guest user clicks "Unlock with email" on a locked resource,
+  // they're redirected to /auth?email=their@email.com. We auto-start
+  // the OTP flow so they don't have to type their email again — they
+  // go straight to the verification code step.
+  const emailFromUrl = searchParams.get("email");
+  const emailPrefillStarted = useRef(false);
+  useEffect(() => {
+    if (emailFromUrl && !emailPrefillStarted.current && !authLoading) {
+      emailPrefillStarted.current = true;
+      // Auto-start the OTP flow with the email from the URL
+      const formData = new FormData();
+      formData.set("email", emailFromUrl);
+      setIsLoading(true);
+      setError(null);
+      void (async () => {
+        try {
+          await signIn("email-otp", formData);
+          setStep({ email: emailFromUrl, username: null });
+          toast.success(`Verification code sent to ${emailFromUrl}`);
+        } catch (err) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to send verification code. Please try again.",
+          );
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+    }
+  }, [emailFromUrl, authLoading, signIn]);
+
   // ── Referral capture ────────────────────────────────────────────────
   // When the page is loaded with ?ref=CODE, persist the code in localStorage
   // so it survives the redirect to email-OTP / Google OAuth and back. After

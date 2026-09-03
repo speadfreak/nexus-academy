@@ -53,6 +53,7 @@ import {
 import type { ContentItemWithSubject } from "@/convex/content";
 import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
+import { GuestLockOverlay } from "@/components/GuestLockOverlay";
 
 // ─── PDF.js worker setup ───────────────────────────────────────────────
 // react-pdf bundles its own pdfjs-dist (currently 5.4.296, pinned in
@@ -769,6 +770,13 @@ export default function Reader() {
           )}
 
           {/* ─── PDF body ─── */}
+          {/* Guest lock: if the user is signed in as a guest (anonymous),
+              show the lock overlay instead of the PDF. Guest users can
+              browse the library but can't open resources until they
+              provide an email and convert to a real account. */}
+          {profile?.isAnonymous ? (
+            <GuestLockOverlay resourceTitle={item?.title} />
+          ) : (
           <div className="relative flex-1 overflow-hidden" id="pdf-scroll-area">
             {/* ══ IFRAME MODE — full-width, outside max-w-fit ══ */}
             {useIframeFallback && pdfUrl && !pdfError ? (
@@ -1072,6 +1080,7 @@ export default function Reader() {
             </div>
             )}
           </div>
+          )}
         </main>
 
         {/* Highlight-to-ask floating button — appears when the student

@@ -105,6 +105,11 @@ export const getProfile = query({
       stream: profile?.stream ?? null,
       email: user?.email ?? null,
       name: user?.name ?? null,
+      // Guest users (signed in via "Continue as Guest") have isAnonymous=true.
+      // The frontend uses this to lock resources and show the "email to unlock"
+      // overlay — guest users can browse the library but can't open resources
+      // until they provide an email and convert to a real account.
+      isAnonymous: user?.isAnonymous ?? false,
     };
   },
 });
