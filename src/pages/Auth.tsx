@@ -241,7 +241,7 @@ function ShowcasePanel() {
             ))}
           </div>
           <p className="text-xs text-white/40">
-            <span className="font-semibold text-white/60">2,400+</span> students already learning
+            <span className="font-semibold text-white/60">400+</span> students already learning
           </p>
         </motion.div>
       </motion.div>
