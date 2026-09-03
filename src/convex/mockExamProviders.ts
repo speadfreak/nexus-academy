@@ -162,8 +162,13 @@ async function callOpenAICompatible(
 // ---------------------------------------------------------------------------
 
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1/chat/completions";
+// Default model: nvidia/nemotron-3-super-120b-a12b:free — confirmed working
+// as of Sep 2026. The old default (meta-llama/llama-3.3-70b-instruct:free)
+// was deprecated and returns 404 "This model is unavailable for free".
+// Other confirmed-working free models: nvidia/nemotron-3.5-lightning:free,
+// openrouter/free (auto-router that picks the best available free model).
 const OPENROUTER_DEFAULT_MODEL =
-  process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free";
+  process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free";
 
 export async function callOpenRouter(
   ctx: ActionCtx,
@@ -190,8 +195,11 @@ export async function callOpenRouter(
 // ---------------------------------------------------------------------------
 
 const CEREBRAS_BASE = "https://api.cerebras.ai/v1/chat/completions";
+// Cerebras currently offers 2 models: "gpt-oss-120b" and "gemma-4-31b".
+// Both require payment setup (the free tier needs billing details added).
+// Default to gpt-oss-120b (same model family as Groq's default).
 const CEREBRAS_DEFAULT_MODEL =
-  process.env.CEREBRAS_MODEL || "llama3.1-8b";
+  process.env.CEREBRAS_MODEL || "gpt-oss-120b";
 
 export async function callCerebras(
   ctx: ActionCtx,
