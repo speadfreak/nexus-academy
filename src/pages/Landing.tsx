@@ -1135,7 +1135,7 @@ export default function Landing() {
               <span className="type-caption text-muted-foreground">M-Pesa</span>
               <span className="text-muted-foreground/30">·</span>
               <span className="flex items-center gap-1 type-caption text-primary/80">
-                <Sparkles className="size-3" /> 14-day trial
+                <Sparkles className="size-3" /> 3-day trial
               </span>
             </div>
           </div>
