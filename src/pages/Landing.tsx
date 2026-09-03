@@ -246,9 +246,9 @@ export default function Landing() {
           className="glass-panel mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-4 py-2.5"
         >
           <Link to="/" className="flex items-center gap-2.5">
-            <img src={logo} alt="NexET 🇪🇹 logo" className="size-9 rounded-xl" />
+            <img src={logo} alt="Nexus Academy ET 🇪🇹 logo" className="size-9 rounded-xl" />
             <span className="flex items-baseline gap-2">
-              <span className="type-h3 font-extrabold">NexET 🇪🇹</span>
+              <span className="type-h3 font-extrabold">Nexus Academy ET 🇪🇹</span>
               <span className="hidden font-mono text-[10px] font-medium text-muted-foreground sm:inline">
                 v1.0
               </span>
@@ -382,7 +382,7 @@ export default function Landing() {
             variants={fadeUp}
             className="type-body-lg mt-5 max-w-xl text-muted-foreground"
           >
-            NexET 🇪🇹 is the complete content library for the EHEEE
+            Nexus Academy ET 🇪🇹 is the complete content library for the EHEEE
             (Ethiopian Higher Education Entrance Examination, also called ESSLCE) —
             textbooks, past papers, worksheets and study guides across all nine
             subjects. Sign in, search the catalog, and download exactly what your
@@ -561,7 +561,7 @@ export default function Landing() {
             </p>
             <div className="mt-4 type-body-lg leading-relaxed text-foreground/90">
               <p>
-                I&apos;m Joseph James, 18 years old, Ethiopian. I built NexET 🇪🇹
+                I&apos;m Joseph James, 18 years old, Ethiopian. I built Nexus Academy ET 🇪🇹
                 because I watched myself and my classmates struggle to organize four
                 years of curriculum into something that actually felt like exam
                 preparation — not just a pile of PDFs and half-remembered notes.
@@ -811,7 +811,7 @@ export default function Landing() {
           <div className="min-w-0 flex-1">
             <p className="type-h3 font-semibold">Preview a real past paper — no signup required</p>
             <p className="type-body mt-1 text-muted-foreground">
-              See exactly what NexET 🇪🇹 looks like before you create an account.
+              See exactly what Nexus Academy ET 🇪🇹 looks like before you create an account.
               One real EHEEE past exam paper, fully readable, right now.
             </p>
           </div>
@@ -982,7 +982,7 @@ export default function Landing() {
             },
             {
               q: "Is my TeleBirr / M-Pesa payment safe?",
-              a: "Payments are processed through your carrier's own secure checkout. NexET 🇪🇹 never sees your PIN or card number — we only receive a confirmation token.",
+              a: "Payments are processed through your carrier's own secure checkout. Nexus Academy ET 🇪🇹 never sees your PIN or card number — we only receive a confirmation token.",
             },
             {
               q: "What happens when my trial ends?",
@@ -1079,9 +1079,9 @@ export default function Landing() {
         <div className="relative mx-auto max-w-6xl px-4 py-14">
           {/* Signature credit — the standout element */}
           <div className="flex flex-col items-center text-center">
-            <img src={logo} alt="NexET 🇪🇹 logo" className="mb-4 size-12 rounded-2xl" />
+            <img src={logo} alt="Nexus Academy ET 🇪🇹 logo" className="mb-4 size-12 rounded-2xl" />
             <p className="type-h2">
-              NexET 🇪🇹
+              Nexus Academy ET 🇪🇹
             </p>
             <div className="mt-4 flex flex-col items-center gap-1">
               <p className="type-body-lg italic text-foreground/80">
@@ -1106,7 +1106,7 @@ export default function Landing() {
           {/* Bottom row */}
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <p className="type-caption text-muted-foreground">
-              © {new Date().getFullYear()} NexET 🇪🇹 · EHEEE exam prep, grades 9–12
+              © {new Date().getFullYear()} Nexus Academy ET 🇪🇹 · EHEEE exam prep, grades 9–12
             </p>
             <div className="flex items-center gap-4">
               {/* Telegram links — quick access from the footer */}
@@ -1115,7 +1115,7 @@ export default function Landing() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
-                title="NexET 🇪🇹 Telegram channel"
+                title="Nexus Academy ET 🇪🇹 Telegram channel"
               >
                 <Send className="size-3" /> Channel
               </a>
@@ -1125,7 +1125,7 @@ export default function Landing() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
-                title="NexET Community Telegram group"
+                title="Nexus Academy ET Community Telegram group"
               >
                 <Users className="size-3" /> Community
               </a>
@@ -1280,7 +1280,7 @@ function TelegramCommunitySection() {
             variants={fadeUp}
             className="mx-auto mt-4 max-w-xl text-muted-foreground"
           >
-            NexET 🇪🇹 isn&apos;t just a library — it&apos;s a community of
+            Nexus Academy ET 🇪🇹 isn&apos;t just a library — it&apos;s a community of
             Ethiopian students preparing for the same exam, at the same time,
             with the same dream. Join our Telegram channel for study tips and
             exam updates, and hop into the community group to ask questions,
@@ -1323,7 +1323,7 @@ function TelegramCommunitySection() {
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 Official announcements, study tips, exam-date reminders, and
-                new-resource alerts. Follow for the latest from NexET 🇪🇹 —
+                new-resource alerts. Follow for the latest from Nexus Academy ET 🇪🇹 —
                 straight to your Telegram.
               </p>
 

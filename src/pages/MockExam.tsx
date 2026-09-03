@@ -1006,6 +1006,53 @@ function TakingScreen({
     );
   }
 
+  // If questions failed to load (JSON parse error on backend, or empty
+  // questionsJson), show a visible error instead of a blank black void.
+  if (questions.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-[#080c14] p-8">
+        <div className="relative">
+          <div className="absolute -inset-8 rounded-full bg-rose-400/5 blur-2xl" />
+          <div className="relative flex size-16 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.04] backdrop-blur-xl">
+            <AlertTriangle className="size-6 text-rose-300" />
+          </div>
+        </div>
+        <div className="max-w-md text-center">
+          <p className="type-mono text-[10px] uppercase tracking-[0.22em] text-rose-300">
+            // no questions loaded
+          </p>
+          <h3 className="mt-2 text-lg font-extrabold tracking-tight">
+            This section has no questions
+          </h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The AI generated this section but the question data couldn't be
+            parsed. This usually happens when the AI model returned
+            malformed JSON. Try regenerating the exam, or skip this section.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {!isLastSection && (
+            <Button
+              variant="outline"
+              onClick={() => setSectionIndex((i) => i + 1)}
+              className="gap-2"
+            >
+              Skip to next section
+              <ChevronRight className="size-4" />
+            </Button>
+          )}
+          <Button
+            onClick={() => void onAbandon()}
+            variant="ghost"
+            className="text-muted-foreground"
+          >
+            Exit exam
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // Format remaining time
   const formattedRemaining = useMemo(() => {
     const m = Math.floor(remainingSeconds / 60);

@@ -1281,10 +1281,10 @@ export default function Admin() {
 
           {/* ── Desktop: vertical grouped sidebar (>= xl) ── */}
           <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" data-lenis-prevent-wheel style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
-            {/* NexET 🇪🇹 admin brand lockup */}
+            {/* Nexus Academy ET 🇪🇹 admin brand lockup */}
             <Link
               to="/dashboard"
-              title="Return to NexET 🇪🇹 library"
+              title="Return to Nexus Academy ET 🇪🇹 library"
               className={cn(
                 "admin-brand-lockup group mb-3 flex items-center rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 transition hover:border-primary/35 hover:bg-primary/[0.06]",
                 sidebarCollapsed ? "justify-center" : "gap-3",
@@ -1302,7 +1302,7 @@ export default function Admin() {
                     exit={{ opacity: 0, x: -6 }}
                     className="min-w-0 overflow-hidden"
                   >
-                    <span className="block truncate text-sm font-extrabold tracking-tight text-foreground">NexET 🇪🇹</span>
+                    <span className="block truncate text-sm font-extrabold tracking-tight text-foreground">Nexus Academy ET 🇪🇹</span>
                     <span className="mt-0.5 block truncate type-mono text-[9px] uppercase tracking-[0.12em] text-primary/70">exam-prep · library</span>
                   </motion.span>
                 )}

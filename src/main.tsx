@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// main.tsx — NexET 🇪🇹 entry point
+// main.tsx — Nexus Academy ET 🇪🇹 entry point
 //
 // CRITICAL: Do NOT add static imports to Vly platform tooling here.
 // Any module that can fail at load-time (snapdom, vly-ai, etc.) MUST be
@@ -50,7 +50,7 @@ try {
     ) || "https://flexible-bloodhound-758.convex.cloud",
   );
 } catch (e) {
-  console.error("[NexET] Failed to create Convex client:", e);
+  console.error("[Nexus] Failed to create Convex client:", e);
   // Placeholder that won't crash render — auth queries will return
   // undefined and RequireAuth will redirect to /auth.
   convex = null as unknown as ConvexReactClient;
@@ -206,7 +206,7 @@ class RootErrorBoundary extends React.Component<
     };
   }
   componentDidCatch(err: Error) {
-    console.error("[NexET] Root crash:", err);
+    console.error("[Nexus] Root crash:", err);
     logErrorToServer("RootErrorBoundary", err);
     const showRecovery = (window as unknown as Record<string, (msg: string) => void>).__NEXUS_SHOW_RECOVERY;
     if (showRecovery) {
@@ -345,7 +345,7 @@ function ContentSafetyNet() {
       if (hasVisibleContent) return; // All good, nothing to do
 
       // EMERGENCY: Force all elements visible
-      console.warn("[NexET] ContentSafetyNet triggered — forcing all content visible");
+      console.warn("[Nexus] ContentSafetyNet triggered — forcing all content visible");
       logErrorToServer("ContentSafetyNet", new Error("Content invisible after 5s — forced opacity override"));
 
       const id = "nexus-safety-net-override";
@@ -385,12 +385,12 @@ function GlobalErrorCaptor() {
       // Skip errors already handled by error boundaries or the index.html script
       if (event.message.includes("Loading chunk") ||
           event.message.includes("dynamically imported")) return;
-      console.error("[NexET] Uncaught error:", event.error);
+      console.error("[Nexus] Uncaught error:", event.error);
       logErrorToServer("window.onerror", event.error || event.message);
     };
 
     const onRejection = (event: PromiseRejectionEvent) => {
-      console.error("[NexET] Unhandled rejection:", event.reason);
+      console.error("[Nexus] Unhandled rejection:", event.reason);
       logErrorToServer("window.unhandledrejection", event.reason);
     };
 
@@ -696,5 +696,5 @@ if (rootEl) {
 } else {
   // If #root doesn't exist, something is very wrong with index.html.
   document.body.textContent =
-    "NexET failed to start. Please hard-refresh the page (Ctrl+Shift+R).";
+    "Nexus Academy ET failed to start. Please hard-refresh the page (Ctrl+Shift+R).";
 }

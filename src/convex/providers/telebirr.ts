@@ -153,7 +153,7 @@ export async function initiateCheckout(args: {
     notifyUrl: env["TELEBIRR_NOTIFY_URL"],
     returnUrl: env["TELEBIRR_REDIRECT_URL"],
     bizContent: {
-      subject: "NexET 🇪🇹 Premium",
+      subject: "Nexus Academy ET 🇪🇹 Premium",
       outTradeNo: args.merchOrderId,
       totalAmount: args.amount.toFixed(2),
       merchCode: env["TELEBIRR_SHORT_CODE"],

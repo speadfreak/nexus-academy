@@ -23,7 +23,7 @@ export default function NotFound() {
             The page you&apos;re looking for doesn&apos;t exist in this library.
           </p>
           <Button asChild className="mt-8 rounded-xl">
-            <Link to="/">Back to NexET 🇪🇹</Link>
+            <Link to="/">Back to Nexus Academy ET 🇪🇹</Link>
           </Button>
         </div>
       </div>

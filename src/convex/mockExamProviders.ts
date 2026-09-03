@@ -108,7 +108,7 @@ async function callOpenAICompatible(
         ...(provider === "openrouter"
           ? {
               "HTTP-Referer": "https://nexus-academy-et.vercel.app",
-              "X-Title": "NexET",
+              "X-Title": "Nexus Academy ET",
             }
           : {}),
       },

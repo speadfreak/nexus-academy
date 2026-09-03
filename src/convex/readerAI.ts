@@ -76,7 +76,7 @@ export const askReaderQuestion = action({
       topicRows.length > 0 ? `Linked topics: ${topicRows.map((topic) => topic.name).join(", ")}.` : "";
 
     const systemPrompt =
-      "You are the NexET 🇪🇹 reading companion — an expert guide for Ethiopian " +
+      "You are the Nexus Academy ET 🇪🇹 reading companion — an expert guide for Ethiopian " +
       "students in grades 9-12 studying for the national matric exams. The student is " +
       "reading a document RIGHT NOW and is asking about it. Answer directly, warmly and " +
       "precisely. Tie explanations to the document when you can. Show step-by-step working " +
@@ -161,7 +161,7 @@ export const askReaderQuestionWithHighlight = internalAction({
     }
 
     const systemPrompt =
-      "You are the NexET 🇪🇹 reading companion — an expert guide for Ethiopian " +
+      "You are the Nexus Academy ET 🇪🇹 reading companion — an expert guide for Ethiopian " +
       "students in grades 9-12 studying for the national matric exams. The student is " +
       "reading a document RIGHT NOW and has highlighted a specific passage they want " +
       "to ask about. Answer directly, warmly and precisely. Focus on the highlighted " +

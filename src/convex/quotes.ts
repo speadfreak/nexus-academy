@@ -20,21 +20,21 @@ import { callGroq, resolveKey } from "./groq";
 // Original fallback pool, written for this product. Used deterministically by
 // day-of-year so all users share the same quote on the same day.
 const FALLBACK_QUOTES: { text: string; author?: string }[] = [
-  { text: "The exam is a marathon of four years. Start today, not in May.", author: "NexET 🇪🇹" },
-  { text: "Past papers are the closest thing to a rehearsal. Treat every one like the real stage.", author: "NexET 🇪🇹" },
-  { text: "One topic a day beats panic in a week. Small, steady, relentless.", author: "NexET 🇪🇹" },
-  { text: "You don't need to be brilliant — you need to be consistent.", author: "NexET 🇪🇹" },
-  { text: "Every hour you study now is a mark you keep on exam day.", author: "NexET 🇪🇹" },
-  { text: "Hard topics aren't walls. They're just stairs you haven't climbed yet.", author: "NexET 🇪🇹" },
-  { text: "Your competition isn't other students. It's the version of you that gave up early.", author: "NexET 🇪🇹" },
-  { text: "Revise like you already failed once and refuse to do it again.", author: "NexET 🇪🇹" },
-  { text: "Focus is a skill, and you just trained it again today.", author: "NexET 🇪🇹" },
-  { text: "Nobody remembers the days you almost studied. They remember the days you did.", author: "NexET 🇪🇹" },
-  { text: "The syllabus is long. The exam is one morning. Plan backwards from it.", author: "NexET 🇪🇹" },
-  { text: "Mistakes in practice are tuition. Mistakes on exam day are expensive.", author: "NexET 🇪🇹" },
-  { text: "Rest is part of the plan. Even engines cool down.", author: "NexET 🇪🇹" },
-  { text: "Ask the tutor the question you're embarrassed to ask. That's how you learn.", author: "NexET 🇪🇹" },
-  { text: "Four years of material. One day at a time. You've already started.", author: "NexET 🇪🇹" },
+  { text: "The exam is a marathon of four years. Start today, not in May.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Past papers are the closest thing to a rehearsal. Treat every one like the real stage.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "One topic a day beats panic in a week. Small, steady, relentless.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "You don't need to be brilliant — you need to be consistent.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Every hour you study now is a mark you keep on exam day.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Hard topics aren't walls. They're just stairs you haven't climbed yet.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Your competition isn't other students. It's the version of you that gave up early.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Revise like you already failed once and refuse to do it again.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Focus is a skill, and you just trained it again today.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Nobody remembers the days you almost studied. They remember the days you did.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "The syllabus is long. The exam is one morning. Plan backwards from it.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Mistakes in practice are tuition. Mistakes on exam day are expensive.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Rest is part of the plan. Even engines cool down.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Ask the tutor the question you're embarrassed to ask. That's how you learn.", author: "Nexus Academy ET 🇪🇹" },
+  { text: "Four years of material. One day at a time. You've already started.", author: "Nexus Academy ET 🇪🇹" },
 ];
 
 function todayKey(): string {
