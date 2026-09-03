@@ -36,6 +36,7 @@ import type * as manualPayments from "../manualPayments.js";
 import type * as marketing from "../marketing.js";
 import type * as media from "../media.js";
 import type * as mockExam from "../mockExam.js";
+import type * as mockExamProviders from "../mockExamProviders.js";
 import type * as notes from "../notes.js";
 import type * as notifications from "../notifications.js";
 import type * as payments from "../payments.js";
@@ -103,6 +104,7 @@ declare const fullApi: ApiFromModules<{
   marketing: typeof marketing;
   media: typeof media;
   mockExam: typeof mockExam;
+  mockExamProviders: typeof mockExamProviders;
   notes: typeof notes;
   notifications: typeof notifications;
   payments: typeof payments;

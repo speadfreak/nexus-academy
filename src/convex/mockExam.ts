@@ -59,6 +59,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireActiveSubscriptionAction } from "./subscriptions";
 import { callGemini, GeminiRateLimitError, GeminiUnavailableError } from "./gemini";
 import { callGroq } from "./groq";
+import { callOpenRouter, callCerebras, ProviderUnavailableError } from "./mockExamProviders";
 import { XP_VALUES } from "./constants";
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,10 @@ const STREAM_SUBJECT_SLUGS: Record<"natural" | "social", string[]> = {
   social: ["history", "geography", "economics"],
 };
 
+// Type for which AI provider served a mock exam section.
+// Used in the generateSection return shape + the frontend's progress UI.
+type MockExamProvider = "gemini" | "openrouter" | "cerebras" | "groq";
+
 // ---------------------------------------------------------------------------
 // AI generation helpers (reused pattern from quizzes.ts, generalized for
 // larger question counts)
@@ -137,7 +142,7 @@ async function requestSectionQuestions(
   stream: string,
   topicNames: string[],
   count: number,
-): Promise<{ text: string; provider: "gemini" | "groq" }> {
+): Promise<{ text: string; provider: MockExamProvider }> {
   const systemPrompt =
     "You write multiple-choice exam questions for the Ethiopian national exams " +
     "(EHEEE/ESSLCE), grades 9-12. Questions must be precise, exam-realistic, and " +
@@ -158,64 +163,111 @@ async function requestSectionQuestions(
     '[{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}]\n' +
     `Topics to cover: ${topicNames.join(", ")}`;
 
-  // ── Provider routing ──────────────────────────────────────────────
-  // Try Gemini first — its free tier's ~1M TPM ceiling handles the
-  // ~7K-token-per-section output that would blow Groq's 8,000 TPM
-  // free-tier limit.
+  const callOpts = {
+    systemPrompt,
+    userMessage,
+    maxTokens: TOKENS_PER_SECTION,
+    temperature: 0.4,
+  };
+
+  // ── Multi-provider cascade ──────────────────────────────────────────
+  // Try each provider in order. If one fails with ProviderUnavailableError
+  // (rate limit, invalid key, server error), try the next. This ensures
+  // the student always gets a working exam even if one provider's free
+  // tier is exhausted.
   //
-  // FALLBACK: If Gemini is unavailable from this deployment (most often
-  // the FAILED_PRECONDITION "User location is not supported" error
-  // returned when the API key was created from a region Gemini's free
-  // tier doesn't serve — e.g. Ethiopia — or the model name was
-  // deprecated), we silently fall back to Groq with the original 7000-
-  // token budget. This is a degraded experience (slower, consumes more
-  // of the shared Groq TPM pool that other features also use), but it
-  // means the student always gets a working exam even if Gemini isn't
-  // reachable from their region. The retry loop in generateSection will
-  // still apply the inter-section delay so concurrent tutor/quiz
-  // traffic on Groq isn't starved.
-  try {
-    const text = await callGemini(ctx, {
-      systemPrompt,
-      userMessage,
-      maxTokens: TOKENS_PER_SECTION,
-      temperature: 0.4,
-    });
-    return { text, provider: "gemini" };
-  } catch (err) {
-    if (err instanceof GeminiUnavailableError) {
-      // Fall back to Groq. We log to systemEvents so the admin can see
-      // when this fallback is being relied on (and fix the Gemini key
-      // / region if possible). The existing systemEvents logEvent only
-      // accepts a fixed enum of eventType values, so we use "error" with
-      // a structured metadata payload to record the fallback.
+  // Cascade order:
+  //   1. Gemini (highest TPM, but region-blocked in some areas + 429 quota)
+  //   2. OpenRouter (free Llama 3.3 70B, 50-200 req/day)
+  //   3. Cerebras (free Llama 3.1 8B, 1M tokens/day)
+  //   4. Groq (final fallback — shared with tutor/quizzes/flashcards)
+  //
+  // Each provider logs failures to systemEvents so the admin can see
+  // which providers are being relied on.
+
+  const providers: Array<{
+    name: MockExamProvider;
+    call: () => Promise<string>;
+  }> = [
+    {
+      name: "gemini",
+      call: async () => {
+        const text = await callGemini(ctx, callOpts);
+        return text;
+      },
+    },
+    {
+      name: "openrouter",
+      call: async () => {
+        const text = await callOpenRouter(ctx, callOpts);
+        return text;
+      },
+    },
+    {
+      name: "cerebras",
+      call: async () => {
+        const text = await callCerebras(ctx, callOpts);
+        return text;
+      },
+    },
+    {
+      name: "groq",
+      call: async () => {
+        const text = await callGroq(ctx, callOpts);
+        return text;
+      },
+    },
+  ];
+
+  const errors: string[] = [];
+
+  for (const provider of providers) {
+    try {
+      const text = await provider.call();
+      return { text, provider: provider.name };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      errors.push(`${provider.name}: ${errorMsg}`);
+
+      // Log the fallback for admin visibility
       try {
         await ctx.runMutation(internal.systemEvents.logEvent, {
           eventType: "error",
-          source: "mockExam.gemini_fallback",
+          source: `mockExam.provider_${provider.name}_failed`,
           status: "error",
           metadata: JSON.stringify({
-            reason: err.message,
-            provider: "groq",
+            provider: provider.name,
             subject: subjectName,
+            error: errorMsg,
           }),
           durationMs: 0,
         });
       } catch {
         // Non-fatal — systemEvents is best-effort logging.
       }
-      const text = await callGroq(ctx, {
-        systemPrompt,
-        userMessage,
-        maxTokens: TOKENS_PER_SECTION,
-        temperature: 0.4,
-      });
-      return { text, provider: "groq" };
+
+      // If this is Gemini's rate-limit error, it's expected — just move
+      // to the next provider. Same for ProviderUnavailableError from
+      // OpenRouter/Cerebras. For GeminiUnavailableError, also move on.
+      if (
+        err instanceof GeminiRateLimitError ||
+        err instanceof GeminiUnavailableError ||
+        err instanceof ProviderUnavailableError
+      ) {
+        continue;
+      }
+
+      // For other errors (JSON parse, network), also try the next provider
+      // rather than failing the whole section. The retry loop in
+      // generateSection will handle repeated failures.
+      continue;
     }
-    // Other errors (rate-limit, JSON parse, network) propagate up to
-    // generateSection's retry loop, which already handles them.
-    throw err;
   }
+
+  // All providers failed — throw with a summary of all errors
+  throw new Error(
+    `All mock exam providers failed for ${subjectName}:\n${errors.join("\n")}`,
+  );
 }
 
 function parseAndValidateQuestions(raw: string, expectedCount: number): MockExamQuestion[] {
@@ -420,7 +472,7 @@ export const generateSection = action({
     success: boolean;
     reason?: string;
     retryable?: boolean; // true when the failure was a transient rate-limit
-    providerUsed?: "gemini" | "groq"; // which AI provider actually served the call
+    providerUsed?: MockExamProvider; // which AI provider actually served the call
     generationMs: number;
   }> => {
     const userId = await getAuthUserId(ctx);
@@ -491,7 +543,7 @@ export const generateSection = action({
     let questions: MockExamQuestion[] = [];
     let lastError = "Unknown parsing error.";
     let lastRetryable = false;
-    let providerUsed: "gemini" | "groq" | undefined = undefined;
+    let providerUsed: MockExamProvider | undefined = undefined;
     for (let attempt = 0; attempt < MAX_SECTION_ATTEMPTS && questions.length === 0; attempt++) {
       try {
         const result = await requestSectionQuestions(

@@ -142,7 +142,7 @@ export default function MockExamPage() {
     success: boolean;
     reason?: string;
     retryable?: boolean;
-    providerUsed?: "gemini" | "groq";
+    providerUsed?: "gemini" | "openrouter" | "cerebras" | "groq";
     generationMs?: number;
   }[]>([]);
   const [genCurrent, setGenCurrent] = useState<string>("");
@@ -224,7 +224,7 @@ export default function MockExamPage() {
       const GEMINI_DELAY_MS = 1500; // UI polish only — Gemini has plenty of TPM headroom
       const GROQ_DELAY_MS = 60000; // TPM recovery — required when falling back to Groq
       const progress: typeof genProgress = [];
-      let lastProvider: "gemini" | "groq" | undefined = undefined;
+      let lastProvider: "gemini" | "openrouter" | "cerebras" | "groq" | undefined = undefined;
       for (let i = 0; i < start.sections.length; i++) {
         const section = start.sections[i];
         setGenCurrent(section.subjectName);
@@ -236,7 +236,7 @@ export default function MockExamPage() {
             success: boolean;
             reason?: string;
             retryable?: boolean;
-            providerUsed?: "gemini" | "groq";
+            providerUsed?: "gemini" | "openrouter" | "cerebras" | "groq";
             generationMs?: number;
           };
           lastProvider = result.providerUsed ?? "gemini";
@@ -266,8 +266,9 @@ export default function MockExamPage() {
           });
           setGenProgress([...progress]);
         }
-        // Adaptive inter-section delay: 1.5s for Gemini, 60s for Groq
-        // fallback. Skip after the last section.
+        // Adaptive inter-section delay: 1.5s for Gemini/OpenRouter/Cerebras,
+        // 60s for Groq fallback (Groq's 8K TPM free tier needs recovery time).
+        // Skip after the last section.
         if (i < start.sections.length - 1) {
           const delay = lastProvider === "groq" ? GROQ_DELAY_MS : GEMINI_DELAY_MS;
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -324,7 +325,7 @@ export default function MockExamPage() {
         success: boolean;
         reason?: string;
         retryable?: boolean;
-        providerUsed?: "gemini" | "groq";
+        providerUsed?: "gemini" | "openrouter" | "cerebras" | "groq";
         generationMs?: number;
       };
       setGenProgress((prev) =>
@@ -692,7 +693,7 @@ function GeneratingScreen({
   onProceed,
   canProceed,
 }: {
-  progress: { sectionIndex: number; subjectName: string; success: boolean; reason?: string; retryable?: boolean; providerUsed?: "gemini" | "groq"; generationMs?: number }[];
+  progress: { sectionIndex: number; subjectName: string; success: boolean; reason?: string; retryable?: boolean; providerUsed?: "gemini" | "openrouter" | "cerebras" | "groq"; generationMs?: number }[];
   current: string;
   onRetry: (sectionIndex: number) => void;
   retrying: boolean;
@@ -805,15 +806,29 @@ function GeneratingScreen({
                       "rounded-md px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider",
                       item.providerUsed === "gemini"
                         ? "bg-sky-400/15 text-sky-300"
-                        : "bg-violet-400/15 text-violet-300",
+                        : item.providerUsed === "openrouter"
+                          ? "bg-emerald-400/15 text-emerald-300"
+                          : item.providerUsed === "cerebras"
+                            ? "bg-amber-400/15 text-amber-300"
+                            : "bg-violet-400/15 text-violet-300",
                     )}
                     title={
                       item.providerUsed === "gemini"
                         ? "Generated via Google Gemini (primary provider)"
-                        : "Generated via Groq fallback (Gemini unavailable from this region)"
+                        : item.providerUsed === "openrouter"
+                          ? "Generated via OpenRouter (Llama 3.3 70B — fallback 1)"
+                          : item.providerUsed === "cerebras"
+                            ? "Generated via Cerebras (Llama 3.1 — fallback 2)"
+                            : "Generated via Groq (final fallback)"
                     }
                   >
-                    {item.providerUsed === "gemini" ? "Gemini" : "Groq fallback"}
+                    {item.providerUsed === "gemini"
+                      ? "Gemini"
+                      : item.providerUsed === "openrouter"
+                        ? "OpenRouter"
+                        : item.providerUsed === "cerebras"
+                          ? "Cerebras"
+                          : "Groq"}
                   </span>
                 )}
                 {!item.success && (
