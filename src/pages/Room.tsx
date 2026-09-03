@@ -553,14 +553,13 @@ export default function Room() {
                               </p>
                             </div>
                             {item.itemType === "content" && item.fileUrl && (
-                              <a
-                                href={item.fileUrl}
-                                target="_blank"
-                                rel="noreferrer"
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/read/${item._id}`)}
                                 className="shrink-0 cursor-pointer rounded-lg border border-white/10 px-2 py-1 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/10"
                               >
-                                Open
-                              </a>
+                                Read
+                              </button>
                             )}
                           </div>
                           {item.itemType === "note" && item.content && (
