@@ -215,3 +215,87 @@ export const listEnabledAutoPostChannels = internalQuery({
     return channels;
   },
 });
+
+/**
+ * Internal — list EVERY configured channel (no autoPost filter). Used by the
+ * contact-form action so student messages can reach any team channel that's
+ * been registered, regardless of whether the auto-post toggle is on. The
+ * admin explicitly added these channels, so they're all valid destinations.
+ */
+export const listAllChannels = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const channels = await ctx.db.query("telegramChannels").collect();
+    return channels.map((c) => ({ _id: c._id, chatId: c.chatId, name: c.name }));
+  },
+});
+
+/**
+ * Internal — persist a contact-form submission. Always succeeds (no Telegram
+ * dependency) so the admin can read every message even if the bot is down or
+ * not configured. Returns the new row id (stringified for action return).
+ */
+export const insertContactMessage = internalMutation({
+  args: {
+    userId: v.id("users"),
+    name: v.optional(v.string()),
+    email: v.string(),
+    category: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("contactMessages", {
+      userId: args.userId,
+      name: args.name,
+      email: args.email,
+      category: args.category,
+      message: args.message,
+      sentToTelegram: false,
+      createdAt: Date.now(),
+    });
+    return id as unknown as string;
+  },
+});
+
+/**
+ * Internal — mark a contact message as delivered to Telegram. Called from
+ * the action after a successful send (even partial — at least one channel
+ * accepted the message).
+ */
+export const markContactMessageSent = internalMutation({
+  args: { id: v.id("contactMessages") },
+  handler: async (ctx, { id }) => {
+    await ctx.db.patch(id, { sentToTelegram: true });
+    return { ok: true };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Admin-side reads of the contact-form inbox
+// ---------------------------------------------------------------------------
+
+/** Admin-only — list every contact-form submission, newest first. */
+export const listContactMessages = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const user = await ctx.db.get(userId);
+    if (!user || user.role !== "admin") return [];
+    const rows = await ctx.db
+      .query("contactMessages")
+      .withIndex("by_createdAt", (q) => q.gte("createdAt", 0))
+      .order("desc")
+      .take(200);
+    return rows.map((r) => ({
+      _id: r._id,
+      userId: r.userId,
+      name: r.name ?? null,
+      email: r.email,
+      category: r.category,
+      message: r.message,
+      sentToTelegram: r.sentToTelegram,
+      createdAt: r.createdAt,
+    }));
+  },
+});

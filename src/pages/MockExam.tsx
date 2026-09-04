@@ -25,6 +25,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -46,6 +47,12 @@ import {
   TrendingUp,
   Trophy,
   X,
+  Zap,
+  Brain,
+  Target,
+  ListChecks,
+  Hourglass,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -111,8 +118,7 @@ type MockExamHistoryItem = {
 type Phase = "start" | "generating" | "taking" | "results";
 
 // ---------------------------------------------------------------------------
-// Subject name lookup helper — the backend returns subjectId per section,
-// the frontend maps it to a display name via the subjects query.
+// Subject name lookup helper
 // ---------------------------------------------------------------------------
 
 function useSubjectNames() {
@@ -162,20 +168,16 @@ export default function MockExamPage() {
   const userStream: "natural" | "social" | undefined =
     profile?.stream === "natural" || profile?.stream === "social" ? profile.stream : undefined;
 
-  // Active exam data — fetch once we have an activeExamId
+  // Active exam data
   const exam = useQuery(
     api.mockExam.getMyMockExam,
     activeExamId ? ({ mockExamId: activeExamId } as never) : "skip",
   );
 
-  // Previous attempts — for the start screen + results comparison
+  // Previous attempts
   const history = useQuery(api.mockExam.getMyMockExams, {});
 
   // Auto-transition to "taking" once ALL sections have generated
-  // successfully. We deliberately DON'T auto-transition if any section
-  // failed — the student gets the chance to retry the failed section(s)
-  // via the GeneratingScreen's retry buttons, or to proceed anyway with
-  // the successfully-generated sections via the Proceed button.
   useEffect(() => {
     if (phase === "generating" && activeExamId && exam && genProgress.length > 0) {
       const totalExpected = activeSectionPlan?.length ?? 6;
@@ -203,8 +205,6 @@ export default function MockExamPage() {
     setGenCurrent("");
     setRetrying(false);
     try {
-      // Step 1 — start the mock exam (creates the parent row + returns
-      // the section plan).
       const start = (await startMockExam({ stream })) as {
         mockExamId: Id<"mockExams">;
         sections: { sectionIndex: number; subjectId: Id<"subjects">; subjectName: string; questionCount: number }[];
@@ -212,17 +212,8 @@ export default function MockExamPage() {
       setActiveExamId(start.mockExamId);
       setActiveSectionPlan(start.sections);
 
-      // Step 2 — generate each section sequentially via the split
-      // generateSection action. Mock exams try Gemini first — its
-      // ~1M TPM free-tier ceiling means each ~7K-token section fits in a
-      // single request without exhausting the budget. If Gemini is
-      // unavailable from this region (e.g. Ethiopia), the backend silently
-      // falls back to Groq and returns providerUsed="groq" so we know to
-      // re-apply the 60s inter-section TPM recovery delay (Groq's free
-      // tier is 8,000 TPM — each section eats ~7K of it, so we need ~52s
-      // of recovery before the next Groq call).
-      const GEMINI_DELAY_MS = 1500; // UI polish only — Gemini has plenty of TPM headroom
-      const GROQ_DELAY_MS = 60000; // TPM recovery — required when falling back to Groq
+      const GEMINI_DELAY_MS = 1500;
+      const GROQ_DELAY_MS = 60000;
       const progress: typeof genProgress = [];
       let lastProvider: "gemini" | "openrouter" | "cerebras" | "groq" | undefined = undefined;
       for (let i = 0; i < start.sections.length; i++) {
@@ -256,8 +247,6 @@ export default function MockExamPage() {
             });
           }
         } catch (err) {
-          // Section failed entirely — record and continue. The exam is
-          // still usable with the other sections.
           progress.push({
             sectionIndex: section.sectionIndex,
             subjectName: section.subjectName,
@@ -266,9 +255,6 @@ export default function MockExamPage() {
           });
           setGenProgress([...progress]);
         }
-        // Adaptive inter-section delay: 1.5s for Gemini/OpenRouter/Cerebras,
-        // 60s for Groq fallback (Groq's 8K TPM free tier needs recovery time).
-        // Skip after the last section.
         if (i < start.sections.length - 1) {
           const delay = lastProvider === "groq" ? GROQ_DELAY_MS : GEMINI_DELAY_MS;
           await new Promise((resolve) => setTimeout(resolve, delay));
@@ -291,8 +277,6 @@ export default function MockExamPage() {
       } else {
         toast.success(`Mock exam ready — all ${successful} sections generated.`);
       }
-      // The useEffect above will transition to "taking" once the exam
-      // query refreshes with the new sections.
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Generation failed.";
       const data = (error as { data?: { code?: string } })?.data;
@@ -307,10 +291,6 @@ export default function MockExamPage() {
     }
   };
 
-  // Retry ONE specific failed section. Reuses the same mockExamId + the
-  // stored section plan, calls generateSection for that index only, and
-  // patches the genProgress entry in place. The upsert-like behavior of
-  // insertMockExamSection means there's no duplicate row risk.
   const handleRetrySection = async (sectionIndex: number) => {
     if (!activeExamId || !activeSectionPlan) return;
     const section = activeSectionPlan.find((s) => s.sectionIndex === sectionIndex);
@@ -360,61 +340,89 @@ export default function MockExamPage() {
 
   return (
     <DashboardShell>
-      <div className="mx-auto w-full max-w-5xl">
-        {phase === "start" && (
-          <StartScreen
-            userStream={userStream}
-            history={history ?? []}
-            onBegin={handleBegin}
-            onOpenHistory={(id) => {
-              setActiveExamId(id);
-              setPhase("results");
-            }}
-          />
-        )}
-        {phase === "generating" && (
-          <GeneratingScreen
-            progress={genProgress}
-            current={genCurrent}
-            onRetry={handleRetrySection}
-            retrying={retrying}
-            onProceed={() => setPhase("taking")}
-            canProceed={
-              !!activeExamId &&
-              genProgress.filter((p) => p.success).length > 0
-            }
-          />
-        )}
-        {phase === "taking" && exam && (
-          <TakingScreen
-            exam={exam as FullExam}
-            subjectNames={subjectNames}
-            onAbandon={() => {
-              setActiveExamId(null);
-              setGenProgress([]);
-              setPhase("start");
-              navigate("/mock-exam");
-            }}
-          />
-        )}
-        {phase === "results" && exam && (
-          <ResultsScreen
-            exam={exam as FullExam}
-            subjectNames={subjectNames}
-            history={history ?? []}
-            onRetake={() => {
-              setActiveExamId(null);
-              setGenProgress([]);
-              setPhase("start");
-            }}
-            onExit={() => navigate("/dashboard")}
-          />
-        )}
+      <div className="mx-auto w-full max-w-6xl px-1 py-4 sm:px-4">
+        <AnimatePresence mode="wait">
+          {phase === "start" && (
+            <motion.div
+              key="start"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <StartScreen
+                userStream={userStream}
+                history={history ?? []}
+                onBegin={handleBegin}
+                onOpenHistory={(id) => {
+                  setActiveExamId(id);
+                  setPhase("results");
+                }}
+              />
+            </motion.div>
+          )}
+          {phase === "generating" && (
+            <motion.div
+              key="generating"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <GeneratingScreen
+                progress={genProgress}
+                current={genCurrent}
+                onRetry={handleRetrySection}
+                retrying={retrying}
+                onProceed={() => setPhase("taking")}
+                canProceed={
+                  !!activeExamId &&
+                  genProgress.filter((p) => p.success).length > 0
+                }
+              />
+            </motion.div>
+          )}
+          {phase === "taking" && exam && (
+            <TakingScreen
+              key="taking"
+              exam={exam as FullExam}
+              subjectNames={subjectNames}
+              onAbandon={() => {
+                setActiveExamId(null);
+                setGenProgress([]);
+                setPhase("start");
+                navigate("/mock-exam");
+              }}
+            />
+          )}
+          {phase === "results" && exam && (
+            <motion.div
+              key="results"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <ResultsScreen
+                exam={exam as FullExam}
+                subjectNames={subjectNames}
+                history={history ?? []}
+                onRetake={() => {
+                  setActiveExamId(null);
+                  setGenProgress([]);
+                  setPhase("start");
+                }}
+                onExit={() => navigate("/dashboard")}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {phase === "start" && genError === "premium" && (
           <PremiumGateOverlay onClose={() => setGenError(null)} />
         )}
         {phase === "start" && genError === "gemini_not_configured" && (
-          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-6 text-center">
+          <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-6 text-center">
             <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
               // gemini key not configured
             </p>
@@ -423,8 +431,8 @@ export default function MockExamPage() {
             </h3>
             <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
               Mock exam generation uses Google's Gemini API because of its
-              higher token-per-minute ceiling. Ask the admin to add a
-              Gemini API key in the Keys tab — get one free at{" "}
+              higher token-per-minute ceiling. Ask the admin to add a Gemini API
+              key in the Keys tab — get one free at{" "}
               <a
                 href="https://aistudio.google.com/apikey"
                 target="_blank"
@@ -433,8 +441,7 @@ export default function MockExamPage() {
               >
                 aistudio.google.com/apikey
               </a>
-              . Other AI features (tutor, quizzes, flashcards) are
-              unaffected and still use Groq.
+              .
             </p>
             <Button
               className="mt-4"
@@ -446,7 +453,7 @@ export default function MockExamPage() {
           </div>
         )}
         {phase === "start" && genError && genError !== "premium" && genError !== "gemini_not_configured" && (
-          <div className="rounded-2xl border border-rose-400/30 bg-rose-400/[0.06] p-6 text-center">
+          <div className="mt-6 rounded-2xl border border-rose-400/30 bg-rose-400/[0.06] p-6 text-center">
             <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-rose-300">
               // generation failed
             </p>
@@ -466,7 +473,7 @@ export default function MockExamPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Start screen
+// Start screen — completely rebuilt for clarity and visual impact.
 // ---------------------------------------------------------------------------
 
 function StartScreen({
@@ -484,90 +491,165 @@ function StartScreen({
   const [confirmed, setConfirmed] = useState(false);
 
   const completedAttempts = history.filter((h) => h.status === "completed" && h.totalScore !== undefined);
-  const lastAttempt = completedAttempts[0]; // history is most-recent-first
+  const lastAttempt = completedAttempts[0];
+  const bestAttempt = completedAttempts.length > 0
+    ? completedAttempts.reduce((best, h) => (h.totalScore! > best.totalScore! ? h : best))
+    : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div>
-        <p className="type-mono uppercase tracking-[0.22em] text-amber-300 font-semibold">
-          // national exam simulation
-        </p>
-        <h1 className="type-h1 mt-2">
-          Mock <span className="text-gradient">Exam</span>
-        </h1>
-        <p className="type-body-lg mt-2 max-w-2xl text-muted-foreground">
-          A complete simulated EHEEE sitting — six sections, ~340 original AI-generated
-          questions, ~5 hours. Every question is written fresh by our model from the real
-          curriculum, never copied from a past paper. Built for serious readiness.
-        </p>
-      </div>
+    <div className="flex flex-col gap-8">
+      {/* HERO HEADER — big, bold, inspiring */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="relative overflow-hidden rounded-3xl border border-amber-400/15 bg-gradient-to-br from-amber-400/[0.04] via-white/[0.01] to-transparent p-8 sm:p-12"
+      >
+        <div className="pointer-events-none absolute -top-24 -right-12 size-64 rounded-full bg-amber-400/8 blur-[80px]" />
+        <div className="pointer-events-none absolute -bottom-20 -left-12 size-64 rounded-full bg-sky-400/5 blur-[80px]" />
+        <div className="relative">
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/5 px-3 py-1">
+            <Sparkles className="size-3.5 text-amber-300" />
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
+              National Exam Simulation
+            </span>
+          </div>
+          <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
+            Mock <span className="text-gradient">Exam</span>
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            A complete simulated EHEEE sitting — six sections, around 340
+            original AI-generated questions, roughly five hours of focused
+            time. Every question is written fresh by our model from the real
+            Ethiopian curriculum, never copied from a past paper. Built for
+            serious readiness.
+          </p>
+          {lastAttempt && (
+            <div className="mt-6 flex flex-wrap gap-3">
+              <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2">
+                <Trophy className="size-4 text-emerald-300" />
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.15em] text-emerald-300/80">Last attempt</p>
+                  <p className="text-sm font-bold text-emerald-100">{lastAttempt.totalScore}% overall</p>
+                </div>
+              </div>
+              {bestAttempt && bestAttempt._id !== lastAttempt._id && (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2">
+                  <Award className="size-4 text-amber-300" />
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.15em] text-amber-300/80">Personal best</p>
+                    <p className="text-sm font-bold text-amber-100">{bestAttempt.totalScore}% overall</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </motion.div>
 
-      {/* Real exam format card */}
-      <div className="glass-panel grid grid-cols-2 gap-4 rounded-2xl p-5 sm:grid-cols-4 sm:p-6">
-        <FormatStat label="Sections" value="6" hint="English · Math · Aptitude · 3 stream subjects" />
-        <FormatStat label="Questions" value="~340" hint="50 per section (Aptitude: 40)" />
-        <FormatStat label="Duration" value="~5h" hint="50 min per section, no pausing" />
-        <FormatStat label="Format" value="CBT" hint="Computer-based, like the real exam" />
-      </div>
+      {/* REAL EXAM FORMAT — clear visual stats grid */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+        className="grid grid-cols-2 gap-4 sm:grid-cols-4"
+      >
+        <FormatStat
+          icon={<ListChecks className="size-5 text-amber-300" />}
+          label="Sections"
+          value="6"
+          hint="English · Math · Aptitude · 3 stream subjects"
+        />
+        <FormatStat
+          icon={<Brain className="size-5 text-sky-300" />}
+          label="Questions"
+          value="~340"
+          hint="50 per section (Aptitude: 40)"
+        />
+        <FormatStat
+          icon={<Hourglass className="size-5 text-emerald-300" />}
+          label="Duration"
+          value="~5h"
+          hint="50 min per section, no pausing"
+        />
+        <FormatStat
+          icon={<Target className="size-5 text-violet-300" />}
+          label="Format"
+          value="CBT"
+          hint="Computer-based, like the real exam"
+        />
+      </motion.div>
 
-      {/* Stream picker */}
-      <div className="glass-panel rounded-2xl p-5 sm:p-6">
-        <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+      {/* STREAM PICKER — large, beautiful, visual */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8"
+      >
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           Step 1 · Pick your stream
         </p>
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <StreamOption
             active={stream === "natural"}
             onClick={() => setStream("natural")}
-            title="Natural science"
+            title="Natural Science"
             subjects="Physics · Chemistry · Biology"
             tone="emerald"
+            icon={<Brain className="size-5" />}
           />
           <StreamOption
             active={stream === "social"}
             onClick={() => setStream("social")}
-            title="Social science"
+            title="Social Science"
             subjects="History · Geography · Economics"
             tone="amber"
+            icon={<GraduationCap className="size-5" />}
           />
         </div>
         {userStream && (
-          <p className="mt-3 text-xs text-muted-foreground">
+          <p className="mt-4 text-xs text-muted-foreground">
             Auto-detected from your profile ({userStream === "natural" ? "Natural" : "Social"} stream) —
             change if you want to practice the other track.
           </p>
         )}
-      </div>
+      </motion.div>
 
-      {/* Commitment step */}
-      <div className="glass-panel rounded-2xl p-5 sm:p-6">
-        <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+      {/* COMMITMENT STEP — serious but clear */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.24, ease: [0.22, 1, 0.36, 1] }}
+        className="rounded-2xl border border-amber-400/15 bg-amber-400/[0.03] p-6 sm:p-8"
+      >
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           Step 2 · Commit
         </p>
-        <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-4">
-          <AlertTriangle className="size-5 shrink-0 text-amber-300" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">
+        <div className="mt-4 flex items-start gap-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-5">
+          <AlertTriangle className="size-6 shrink-0 text-amber-300" />
+          <div className="flex-1">
+            <p className="text-base font-semibold text-foreground">
               Once you begin, the timer cannot be paused.
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              You&apos;ll have 50 minutes per section. When a section&apos;s timer expires, it
-              auto-submits and you can&apos;t go back. Make sure you have ~5 hours of
-              uninterrupted focus before starting.
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              You&apos;ll have 50 minutes per section. When a section&apos;s
+              timer expires, it auto-submits and you can&apos;t go back. Make
+              sure you have roughly 5 hours of uninterrupted focus before
+              starting.
             </p>
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            <label className="mt-4 flex cursor-pointer items-center gap-2.5 text-sm text-muted-foreground">
               <input
                 type="checkbox"
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
-                className="size-4 rounded border-white/20 bg-white/5"
+                className="size-4 cursor-pointer rounded border-white/20 bg-white/5 accent-amber-400"
               />
               I understand — I&apos;m ready to begin the full mock exam.
             </label>
           </div>
         </div>
-        <div className="mt-5 flex justify-end">
+        <div className="mt-6 flex justify-end">
           <Button
             onClick={() => onBegin(stream)}
             disabled={!confirmed}
@@ -577,27 +659,37 @@ function StartScreen({
             <Play className="size-4" /> Begin mock exam
           </Button>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Previous attempts */}
+      {/* PREVIOUS ATTEMPTS — chronological history */}
       {completedAttempts.length > 0 && (
-        <div className="glass-panel rounded-2xl p-5 sm:p-6">
-          <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-            Your previous attempts
-          </p>
-          <div className="mt-3 flex flex-col gap-2">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}
+          className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8"
+        >
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Your previous attempts
+            </p>
+            <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+              {completedAttempts.length} total
+            </Badge>
+          </div>
+          <div className="mt-4 flex flex-col gap-2.5">
             {completedAttempts.slice(0, 5).map((h) => (
               <button
                 key={h._id}
                 onClick={() => onOpenHistory(h._id)}
-                className="group flex cursor-pointer items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition-colors hover:bg-white/[0.04]"
+                className="group flex cursor-pointer items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-left transition-colors hover:border-amber-400/30 hover:bg-amber-400/[0.04]"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Trophy className="size-4" />
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
+                    <Trophy className="size-5" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-foreground">
+                    <p className="text-sm font-semibold text-foreground">
                       {new Date(h.startedAt).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
@@ -605,34 +697,47 @@ function StartScreen({
                       })}{" "}
                       · {h.stream === "natural" ? "Natural" : "Social"} stream
                     </p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       Click to view full breakdown
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="type-mono text-lg font-bold text-foreground">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-mono text-xl font-bold text-gradient">
                     {h.totalScore}%
                   </span>
-                  <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
+                  <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-amber-300" />
                 </div>
               </button>
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );
 }
 
-function FormatStat({ label, value, hint }: { label: string; value: string; hint: string }) {
+function FormatStat({
+  icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hint: string;
+}) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-      <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="type-h2 font-bold text-foreground">{value}</p>
-      <p className="text-[10px] text-muted-foreground">{hint}</p>
+    <div className="flex flex-col gap-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 transition-colors hover:border-amber-400/20 hover:bg-amber-400/[0.03]">
+      <div className="flex items-center justify-between">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+        {icon}
+      </div>
+      <p className="text-3xl font-extrabold tracking-tight text-foreground">{value}</p>
+      <p className="text-xs text-muted-foreground">{hint}</p>
     </div>
   );
 }
@@ -643,46 +748,59 @@ function StreamOption({
   title,
   subjects,
   tone,
+  icon,
 }: {
   active: boolean;
   onClick: () => void;
   title: string;
   subjects: string;
   tone: "emerald" | "amber";
+  icon: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "group flex cursor-pointer flex-col gap-1.5 rounded-xl border p-4 text-left transition-all",
+        "group flex cursor-pointer flex-col gap-3 rounded-2xl border p-5 text-left transition-all",
         active
           ? tone === "emerald"
-            ? "border-emerald-400/40 bg-emerald-400/[0.08]"
-            : "border-amber-400/40 bg-amber-400/[0.08]"
-          : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]",
+            ? "border-emerald-400/40 bg-emerald-400/[0.08] shadow-[inset_0_0_0_1px_rgb(52,211,153/0.2)]"
+            : "border-amber-400/40 bg-amber-400/[0.08] shadow-[inset_0_0_0_1px_rgb(251,191,36/0.2)]"
+          : "border-white/10 bg-white/[0.02] hover:border-white/25 hover:bg-white/[0.04]",
       )}
     >
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <div
+          className={cn(
+            "flex size-10 items-center justify-center rounded-xl",
+            active
+              ? tone === "emerald"
+                ? "bg-emerald-400/15 text-emerald-300"
+                : "bg-amber-400/15 text-amber-300"
+              : "bg-white/5 text-muted-foreground",
+          )}
+        >
+          {icon}
+        </div>
         {active && (
           <CheckCircle2
             className={cn(
-              "size-4",
+              "size-5",
               tone === "emerald" ? "text-emerald-300" : "text-amber-300",
             )}
           />
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{subjects}</p>
+      <div>
+        <p className="text-base font-bold text-foreground">{title}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{subjects}</p>
+      </div>
     </button>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Generating screen — shown while the AI builds the 6 sections sequentially.
-// Shows real progress as each section completes (success or failure) and
-// which subject is currently being generated. The student gets feedback
-// that something is happening, not just a spinner.
+// Generating screen
 // ---------------------------------------------------------------------------
 
 function GeneratingScreen({
@@ -704,29 +822,27 @@ function GeneratingScreen({
   const done = progress.length;
   const failedCount = progress.filter((p) => !p.success).length;
   const allDone = done >= total;
-  // Detect if any section fell back to Groq — if so, the next inter-section
-  // delay is 60s instead of 1.5s, so the remaining time estimate needs to
-  // account for that.
   const groqFallbackActive = progress.some((p) => p.providerUsed === "groq");
   const remainingSections = Math.max(0, total - done);
   const estimatedRemainingMs = groqFallbackActive
-    ? remainingSections * 65_000 // ~5s generation + 60s TPM recovery per remaining section
-    : remainingSections * 15_000; // ~15s per Gemini section including 1.5s polish delay
+    ? remainingSections * 65_000
+    : remainingSections * 15_000;
+
   return (
-    <div className="flex flex-col items-center justify-center gap-6 py-12">
-      <div className="relative flex size-20 items-center justify-center">
-        <div className="absolute inset-0 rounded-full bg-amber-400/20 blur-2xl animate-pulse" />
+    <div className="flex flex-col items-center justify-center gap-8 py-16">
+      <div className="relative flex size-24 items-center justify-center">
+        <div className="absolute inset-0 rounded-full bg-amber-400/20 blur-3xl animate-pulse" />
         {allDone ? (
-          <CheckCircle2 className="size-10 text-emerald-300" />
+          <CheckCircle2 className="size-12 text-emerald-300" />
         ) : (
-          <Loader2 className="size-10 animate-spin text-amber-300" />
+          <Loader2 className="size-12 animate-spin text-amber-300" />
         )}
       </div>
       <div className="text-center">
-        <p className="type-mono uppercase tracking-[0.22em] text-amber-300 font-semibold">
+        <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-amber-300">
           {allDone ? "// your mock exam is ready" : "// generating your mock exam"}
         </p>
-        <h2 className="type-h1 mt-2">
+        <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-foreground">
           {allDone
             ? failedCount > 0
               ? `${failedCount} section${failedCount > 1 ? "s" : ""} need${failedCount === 1 ? "s" : ""} a retry`
@@ -735,23 +851,26 @@ function GeneratingScreen({
               ? `Building ${current}…`
               : "Building 6 sections of original questions"}
         </h2>
-        <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
+        <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
           {allDone ? (
             "All requested sections have been processed. Review any failures above, or proceed to take the exam."
           ) : groqFallbackActive ? (
             <>
-              Gemini isn't available from your region, so the AI is using the
-              Groq fallback path — each section needs a ~60s cooldown between
-              calls to respect Groq's free-tier rate limit. Estimated time
-              remaining: <span className="font-mono text-amber-300">~{Math.ceil(estimatedRemainingMs / 60_000)} min</span>.
+              Gemini isn&apos;t available from your region, so the AI is using
+              the Groq fallback path — each section needs a ~60s cooldown between
+              calls to respect Groq&apos;s free-tier rate limit. Estimated time
+              remaining: <span className="font-mono font-bold text-amber-300">~{Math.ceil(estimatedRemainingMs / 60_000)} min</span>.
               Please keep this tab open.
             </>
           ) : (
             <>
-              The AI writes ~340 fresh multiple-choice questions grounded in the
-              Ethiopian curriculum — one section at a time. Each section takes
-              ~10–20s. Estimated time remaining: <span className="font-mono text-amber-300">~{Math.max(1, Math.round(estimatedRemainingMs / 1000))}s</span>.
-              Please keep this tab open.
+              The AI writes ~340 fresh multiple-choice questions grounded in
+              the Ethiopian curriculum — one section at a time. Each section
+              takes ~10–20s. Estimated time remaining:{" "}
+              <span className="font-mono font-bold text-amber-300">
+                ~{Math.max(1, Math.round(estimatedRemainingMs / 1000))}s
+              </span>
+              . Please keep this tab open.
             </>
           )}
         </p>
@@ -759,22 +878,31 @@ function GeneratingScreen({
 
       {/* Progress list */}
       <div className="w-full max-w-md">
-        <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="mb-3 flex items-center justify-between text-sm text-muted-foreground">
           <span>Progress</span>
-          <span className="type-mono">
+          <span className="font-mono font-semibold">
             {done} / {total}
           </span>
         </div>
-        <div className="flex flex-col gap-1.5">
+        {/* Overall progress bar */}
+        <div className="mb-4 h-2 overflow-hidden rounded-full bg-white/5">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-400"
+            initial={{ width: 0 }}
+            animate={{ width: `${(done / total) * 100}%` }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
           {Array.from({ length: total }, (_, i) => {
             const item = progress[i];
             if (!item) {
               return (
                 <div
                   key={i}
-                  className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs text-muted-foreground"
+                  className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm text-muted-foreground"
                 >
-                  <Loader2 className={cn("size-3.5", i === done ? "animate-spin text-amber-300" : "opacity-30")} />
+                  <Loader2 className={cn("size-4", i === done ? "animate-spin text-amber-300" : "opacity-30")} />
                   <span>Section {i + 1} — {i === done ? (current || "pending…") : "pending"}</span>
                 </div>
               );
@@ -783,27 +911,26 @@ function GeneratingScreen({
               <div
                 key={i}
                 className={cn(
-                  "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+                  "flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-sm",
                   item.success
                     ? "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200"
                     : "border-rose-400/20 bg-rose-400/[0.06] text-rose-200",
                 )}
               >
                 {item.success ? (
-                  <CheckCircle2 className="size-3.5 text-emerald-300" />
+                  <CheckCircle2 className="size-4 text-emerald-300" />
                 ) : retrying && current === item.subjectName ? (
-                  <Loader2 className="size-3.5 animate-spin text-rose-300" />
+                  <Loader2 className="size-4 animate-spin text-rose-300" />
                 ) : (
-                  <X className="size-3.5 text-rose-300" />
+                  <X className="size-4 text-rose-300" />
                 )}
-                <span className="flex-1">
+                <span className="flex-1 font-medium">
                   {item.subjectName} — {item.success ? "ready" : "failed"}
                 </span>
-                {/* Provider badge — shows which AI actually served this section */}
                 {item.success && item.providerUsed && (
                   <span
                     className={cn(
-                      "rounded-md px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider",
+                      "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider",
                       item.providerUsed === "gemini"
                         ? "bg-sky-400/15 text-sky-300"
                         : item.providerUsed === "openrouter"
@@ -812,15 +939,6 @@ function GeneratingScreen({
                             ? "bg-amber-400/15 text-amber-300"
                             : "bg-violet-400/15 text-violet-300",
                     )}
-                    title={
-                      item.providerUsed === "gemini"
-                        ? "Generated via Google Gemini (primary provider)"
-                        : item.providerUsed === "openrouter"
-                          ? "Generated via OpenRouter (Llama 3.3 70B — fallback 1)"
-                          : item.providerUsed === "cerebras"
-                            ? "Generated via Cerebras (Llama 3.1 — fallback 2)"
-                            : "Generated via Groq (final fallback)"
-                    }
                   >
                     {item.providerUsed === "gemini"
                       ? "Gemini"
@@ -837,7 +955,7 @@ function GeneratingScreen({
                     onClick={() => onRetry(item.sectionIndex)}
                     disabled={retrying}
                     className={cn(
-                      "rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-200 transition-colors hover:bg-rose-400/20",
+                      "cursor-pointer rounded-md border border-rose-400/30 bg-rose-400/10 px-2.5 py-1 font-mono text-[10px] font-semibold text-rose-200 transition-colors hover:bg-rose-400/20",
                       retrying && "opacity-50",
                     )}
                   >
@@ -849,24 +967,23 @@ function GeneratingScreen({
           })}
         </div>
 
-        {/* Failure explanation + retry-all + proceed-anyway controls */}
         {allDone && failedCount > 0 && (
-          <div className="mt-4 space-y-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3.5">
-            <p className="text-xs leading-5 text-muted-foreground">
-              Some sections couldn't be generated (often a transient rate-limit
-              from the AI provider). You can retry individual sections above, or
-              proceed with the {done - failedCount} ready section
-              {done - failedCount === 1 ? "" : "s"} — the failed sections will be
-              skipped in the final score.
+          <div className="mt-5 space-y-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-4">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Some sections couldn&apos;t be generated (often a transient
+              rate-limit from the AI provider). You can retry individual
+              sections above, or proceed with the {done - failedCount} ready
+              section{done - failedCount === 1 ? "" : "s"} — the failed
+              sections will be skipped in the final score.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
-                className="h-9 gap-1.5"
+                className="h-10 cursor-pointer gap-2"
                 disabled={!canProceed}
                 onClick={onProceed}
               >
-                <CheckCircle2 className="size-3.5" />
+                <CheckCircle2 className="size-4" />
                 Proceed with {done - failedCount} section{done - failedCount === 1 ? "" : "s"}
               </Button>
             </div>
@@ -878,7 +995,10 @@ function GeneratingScreen({
 }
 
 // ---------------------------------------------------------------------------
-// Taking screen — the exam itself, section by section
+// Taking screen — the exam itself, section by section.
+// We use the app's theme colors (no more pitch-black void). The sidebar
+// is wider and the question content uses a comfortable max-width for
+// readability on any screen.
 // ---------------------------------------------------------------------------
 
 function TakingScreen({
@@ -923,7 +1043,6 @@ function TakingScreen({
     tickRef.current = setInterval(() => {
       setRemainingSeconds((r) => {
         if (r <= 1) {
-          // Time's up — auto-submit the section.
           void handleSubmitSection(true);
           return 0;
         }
@@ -950,7 +1069,7 @@ function TakingScreen({
   const autoSave = async () => {
     if (!currentSection || submittingSection) return;
     const now = Date.now();
-    if (now - lastSaveRef.current < 5000) return; // throttle
+    if (now - lastSaveRef.current < 5000) return;
     lastSaveRef.current = now;
     const elapsed = currentSection.timeSpentSeconds + Math.floor((now - (sectionStartedAt ?? now)) / 1000);
     try {
@@ -961,7 +1080,7 @@ function TakingScreen({
         timeSpentSeconds: elapsed,
       });
     } catch {
-      // silent — auto-save failures are non-fatal
+      // silent
     }
   };
 
@@ -982,17 +1101,14 @@ function TakingScreen({
       if (autoSubmitted) {
         toast.info(`Time's up — ${subjectNames.get(currentSection.subjectId) ?? "Section"} submitted.`);
       }
-      // If this was the last section, complete the whole exam.
       if (isLastSection) {
         await completeMockExam({ mockExamId: exam._id });
         toast.success("Mock exam complete! Loading your results…");
       } else {
-        // Advance to the next section.
         setSectionIndex((i) => i + 1);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not submit section.");
-      // Stay on the current section so the student can retry.
     } finally {
       setSubmittingSection(false);
     }
@@ -1006,27 +1122,22 @@ function TakingScreen({
     );
   }
 
-  // If questions failed to load (JSON parse error on backend, or empty
-  // questionsJson), show a visible error instead of a blank black void.
   if (questions.length === 0) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-[#080c14] p-8">
-        <div className="relative">
-          <div className="absolute -inset-8 rounded-full bg-rose-400/5 blur-2xl" />
-          <div className="relative flex size-16 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.04] backdrop-blur-xl">
-            <AlertTriangle className="size-6 text-rose-300" />
-          </div>
+      <div className="flex flex-col items-center justify-center gap-6 py-16">
+        <div className="flex size-16 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.04]">
+          <AlertTriangle className="size-7 text-rose-300" />
         </div>
         <div className="max-w-md text-center">
-          <p className="type-mono text-[10px] uppercase tracking-[0.22em] text-rose-300">
+          <p className="font-mono text-xs uppercase tracking-[0.22em] text-rose-300">
             // no questions loaded
           </p>
-          <h3 className="mt-2 text-lg font-extrabold tracking-tight">
+          <h3 className="mt-3 text-xl font-extrabold tracking-tight">
             This section has no questions
           </h3>
           <p className="mt-2 text-sm text-muted-foreground">
-            The AI generated this section but the question data couldn't be
-            parsed. This usually happens when the AI model returned
+            The AI generated this section but the question data couldn&apos;t
+            be parsed. This usually happens when the AI model returned
             malformed JSON. Try regenerating the exam, or skip this section.
           </p>
         </div>
@@ -1035,7 +1146,7 @@ function TakingScreen({
             <Button
               variant="outline"
               onClick={() => setSectionIndex((i) => i + 1)}
-              className="gap-2"
+              className="cursor-pointer gap-2"
             >
               Skip to next section
               <ChevronRight className="size-4" />
@@ -1044,7 +1155,7 @@ function TakingScreen({
           <Button
             onClick={() => void onAbandon()}
             variant="ghost"
-            className="text-muted-foreground"
+            className="cursor-pointer text-muted-foreground"
           >
             Exit exam
           </Button>
@@ -1053,7 +1164,6 @@ function TakingScreen({
     );
   }
 
-  // Format remaining time
   const formattedRemaining = useMemo(() => {
     const m = Math.floor(remainingSeconds / 60);
     const s = remainingSeconds % 60;
@@ -1064,26 +1174,29 @@ function TakingScreen({
   const currentQuestion = questions[questionIndex];
   const answeredCount = answers.filter((a) => a >= 0).length;
   const flaggedCount = flagged.filter(Boolean).length;
+  const progressPct = Math.round((answeredCount / questions.length) * 100);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#080c14]">
+    <div className="flex flex-col gap-4">
       {/* ── Top bar ── */}
       <div
         className={cn(
-          "flex shrink-0 items-center justify-between border-b px-4 py-3 transition-colors",
-          isLowTime ? "border-rose-500/40 bg-rose-500/[0.08]" : "border-white/10 bg-white/[0.02]",
+          "flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-2xl border px-5 py-4 transition-colors",
+          isLowTime
+            ? "border-rose-500/40 bg-rose-500/[0.08]"
+            : "border-white/[0.06] bg-white/[0.02]",
         )}
       >
         <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-white/5">
-            <GraduationCap className="size-4 text-foreground/80" />
+          <div className="flex size-10 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
+            <GraduationCap className="size-5" />
           </div>
           <div>
-            <p className="truncate text-sm font-semibold tracking-tight text-foreground">
+            <p className="text-sm font-bold tracking-tight text-foreground">
               Section {sectionIndex + 1} of {exam.sections.length} ·{" "}
               {subjectNames.get(currentSection.subjectId) ?? "Subject"}
             </p>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Mock exam · {exam.stream === "natural" ? "Natural" : "Social"} stream
             </p>
           </div>
@@ -1091,7 +1204,7 @@ function TakingScreen({
         <div className="flex items-center gap-3">
           <div
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3 py-1.5 type-mono text-sm font-semibold tabular-nums",
+              "flex items-center gap-2 rounded-xl px-4 py-2 font-mono text-base font-bold tabular-nums",
               isLowTime ? "bg-rose-500/20 text-rose-300" : "bg-white/5 text-foreground",
             )}
           >
@@ -1108,7 +1221,7 @@ function TakingScreen({
             }}
             className="cursor-pointer text-muted-foreground hover:text-rose-300"
           >
-            <X className="size-3.5" /> Abandon
+            <X className="size-4" /> Abandon
           </Button>
           <Button
             variant="outline"
@@ -1118,9 +1231,9 @@ function TakingScreen({
             className="cursor-pointer gap-2 border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20"
           >
             {submittingSection ? (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <CheckCircle2 className="size-3.5" />
+              <CheckCircle2 className="size-4" />
             )}
             {isLastSection ? "Finish exam" : "Submit section"}
           </Button>
@@ -1128,13 +1241,26 @@ function TakingScreen({
       </div>
 
       {/* ── Body: question navigator + question ── */}
-      <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-h-[60vh] flex-1 gap-4">
         {/* Question navigator sidebar */}
-        <aside className="hidden w-64 shrink-0 border-r border-white/[0.06] bg-[#0b0f17] p-3 overflow-y-auto md:block">
-          <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground px-1 mb-2">
-            Questions
-          </p>
-          <div className="grid grid-cols-5 gap-1.5">
+        <aside className="hidden w-72 shrink-0 flex-col gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 md:flex">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Questions
+            </p>
+            <span className="font-mono text-[11px] text-muted-foreground">
+              {answeredCount}/{questions.length}
+            </span>
+          </div>
+          {/* Progress bar */}
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+            <motion.div
+              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-400"
+              animate={{ width: `${progressPct}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+          <div className="grid grid-cols-6 gap-1.5 overflow-y-auto" style={{ maxHeight: "calc(100vh - 24rem)" }}>
             {questions.map((_, i) => {
               const answered = answers[i] !== undefined && answers[i] >= 0;
               const isFlagged = flagged[i];
@@ -1144,7 +1270,7 @@ function TakingScreen({
                   key={i}
                   onClick={() => setQuestionIndex(i)}
                   className={cn(
-                    "relative flex size-8 cursor-pointer items-center justify-center rounded-md text-[11px] font-medium transition-all",
+                    "relative flex size-9 cursor-pointer items-center justify-center rounded-lg text-xs font-bold transition-all",
                     isCurrent
                       ? "bg-amber-400 text-amber-950"
                       : answered
@@ -1160,7 +1286,7 @@ function TakingScreen({
               );
             })}
           </div>
-          <div className="mt-4 flex flex-col gap-2 border-t border-white/[0.06] pt-3 text-[10px] text-muted-foreground">
+          <div className="mt-2 flex flex-col gap-2 border-t border-white/[0.06] pt-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
               <span className="size-2.5 rounded-sm bg-emerald-400/20" /> Answered ({answeredCount})
             </div>
@@ -1174,27 +1300,27 @@ function TakingScreen({
         </aside>
 
         {/* Question content */}
-        <main className="flex-1 overflow-y-auto bg-[#0b0f17] p-6" data-lenis-prevent-wheel>
-          <div className="mx-auto max-w-2xl">
+        <main className="flex-1 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8">
+          <div className="mx-auto max-w-3xl">
             {/* Question number + flag toggle */}
             <div className="flex items-center justify-between">
-              <p className="type-mono text-xs text-muted-foreground">
+              <p className="font-mono text-sm text-muted-foreground">
                 Question {questionIndex + 1} of {questions.length}
               </p>
               <button
                 onClick={() =>
                   setFlagged((f) => f.map((v, i) => (i === questionIndex ? !v : v)))
                 }
-                className="group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-amber-300"
+                className="group flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-amber-400/30 hover:text-amber-300"
               >
                 {flagged[questionIndex] ? (
                   <>
-                    <Flag className="size-3.5 text-amber-400 fill-amber-400" />
-                    <span className="text-amber-300">Flagged</span>
+                    <Flag className="size-4 text-amber-400 fill-amber-400" />
+                    <span className="font-semibold text-amber-300">Flagged</span>
                   </>
                 ) : (
                   <>
-                    <FlagOff className="size-3.5" />
+                    <FlagOff className="size-4" />
                     <span>Flag for review</span>
                   </>
                 )}
@@ -1202,10 +1328,12 @@ function TakingScreen({
             </div>
 
             {/* Question text */}
-            <h2 className="type-h2 mt-4 text-foreground">{currentQuestion?.question}</h2>
+            <h2 className="mt-6 text-xl font-bold leading-relaxed text-foreground sm:text-2xl">
+              {currentQuestion?.question}
+            </h2>
 
             {/* Options */}
-            <div className="mt-6 flex flex-col gap-2.5">
+            <div className="mt-8 flex flex-col gap-3">
               {currentQuestion?.options.map((opt, i) => {
                 const selected = answers[questionIndex] === i;
                 return (
@@ -1215,15 +1343,15 @@ function TakingScreen({
                       setAnswers((a) => a.map((v, idx) => (idx === questionIndex ? i : v)))
                     }
                     className={cn(
-                      "flex cursor-pointer items-center gap-3 rounded-xl border p-4 text-left transition-all",
+                      "flex cursor-pointer items-start gap-4 rounded-2xl border p-5 text-left transition-all",
                       selected
-                        ? "border-amber-400/40 bg-amber-400/[0.08] text-foreground"
-                        : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04] text-foreground/90",
+                        ? "border-amber-400/40 bg-amber-400/[0.08] shadow-[inset_0_0_0_1px_rgb(251,191,36/0.2)]"
+                        : "border-white/10 bg-white/[0.02] hover:border-white/25 hover:bg-white/[0.04]",
                     )}
                   >
                     <span
                       className={cn(
-                        "flex size-7 shrink-0 items-center justify-center rounded-full type-mono text-xs font-semibold",
+                        "flex size-9 shrink-0 items-center justify-center rounded-xl font-mono text-sm font-bold",
                         selected
                           ? "bg-amber-400 text-amber-950"
                           : "bg-white/5 text-muted-foreground",
@@ -1231,24 +1359,24 @@ function TakingScreen({
                     >
                       {String.fromCharCode(65 + i)}
                     </span>
-                    <span className="text-sm">{opt}</span>
+                    <span className="pt-1.5 text-base text-foreground">{opt}</span>
                   </button>
                 );
               })}
             </div>
 
             {/* Footer: prev/next question */}
-            <div className="mt-8 flex items-center justify-between border-t border-white/[0.06] pt-4">
+            <div className="mt-8 flex items-center justify-between border-t border-white/[0.06] pt-6">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setQuestionIndex((i) => Math.max(0, i - 1))}
                 disabled={questionIndex === 0}
-                className="cursor-pointer"
+                className="cursor-pointer gap-1.5"
               >
                 <ChevronLeft className="size-4" /> Previous
               </Button>
-              <span className="type-mono text-xs text-muted-foreground">
+              <span className="font-mono text-xs text-muted-foreground">
                 {answeredCount} / {questions.length} answered
               </span>
               <Button
@@ -1258,7 +1386,7 @@ function TakingScreen({
                   setQuestionIndex((i) => Math.min(questions.length - 1, i + 1))
                 }
                 disabled={questionIndex === questions.length - 1}
-                className="cursor-pointer"
+                className="cursor-pointer gap-1.5"
               >
                 Next <ChevronRight className="size-4" />
               </Button>
@@ -1271,7 +1399,7 @@ function TakingScreen({
 }
 
 // ---------------------------------------------------------------------------
-// Results screen — per-subject breakdown + comparison to previous attempts
+// Results screen
 // ---------------------------------------------------------------------------
 
 function ResultsScreen({
@@ -1287,25 +1415,7 @@ function ResultsScreen({
   onRetake: () => void;
   onExit: () => void;
 }) {
-  // Parse section results from the exam
   const sectionResults = useMemo(() => {
-    // For an in-progress exam (e.g. one we opened from history that's actually
-    // still in_progress — edge case), use the live sections data.
-    if (exam.status !== "completed" || !exam.totalScore === undefined) {
-      return exam.sections
-        .filter((s) => s.status === "completed")
-        .map((s) => ({
-          subjectId: s.subjectId,
-          subjectName: subjectNames.get(s.subjectId) ?? "Unknown",
-          score: s.score ?? 0,
-          correctCount: s.correctCount ?? 0,
-          totalQuestions: s.totalQuestions ?? 0,
-          timeSpentSeconds: s.timeSpentSeconds,
-        }));
-    }
-    // For a completed exam, the breakdown is in sectionResults JSON (computed
-    // by completeMockExam). But we also have the live sections — use those
-    // since they have the same data and are already typed.
     return exam.sections
       .filter((s) => s.status === "completed")
       .map((s) => ({
@@ -1323,14 +1433,12 @@ function ResultsScreen({
   const totalQuestions = sectionResults.reduce((sum, s) => sum + s.totalQuestions, 0);
   const totalTimeSpent = sectionResults.reduce((sum, s) => sum + s.timeSpentSeconds, 0);
 
-  // Comparison to previous attempts (excluding this one)
   const previousAttempts = history
     .filter((h) => h._id !== exam._id && h.status === "completed" && h.totalScore !== undefined)
-    .sort((a, b) => b.startedAt - a.startedAt); // most recent first
+    .sort((a, b) => b.startedAt - a.startedAt);
   const lastAttempt = previousAttempts[0];
   const scoreDelta = lastAttempt ? totalScore - (lastAttempt.totalScore ?? 0) : null;
 
-  // Score tier — drives the visual celebration level
   const tier =
     totalScore >= 85
       ? "excellent"
@@ -1345,26 +1453,28 @@ function ResultsScreen({
       {/* Hero header — celebratory tone */}
       <div
         className={cn(
-          "glass-panel relative overflow-hidden rounded-3xl p-6 sm:p-8",
-          tier === "excellent" && "border-emerald-400/30",
-          tier === "strong" && "border-amber-400/30",
+          "relative overflow-hidden rounded-3xl border p-6 sm:p-8",
+          tier === "excellent" && "border-emerald-400/30 bg-emerald-400/[0.04]",
+          tier === "strong" && "border-amber-400/30 bg-amber-400/[0.04]",
+          tier === "ok" && "border-sky-400/20 bg-sky-400/[0.03]",
+          tier === "needs_work" && "border-rose-400/20 bg-rose-400/[0.03]",
         )}
       >
         <div className="pointer-events-none absolute -left-20 -top-24 size-72 rounded-full bg-primary/15 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -right-16 size-72 rounded-full bg-amber-400/10 blur-3xl" />
         <div className="relative">
-          <p className="type-mono uppercase tracking-[0.22em] text-amber-300 font-semibold">
+          <p className="font-mono text-xs uppercase tracking-[0.22em] text-amber-300 font-semibold">
             // mock exam complete
           </p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h1 className="type-h1 text-foreground">
+              <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
                 {tier === "excellent" && "Outstanding work."}
                 {tier === "strong" && "Solid performance."}
                 {tier === "ok" && "Good start."}
                 {tier === "needs_work" && "Keep going."}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-2 text-sm text-muted-foreground">
                 {new Date(exam.startedAt).toLocaleDateString(undefined, {
                   month: "long",
                   day: "numeric",
@@ -1375,16 +1485,16 @@ function ResultsScreen({
               </p>
             </div>
             <div className="text-right">
-              <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                 Overall score
               </p>
-              <p className="text-6xl font-bold text-gradient tabular-nums">
+              <p className="text-6xl font-extrabold text-gradient tabular-nums sm:text-7xl">
                 {totalScore}%
               </p>
               {scoreDelta !== null && (
                 <p
                   className={cn(
-                    "mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                    "mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold",
                     scoreDelta > 0
                       ? "bg-emerald-400/15 text-emerald-300"
                       : scoreDelta < 0
@@ -1392,7 +1502,7 @@ function ResultsScreen({
                         : "bg-white/5 text-muted-foreground",
                   )}
                 >
-                  {scoreDelta > 0 && <TrendingUp className="size-3" />}
+                  {scoreDelta > 0 && <TrendingUp className="size-3.5" />}
                   {scoreDelta > 0 && `+${scoreDelta}% vs your last mock`}
                   {scoreDelta < 0 && `${scoreDelta}% vs your last mock`}
                   {scoreDelta === 0 && "Same as your last mock"}
@@ -1401,8 +1511,7 @@ function ResultsScreen({
             </div>
           </div>
 
-          {/* Quick stats */}
-          <div className="mt-6 grid grid-cols-3 gap-3">
+          <div className="mt-8 grid grid-cols-3 gap-3">
             <StatChip
               icon={<CheckCircle2 className="size-4 text-emerald-300" />}
               label="Correct"
@@ -1423,8 +1532,8 @@ function ResultsScreen({
       </div>
 
       {/* Per-subject breakdown */}
-      <div className="glass-panel rounded-2xl p-5 sm:p-6">
-        <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+      <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8">
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           Per-subject breakdown
         </p>
         <div className="mt-4 flex flex-col gap-3">
@@ -1443,22 +1552,22 @@ function ResultsScreen({
 
       {/* Previous attempts table */}
       {previousAttempts.length > 0 && (
-        <div className="glass-panel rounded-2xl p-5 sm:p-6">
-          <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
             Progress over time
           </p>
-          <div className="mt-3 flex flex-col gap-2">
+          <div className="mt-4 flex flex-col gap-2.5">
             {previousAttempts.slice(0, 5).map((h) => (
               <div
                 key={h._id}
-                className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3"
+                className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-white/5 text-muted-foreground">
-                    <Trophy className="size-4" />
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
+                    <Trophy className="size-5" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-foreground">
+                    <p className="text-sm font-semibold text-foreground">
                       {new Date(h.startedAt).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
@@ -1466,7 +1575,7 @@ function ResultsScreen({
                       })}{" "}
                       · {h.stream === "natural" ? "Natural" : "Social"}
                     </p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {h.totalScore}% overall
                     </p>
                   </div>
@@ -1487,9 +1596,12 @@ function ResultsScreen({
       {/* Actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
         <Button variant="ghost" onClick={onExit} className="cursor-pointer gap-2">
-          <ArrowLeft className="size-4" /> Back to library
+          <ArrowLeft className="size-4" /> Back to dashboard
         </Button>
-        <Button onClick={onRetake} className="cursor-pointer gap-2 bg-amber-500 text-amber-950 hover:bg-amber-400">
+        <Button
+          onClick={onRetake}
+          className="cursor-pointer gap-2 bg-amber-500 text-amber-950 hover:bg-amber-400"
+        >
           <Sparkles className="size-4" /> Take another mock exam
         </Button>
       </div>
@@ -1499,13 +1611,13 @@ function ResultsScreen({
 
 function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-      <div className="flex size-8 items-center justify-center rounded-lg bg-white/5">{icon}</div>
+    <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <div className="flex size-10 items-center justify-center rounded-xl bg-white/5">{icon}</div>
       <div>
-        <p className="type-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           {label}
         </p>
-        <p className="type-mono text-sm font-bold text-foreground">{value}</p>
+        <p className="font-mono text-lg font-bold text-foreground">{value}</p>
       </div>
     </div>
   );
@@ -1527,17 +1639,17 @@ function SubjectRow({
   const tone =
     score >= 85 ? "emerald" : score >= 70 ? "amber" : score >= 50 ? "primary" : "rose";
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+    <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground">{name}</p>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="truncate text-base font-semibold text-foreground">{name}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
           {correct} of {total} correct · {Math.floor(timeSpent / 60)} min
         </p>
       </div>
       {/* Score bar */}
       <div className="hidden flex-1 sm:block">
-        <div className="relative h-2 overflow-hidden rounded-full bg-white/5">
-          <div
+        <div className="relative h-2.5 overflow-hidden rounded-full bg-white/5">
+          <motion.div
             className={cn(
               "absolute inset-y-0 left-0 rounded-full",
               tone === "emerald" && "bg-emerald-400",
@@ -1545,14 +1657,16 @@ function SubjectRow({
               tone === "primary" && "bg-primary",
               tone === "rose" && "bg-rose-400",
             )}
-            style={{ width: `${score}%` }}
+            initial={{ width: 0 }}
+            animate={{ width: `${score}%` }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
           />
         </div>
       </div>
       <div className="text-right">
         <p
           className={cn(
-            "type-mono text-lg font-bold tabular-nums",
+            "font-mono text-2xl font-bold tabular-nums",
             tone === "emerald" && "text-emerald-300",
             tone === "amber" && "text-amber-300",
             tone === "primary" && "text-primary",
@@ -1567,18 +1681,18 @@ function SubjectRow({
 }
 
 // ---------------------------------------------------------------------------
-// Premium gate overlay — shown if generateMockExam throws premium_mock_exams
+// Premium gate overlay
 // ---------------------------------------------------------------------------
 
 function PremiumGateOverlay({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="mx-auto max-w-md rounded-2xl border border-amber-400/30 bg-[#0b0f17] p-6 text-center">
-        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300">
-          <Crown className="size-7" />
+      <div className="mx-auto max-w-md rounded-2xl border border-amber-400/30 bg-[#0b0f17] p-8 text-center">
+        <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300">
+          <Crown className="size-8" />
         </div>
-        <h2 className="type-h2 text-foreground">Premium feature</h2>
-        <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+        <h2 className="text-2xl font-extrabold tracking-tight">Premium feature</h2>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
           AI mock exams are a premium feature — they generate ~340 original
           questions per sitting, which takes real AI compute. Upgrade to unlock
           unlimited mock exams plus your full score history.
@@ -1601,3 +1715,5 @@ function PremiumGateOverlay({ onClose }: { onClose: () => void }) {
 // Suppress unused-import warnings for icons used only in conditional JSX.
 void Award;
 void FileText;
+void Zap;
+void ShieldCheck;

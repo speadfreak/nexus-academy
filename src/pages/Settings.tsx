@@ -4,7 +4,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { STREAM_LABELS } from "@/convex/constants";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   Atom,
@@ -15,11 +15,14 @@ import {
   Landmark,
   Loader2,
   LogOut,
+  MessageSquareText,
   Moon,
+  Send,
   Sun,
   Copy,
   Share2,
   UserRound,
+  LifeBuoy,
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
@@ -30,6 +33,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
 import { errorMessage } from "@/lib/errors";
@@ -462,6 +473,9 @@ export default function Settings() {
           </div>
         </motion.div>
 
+        {/* ------- Contact the team ------- */}
+        <ContactSection userEmail={profile?.email ?? user?.email ?? ""} displayName={profile?.displayName ?? user?.name ?? ""} />
+
         {/* ------- Danger zone ------- */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -593,6 +607,175 @@ function ReferralSection() {
         <p className="mt-3 text-[10px] text-muted-foreground/60">
           How it works: your friend must sign up via your link AND upgrade to premium. When their payment is confirmed, you both get bonus days. Self-referrals are blocked.
         </p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Contact the team ──────────────────────────────────────────────────
+// Users can write a message (question, advice, complaint, bug report)
+// and the message is delivered straight to the team's Telegram group(s)
+// via the `telegramActions.sendContactMessage` action. Falls back
+// gracefully — if Telegram isn't configured, the message is persisted
+// in the `contactMessages` table for the admin to read from the
+// dashboard.
+function ContactSection({
+  userEmail,
+  displayName,
+}: {
+  userEmail: string;
+  displayName: string;
+}) {
+  const sendContactMessage = useAction(api.telegramActions.sendContactMessage);
+  const [name, setName] = useState(displayName ?? "");
+  const [email, setEmail] = useState(userEmail ?? "");
+  const [category, setCategory] = useState("question");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!email.trim() || !message.trim()) {
+      toast.error("Please enter your email and a message.");
+      return;
+    }
+    if (message.trim().length < 5) {
+      toast.error("Please describe your concern in at least a few words.");
+      return;
+    }
+    setSending(true);
+    try {
+      const result = await sendContactMessage({
+        name: name.trim() || undefined,
+        email: email.trim(),
+        category,
+        message: message.trim(),
+      });
+      if (result.sent > 0) {
+        toast.success("Message sent — our team will reply soon.");
+      } else {
+        toast.success("Message saved — our team will get back to you.");
+      }
+      setMessage("");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not send your message. Please try again."));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="glass-panel relative overflow-hidden rounded-2xl p-6"
+    >
+      <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-sky-400/5 blur-3xl" />
+      <div className="relative">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300 shadow-[0_0_16px_-4px_rgb(56,189,248/0.35)]">
+            <LifeBuoy className="size-4" />
+          </div>
+          <p className="uppercase tracking-[0.22em] text-sky-300 font-semibold">
+            // contact the team
+          </p>
+        </div>
+        <h2 className="mt-4 text-lg font-extrabold tracking-tight">
+          We&apos;re here to help.
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Questions, advice, complaints, bug reports — anything. Your message
+          goes straight to our Telegram group where the team will reply
+          quickly. You&apos;ll hear back via email or directly in the app.
+        </p>
+
+        {/* Form grid */}
+        <div className="mt-5 flex flex-col gap-4">
+          {/* Name + email row */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Your name
+              </Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Abebe Bekele"
+                className="h-11 rounded-xl bg-white/5"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Email (we&apos;ll reply here)
+              </Label>
+              <Input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                type="email"
+                className="h-11 rounded-xl bg-white/5"
+              />
+            </div>
+          </div>
+
+          {/* Category picker */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-semibold text-muted-foreground">
+              What is this about?
+            </Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="h-11 rounded-xl bg-white/5 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="question">❓ Question</SelectItem>
+                <SelectItem value="advice">💡 Advice</SelectItem>
+                <SelectItem value="complaint">⚠️ Complaint</SelectItem>
+                <SelectItem value="bug">🐞 Bug report</SelectItem>
+                <SelectItem value="other">📝 Something else</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Message */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-semibold text-muted-foreground">
+              Your message
+            </Label>
+            <Textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Tell us what's on your mind. The more detail, the faster we can help."
+              rows={5}
+              className="resize-none rounded-xl bg-white/5 text-sm"
+              maxLength={5000}
+            />
+            <p className="text-[10px] text-muted-foreground/60">
+              {message.length} / 5000 characters
+            </p>
+          </div>
+
+          {/* Submit */}
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <MessageSquareText className="size-3.5" />
+              Delivered to the team&apos;s Telegram group
+            </p>
+            <Button
+              onClick={handleSubmit}
+              disabled={sending || !message.trim() || !email.trim()}
+              className="interactive-press cursor-pointer gap-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 disabled:opacity-50"
+            >
+              {sending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
+              {sending ? "Sending…" : "Send message"}
+            </Button>
+          </div>
+        </div>
       </div>
     </motion.div>
   );

@@ -444,3 +444,84 @@ export const getAdminContent = query({
     return withSubjects(ctx, items);
   },
 });
+
+/**
+ * Admin-only duplicate-detection lookup. Given a filename (and optionally a
+ * subject + grade), return all content items that look "the same" — defined
+ * here as a normalized filename match. Used by the bulk upload UI to flag
+ * files that have already been uploaded so the admin can skip them instead
+ * of accidentally creating a duplicate library entry.
+ *
+ * The matcher strips extension, lowercases, collapses non-alphanumerics to a
+ * single hyphen, and compares the result. This means "Math 2014 ECCE.pdf"
+ * and "math-2014-ecce.pdf" both hit the same row.
+ */
+export type DuplicateContentMatch = {
+  _id: Id<"contentItems">;
+  title: string;
+  contentType: string;
+  grade: number;
+  examYear: number | null;
+  subjectName: string;
+  createdAt: number;
+  fileSizeBytes: number | null;
+};
+
+export const findDuplicateContent = query({
+  args: {
+    filename: v.string(),
+    subjectId: v.optional(v.id("subjects")),
+    grade: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<DuplicateContentMatch[]> => {
+    const userId = await getAuthUserId(ctx);
+    const user = userId ? await ctx.db.get(userId) : null;
+    if (!(await isAdmin(ctx, user))) {
+      return [];
+    }
+    const normalize = (name: string) =>
+      name
+        .replace(/\.[a-z0-9]+$/i, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    const target = normalize(args.filename);
+    if (!target) return [];
+
+    const all = await ctx.db.query("contentItems").collect();
+    const matches: Array<{
+      _id: Id<"contentItems">;
+      title: string;
+      contentType: string;
+      grade: number;
+      examYear: number | null;
+      subjectName: string;
+      createdAt: number;
+      fileSizeBytes: number | null;
+    }> = [];
+    for (const item of all) {
+      const normalizedTitle = normalize(item.title);
+      // Match if the normalized title equals the normalized filename, or
+      // one is a prefix of the other (catches "Math 2014" vs "Math 2014 ECCE").
+      const same =
+        normalizedTitle === target ||
+        normalizedTitle.startsWith(target) ||
+        target.startsWith(normalizedTitle);
+      if (!same) continue;
+      if (args.subjectId && item.subjectId !== args.subjectId) continue;
+      if (args.grade !== undefined && item.grade !== args.grade) continue;
+      const subject = await ctx.db.get(item.subjectId);
+      matches.push({
+        _id: item._id,
+        title: item.title,
+        contentType: item.contentType,
+        grade: item.grade,
+        examYear: item.examYear ?? null,
+        subjectName: subject?.name ?? "Unknown",
+        createdAt: item.createdAt,
+        fileSizeBytes: item.fileSizeBytes ?? null,
+      });
+    }
+    return matches.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});

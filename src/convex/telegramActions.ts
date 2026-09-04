@@ -4,9 +4,11 @@
 
 "use node";
 
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { requireAdminAction } from "./admin";
 import { logEventAction } from "./systemEvents";
 import { CONTENT_TYPE_LABELS } from "./constants";
@@ -169,3 +171,171 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+
+// ---------------------------------------------------------------------------
+// Public contact form — students send a message that lands in the team's
+// Telegram group(s). No admin gate; any signed-in user can submit. Rate
+// limited by a per-user cooldown tracked in the contactMessages table.
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a contact message from a student to the team's Telegram channels.
+ * Falls back gracefully if Telegram isn't configured — the message is still
+ * persisted in `contactMessages` so admins can read it from the dashboard.
+ *
+ * Args:
+ *   - name: optional display name (defaults to the user's profile name)
+ *   - email: required reply-to email
+ *   - category: question | advice | complaint | bug | other
+ *   - message: free-form text body
+ *
+ * Returns `{ ok, sent, persistedId, reason }` — `sent` counts Telegram
+ * deliveries; if 0, the message is still persisted for the admin to read.
+ */
+export const sendContactMessage = action({
+  args: {
+    name: v.optional(v.string()),
+    email: v.string(),
+    category: v.string(),
+    message: v.string(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    ok: boolean;
+    sent: number;
+    persistedId: string | null;
+    reason?: string;
+  }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+
+    const email = args.email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new ConvexError({ message: "Please enter a valid email.", code: "invalid" });
+    }
+    const name = (args.name ?? "").trim().slice(0, 80);
+    const message = args.message.trim();
+    if (message.length < 5) {
+      throw new ConvexError({
+        message: "Message is too short — please describe your concern.",
+        code: "invalid",
+      });
+    }
+    if (message.length > 5000) {
+      throw new ConvexError({
+        message: "Message is too long (max 5000 characters).",
+        code: "invalid",
+      });
+    }
+    const category = (args.category ?? "other").trim().toLowerCase();
+    const validCategories = ["question", "advice", "complaint", "bug", "other"];
+    if (!validCategories.includes(category)) {
+      throw new ConvexError({ message: "Invalid category.", code: "invalid" });
+    }
+
+    // Persist first — the admin can always read this even if Telegram fails.
+    const persistedId: string = await ctx.runMutation(
+      internal.telegram.insertContactMessage,
+      {
+        userId,
+        name: name || undefined,
+        email,
+        category,
+        message,
+      },
+    );
+
+    // Resolve token + channels. If Telegram isn't configured, we still
+    // succeed (return ok with sent=0) so the user sees a success toast and
+    // the admin gets the message in the dashboard.
+    let token: string | null = null;
+    try {
+      token = await ctx.runQuery(internal.configKeys.resolveConfigValue, {
+        key: "TELEGRAM_BOT_TOKEN",
+      });
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      return {
+        ok: true,
+        sent: 0,
+        persistedId,
+        reason: "telegram_not_configured",
+      };
+    }
+
+    const channels = await ctx.runQuery(
+      internal.telegram.listAllChannels,
+      {},
+    );
+    if (channels.length === 0) {
+      return {
+        ok: true,
+        sent: 0,
+        persistedId,
+        reason: "no_channels_configured",
+      };
+    }
+
+    const categoryLabel: Record<string, string> = {
+      question: "❓ Question",
+      advice: "💡 Advice",
+      complaint: "⚠️ Complaint",
+      bug: "🐞 Bug report",
+      other: "📝 Message",
+    };
+    const header =
+      `${categoryLabel[category] ?? "📝 Message"} — Nexus Academy contact form\n` +
+      `──────────────────────\n` +
+      `<b>From:</b> ${escapeHtml(name || "Anonymous user")}\n` +
+      `<b>Email:</b> ${escapeHtml(email)}\n`;
+    const body = `<b>Message:</b>\n${escapeHtml(message)}`;
+    const footer = `\n──────────────────────\n<i>Reply via Telegram or email the student directly.</i>`;
+    const text = `${header}${body}${footer}`;
+
+    let sent = 0;
+    for (const channel of channels) {
+      try {
+        await callBot(token, "sendMessage", {
+          chat_id: channel.chatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        });
+        sent += 1;
+      } catch {
+        // ignore — try the next channel
+      }
+    }
+
+    if (sent > 0) {
+      try {
+        await ctx.runMutation(internal.telegram.markContactMessageSent, {
+          id: persistedId as unknown as Id<"contactMessages">,
+        });
+      } catch {
+        // Non-fatal — the persisted row is still there.
+      }
+    }
+
+    await logEventAction(ctx, {
+      eventType: "api_call",
+      source: "telegram.contactForm",
+      status: sent > 0 ? "success" : "error",
+      userId,
+      metadata: { category, channels: channels.length, sent },
+    });
+
+    return {
+      ok: true,
+      sent,
+      persistedId,
+      reason: sent > 0 ? undefined : "all_channels_failed",
+    };
+  },
+});

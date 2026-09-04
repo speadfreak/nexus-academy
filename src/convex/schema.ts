@@ -572,6 +572,22 @@ const schema = defineSchema(
       status: v.union(v.literal("sent"), v.literal("failed")),
     }).index("by_sentAt", ["sentAt"]),
 
+    // Contact-form submissions from students — every message lands here
+    // even if Telegram isn't configured, so the admin always has an inbox.
+    // `sentToTelegram` flips to true once at least one channel accepted the
+    // message.
+    contactMessages: defineTable({
+      userId: v.id("users"),
+      name: v.optional(v.string()),
+      email: v.string(),
+      category: v.string(), // question | advice | complaint | bug | other
+      message: v.string(),
+      sentToTelegram: v.boolean(),
+      createdAt: v.number(),
+    })
+      .index("by_createdAt", ["createdAt"])
+      .index("by_user", ["userId"]),
+
     // ------------------------------------------------------------------
     // Cinematic library: bookmarks + reader scratchpads
     // ------------------------------------------------------------------
