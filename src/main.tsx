@@ -23,6 +23,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import React, { StrictMode, useEffect, useRef, lazy, Suspense, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { Analytics } from "@vercel/analytics/react";
 import { api } from "@/convex/_generated/api";
 import "./index.css";
 
@@ -687,6 +688,7 @@ if (rootEl) {
                 </BrowserRouter>
               </PreloaderGate>
               <Toaster />
+              <Analytics />
             </MusicProvider>
           </ThemeProvider>
         </ConvexAuthProvider>
