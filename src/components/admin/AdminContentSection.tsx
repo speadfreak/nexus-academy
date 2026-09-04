@@ -11,7 +11,9 @@ import {
   Copy,
   ExternalLink,
   FileUp,
+  FileText,
   Loader2,
+  Package,
   Pencil,
   Plus,
   RotateCcw,
@@ -26,6 +28,7 @@ import {
 import { extractPdfText } from "@/lib/pdf";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { BulkUploadSection } from "@/components/admin/BulkUploadSection";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -196,6 +199,7 @@ export function AdminContentSection() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadMode, setUploadMode] = useState<"single" | "bulk">("single");
 
   // Browser→Convex storage→R2 flow. Convex handles the browser-side CORS
   // for the upload POST (same project, no cross-origin signature issues),
@@ -704,7 +708,41 @@ export function AdminContentSection() {
         </div>
       )}
 
-      {/* Upload form */}
+      {/* Upload mode toggle: Single vs Bulk */}
+      <div className="flex gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1.5">
+        <button
+          type="button"
+          onClick={() => setUploadMode("single")}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors",
+            uploadMode === "single"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+          )}
+        >
+          <FileText className="size-3.5" />
+          Single Upload
+        </button>
+        <button
+          type="button"
+          onClick={() => setUploadMode("bulk")}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors",
+            uploadMode === "bulk"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+          )}
+        >
+          <Package className="size-3.5" />
+          Bulk Upload
+        </button>
+      </div>
+
+      {/* Bulk upload mode */}
+      {uploadMode === "bulk" && <BulkUploadSection />}
+
+      {/* Single upload form */}
+      {uploadMode === "single" && (
       <div className="glass-panel grid gap-5 rounded-2xl p-5 sm:p-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="flex flex-col gap-4">
           <div
@@ -995,6 +1033,7 @@ export function AdminContentSection() {
           </p>
         </div>
       </div>
+      )}
 
       {/* Library management */}
       <div className="glass-panel rounded-2xl p-5 sm:p-6">
