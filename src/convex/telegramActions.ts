@@ -44,6 +44,36 @@ async function callBot(token: string, method: string, body: Record<string, unkno
 }
 
 /**
+ * Look up a chat's type via Telegram's getChat method. Returns one of
+ * "private" | "group" | "supergroup" | "channel" — or null on error / when
+ * the bot isn't a member of that chat anymore.
+ *
+ * Used by the contact-form action to filter to GROUPS only (not broadcast
+ * channels and not 1:1 private chats) before delivering a student message.
+ */
+async function getChatType(token: string, chatId: string): Promise<"private" | "group" | "supergroup" | "channel" | null> {
+  try {
+    const res = await fetch(`${API_BASE}/bot${token}/getChat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId }),
+    });
+    const data = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      result?: { type?: string };
+    } | null;
+    if (!res.ok || !data?.ok || !data.result?.type) return null;
+    const t = data.result.type;
+    if (t === "private" || t === "group" || t === "supergroup" || t === "channel") {
+      return t;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Send a message to one or more channels. Explicit admin action — never
  * fired automatically from the client. Every attempt lands in broadcastLog.
  */
@@ -179,9 +209,15 @@ function escapeHtml(value: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Send a contact message from a student to the team's Telegram channels.
- * Falls back gracefully if Telegram isn't configured — the message is still
- * persisted in `contactMessages` so admins can read it from the dashboard.
+ * Send a contact message from a student to the team's Telegram GROUP chats
+ * only (not broadcast channels — the user asked for messages to land in the
+ * discussion group, not the public broadcast channel). Uses Telegram's
+ * getChat API to filter each configured channel by its actual chat type
+ * ("group" or "supergroup" pass; "channel" and "private" are skipped).
+ *
+ * Falls back gracefully if Telegram isn't configured or no group chats are
+ * configured — the message is still persisted in `contactMessages` so
+ * admins can read it from the dashboard.
  *
  * Args:
  *   - name: optional display name (defaults to the user's profile name)
@@ -269,16 +305,38 @@ export const sendContactMessage = action({
       };
     }
 
-    const channels = await ctx.runQuery(
+    const allChannels = await ctx.runQuery(
       internal.telegram.listAllChannels,
       {},
     );
-    if (channels.length === 0) {
+    if (allChannels.length === 0) {
       return {
         ok: true,
         sent: 0,
         persistedId,
         reason: "no_channels_configured",
+      };
+    }
+
+    // Filter to GROUP chats only. Telegram's getChat returns one of
+    // "private" | "group" | "supergroup" | "channel". Modern groups are
+    // usually "supergroup". We SKIP broadcast channels — the user asked
+    // for contact messages to land in the team's discussion group, not
+    // the public broadcast channel.
+    const groupChannels: { _id: string; chatId: string; name: string }[] = [];
+    for (const channel of allChannels) {
+      const type = await getChatType(token, channel.chatId);
+      if (type === "group" || type === "supergroup") {
+        groupChannels.push(channel);
+      }
+      // "channel", "private", or null (lookup failed) → skip
+    }
+    if (groupChannels.length === 0) {
+      return {
+        ok: true,
+        sent: 0,
+        persistedId,
+        reason: "no_group_channels_configured",
       };
     }
 
@@ -299,7 +357,7 @@ export const sendContactMessage = action({
     const text = `${header}${body}${footer}`;
 
     let sent = 0;
-    for (const channel of channels) {
+    for (const channel of groupChannels) {
       try {
         await callBot(token, "sendMessage", {
           chat_id: channel.chatId,
@@ -309,7 +367,7 @@ export const sendContactMessage = action({
         });
         sent += 1;
       } catch {
-        // ignore — try the next channel
+        // ignore — try the next group
       }
     }
 
@@ -328,14 +386,19 @@ export const sendContactMessage = action({
       source: "telegram.contactForm",
       status: sent > 0 ? "success" : "error",
       userId,
-      metadata: { category, channels: channels.length, sent },
+      metadata: {
+        category,
+        totalChannels: allChannels.length,
+        groupChannels: groupChannels.length,
+        sent,
+      },
     });
 
     return {
       ok: true,
       sent,
       persistedId,
-      reason: sent > 0 ? undefined : "all_channels_failed",
+      reason: sent > 0 ? undefined : "all_group_sends_failed",
     };
   },
 });

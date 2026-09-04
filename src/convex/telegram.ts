@@ -220,7 +220,11 @@ export const listEnabledAutoPostChannels = internalQuery({
  * Internal — list EVERY configured channel (no autoPost filter). Used by the
  * contact-form action so student messages can reach any team channel that's
  * been registered, regardless of whether the auto-post toggle is on. The
- * admin explicitly added these channels, so they're all valid destinations.
+ * action then filters this list to GROUP chats only (via Telegram's getChat
+ * API) — broadcast channels are skipped per the product requirement that
+ * contact messages land in the team's discussion group, not the public
+ * broadcast channel. The admin explicitly added these channels, so they're
+ * all valid destinations for that filter.
  */
 export const listAllChannels = internalQuery({
   args: {},
