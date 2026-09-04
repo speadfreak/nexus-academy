@@ -24,6 +24,7 @@ import React, { StrictMode, useEffect, useRef, lazy, Suspense, useCallback } fro
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import { api } from "@/convex/_generated/api";
+import { Analytics } from "@vercel/analytics/react";
 import "./index.css";
 
 // ─── VlyToolbar: LAZY with error recovery ────────────────────────────
@@ -687,6 +688,7 @@ if (rootEl) {
                 </BrowserRouter>
               </PreloaderGate>
               <Toaster />
+              <Analytics />
             </MusicProvider>
           </ThemeProvider>
         </ConvexAuthProvider>
