@@ -69,6 +69,8 @@ import { AdminMarketingSection } from "@/components/admin/AdminMarketingSection"
 import { AdminSubscriptionsSection } from "@/components/admin/AdminSubscriptionsSection";
 import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
 import { PaymentReviewsSection } from "@/components/admin/PaymentReviewsSection";
+import { StatCard2 } from "@/components/admin/StatCard2";
+import { ContactGroupPanel } from "@/components/admin/ContactGroupPanel";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -296,6 +298,197 @@ function StatCard({
         </p>
       )}
     </motion.div>
+  );
+}
+
+// ── Finance Hero Banner ──────────────────────────────────────────────
+//
+// A bold, futuristic, animated banner that surfaces the most important
+// finance metrics at a glance. The dashboard's "command center" feel —
+// the admin sees revenue trend, pending money, SLA health, and ARPU/LTV
+// without scrolling. Uses StatCard2 internally so each metric has its
+// own animated number + sparkline.
+
+function FinanceHeroBanner({
+  currency,
+  revenueTotal,
+  revenueThisMonth,
+  pendingRevenue,
+  pendingManualSubmissions,
+  slaBreached,
+  paymentSuccessRate,
+  arpu,
+  estimatedLtv,
+  revenueChange30d,
+  revenueByDay,
+  health,
+}: {
+  currency: string;
+  revenueTotal: number;
+  revenueThisMonth: number;
+  pendingRevenue: number;
+  pendingManualSubmissions: number;
+  slaBreached: number;
+  paymentSuccessRate: number;
+  arpu: number;
+  estimatedLtv: number;
+  revenueChange30d: number | null;
+  revenueByDay: { date: string; label: string; revenue: number; payments: number }[];
+  health: "green" | "amber" | "red";
+}) {
+  const sparkData = revenueByDay.map((d) => d.revenue);
+  const successPct = Math.round(paymentSuccessRate * 100);
+  const accent: "money" | "warning" | "danger" | "success" =
+    health === "green" ? "money" : health === "amber" ? "warning" : "danger";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-primary/[0.06] via-white/[0.02] to-transparent p-5 sm:p-6"
+    >
+      {/* Ambient glow */}
+      <div
+        className="pointer-events-none absolute -top-20 -right-10 size-72 rounded-full blur-3xl"
+        style={{
+          background:
+            health === "green"
+              ? "radial-gradient(circle, rgba(251,191,36,0.18) 0%, rgba(251,191,36,0) 70%)"
+              : health === "amber"
+                ? "radial-gradient(circle, rgba(251,191,36,0.22) 0%, rgba(251,191,36,0) 70%)"
+                : "radial-gradient(circle, rgba(244,63,94,0.22) 0%, rgba(244,63,94,0) 70%)",
+        }}
+      />
+
+      {/* Header */}
+      <div className="relative flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 16 }}
+            className="flex size-11 items-center justify-center rounded-2xl bg-primary/15 text-primary"
+            style={{ boxShadow: "0 0 24px -4px var(--primary)" }}
+          >
+            <Wallet className="size-5.5" />
+          </motion.div>
+          <div>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-amber-300">
+              // finance pulse
+            </p>
+            <h2 className="text-lg font-extrabold tracking-tight">Finance Command Center</h2>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <FinanceHealthBadgeInline health={health} />
+          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60 sm:inline">
+            live · auto-refreshes
+          </span>
+        </div>
+      </div>
+
+      {/* Stats grid */}
+      <div className="relative mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+        <StatCard2
+          label="total earned"
+          value={revenueTotal}
+          icon={Wallet}
+          money
+          currency={currency}
+          sub={`${currency} · all time`}
+          delta={revenueChange30d}
+          deltaSuffix="%"
+          sparkData={sparkData}
+          sparkColor="var(--primary)"
+          accent={accent}
+        />
+        <StatCard2
+          label="this month"
+          value={revenueThisMonth}
+          icon={TrendingUp}
+          money
+          currency={currency}
+          sub="completed payments"
+          accent="success"
+        />
+        <StatCard2
+          label="pending revenue"
+          value={pendingRevenue}
+          icon={Timer}
+          money
+          currency={currency}
+          sub={`${pendingManualSubmissions} manual · waiting`}
+          accent={pendingManualSubmissions > 0 ? "warning" : "default"}
+        />
+        <StatCard2
+          label="success rate"
+          value={successPct}
+          icon={ShieldCheck}
+          sub={`${successPct >= 85 ? "Healthy" : successPct >= 50 ? "Needs attention" : "Critical"} · ${slaBreached} SLA breach${slaBreached === 1 ? "" : "es"}`}
+          accent={successPct >= 85 ? "success" : successPct >= 50 ? "warning" : "danger"}
+        />
+        <StatCard2
+          label="est. LTV"
+          value={estimatedLtv}
+          icon={Crown}
+          money
+          currency={currency}
+          sub={`ARPU ${fmtMoney(arpu)} ${currency}/mo`}
+          accent="money"
+        />
+      </div>
+
+      {/* SLA alert strip — only when there are breaches */}
+      {slaBreached > 0 && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="relative mt-4 flex items-center gap-2.5 rounded-xl border border-rose-400/30 bg-rose-400/[0.06] p-3"
+        >
+          <AlertTriangle className="size-4 shrink-0 text-rose-300" />
+          <p className="text-xs font-semibold text-rose-200">
+            {slaBreached} pending submission{slaBreached === 1 ? "" : "s"} breached
+            the SLA — review them now in the Payments tab to avoid losing
+            student trust.
+          </p>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
+function FinanceHealthBadgeInline({ health }: { health: "green" | "amber" | "red" }) {
+  const label = health === "green" ? "Healthy" : health === "amber" ? "Watch" : "Action needed";
+  const dotClass =
+    health === "green"
+      ? "bg-emerald-400"
+      : health === "amber"
+        ? "bg-amber-400"
+        : "bg-rose-400";
+  const textClass =
+    health === "green"
+      ? "text-emerald-300"
+      : health === "amber"
+        ? "text-amber-300"
+        : "text-rose-300";
+  const bgClass =
+    health === "green"
+      ? "bg-emerald-400/10 border-emerald-400/20"
+      : health === "amber"
+        ? "bg-amber-400/10 border-amber-400/20"
+        : "bg-rose-400/10 border-rose-400/20";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider",
+        bgClass,
+        textClass,
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", dotClass)} style={{ boxShadow: "0 0 6px currentColor" }} />
+      {label}
+    </span>
   );
 }
 
@@ -1463,17 +1656,35 @@ export default function Admin() {
                   </div>
                 ) : (
                   <>
+                    {/* Finance Health Hero Banner — gives the admin a one-glance
+                        pulse on the finance system, with the most critical metrics
+                        surfaced as big animated numbers. */}
+                    <FinanceHeroBanner
+                      currency={dashboard.totals.currency}
+                      revenueTotal={dashboard.totals.revenueTotal}
+                      revenueThisMonth={dashboard.totals.revenueThisMonth}
+                      pendingRevenue={dashboard.totals.pendingRevenue}
+                      pendingManualSubmissions={dashboard.totals.pendingManualSubmissions}
+                      slaBreached={dashboard.totals.slaBreachedSubmissions}
+                      paymentSuccessRate={dashboard.totals.paymentSuccessRate}
+                      arpu={dashboard.totals.arpu}
+                      estimatedLtv={dashboard.totals.estimatedLtv}
+                      revenueChange30d={dashboard.totals.revenueChangePercent30d}
+                      revenueByDay={dashboard.revenueByDay}
+                      health={dashboard.totals.financeHealth}
+                    />
+
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
                       <StatCard label="users" value={dashboard.totals.users} icon={Users} sub="all accounts" />
                       <StatCard label="active this week" value={dashboard.totals.activeThisWeek} icon={Activity} sub={`${dashboard.totals.activeToday} today`} />
                       <StatCard label="paying / trial" value={dashboard.totals.payingUsers} icon={Crown} sub="with premium access" />
-                      <StatCard label="total earned" value={`${fmtMoney(dashboard.totals.revenueTotal)} ETB`} icon={Wallet} money sub={`${dashboard.totals.paymentsCompleted} payments`} />
-                      <StatCard label="this month" value={`${fmtMoney(dashboard.totals.revenueThisMonth)} ETB`} icon={TrendingUp} money sub="completed payments" />
+                      <StatCard label="total earned" value={`${fmtMoney(dashboard.totals.revenueTotal)} ${dashboard.totals.currency}`} icon={Wallet} money sub={`${dashboard.totals.paymentsCompleted} payments`} />
+                      <StatCard label="this month" value={`${fmtMoney(dashboard.totals.revenueThisMonth)} ${dashboard.totals.currency}`} icon={TrendingUp} money sub="completed payments" />
                       <StatCard label="content items" value={dashboard.totals.contentItems} icon={FileText} sub="in the library" />
                     </div>
 
                     <div className="grid gap-4 2xl:grid-cols-3">
-                      <ChartCard title="revenue · last 12 months" sub="Money earned from completed payments, in ETB" className="lg:col-span-2">
+                      <ChartCard title="revenue · last 12 months" sub={`Money earned from completed payments, in ${dashboard.totals.currency}`} className="lg:col-span-2">
                         <div className="h-56">
                           <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={dashboard.revenueByMonth} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
@@ -1523,7 +1734,7 @@ export default function Admin() {
                           </ResponsiveContainer>
                         </div>
                       </ChartCard>
-                      <ChartCard title="revenue by provider" sub="ETB from completed payments">
+                      <ChartCard title="revenue by provider" sub={`${dashboard.totals.currency} from completed payments`}>
                         <div className="h-44">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={dashboard.revenueByProvider} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
@@ -1715,29 +1926,110 @@ export default function Admin() {
                   <div className="flex h-40 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
                 ) : (
                   <>
+                    {/* Finance Hero Banner — re-used on the dedicated Finance tab too */}
+                    <FinanceHeroBanner
+                      currency={finance.currency}
+                      revenueTotal={finance.totalEarned}
+                      revenueThisMonth={finance.thisMonth}
+                      pendingRevenue={finance.pendingRevenue}
+                      pendingManualSubmissions={finance.pendingManualSubmissions}
+                      slaBreached={finance.slaBreachedSubmissions}
+                      paymentSuccessRate={finance.paymentSuccessRate}
+                      arpu={finance.arpu}
+                      estimatedLtv={finance.estimatedLtv}
+                      revenueChange30d={finance.revenueChangePercent30d}
+                      revenueByDay={finance.revenueByDay}
+                      health={finance.health}
+                    />
+
+                    {/* Secondary stats — additional finance metrics */}
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-                      <StatCard label="total earned" value={`${fmtMoney(finance.totalEarned)} ETB`} icon={Wallet} money sub={`${finance.completedCount} completed payments`} />
-                      <StatCard label="this month" value={`${fmtMoney(finance.thisMonth)} ETB`} icon={TrendingUp} money sub="completed payments" />
-                      <StatCard label="last 30 days" value={`${fmtMoney(finance.last30Days)} ETB`} icon={Timer} money />
-                      <StatCard label="avg payment" value={`${fmtMoney(finance.avgPayment)} ETB`} icon={Zap} sub={`${finance.pendingCount} pending · ${finance.failedCount} failed`} />
-                      <StatCard label="conversion" value={`${(finance.conversionRate * 100).toFixed(1)}%`} icon={Users} sub={`${finance.payingUsers} paying / trial`} />
+                      <StatCard2
+                        label="last 30 days"
+                        value={finance.last30Days}
+                        icon={Timer}
+                        money
+                        currency={finance.currency}
+                        sub="rolling 30-day window"
+                        delta={finance.revenueChangePercent30d}
+                        deltaSuffix="%"
+                        accent="default"
+                      />
+                      <StatCard2
+                        label="avg payment"
+                        value={finance.avgPayment}
+                        icon={Zap}
+                        money
+                        currency={finance.currency}
+                        sub={`${finance.completedCount} completed`}
+                        accent="default"
+                      />
+                      <StatCard2
+                        label="pending count"
+                        value={finance.pendingCount}
+                        icon={Timer}
+                        sub={`${finance.pendingCount} provider + ${finance.pendingManualSubmissions} manual`}
+                        accent={finance.pendingCount + finance.pendingManualSubmissions > 0 ? "warning" : "default"}
+                      />
+                      <StatCard2
+                        label="failed"
+                        value={finance.failedCount}
+                        icon={AlertTriangle}
+                        sub="failed payment attempts"
+                        accent={finance.failedCount > 0 ? "danger" : "default"}
+                      />
+                      <StatCard2
+                        label="conversion"
+                        value={Math.round(finance.conversionRate * 1000) / 10}
+                        icon={Users}
+                        sub={`${finance.payingUsers} paying / trial · ${Math.round(finance.paymentSuccessRate * 100)}% success`}
+                        accent={finance.conversionRate >= 0.1 ? "success" : "default"}
+                      />
                     </div>
+
+                    {/* Daily revenue + provider breakdown */}
                     <div className="grid gap-4 lg:grid-cols-3">
-                      <ChartCard title="revenue · last 12 months" sub="Completed payments in ETB" className="lg:col-span-2">
-                        <div className="h-60">
+                      <ChartCard
+                        title="revenue · last 30 days"
+                        sub={`Daily completed revenue, in ${finance.currency}`}
+                        className="lg:col-span-2"
+                      >
+                        <div className="h-56">
                           <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={finance.revenueByMonth} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                              <defs><linearGradient id="finGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--chart-4)" stopOpacity={0.35} /><stop offset="100%" stopColor="var(--chart-4)" stopOpacity={0} /></linearGradient></defs>
+                            <AreaChart
+                              data={finance.revenueByDay}
+                              margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
+                            >
+                              <defs>
+                                <linearGradient id="dailyGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+                                  <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
                               <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
-                              <XAxis dataKey="label" tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                              <XAxis
+                                dataKey="label"
+                                tick={{ fill: AXIS_COLOR, fontSize: 10 }}
+                                axisLine={false}
+                                tickLine={false}
+                                interval="preserveStartEnd"
+                                minTickGap={24}
+                              />
                               <YAxis tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} width={46} />
                               <Tooltip contentStyle={TOOLTIP_STYLE} />
-                              <Area type="monotone" dataKey="revenue" stroke="var(--chart-4)" strokeWidth={2} fill="url(#finGrad)" name="ETB" />
+                              <Area
+                                type="monotone"
+                                dataKey="revenue"
+                                stroke="var(--primary)"
+                                strokeWidth={2}
+                                fill="url(#dailyGrad)"
+                                name={finance.currency}
+                              />
                             </AreaChart>
                           </ResponsiveContainer>
                         </div>
                       </ChartCard>
-                      <ChartCard title="by provider" sub="ETB from completed payments">
+                      <ChartCard title="by provider" sub={`${finance.currency} from completed payments`}>
                         <div className="flex h-full min-h-48 flex-col justify-center gap-3">
                           {finance.revenueByProvider.length === 0 ? (
                             <p className="py-10 text-center text-sm text-muted-foreground">No completed payments yet.</p>
@@ -1747,7 +2039,7 @@ export default function Admin() {
                               <div key={e.provider}>
                                 <div className="flex items-center justify-between font-mono text-[11px]">
                                   <span className="flex items-center gap-2 capitalize"><span className="size-2.5 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />{e.provider}</span>
-                                  <span className="font-bold tabular-nums">{fmtMoney(e.total)} ETB</span>
+                                  <span className="font-bold tabular-nums">{fmtMoney(e.total)} {finance.currency}</span>
                                 </div>
                                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full" style={{ width: `${(e.total / max) * 100}%`, background: CHART_COLORS[i % CHART_COLORS.length] }} /></div>
                                 <p className="mt-0.5 font-mono text-[9px] text-muted-foreground">{e.count} payments</p>
@@ -1757,6 +2049,56 @@ export default function Admin() {
                         </div>
                       </ChartCard>
                     </div>
+
+                    {/* 12-month revenue + manual pipeline */}
+                    <div className="grid gap-4 lg:grid-cols-3">
+                      <ChartCard
+                        title="revenue · last 12 months"
+                        sub={`Completed payments in ${finance.currency}`}
+                        className="lg:col-span-2"
+                      >
+                        <div className="h-60">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={finance.revenueByMonth} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                              <defs><linearGradient id="finGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--chart-4)" stopOpacity={0.35} /><stop offset="100%" stopColor="var(--chart-4)" stopOpacity={0} /></linearGradient></defs>
+                              <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="label" tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                              <YAxis tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} width={46} />
+                              <Tooltip contentStyle={TOOLTIP_STYLE} />
+                              <Area type="monotone" dataKey="revenue" stroke="var(--chart-4)" strokeWidth={2} fill="url(#finGrad)" name={finance.currency} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </ChartCard>
+                      <ChartCard title="manual submissions" sub="TeleBirr personal transfers pipeline">
+                        <div className="flex h-full min-h-48 flex-col justify-center gap-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3">
+                              <p className="font-mono text-[9px] uppercase tracking-wider text-amber-300/80">Pending</p>
+                              <p className="mt-1 font-mono text-2xl font-bold text-amber-200">{finance.pendingManualSubmissions}</p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3">
+                              <p className="font-mono text-[9px] uppercase tracking-wider text-emerald-300/80">Approved</p>
+                              <p className="mt-1 font-mono text-2xl font-bold text-emerald-200">{finance.approvedManualSubmissions}</p>
+                            </div>
+                            <div className="rounded-xl border border-rose-400/20 bg-rose-400/[0.06] p-3">
+                              <p className="font-mono text-[9px] uppercase tracking-wider text-rose-300/80">Rejected</p>
+                              <p className="mt-1 font-mono text-2xl font-bold text-rose-200">{finance.rejectedManualSubmissions}</p>
+                            </div>
+                            <div className="rounded-xl border border-rose-400/30 bg-rose-400/[0.08] p-3">
+                              <p className="font-mono text-[9px] uppercase tracking-wider text-rose-300/80">SLA breached</p>
+                              <p className="mt-1 font-mono text-2xl font-bold text-rose-200">{finance.slaBreachedSubmissions}</p>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground/70">
+                            Pending submissions are reviewed in the Payments tab.
+                            SLA-breached items should be addressed first.
+                          </p>
+                        </div>
+                      </ChartCard>
+                    </div>
+
+                    {/* Recent transactions */}
                     <div className="glass-panel rounded-2xl p-5">
                       <h2 className="text-lg font-extrabold tracking-tight">Recent transactions</h2>
                       <p className="text-sm text-muted-foreground">The latest payment attempts for reconciliation.</p>
@@ -1782,6 +2124,10 @@ export default function Admin() {
                         )}
                       </div>
                     </div>
+
+                    {/* Contact Group admin panel — manage where student
+                        contact-form messages are delivered */}
+                    <ContactGroupPanel />
                   </>
                 )}
               </div>

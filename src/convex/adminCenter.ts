@@ -104,6 +104,72 @@ function providerTotals(
     .sort((a, b) => b.total - a.total);
 }
 
+/**
+ * Daily revenue series for the last `count` days, oldest first, ending
+ * today. Used by the futuristic finance dashboard's "last 30 days" spark
+ * chart. Each bucket is one calendar day keyed by YYYY-MM-DD.
+ */
+function buildDailyRevenueSeries(
+  payments: Doc<"payments">[],
+  count: number,
+): { date: string; label: string; revenue: number; payments: number }[] {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayKeys: string[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(startOfToday.getTime() - i * 24 * 60 * 60 * 1000);
+    dayKeys.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+    );
+  }
+  const dayLabel = (key: string) => {
+    const [, m, d] = key.split("-").map(Number);
+    return `${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`;
+  };
+  const byIndex = new Map(dayKeys.map((k, i) => [k, i]));
+  const series = dayKeys.map((k) => ({
+    date: k,
+    label: dayLabel(k),
+    revenue: 0,
+    payments: 0,
+  }));
+  for (const payment of payments) {
+    if (payment.status !== "completed") continue;
+    const ts = completedPaymentTs(payment);
+    const d = new Date(ts);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const idx = byIndex.get(key);
+    if (idx !== undefined) {
+      series[idx]!.revenue += payment.amount;
+      series[idx]!.payments += 1;
+    }
+  }
+  return series;
+}
+
+/**
+ * Revenue change percent between two windows of the same length, ending
+ * "now" and "now - windowMs" respectively. Returns null when there's no
+ * baseline (both windows had zero revenue).
+ */
+function revenueChangePercent(
+  payments: Doc<"payments">[],
+  windowMs: number,
+): number | null {
+  const now = Date.now();
+  let current = 0;
+  let previous = 0;
+  for (const payment of payments) {
+    if (payment.status !== "completed") continue;
+    const ts = completedPaymentTs(payment);
+    if (ts >= now - windowMs) current += payment.amount;
+    else if (ts >= now - 2 * windowMs) previous += payment.amount;
+  }
+  if (previous === 0 && current === 0) return null;
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
@@ -365,9 +431,21 @@ export interface AdminDashboard {
     revenueTotal: number;
     revenueThisMonth: number;
     paymentsCompleted: number;
+    // ── New futuristic dashboard metrics ──
+    pendingRevenue: number;
+    pendingManualSubmissions: number;
+    slaBreachedSubmissions: number;
+    paymentSuccessRate: number;
+    arpu: number;
+    estimatedLtv: number;
+    revenueChangePercent30d: number | null;
+    currency: string;
+    financeHealth: "green" | "amber" | "red";
   };
   revenueByMonth: { label: string; revenue: number; payments: number }[];
   revenueByProvider: { provider: string; total: number; count: number }[];
+  // Daily revenue for the last 30 days — spark chart in the dashboard.
+  revenueByDay: { date: string; label: string; revenue: number; payments: number }[];
   newUsersByMonth: { label: string; count: number }[];
   contentByType: { contentType: string; count: number }[];
   usersByStream: { stream: string; count: number }[];
@@ -406,7 +484,7 @@ export const getAdminDashboard = query({
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const [users, subscriptions, payments, contentItems, profiles, streaks, sessions, xpRows, attempts] =
+    const [users, subscriptions, payments, contentItems, profiles, streaks, sessions, xpRows, attempts, manualSubmissions] =
       await Promise.all([
         ctx.db.query("users").take(300),
         ctx.db.query("subscriptions").collect(),
@@ -417,6 +495,7 @@ export const getAdminDashboard = query({
         ctx.db.query("studySessions").collect(),
         ctx.db.query("xpLedger").collect(),
         ctx.db.query("quizAttempts").collect(),
+        ctx.db.query("manualPaymentSubmissions").collect(),
       ]);
 
     // --- Revenue ---------------------------------------------------------
@@ -424,14 +503,44 @@ export const getAdminDashboard = query({
     let revenueTotal = 0;
     let revenueThisMonth = 0;
     let paymentsCompleted = 0;
+    let pendingCount = 0;
+    let failedCount = 0;
+    let pendingRevenue = 0;
     for (const payment of payments) {
-      if (payment.status !== "completed") continue;
-      const ts = completedPaymentTs(payment);
-      revenueTotal += payment.amount;
-      paymentsCompleted += 1;
-      if (ts >= monthStart.getTime()) revenueThisMonth += payment.amount;
+      if (payment.status === "completed") {
+        const ts = completedPaymentTs(payment);
+        revenueTotal += payment.amount;
+        paymentsCompleted += 1;
+        if (ts >= monthStart.getTime()) revenueThisMonth += payment.amount;
+      } else if (payment.status === "pending") {
+        pendingCount += 1;
+        pendingRevenue += payment.amount;
+      } else {
+        failedCount += 1;
+      }
     }
     const revenueByProvider = providerTotals(payments);
+
+    // --- Manual submission pipeline (TeleBirr personal) ---------------
+    let pendingManualSubmissions = 0;
+    let slaBreachedSubmissions = 0;
+    for (const sub of manualSubmissions) {
+      if (sub.status === "pending") {
+        pendingManualSubmissions += 1;
+        pendingRevenue += sub.expectedAmount;
+        if (sub.slaBreached) slaBreachedSubmissions += 1;
+      }
+    }
+
+    // Payment success rate (does not need payingUsers — computed early).
+    const paymentSuccessRate =
+      paymentsCompleted + failedCount > 0
+        ? paymentsCompleted / (paymentsCompleted + failedCount)
+        : 0;
+    const revenueChangePercent30d = revenueChangePercent(
+      payments,
+      30 * 24 * 60 * 60 * 1000,
+    );
 
     // --- Activity (who actually used the app this week / today) ----------
     const activeWeek = new Set<Id<"users">>();
@@ -470,6 +579,16 @@ export const getAdminDashboard = query({
       ...Object.entries(statusCounts).map(([status, count]) => ({ status, count })),
       { status: "none", count: users.filter((u) => !usersWithSub.has(u._id)).length },
     ];
+
+    // ARPU + LTV — needs payingUsers from the subscriptions block above.
+    const arpu = payingUsers > 0 ? revenueTotal / payingUsers : 0;
+    const estimatedLtv = Math.round(arpu * 12 * 0.5);
+    const currency = dominantCurrency(payments);
+    const financeHealth = computeFinanceHealth(
+      paymentSuccessRate,
+      pendingCount + pendingManualSubmissions,
+      slaBreachedSubmissions,
+    );
 
     // --- Content + streams + signups -------------------------------------
     const contentCounts: Record<string, number> = {};
@@ -545,9 +664,20 @@ export const getAdminDashboard = query({
         revenueTotal,
         revenueThisMonth,
         paymentsCompleted,
+        // ── New futuristic metrics ──
+        pendingRevenue,
+        pendingManualSubmissions,
+        slaBreachedSubmissions,
+        paymentSuccessRate,
+        arpu,
+        estimatedLtv,
+        revenueChangePercent30d,
+        currency,
+        financeHealth,
       },
       revenueByMonth,
       revenueByProvider,
+      revenueByDay: buildDailyRevenueSeries(payments, 30),
       newUsersByMonth,
       contentByType,
       usersByStream,
@@ -582,6 +712,71 @@ export interface FinanceOverview {
     userEmail: string | null;
     userName: string | null;
   }[];
+  // ── New metrics for the futuristic finance dashboard ──
+  // Pending revenue — sum of amounts in pending manual submissions + pending
+  // provider payments. Money that's "in flight" — not yet approved.
+  pendingRevenue: number;
+  // Manual submission pipeline counts + ETA — manual submissions (TeleBirr
+  // personal transfers) awaiting admin review.
+  pendingManualSubmissions: number;
+  approvedManualSubmissions: number;
+  rejectedManualSubmissions: number;
+  slaBreachedSubmissions: number;
+  // Daily revenue series (last 30 days) for the spark chart.
+  revenueByDay: { date: string; label: string; revenue: number; payments: number }[];
+  // Period-over-period revenue change — percentage change of completed
+  // revenue in the last 30 days vs the 30 days before that. Null when
+  // both windows are zero.
+  revenueChangePercent30d: number | null;
+  // Same comparison for the last 7 days vs the 7 days before.
+  revenueChangePercent7d: number | null;
+  // Payment success rate — completed / (completed + failed). 0..1.
+  paymentSuccessRate: number;
+  // ARPU — total earned / paying users (active + trial). 0 if no payers.
+  arpu: number;
+  // Estimated LTV — average revenue per paying user per month × 12.
+  // Conservative estimate assuming 1-year retention.
+  estimatedLtv: number;
+  // Currency — the dominant currency across all payments (e.g. "ETB").
+  // Used for the dashboard's currency display.
+  currency: string;
+  // Health indicator: "green" / "amber" / "red" based on success rate +
+  // pending volume. Used to color a "Finance Health" badge in the UI.
+  health: "green" | "amber" | "red";
+}
+
+/** Compute the dominant currency across a list of payments (fallback ETB). */
+function dominantCurrency(payments: Doc<"payments">[]): string {
+  const counts = new Map<string, number>();
+  for (const p of payments) {
+    counts.set(p.currency, (counts.get(p.currency) ?? 0) + 1);
+  }
+  if (counts.size === 0) return "ETB";
+  let best: string | null = null;
+  let bestCount = -1;
+  for (const [cur, n] of counts) {
+    if (n > bestCount) {
+      best = cur;
+      bestCount = n;
+    }
+  }
+  return best ?? "ETB";
+}
+
+function computeFinanceHealth(
+  successRate: number,
+  pendingCount: number,
+  slaBreached: number,
+): "green" | "amber" | "red" {
+  // Red: very low success rate OR many SLA breaches
+  if (successRate < 0.5 && (successRate > 0 || pendingCount > 0)) return "red";
+  if (slaBreached > 5) return "red";
+  // Amber: moderate success rate or some SLA breaches
+  if (successRate < 0.85) return "amber";
+  if (slaBreached > 0) return "amber";
+  if (pendingCount > 10) return "amber";
+  // Green: otherwise
+  return "green";
 }
 
 /** Finance page: money earned, monthly series, provider split, conversion. */
@@ -595,10 +790,11 @@ export const getFinanceOverview = query({
     monthStart.setHours(0, 0, 0, 0);
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-    const [payments, users, subscriptions] = await Promise.all([
+    const [payments, users, subscriptions, manualSubmissions] = await Promise.all([
       ctx.db.query("payments").collect(),
       ctx.db.query("users").take(300),
       ctx.db.query("subscriptions").collect(),
+      ctx.db.query("manualPaymentSubmissions").collect(),
     ]);
 
     let totalEarned = 0;
@@ -607,6 +803,7 @@ export const getFinanceOverview = query({
     let completedCount = 0;
     let pendingCount = 0;
     let failedCount = 0;
+    let pendingRevenue = 0;
     for (const payment of payments) {
       if (payment.status === "completed") {
         const ts = completedPaymentTs(payment);
@@ -616,8 +813,29 @@ export const getFinanceOverview = query({
         if (ts >= thirtyDaysAgo) last30Days += payment.amount;
       } else if (payment.status === "pending") {
         pendingCount += 1;
+        pendingRevenue += payment.amount;
       } else {
         failedCount += 1;
+      }
+    }
+
+    // Manual submission pipeline (TeleBirr personal transfers + "other").
+    // Each pending submission has an `expectedAmount` — that's money
+    // waiting in the admin's inbox for review. SLA-breached submissions
+    // need urgent attention.
+    let pendingManualSubmissions = 0;
+    let approvedManualSubmissions = 0;
+    let rejectedManualSubmissions = 0;
+    let slaBreachedSubmissions = 0;
+    for (const sub of manualSubmissions) {
+      if (sub.status === "pending") {
+        pendingManualSubmissions += 1;
+        pendingRevenue += sub.expectedAmount;
+        if (sub.slaBreached) slaBreachedSubmissions += 1;
+      } else if (sub.status === "approved") {
+        approvedManualSubmissions += 1;
+      } else if (sub.status === "rejected") {
+        rejectedManualSubmissions += 1;
       }
     }
 
@@ -645,6 +863,21 @@ export const getFinanceOverview = query({
       (s) => s.status === "active" || s.status === "trial",
     ).length;
 
+    // ARPU + estimated LTV — paying users includes trial + active. The
+    // total earned spread across paying users gives a conservative ARPU
+    // (the real number is higher because some "paying" users are still in
+    // trial and haven't actually paid yet).
+    const arpu = payingUsers > 0 ? totalEarned / payingUsers : 0;
+    // LTV: assume 1-year retention, so ARPU × 12. For a monthly
+    // subscription of 500 ETB, this would be 6000 ETB. Conservatively
+    // halved to account for churn (estimate, not a forecast).
+    const estimatedLtv = Math.round(arpu * 12 * 0.5);
+
+    const paymentSuccessRate =
+      completedCount + failedCount > 0
+        ? completedCount / (completedCount + failedCount)
+        : 0;
+
     return {
       totalEarned,
       thisMonth,
@@ -658,6 +891,24 @@ export const getFinanceOverview = query({
       revenueByMonth: buildRevenueSeries(payments, recentMonthKeys(12)),
       revenueByProvider: providerTotals(payments),
       recentTransactions,
+      // ── New metrics ──
+      pendingRevenue,
+      pendingManualSubmissions,
+      approvedManualSubmissions,
+      rejectedManualSubmissions,
+      slaBreachedSubmissions,
+      revenueByDay: buildDailyRevenueSeries(payments, 30),
+      revenueChangePercent30d: revenueChangePercent(payments, 30 * 24 * 60 * 60 * 1000),
+      revenueChangePercent7d: revenueChangePercent(payments, 7 * 24 * 60 * 60 * 1000),
+      paymentSuccessRate,
+      arpu,
+      estimatedLtv,
+      currency: dominantCurrency(payments),
+      health: computeFinanceHealth(
+        paymentSuccessRate,
+        pendingCount + pendingManualSubmissions,
+        slaBreachedSubmissions,
+      ),
     };
   },
 });

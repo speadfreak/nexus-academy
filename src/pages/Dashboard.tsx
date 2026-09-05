@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { DashboardShell } from "@/components/DashboardShell";
+import { NotificationsPanel } from "@/components/NotificationsPanel";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { QuizFlow } from "@/components/QuizFlow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -1318,6 +1319,9 @@ export default function Dashboard() {
             </p>
           </Link>
         </motion.div>
+
+        {/* ═══ NOTIFICATIONS PANEL ═══ */}
+        <NotificationsPanel />
 
         {/* ═══ XP PROGRESS + SUBJECT QUICK TABS ═══ */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4">

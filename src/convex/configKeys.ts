@@ -38,7 +38,9 @@ export const INTEGRATION_KEYS = [
   { key: "MPESA_SHORT_CODE", label: "M-Pesa Business Short Code", category: "payments", description: "Paybill/till number" },
   { key: "MPESA_PASSKEY", label: "M-Pesa Lipa Na M-Pesa Passkey", category: "payments", description: "STK push password (from Daraja portal)" },
   { key: "MPESA_CALLBACK_URL", label: "M-Pesa Callback URL", category: "payments", description: "Public callback URL for STK results" },
-  { key: "TELEGRAM_BOT_TOKEN", label: "Telegram Bot Token", category: "comms", description: "Broadcast to channels", helpUrl: "https://t.me/BotFather", helpLabel: "@BotFather" },
+  { key: "TELEGRAM_BOT_TOKEN", label: "Telegram Bot Token", category: "comms", description: "Broadcast to channels + contact-form delivery", helpUrl: "https://t.me/BotFather", helpLabel: "@BotFather" },
+  { key: "CONTACT_GROUP_CHAT_ID", label: "Contact-Form Group Chat ID", category: "comms", description: "The Telegram chat ID of the team's discussion GROUP where student contact-form messages are delivered. Must be a group/supergroup the bot is a member of. Use @userinfobot in the group to find this ID (starts with -100... for supergroups). When set, contact messages bypass the 'all channels' scan and go straight to this group." },
+  { key: "CONTACT_GROUP_INVITE_LINK", label: "Contact-Form Group Invite Link", category: "comms", description: "Public t.me/... invite link to the team's discussion group. Shown to admins in the Contact-Form Inbox tab so they can jump to the group quickly. Optional but recommended." },
   { key: "GOOGLE_CLIENT_ID", label: "Google OAuth Client ID", category: "auth", description: "Google sign-in (requires Convex env var — see notice below)", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console", isEnvOnly: true },
   { key: "GOOGLE_CLIENT_SECRET", label: "Google OAuth Client Secret", category: "auth", description: "Google sign-in (requires Convex env var — see notice below)", helpUrl: "https://console.cloud.google.com/apis/credentials", helpLabel: "Google Cloud Console", isEnvOnly: true },
   { key: "LIVEKIT_URL", label: "LiveKit Server URL", category: "video", description: "WebSocket URL, e.g. wss://your-project.livekit.cloud" },
@@ -76,6 +78,8 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   MANUAL_PAYMENT_TELEBIRR_NAME: "",
   SMS_WEBHOOK_SECRET: "",
   TELEGRAM_ADMIN_CHAT_ID: "",
+  CONTACT_GROUP_CHAT_ID: "",
+  CONTACT_GROUP_INVITE_LINK: "",
   REFERRAL_PROGRAM_ENABLED: "true",
   REFERRER_REWARD_DAYS: "7",
   REFEREE_REWARD_DAYS: "3",
@@ -270,7 +274,7 @@ export const listCustomKeys = query({
 export const getBackendVersion = query({
   args: {},
   handler: () => ({
-    version: 3,
-    features: ["db_key_resolution", "configKeys_table", "resolveConfigValue", "all_keys_db_backed", "custom_keys", "livekit_db", "github_db", "telegram_db", "payment_providers_db"],
+    version: 4,
+    features: ["db_key_resolution", "configKeys_table", "resolveConfigValue", "all_keys_db_backed", "custom_keys", "livekit_db", "github_db", "telegram_db", "payment_providers_db", "contact_group_config"],
   }),
 });

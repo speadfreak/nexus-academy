@@ -209,15 +209,27 @@ function escapeHtml(value: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Send a contact message from a student to the team's Telegram GROUP chats
- * only (not broadcast channels — the user asked for messages to land in the
- * discussion group, not the public broadcast channel). Uses Telegram's
- * getChat API to filter each configured channel by its actual chat type
- * ("group" or "supergroup" pass; "channel" and "private" are skipped).
+ * Send a contact message from a student to the team's Telegram GROUP chat.
  *
- * Falls back gracefully if Telegram isn't configured or no group chats are
- * configured — the message is still persisted in `contactMessages` so
- * admins can read it from the dashboard.
+ * DELIVERY PATH:
+ *   1. If the admin has set `CONTACT_GROUP_CHAT_ID` (admin-managed config
+ *      key, editable from the Admin → Keys tab or the Admin →
+ *      Contact-Form Inbox mini-panel), the message is sent DIRECTLY to
+ *      that chat ID — one Telegram API call, no scanning, no probing.
+ *      This is the recommended + most reliable path.
+ *   2. Otherwise (or if the direct send fails), we scan every configured
+ *      `telegramChannels` row, call `getChat` to learn its actual type,
+ *      and send to GROUP / SUPERGROUP chats only (broadcast channels
+ *      are skipped — the user explicitly wants messages to land in the
+ *      discussion group, not the public broadcast channel).
+ *   3. If neither path delivers, the message is still persisted in the
+ *      `contactMessages` table so the admin can read it from the
+ *      dashboard's Contact-Form Inbox.
+ *
+ * Admin can edit the destination group at any time via the Admin → Keys
+ * tab (search for "Contact-Form Group Chat ID"). If the team's group
+ * link changes over time, the admin updates the chat ID — no code
+ * changes needed.
  *
  * Args:
  *   - name: optional display name (defaults to the user's profile name)
@@ -305,41 +317,24 @@ export const sendContactMessage = action({
       };
     }
 
-    const allChannels = await ctx.runQuery(
-      internal.telegram.listAllChannels,
-      {},
-    );
-    if (allChannels.length === 0) {
-      return {
-        ok: true,
-        sent: 0,
-        persistedId,
-        reason: "no_channels_configured",
-      };
+    // PRIORITY 1 — the admin-configured CONTACT_GROUP_CHAT_ID. When set,
+    // contact messages go straight to that one group. This is the most
+    // reliable path — the admin explicitly chose this destination, so we
+    // don't have to scan all configured channels / probe chat types.
+    let configuredGroupChatId: string | null = null;
+    try {
+      configuredGroupChatId =
+        (await ctx.runQuery(internal.configKeys.resolveConfigValue, {
+          key: "CONTACT_GROUP_CHAT_ID",
+        })) ?? null;
+    } catch {
+      configuredGroupChatId = null;
+    }
+    if (configuredGroupChatId) {
+      configuredGroupChatId = configuredGroupChatId.trim();
     }
 
-    // Filter to GROUP chats only. Telegram's getChat returns one of
-    // "private" | "group" | "supergroup" | "channel". Modern groups are
-    // usually "supergroup". We SKIP broadcast channels — the user asked
-    // for contact messages to land in the team's discussion group, not
-    // the public broadcast channel.
-    const groupChannels: { _id: string; chatId: string; name: string }[] = [];
-    for (const channel of allChannels) {
-      const type = await getChatType(token, channel.chatId);
-      if (type === "group" || type === "supergroup") {
-        groupChannels.push(channel);
-      }
-      // "channel", "private", or null (lookup failed) → skip
-    }
-    if (groupChannels.length === 0) {
-      return {
-        ok: true,
-        sent: 0,
-        persistedId,
-        reason: "no_group_channels_configured",
-      };
-    }
-
+    // Compose the message text (used by both delivery paths).
     const categoryLabel: Record<string, string> = {
       question: "❓ Question",
       advice: "💡 Advice",
@@ -357,17 +352,71 @@ export const sendContactMessage = action({
     const text = `${header}${body}${footer}`;
 
     let sent = 0;
-    for (const channel of groupChannels) {
+    let deliveryPath: "configured_group" | "scanned_groups" | "none" = "none";
+
+    if (configuredGroupChatId) {
+      // Direct delivery to the admin-configured group. One call, no
+      // scanning, no getChat probing. If it fails, we don't fall back to
+      // scanning — the admin's choice is authoritative.
       try {
         await callBot(token, "sendMessage", {
-          chat_id: channel.chatId,
+          chat_id: configuredGroupChatId,
           text,
           parse_mode: "HTML",
           disable_web_page_preview: true,
         });
-        sent += 1;
-      } catch {
-        // ignore — try the next group
+        sent = 1;
+        deliveryPath = "configured_group";
+      } catch (err) {
+        // The configured chat ID may be wrong, the bot may not be a member
+        // of the group, or the bot may not have send-permission. Log + fall
+        // through to the scan path as a safety net so the message still
+        // lands somewhere the team can read.
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await logEventAction(ctx, {
+          eventType: "api_call",
+          source: "telegram.contactForm.configuredGroupFailed",
+          status: "error",
+          userId,
+          metadata: {
+            category,
+            configuredGroupChatId,
+            error: errMsg,
+          },
+        });
+      }
+    }
+
+    // PRIORITY 2 — scan all configured channels and deliver to GROUP chats
+    // only. This is the fallback when CONTACT_GROUP_CHAT_ID isn't set or
+    // when the direct send above failed.
+    if (sent === 0) {
+      const allChannels = await ctx.runQuery(
+        internal.telegram.listAllChannels,
+        {},
+      );
+      if (allChannels.length > 0) {
+        const groupChannels: { _id: string; chatId: string; name: string }[] = [];
+        for (const channel of allChannels) {
+          const type = await getChatType(token, channel.chatId);
+          if (type === "group" || type === "supergroup") {
+            groupChannels.push(channel);
+          }
+        }
+        for (const channel of groupChannels) {
+          try {
+            await callBot(token, "sendMessage", {
+              chat_id: channel.chatId,
+              text,
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            sent += 1;
+            if (deliveryPath === "none") deliveryPath = "scanned_groups";
+          } catch {
+            // ignore — try the next group
+          }
+        }
       }
     }
 
@@ -388,9 +437,9 @@ export const sendContactMessage = action({
       userId,
       metadata: {
         category,
-        totalChannels: allChannels.length,
-        groupChannels: groupChannels.length,
+        deliveryPath,
         sent,
+        configuredGroupUsed: configuredGroupChatId ? true : false,
       },
     });
 
@@ -398,7 +447,7 @@ export const sendContactMessage = action({
       ok: true,
       sent,
       persistedId,
-      reason: sent > 0 ? undefined : "all_group_sends_failed",
+      reason: sent > 0 ? undefined : "no_group_configured_or_all_sends_failed",
     };
   },
 });

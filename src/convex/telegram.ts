@@ -303,3 +303,43 @@ export const listContactMessages = query({
     }));
   },
 });
+
+/**
+ * Admin-only — get the current contact-form delivery configuration
+ * (configured group chat ID + invite link). Values come from the
+ * configKeys table. Used by the Admin "Contact Group" mini-panel to
+ * show + edit the destination without leaving the admin dashboard.
+ *
+ * Returns `{ chatId, inviteLink, configured }`. `configured` is true
+ * when at least the chat ID is set.
+ */
+export const getContactGroupConfig = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    const user = await ctx.db.get(userId);
+    if (!user || user.role !== "admin") {
+      throw new ConvexError({ message: "Admin access required.", code: "unauthorized" });
+    }
+    const rows = await ctx.db
+      .query("configKeys")
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("key"), "CONTACT_GROUP_CHAT_ID"),
+          q.eq(q.field("key"), "CONTACT_GROUP_INVITE_LINK"),
+        ),
+      )
+      .collect();
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+    const chatId = map.get("CONTACT_GROUP_CHAT_ID") ?? "";
+    const inviteLink = map.get("CONTACT_GROUP_INVITE_LINK") ?? "";
+    return {
+      chatId,
+      inviteLink,
+      configured: Boolean(chatId),
+    };
+  },
+});
