@@ -91,6 +91,7 @@ const Groups = lazy(() => import("./pages/Groups.tsx"));
 const Room = lazy(() => import("./pages/Room.tsx"));
 const Reader = lazy(() => import("./pages/Reader.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
+const Notifications = lazy(() => import("./pages/Notifications.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
@@ -651,6 +652,14 @@ if (rootEl) {
                             element={
                               <RequireAuth>
                                 <Settings />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/notifications"
+                            element={
+                              <RequireAuth>
+                                <Notifications />
                               </RequireAuth>
                             }
                           />

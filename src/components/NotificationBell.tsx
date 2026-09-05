@@ -1,20 +1,24 @@
-// In-app notification bell — rebuilt with a futuristic, attractive UI.
+// In-app notification bell — futuristic, click-to-expand (NOT click-to-navigate).
 //
-// FEATURES:
-//   - Animated bell icon with pulse ring + bounce when new notifications arrive
-//   - Unread count badge with smooth number transitions + glow effect
-//   - Filter tabs: All · Unread · Mentions (achievements + level-ups)
+// BEHAVIOR FIX (this version):
+//   - Clicking a notification MARKS IT AS READ and EXPANDS the row inline to
+//     reveal the full body + a "View →" button. The dropdown stays open.
+//   - The "View →" button is the ONLY thing that navigates — and only when
+//     the notification has an actionUrl. Empty actionUrls show no button.
+//   - Previously, clicking anywhere on a notification row would call
+//     navigate(actionUrl) which sent users to the landing page if the
+//     actionUrl was "/" or similar. That bad UX is gone.
+//
+// Other features:
+//   - Pulse ring + bouncing BellRing icon when there are unread items
+//   - Animated unread-count badge with glow
+//   - Filter tabs (All · Unread · Mentions) with sliding indicator
 //   - Date-bucketed feed (Today · Yesterday · This week · Earlier)
-//   - Type-specific gradient icon backgrounds (achievement=amber, level=emerald, group=sky, etc.)
-//   - Hover reveals Dismiss (X) + Mark-as-read (✓) per notification
-//   - Empty state with animated illustration
-//   - Footer actions: "Mark all read" + "Clear all read"
-//   - Smooth AnimatePresence transitions on enter/exit
-//   - Keyboard accessible (Esc to close, ↑/↓ to navigate)
-//
-// Backed by the new `getMyNotificationsExtended` query (returns the feed +
-// unreadCount + per-type counts in one round trip) and the new
-// `deleteNotification` + `clearReadNotifications` mutations.
+//   - Type-specific gradient icon backgrounds (achievement=amber, level=emerald,
+//     group=sky, streak=orange, plan=violet, milestone=rose, social=pink, update=cyan)
+//   - Hover-revealed Dismiss (X) per notification
+//   - Footer: "View all" → /notifications · "Mark all read" · "Clear read"
+//   - Animated empty state
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -25,7 +29,9 @@ import {
   Bell,
   BellRing,
   CheckCheck,
+  ChevronDown,
   ChevronRight,
+  ExternalLink,
   Flame,
   GitBranch,
   Heart,
@@ -38,7 +44,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,6 +70,16 @@ function timeAgo(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function fullDate(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function dateBucket(ms: number): "today" | "yesterday" | "thisWeek" | "earlier" {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -83,15 +99,12 @@ const BUCKET_LABELS: Record<string, string> = {
 };
 
 // ── Notification type metadata ──────────────────────────────────────────
-//
-// Each known notification type gets a (icon, gradient) pair so the feed
-// is visually rich and instantly scannable. New types fall back to the
-// generic Bell icon.
 
 type TypeMeta = {
   icon: typeof Trophy;
-  gradient: string; // tailwind gradient classes for the icon background
-  glow: string; // box-shadow color for the glow
+  gradient: string;
+  glow: string;
+  label: string;
 };
 
 const TYPE_META: Record<string, TypeMeta> = {
@@ -99,46 +112,55 @@ const TYPE_META: Record<string, TypeMeta> = {
     icon: Trophy,
     gradient: "from-amber-400/30 to-orange-400/20",
     glow: "rgba(251, 191, 36, 0.45)",
+    label: "Achievement",
   },
   level_up: {
     icon: Zap,
     gradient: "from-emerald-400/30 to-teal-400/20",
     glow: "rgba(52, 211, 153, 0.45)",
+    label: "Level up",
   },
   group_join: {
     icon: Users,
     gradient: "from-sky-400/30 to-indigo-400/20",
     glow: "rgba(56, 189, 248, 0.45)",
+    label: "Group",
   },
   streak: {
     icon: Flame,
     gradient: "from-orange-400/30 to-red-400/20",
     glow: "rgba(249, 115, 22, 0.45)",
+    label: "Streak",
   },
   plan_week: {
     icon: Sparkles,
     gradient: "from-violet-400/30 to-fuchsia-400/20",
     glow: "rgba(167, 139, 250, 0.45)",
+    label: "Plan",
   },
   system: {
     icon: Bell,
     gradient: "from-white/15 to-white/5",
     glow: "rgba(255, 255, 255, 0.15)",
+    label: "System",
   },
   milestone: {
     icon: Award,
     gradient: "from-rose-400/30 to-pink-400/20",
     glow: "rgba(251, 113, 133, 0.45)",
+    label: "Milestone",
   },
   social: {
     icon: Heart,
     gradient: "from-pink-400/30 to-rose-400/20",
     glow: "rgba(244, 114, 182, 0.45)",
+    label: "Social",
   },
   update: {
     icon: GitBranch,
     gradient: "from-cyan-400/30 to-blue-400/20",
     glow: "rgba(34, 211, 238, 0.45)",
+    label: "Update",
   },
 };
 
@@ -146,6 +168,7 @@ const DEFAULT_META: TypeMeta = {
   icon: Bell,
   gradient: "from-white/10 to-white/5",
   glow: "rgba(255, 255, 255, 0.1)",
+  label: "Notification",
 };
 
 function metaFor(type: string): TypeMeta {
@@ -174,6 +197,9 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<FilterTab>("all");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Expanded row — set of notification ids whose body is currently expanded
+  // inline. Clicking a row toggles its expansion (and marks it as read).
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const notifications = data?.notifications ?? [];
   const unread = data?.unreadCount ?? 0;
@@ -210,16 +236,45 @@ export function NotificationBell() {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  const handleClick = async (
+  // ── THE FIX ─────────────────────────────────────────────────────────
+  // Clicking a notification row ONLY marks it as read + toggles inline
+  // expansion. It NEVER calls navigate(). The dropdown STAYS OPEN so the
+  // student can keep reading other notifications.
+  //
+  // The "View →" button inside the expanded row is the ONLY thing that
+  // navigates — and only when actionUrl is set + non-empty + not just "/".
+  const handleRowClick = async (
     notification: (typeof notifications)[number],
   ) => {
+    // Mark as read if unread (fire-and-forget).
     if (notification.readAt === null) {
       void markRead({ notificationId: notification._id as never }).catch(() => {});
     }
+    // Toggle inline expansion — keeps the dropdown open.
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(notification._id)) {
+        next.delete(notification._id);
+      } else {
+        next.add(notification._id);
+      }
+      return next;
+    });
+  };
+
+  // Navigate ONLY when the user explicitly clicks the "View →" button.
+  // We also guard against actionUrl being "/", "" or undefined — those
+  // cases show no button at all, so this should never be called with a
+  // bad URL, but the guard is here for safety.
+  const handleViewClick = (
+    notification: (typeof notifications)[number],
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+    const url = notification.actionUrl;
+    if (!url || url === "/" || url === "") return;
     setOpen(false);
-    if (notification.actionUrl) {
-      navigate(notification.actionUrl);
-    }
+    navigate(url);
   };
 
   const handleMarkAll = async () => {
@@ -231,6 +286,12 @@ export function NotificationBell() {
     e.stopPropagation();
     try {
       await deleteNotification({ notificationId: id as never });
+      // Also remove from the expanded set so we don't render an orphan row.
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(id as string);
+        return next;
+      });
       toast.success("Notification dismissed.");
     } catch {
       toast.error("Could not dismiss this notification.");
@@ -251,6 +312,8 @@ export function NotificationBell() {
   };
 
   const hasAny = notifications.length > 0;
+  const hasActionable = (n: (typeof notifications)[number]) =>
+    Boolean(n.actionUrl) && n.actionUrl !== "/" && n.actionUrl !== "";
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -317,7 +380,7 @@ export function NotificationBell() {
         sideOffset={8}
         className="glass-panel w-[min(92vw,420px)] rounded-3xl border-white/10 p-0"
       >
-        {/* Header — title + animated unread chip */}
+        {/* Header — title + animated unread chip + View all link */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <div className="flex items-center gap-2.5">
             <div className="flex size-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -446,6 +509,8 @@ export function NotificationBell() {
                           const meta = metaFor(notification.type);
                           const Icon = meta.icon;
                           const isUnread = notification.readAt === null;
+                          const isExpanded = expanded.has(notification._id);
+                          const actionable = hasActionable(notification);
                           return (
                             <motion.div
                               key={notification._id}
@@ -456,12 +521,13 @@ export function NotificationBell() {
                               transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                               onMouseEnter={() => setHoveredId(notification._id)}
                               onMouseLeave={() => setHoveredId(null)}
-                              onClick={() => void handleClick(notification)}
+                              onClick={() => void handleRowClick(notification)}
                               className={cn(
                                 "group relative flex cursor-pointer items-start gap-3 rounded-2xl px-3 py-3 transition-colors",
                                 isUnread
                                   ? "bg-primary/[0.06] hover:bg-primary/[0.1]"
                                   : "hover:bg-white/[0.04]",
+                                isExpanded && "ring-1 ring-primary/20",
                               )}
                             >
                               {/* Type icon with gradient + glow */}
@@ -485,23 +551,78 @@ export function NotificationBell() {
 
                               {/* Content */}
                               <div className="min-w-0 flex-1 pr-6">
+                                <div className="flex items-center gap-2">
+                                  <p
+                                    className={cn(
+                                      "text-xs font-semibold leading-5",
+                                      isUnread ? "text-foreground" : "text-foreground/80",
+                                    )}
+                                  >
+                                    {notification.title}
+                                  </p>
+                                  <span
+                                    className={cn(
+                                      "shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider bg-gradient-to-r",
+                                      meta.gradient,
+                                    )}
+                                  >
+                                    {meta.label}
+                                  </span>
+                                </div>
                                 <p
                                   className={cn(
-                                    "text-xs font-semibold leading-5",
-                                    isUnread ? "text-foreground" : "text-foreground/80",
+                                    "mt-0.5 text-[11px] leading-4 text-muted-foreground",
+                                    isExpanded && "line-clamp-none",
                                   )}
                                 >
-                                  {notification.title}
-                                </p>
-                                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                                   {notification.body}
                                 </p>
                                 <p className="mt-1.5 flex items-center gap-1 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70">
                                   {timeAgo(notification.createdAt)}
-                                  {notification.actionUrl && (
-                                    <ChevronRight className="size-2.5" />
+                                  {actionable && !isExpanded && (
+                                    <span className="ml-1 flex items-center gap-0.5 text-primary/80">
+                                      <ChevronRight className="size-2.5" /> tap to expand
+                                    </span>
+                                  )}
+                                  {isExpanded && (
+                                    <span className="ml-1 flex items-center gap-0.5 text-muted-foreground/60">
+                                      <ChevronDown className="size-2.5" /> tap to collapse
+                                    </span>
                                   )}
                                 </p>
+
+                                {/* Expanded detail — only when the row is expanded.
+                                    Shows the full timestamp + a "View →" button (only
+                                    if actionUrl is set and meaningful). */}
+                                <AnimatePresence initial={false}>
+                                  {isExpanded && (
+                                    <motion.div
+                                      initial={{ opacity: 0, height: 0 }}
+                                      animate={{ opacity: 1, height: "auto" }}
+                                      exit={{ opacity: 0, height: 0 }}
+                                      transition={{ duration: 0.2 }}
+                                      className="overflow-hidden"
+                                    >
+                                      <div className="mt-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5">
+                                        <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                                          {fullDate(notification.createdAt)}
+                                        </p>
+                                        <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                                          {notification.body}
+                                        </p>
+                                        {actionable && (
+                                          <button
+                                            onClick={(e) => handleViewClick(notification, e)}
+                                            className="mt-2.5 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-primary transition-colors hover:bg-primary/20"
+                                          >
+                                            View
+                                            <ExternalLink className="size-3" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
                               </div>
 
                               {/* Hover actions */}
@@ -532,12 +653,17 @@ export function NotificationBell() {
           )}
         </div>
 
-        {/* Footer actions */}
+        {/* Footer actions — View all + Clear read */}
         {hasAny && (
-          <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-3">
-            <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground/60">
-              showing {filtered.length} of {notifications.length}
-            </p>
+          <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] px-3 py-3">
+            <Link
+              to="/notifications"
+              onClick={() => setOpen(false)}
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-primary transition-colors hover:bg-primary/10"
+            >
+              <Inbox className="size-3" /> View all
+              <ChevronRight className="size-3" />
+            </Link>
             <div className="flex items-center gap-1.5">
               <Button
                 variant="ghost"

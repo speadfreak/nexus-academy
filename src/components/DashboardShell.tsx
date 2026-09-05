@@ -12,6 +12,7 @@ import {
   Map,
   MessageSquareText,
   NotebookPen,
+  Bell,
   Settings,
   ShieldCheck,
   Timer,
@@ -109,6 +110,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     { to: "/flashcards", label: "Flashcards", icon: Layers },
     { to: "/achievements", label: "Achievements", icon: Award },
     { to: "/groups", label: "Groups", icon: Users },
+    { to: "/notifications", label: "Notifications", icon: Bell },
     { to: "/settings", label: "Settings", icon: Settings },
     {
       to: "/upgrade",
