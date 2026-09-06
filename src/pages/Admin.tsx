@@ -2252,7 +2252,7 @@ export default function Admin() {
                       <span className="size-2 rounded-full bg-rose-400/80" />
                       <span className="size-2 rounded-full bg-amber-400/80" />
                       <span className="size-2 rounded-full bg-emerald-400/80" />
-                      <span className="ml-2 font-mono text-[10px] text-muted-foreground">nexus://system-events --tail -f</span>
+                      <span className="ml-2 font-mono text-[10px] text-muted-foreground">learnyx://system-events --tail -f</span>
                       <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] text-emerald-300"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> live</span>
                     </div>
                     <div className="max-h-[26rem] overflow-y-auto p-3 font-mono text-[11px] leading-5" data-lenis-prevent-wheel>

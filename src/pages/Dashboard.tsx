@@ -680,12 +680,15 @@ export default function Dashboard() {
   // Daily quote
   const quote = useQuery(api.quotes.getTodaysQuote);
   const ensureQuote = useAction(api.quotes.ensureTodaysQuote);
+  const rebrandQuotes = useMutation(api.quotes.rebrandQuoteAuthors);
   const quoteSyncedRef = useRef(false);
   useEffect(() => {
     if (quoteSyncedRef.current) return;
     quoteSyncedRef.current = true;
     void ensureQuote().catch(() => {});
-  }, [ensureQuote]);
+    // One-time migration: update stored quote authors from old brand → new.
+    void rebrandQuotes({ oldAuthor: "Nexus Academy", newAuthor: "Learnyx Academy ET 🇪🇹" }).catch(() => {});
+  }, [ensureQuote, rebrandQuotes]);
 
   // Daily challenge
   const dailyChallenges = useQuery(api.dailyChallenge.getTodaysChallenges);

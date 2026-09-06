@@ -84,7 +84,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
             className="absolute inset-0"
             style={{
               background:
-                "radial-gradient(ellipse 50% 45% at 50% 48%, rgba(56,189,248,0.07) 0%, transparent 70%)",
+                "radial-gradient(ellipse 50% 45% at 50% 48%, rgba(251,191,36,0.07) 0%, transparent 70%)",
             }}
           />
 
@@ -117,7 +117,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                 position: "absolute",
                 inset: 0,
                 backgroundImage:
-                  "linear-gradient(rgba(56,189,248,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,0.04) 1px, transparent 1px)",
+                  "linear-gradient(rgba(251,191,36,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(251,191,36,0.04) 1px, transparent 1px)",
                 backgroundSize: "48px 48px",
                 transform: "perspective(350px) rotateX(65deg)",
                 transformOrigin: "bottom center",
@@ -141,7 +141,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                 left: "50%",
                 marginTop: -40,
                 marginLeft: -40,
-                border: "1px solid rgba(56,189,248,0.12)",
+                border: "1px solid rgba(251,191,36,0.12)",
                 animation: `v2-energy-pulse 2.8s ease-out ${i * 0.7}s infinite`,
               }}
             />
@@ -152,7 +152,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
             className="absolute left-0 right-0 h-[2px]"
             style={{
               background:
-                "linear-gradient(90deg, transparent 5%, rgba(56,189,248,0.3) 30%, rgba(56,189,248,0.55) 50%, rgba(56,189,248,0.3) 70%, transparent 95%)",
+                "linear-gradient(90deg, transparent 5%, rgba(251,191,36,0.3) 30%, rgba(251,191,36,0.55) 50%, rgba(251,191,36,0.3) 70%, transparent 95%)",
               animation: "preloader-scan-beam 1.6s ease-in-out 0.2s 1",
             }}
           />
@@ -176,12 +176,12 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
               className="absolute rounded-full"
               style={{
                 inset: "40px",
-                border: "1px solid rgba(56,189,248,0.18)",
+                border: "1px solid rgba(251,191,36,0.18)",
                 transformStyle: "preserve-3d",
                 willChange: "transform",
                 animation: "v2-gyro-1 3.5s linear infinite",
                 boxShadow:
-                  "0 0 30px rgba(56,189,248,0.04), inset 0 0 30px rgba(56,189,248,0.02)",
+                  "0 0 30px rgba(251,191,36,0.04), inset 0 0 30px rgba(251,191,36,0.02)",
               }}
             >
               <div
@@ -192,9 +192,9 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                   transform: "translateX(-50%)",
                   width: 6,
                   height: 6,
-                  background: "#38bdf8",
+                  background: "#fbbf24",
                   boxShadow:
-                    "0 0 10px #38bdf8, 0 0 20px rgba(56,189,248,0.5), 0 0 40px rgba(56,189,248,0.2)",
+                    "0 0 10px #fbbf24, 0 0 20px rgba(251,191,36,0.5), 0 0 40px rgba(251,191,36,0.2)",
                 }}
               />
             </div>
@@ -204,11 +204,11 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
               className="absolute rounded-full"
               style={{
                 inset: "5px",
-                border: "1px solid rgba(56,189,248,0.1)",
+                border: "1px solid rgba(251,191,36,0.1)",
                 transformStyle: "preserve-3d",
                 willChange: "transform",
                 animation: "v2-gyro-2 5.5s linear infinite",
-                boxShadow: "0 0 20px rgba(56,189,248,0.03)",
+                boxShadow: "0 0 20px rgba(251,191,36,0.03)",
               }}
             >
               <div
@@ -219,9 +219,9 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                   transform: "translateX(-50%)",
                   width: 5,
                   height: 5,
-                  background: "rgba(56,189,248,0.8)",
+                  background: "rgba(251,191,36,0.8)",
                   boxShadow:
-                    "0 0 8px rgba(56,189,248,0.6), 0 0 16px rgba(56,189,248,0.3)",
+                    "0 0 8px rgba(251,191,36,0.6), 0 0 16px rgba(251,191,36,0.3)",
                 }}
               />
             </div>
@@ -231,7 +231,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
               className="absolute rounded-full"
               style={{
                 inset: "-35px",
-                border: "1px solid rgba(56,189,248,0.055)",
+                border: "1px solid rgba(251,191,36,0.055)",
                 transformStyle: "preserve-3d",
                 willChange: "transform",
                 animation: "v2-gyro-3 7.5s linear infinite",
@@ -245,8 +245,8 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                   transform: "translateX(-50%)",
                   width: 4,
                   height: 4,
-                  background: "rgba(56,189,248,0.5)",
-                  boxShadow: "0 0 6px rgba(56,189,248,0.4)",
+                  background: "rgba(251,191,36,0.5)",
+                  boxShadow: "0 0 6px rgba(251,191,36,0.4)",
                 }}
               />
             </div>
@@ -264,7 +264,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
               className="absolute inset-0 -m-14 rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle, rgba(56,189,248,0.12) 0%, transparent 70%)",
+                  "radial-gradient(circle, rgba(251,191,36,0.12) 0%, transparent 70%)",
                 animation: "v2-bloom 2.2s ease-in-out infinite",
               }}
             />
@@ -274,7 +274,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
               className="absolute inset-0 -m-20 rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle, rgba(56,189,248,0.04) 0%, transparent 60%)",
+                  "radial-gradient(circle, rgba(251,191,36,0.04) 0%, transparent 60%)",
                 animation: "v2-bloom 3.5s ease-in-out 0.5s infinite",
               }}
             />
@@ -283,11 +283,11 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
             <div
               className="relative flex size-[88px] items-center justify-center rounded-2xl"
               style={{
-                border: "1px solid rgba(56,189,248,0.2)",
+                border: "1px solid rgba(251,191,36,0.2)",
                 background:
-                  "linear-gradient(135deg, rgba(56,189,248,0.08), rgba(56,189,248,0.01))",
+                  "linear-gradient(135deg, rgba(251,191,36,0.08), rgba(251,191,36,0.01))",
                 boxShadow:
-                  "0 0 80px -15px rgba(56,189,248,0.15), inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(56,189,248,0.08)",
+                  "0 0 80px -15px rgba(251,191,36,0.15), inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(251,191,36,0.08)",
                 backdropFilter: "blur(12px)",
               }}
             >
@@ -296,11 +296,11 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                 className="relative font-serif text-5xl font-black"
                 style={{
                   background:
-                    "linear-gradient(135deg, #67e8f9, #22d3ee, #06b6d4)",
+                    "linear-gradient(135deg, #fde68a, #fbbf24, #f59e0b, #d97706)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                   animation: "v2-n-glow 2s ease-in-out infinite",
-                  filter: "drop-shadow(0 0 18px rgba(34,211,238,0.4))",
+                  filter: "drop-shadow(0 0 20px rgba(251,191,36,0.6))",
                 }}
               >
                 L
@@ -322,7 +322,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                     color:
                       char === " "
                         ? "transparent"
-                        : "rgba(56,189,248,0.5)",
+                        : "rgba(251,191,36,0.5)",
                     width: char === " " ? "0.45em" : "auto",
                     animation: `v2-letter-in 0.5s ease-out ${0.35 + i * 0.035}s both`,
                   }}
@@ -343,7 +343,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                 exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
                 transition={{ duration: 0.18 }}
                 className="block font-mono text-[8px] font-semibold uppercase tracking-[0.22em]"
-                style={{ color: "rgba(56,189,248,0.3)" }}
+                style={{ color: "rgba(251,191,36,0.3)" }}
               >
                 {STATUS[statusIdx]}
               </motion.span>
@@ -356,7 +356,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
               className="h-full w-full origin-left"
               style={{
                 background:
-                  "linear-gradient(90deg, transparent 5%, rgba(56,189,248,0.15) 25%, rgba(56,189,248,0.6) 45%, rgba(56,189,248,0.85) 50%, rgba(56,189,248,0.6) 55%, rgba(56,189,248,0.15) 75%, transparent 95%)",
+                  "linear-gradient(90deg, transparent 5%, rgba(251,191,36,0.15) 25%, rgba(251,191,36,0.6) 45%, rgba(251,191,36,0.85) 50%, rgba(251,191,36,0.6) 55%, rgba(251,191,36,0.15) 75%, transparent 95%)",
                 animation: "preloader-bar-fill 1.8s ease-out 0.1s both",
               }}
             />
@@ -447,9 +447,9 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                 height: p.size,
                 top: p.top,
                 left: p.left,
-                background: "rgba(56,189,248,0.7)",
+                background: "rgba(251,191,36,0.7)",
                 boxShadow: p.glow
-                  ? `0 0 ${p.size * 4}px rgba(56,189,248,0.4)`
+                  ? `0 0 ${p.size * 4}px rgba(251,191,36,0.4)`
                   : "none",
                 animation: `v2-particle-float ${p.dur}s ease-in-out ${p.delay}s infinite`,
               }}

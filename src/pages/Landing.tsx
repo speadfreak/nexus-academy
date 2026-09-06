@@ -496,7 +496,7 @@ export default function Landing() {
             <div className="space-y-2.5 p-5 font-mono text-[12.5px] leading-relaxed">
               <p>
                 <span className="text-primary">$</span>{" "}
-                <span className="text-foreground">nexus search</span>{" "}
+                <span className="text-foreground">learnyx search</span>{" "}
                 <span className="text-muted-foreground">
                   --stream natural --grade 12
                 </span>
@@ -517,7 +517,7 @@ export default function Landing() {
               </div>
               <p>
                 <span className="text-primary">$</span>{" "}
-                <span className="text-foreground">nexus download</span>{" "}
+                <span className="text-foreground">learnyx download</span>{" "}
                 <span className="text-muted-foreground">
                   "2023-grade-12-physics" --signed
                 </span>

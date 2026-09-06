@@ -684,7 +684,7 @@ export default function Tutor() {
                     <Bot className="size-7" />
                   </div>
                   <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-                    // nexus tutor
+                    // learnyx tutor
                   </p>
                   <h2 className="type-h1 mt-2">
                     {scopeSubject

@@ -6,12 +6,14 @@
 // day-of-year) so users are never left with nothing on a cold start or while
 // the API key is missing.
 
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import {
   action,
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -152,5 +154,31 @@ export const ensureTodaysQuote = action({
   handler: async (ctx) => {
     await ctx.runAction(internal.quotes.generateTodaysQuoteAction, {});
     return { ok: true };
+  },
+});
+
+/**
+ * One-time migration: update the author field on all stored dailyQuotes
+ * from the old brand name to the new one. Called from the frontend on
+ * first load after the rebrand deploy. Idempotent — quotes already
+ * showing the new name are skipped.
+ */
+export const rebrandQuoteAuthors = mutation({
+  args: {
+    oldAuthor: v.string(),
+    newAuthor: v.string(),
+  },
+  handler: async (ctx, { oldAuthor, newAuthor }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return { updated: 0 };
+    const all = await ctx.db.query("dailyQuotes").collect();
+    let updated = 0;
+    for (const row of all) {
+      if (row.author && row.author.includes(oldAuthor)) {
+        await ctx.db.patch(row._id, { author: newAuthor });
+        updated += 1;
+      }
+    }
+    return { updated };
   },
 });
