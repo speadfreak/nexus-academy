@@ -579,3 +579,144 @@ function addisDateKey(): string {
   const d = String(addis.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
+// ── generateAptitudeVocabDeck ───────────────────────────────────────────
+//
+// Auto-generates a flashcard deck focused on vocabulary + word
+// relationships + analogies — the verbal reasoning skills that benefit
+// most from spaced-repetition vocabulary practice. Ties the aptitude
+// hub to the existing flashcard engine: the deck appears in the
+// /flashcards page automatically (sourceType: "aptitude"), and the
+// student can review it with the existing study-session UI.
+//
+// The deck covers:
+//   - Word definitions (synonyms, antonyms)
+//   - Word relationships (cause-effect, part-whole, degree)
+//   - Analogy patterns (A:B::C:D)
+//   - Sentence-completion vocabulary (context-dependent word choice)
+//
+// Each card has a concise front (the word / prompt) and a clear back
+// (the definition / relationship / answer). 15 cards per deck — enough
+// for a meaningful study session without overwhelming.
+
+interface FlashcardPair {
+  front: string;
+  back: string;
+}
+
+function parseAndValidateFlashcards(raw: string, expectedCount: number): FlashcardPair[] {
+  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  const parsed: unknown = JSON.parse(cleaned);
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error("Flashcards must be a non-empty array.");
+  }
+  if (parsed.length > expectedCount + 5) {
+    throw new Error(`Got ${parsed.length} cards (expected ~${expectedCount}).`);
+  }
+  const cards: FlashcardPair[] = [];
+  for (const item of parsed) {
+    const c = item as Record<string, unknown>;
+    if (
+      typeof c.front !== "string" || !c.front.trim() ||
+      typeof c.back !== "string" || !c.back.trim()
+    ) {
+      throw new Error("One or more flashcards are malformed.");
+    }
+    cards.push({ front: c.front.trim(), back: c.back.trim() });
+  }
+  return cards.slice(0, expectedCount);
+}
+
+export const generateAptitudeVocabDeck = action({
+  args: {},
+  handler: async (ctx): Promise<{ deckId: Id<"flashcardDecks">; cardCount: number }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+
+    // Fetch the verbal skill nodes to ground the prompt.
+    const nodes = (await ctx.runQuery(internal.aptitude.getAllNodes, {})) as Array<{
+      slug: string;
+      name: string;
+      category: string;
+      description: string;
+    }>;
+    const verbalNodes = nodes.filter((n) => n.category === "verbal");
+    const verbalSkills = verbalNodes
+      .map((n) => `${n.name}: ${n.description}`)
+      .join("\n");
+
+    const count = 15;
+
+    const systemPrompt =
+      "You create vocabulary flashcards for the Ethiopian Scholastic Aptitude " +
+      "Test (SAT). Each flashcard has a concise front (a word, a relationship " +
+      "prompt, or an analogy) and a clear back (the definition, the " +
+      "relationship type, or the answer). Cards should test vocabulary " +
+      "breadth, word relationships, and analogy reasoning — not curriculum " +
+      "recall. Respond ONLY with valid JSON — no markdown, no explanation.";
+
+    const userMessage =
+      `Create exactly ${count} vocabulary flashcards for the Ethiopian SAT.\n\n` +
+      `Focus on these verbal reasoning skills:\n${verbalSkills}\n\n` +
+      `Requirements:\n` +
+      `- Mix of card types: ~5 word definitions (front: word, back: definition + part of speech)\n` +
+      `- ~4 word relationship cards (front: "Word A : Word B → what relationship?", back: the relationship type like 'synonym', 'antonym', 'cause-effect', 'part-whole', 'degree')\n` +
+      `- ~3 analogy cards (front: "A is to B as C is to ___", back: the answer word + why)\n` +
+      `- ~3 sentence-completion vocabulary cards (front: a sentence with a blank + 2 word choices, back: which word fits + why)\n` +
+      `- Front: 1-2 sentences max\n` +
+      `- Back: 1-3 sentences max\n` +
+      `- Use words that genuinely appear in aptitude/reasoning tests\n` +
+      `- Do NOT use obscure words only a dictionary would know — use SAT-level vocabulary\n\n` +
+      `Respond with a JSON array only:\n` +
+      `[{"front": "...", "back": "..."}]`;
+
+    const callOpts = {
+      systemPrompt,
+      userMessage,
+      maxTokens: 4096,
+      temperature: 0.5,
+    };
+
+    // Same 2-attempt retry loop as flashcards.ts.
+    let cards: FlashcardPair[] = [];
+    let lastError = "Unknown parsing error.";
+    for (let attempt = 0; attempt < 2 && cards.length === 0; attempt++) {
+      try {
+        const raw = await callGroq(ctx, callOpts);
+        cards = parseAndValidateFlashcards(raw, count);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "AI returned invalid JSON.";
+      }
+    }
+    if (cards.length === 0) {
+      throw new ConvexError({
+        message: `Vocabulary deck generation failed: ${lastError}`,
+        code: "ai_error",
+      });
+    }
+
+    // Insert the deck — sourceType: "aptitude", no subjectId (optional now).
+    const deckId = (await ctx.runMutation(internal.flashcards.insertDeck, {
+      userId,
+      subjectId: undefined,
+      contentId: undefined,
+      sourceType: "aptitude",
+      title: "Aptitude Vocabulary Deck",
+      cardCount: cards.length,
+      createdAt: Date.now(),
+    })) as Id<"flashcardDecks">;
+
+    // Insert each card.
+    for (const card of cards) {
+      await ctx.runMutation(internal.flashcards.insertCard, {
+        deckId,
+        front: card.front,
+        back: card.back,
+      });
+    }
+
+    return { deckId, cardCount: cards.length };
+  },
+});

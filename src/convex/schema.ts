@@ -645,9 +645,9 @@ const schema = defineSchema(
 
     flashcardDecks: defineTable({
       userId: v.id("users"),
-      subjectId: v.id("subjects"),
+      subjectId: v.optional(v.id("subjects")),
       contentId: v.optional(v.id("contentItems")),
-      sourceType: v.union(v.literal("content"), v.literal("conversation"), v.literal("topic")),
+      sourceType: v.union(v.literal("content"), v.literal("conversation"), v.literal("topic"), v.literal("aptitude")),
       title: v.string(),
       cardCount: v.number(),
       createdAt: v.number(),

@@ -29,6 +29,7 @@ import {
   Crown,
   Flame,
   Gauge,
+  Layers,
   Loader2,
   Mic,
   MicOff,
@@ -730,6 +731,9 @@ export default function AptitudeHub() {
                   {/* Daily warm-up */}
                   <DailyWarmupCard />
 
+                  {/* Vocabulary deck */}
+                  <AptitudeVocabDeckCard />
+
                   {/* Time-pressure trainer */}
                   <TimePressureTrainerCard
                     nodes={skillMap.nodes}
@@ -1016,6 +1020,100 @@ function DailyWarmupCard() {
               {submitting ? "Submitting…" : "Submit answer"}
             </Button>
           </>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Vocabulary deck card ──────────────────────────────────────────────
+
+function AptitudeVocabDeckCard() {
+  const generateDeck = useAction(api.aptitudeActions.generateAptitudeVocabDeck);
+  const navigate = useNavigate();
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated] = useState(false);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const result = await generateDeck({});
+      setGenerated(true);
+      toast.success(`Vocabulary deck created with ${result.cardCount} cards!`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not generate the vocabulary deck.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: 0.18 }}
+      className="glass-panel relative overflow-hidden rounded-2xl p-5"
+    >
+      <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-amber-400/[0.06] blur-[40px]" />
+      <div className="relative">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-9 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
+            <Layers className="size-4.5" />
+          </div>
+          <div>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
+              // vocabulary deck
+            </p>
+            <p className="text-sm font-bold text-foreground">Aptitude Vocabulary</p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          Auto-generate a 15-card flashcard deck covering SAT vocabulary,
+          word relationships, analogies, and sentence-completion words.
+          The deck appears in your Flashcards page — review it with
+          spaced repetition to build your verbal reasoning vocabulary.
+        </p>
+        {generated ? (
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3">
+              <CheckCircle2 className="size-4 shrink-0 text-emerald-300" />
+              <p className="text-xs font-semibold text-emerald-200">
+                Deck created! Open Flashcards to start studying.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => navigate("/flashcards")}
+                size="sm"
+                className="flex-1 cursor-pointer gap-2 rounded-xl"
+              >
+                <Layers className="size-4" /> Open Flashcards
+              </Button>
+              <Button
+                onClick={() => void handleGenerate()}
+                disabled={generating}
+                variant="outline"
+                size="sm"
+                className="cursor-pointer gap-2 rounded-xl bg-white/5"
+              >
+                {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                New deck
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            onClick={() => void handleGenerate()}
+            disabled={generating}
+            className="mt-4 w-full cursor-pointer gap-2 rounded-xl bg-amber-500 text-amber-950 hover:bg-amber-400"
+          >
+            {generating ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Layers className="size-4" />
+            )}
+            {generating ? "Generating 15 cards…" : "Generate vocabulary deck"}
+          </Button>
         )}
       </div>
     </motion.div>

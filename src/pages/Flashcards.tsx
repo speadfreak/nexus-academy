@@ -337,12 +337,17 @@ export default function Flashcards() {
                     </div>
                     <h3 className="type-h3 mt-3">{deck.title}</h3>
                     <p className="type-caption mt-1 text-muted-foreground">
-                      {subject?.name ?? "Subject"} ·{" "}
+                      {deck.sourceType === "aptitude"
+                        ? "Aptitude Hub"
+                        : subject?.name ?? "Subject"}{" "}
+                      ·{" "}
                       {deck.sourceType === "content"
                         ? "from library"
                         : deck.sourceType === "conversation"
                           ? "from tutor chat"
-                          : "from topic"}
+                          : deck.sourceType === "aptitude"
+                            ? "from aptitude hub"
+                            : "from topic"}
                     </p>
                     <p className="type-caption mt-0.5 text-muted-foreground/60">
                       {new Date(deck.createdAt).toLocaleDateString()}
