@@ -44,7 +44,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* CHANGE VALUES FOR THEME — Nexus Academy technical theme.
+/* CHANGE VALUES FOR THEME — Learnyx Academy technical theme.
    Dark is the default (html gets the .dark class from ThemeProvider); the
    light theme is a genuinely usable, high-contrast cool-gray variant. */
 :root {

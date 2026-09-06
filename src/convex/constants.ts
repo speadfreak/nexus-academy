@@ -1,4 +1,4 @@
-// Shared domain constants for the Nexus Academy ET 🇪🇹 content library.
+// Shared domain constants for the Learnyx Academy ET 🇪🇹 content library.
 // This file is pure TS (no Convex imports) so it can be imported safely
 // from both the backend (src/convex) and the frontend.
 

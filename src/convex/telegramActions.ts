@@ -169,7 +169,7 @@ export const postNewContent = internalAction({
     const text =
       `📚 New in the library: <b>${escapeHtml(args.title)}</b>\n` +
       `${escapeHtml(args.subjectName)} · Grade ${args.grade} · ${escapeHtml(label)}\n` +
-      `Open it in Nexus Academy ET 🇪🇹 →`;
+      `Open it in Learnyx Academy ET 🇪🇹 →`;
 
     let failed = 0;
     for (const channel of channels) {
@@ -343,7 +343,7 @@ export const sendContactMessage = action({
       other: "📝 Message",
     };
     const header =
-      `${categoryLabel[category] ?? "📝 Message"} — Nexus Academy contact form\n` +
+      `${categoryLabel[category] ?? "📝 Message"} — Learnyx Academy contact form\n` +
       `──────────────────────\n` +
       `<b>From:</b> ${escapeHtml(name || "Anonymous user")}\n` +
       `<b>Email:</b> ${escapeHtml(email)}\n`;

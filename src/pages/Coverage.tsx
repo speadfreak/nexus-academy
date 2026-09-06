@@ -117,7 +117,7 @@ export default function Coverage() {
           </div>
           <div>
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300">
-              // nexus academy
+              // learnyx academy
             </p>
             <p className="text-sm font-bold">Coverage map</p>
           </div>

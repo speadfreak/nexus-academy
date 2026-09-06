@@ -372,7 +372,7 @@ export const testIntegrationConnection = action({
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
-          "User-Agent": "nexus-academy",
+          "User-Agent": "learnyx-academy",
         },
       });
       if (!response.ok) {

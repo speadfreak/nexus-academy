@@ -71,7 +71,7 @@ export default function Upgrade() {
             Upgrade
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            One payment unlocks the full Nexus Academy ET 🇪🇹 experience for{" "}
+            One payment unlocks the full Learnyx Academy ET 🇪🇹 experience for{" "}
             {SUBSCRIPTION_DAYS} days.
           </p>
         </div>
@@ -398,7 +398,7 @@ function ManualPaymentSection({
                 <Crown className="size-5" />
               </div>
               <div>
-                <p className="text-sm font-bold tracking-tight">Nexus Academy ET Premium</p>
+                <p className="text-sm font-bold tracking-tight">Learnyx Academy ET Premium</p>
                 <p className="font-mono text-[10px] text-muted-foreground">
                   {SUBSCRIPTION_DAYS}-day access
                 </p>

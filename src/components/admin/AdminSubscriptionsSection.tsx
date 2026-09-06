@@ -810,7 +810,7 @@ function HelpPanel() {
         </p>
         <div className="mt-3 space-y-3 text-sm leading-6 text-foreground">
           <p>
-            Nexus Academy ET 🇪🇹's free trial is counted in <strong>active days</strong>,
+            Learnyx Academy ET 🇪🇹's free trial is counted in <strong>active days</strong>,
             not calendar days. A student on a 14-day trial can use the app on
             any 14 calendar days they actually open it — if they sign up and
             don't use the app for a month, their trial is still unused.

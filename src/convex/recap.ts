@@ -102,7 +102,7 @@ export const generateRecap = action({
         dataSummary =
           `This is the student's first focus session!\n` +
           `- Current streak: 0 days\n` +
-          `- They just started using Nexus Academy ET 🇪🇹`;
+          `- They just started using Learnyx Academy ET 🇪🇹`;
       }
     } else if (args.type === "quiz") {
       const attempts = await ctx.runQuery(internal.recap.getRecentQuizAttempts, {

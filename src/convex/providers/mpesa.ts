@@ -150,7 +150,7 @@ export async function initiateCheckout(args: {
       PartyB: shortcode,
       PhoneNumber: args.phoneNumber.replace(/\D/g, ""),
       CallBackURL: env["MPESA_CALLBACK_URL"]!,
-      AccountReference: "NEXUSACADEMY".slice(0, 12),
+      AccountReference: "LEARNYXACADEMY".slice(0, 12),
       TransactionDesc: "Premium access".slice(0, 13),
     }),
   });

@@ -247,9 +247,9 @@ export default function Landing() {
           className="glass-panel mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-4 py-2.5"
         >
           <Link to="/" className="flex items-center gap-2.5">
-            <img src={logo} alt="Nexus Academy ET 🇪🇹 logo" className="size-9 rounded-xl" />
+            <img src={logo} alt="Learnyx Academy ET 🇪🇹 logo" className="size-9 rounded-xl" />
             <span className="flex items-baseline gap-2">
-              <span className="type-h3 font-extrabold">Nexus Academy ET 🇪🇹</span>
+              <span className="type-h3 font-extrabold">Learnyx Academy ET 🇪🇹</span>
               <span className="hidden font-mono text-[10px] font-medium text-muted-foreground sm:inline">
                 v1.0
               </span>
@@ -386,7 +386,7 @@ export default function Landing() {
             variants={fadeUp}
             className="type-body-lg mt-5 max-w-xl text-muted-foreground"
           >
-            Nexus Academy ET 🇪🇹 is the complete content library for the EHEEE
+            Learnyx Academy ET 🇪🇹 is the complete content library for the EHEEE
             (Ethiopian Higher Education Entrance Examination, also called ESSLCE) —
             textbooks, past papers, worksheets and study guides across all nine
             subjects. Sign in, search the catalog, and download exactly what your
@@ -452,7 +452,7 @@ export default function Landing() {
               <span className="size-2.5 rounded-full bg-white/15" />
               <span className="size-2.5 rounded-full bg-white/15" />
               <span className="ml-2 font-mono text-[11px] text-muted-foreground">
-                nexus — catalog
+                learnyx — catalog
               </span>
             </div>
             <div className="space-y-2.5 p-5 font-mono text-[12.5px] leading-relaxed">
@@ -584,7 +584,7 @@ export default function Landing() {
             </p>
             <div className="mt-4 type-body-lg leading-relaxed text-foreground/90">
               <p>
-                I&apos;m Joseph James, 18 years old, Ethiopian. I built Nexus Academy ET 🇪🇹
+                I&apos;m Joseph James, 18 years old, Ethiopian. I built Learnyx Academy ET 🇪🇹
                 because I watched myself and my classmates struggle to organize four
                 years of curriculum into something that actually felt like exam
                 preparation — not just a pile of PDFs and half-remembered notes.
@@ -834,7 +834,7 @@ export default function Landing() {
           <div className="min-w-0 flex-1">
             <p className="type-h3 font-semibold">Preview a real past paper — no signup required</p>
             <p className="type-body mt-1 text-muted-foreground">
-              See exactly what Nexus Academy ET 🇪🇹 looks like before you create an account.
+              See exactly what Learnyx Academy ET 🇪🇹 looks like before you create an account.
               One real EHEEE past exam paper, fully readable, right now.
             </p>
           </div>
@@ -1005,7 +1005,7 @@ export default function Landing() {
             },
             {
               q: "Is my TeleBirr / M-Pesa payment safe?",
-              a: "Payments are processed through your carrier's own secure checkout. Nexus Academy ET 🇪🇹 never sees your PIN or card number — we only receive a confirmation token.",
+              a: "Payments are processed through your carrier's own secure checkout. Learnyx Academy ET 🇪🇹 never sees your PIN or card number — we only receive a confirmation token.",
             },
             {
               q: "What happens when my trial ends?",
@@ -1102,9 +1102,9 @@ export default function Landing() {
         <div className="relative mx-auto max-w-6xl px-4 py-14">
           {/* Signature credit — the standout element */}
           <div className="flex flex-col items-center text-center">
-            <img src={logo} alt="Nexus Academy ET 🇪🇹 logo" className="mb-4 size-12 rounded-2xl" />
+            <img src={logo} alt="Learnyx Academy ET 🇪🇹 logo" className="mb-4 size-12 rounded-2xl" />
             <p className="type-h2">
-              Nexus Academy ET 🇪🇹
+              Learnyx Academy ET 🇪🇹
             </p>
             <div className="mt-4 flex flex-col items-center gap-1">
               <p className="type-body-lg italic text-foreground/80">
@@ -1129,7 +1129,7 @@ export default function Landing() {
           {/* Bottom row */}
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <p className="type-caption text-muted-foreground">
-              © {new Date().getFullYear()} Nexus Academy ET 🇪🇹 · EHEEE exam prep, grades 9–12
+              © {new Date().getFullYear()} Learnyx Academy ET 🇪🇹 · EHEEE exam prep, grades 9–12
             </p>
             <div className="flex items-center gap-4">
               {/* Telegram links — quick access from the footer */}
@@ -1138,7 +1138,7 @@ export default function Landing() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
-                title="Nexus Academy ET 🇪🇹 Telegram channel"
+                title="Learnyx Academy ET 🇪🇹 Telegram channel"
               >
                 <Send className="size-3" /> Channel
               </a>
@@ -1148,7 +1148,7 @@ export default function Landing() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
-                title="Nexus Academy ET Community Telegram group"
+                title="Learnyx Academy ET Community Telegram group"
               >
                 <Users className="size-3" /> Community
               </a>
@@ -1205,8 +1205,8 @@ function TelegramCommunitySection() {
   // Channel + community group links.
   const channelUrl = "https://t.me/NexusAcademyET";
   const communityUrl = "https://t.me/NexusETCommunity";
-  const channelName = "⟡ NEXUS ACADEMY | ET 🇪🇹";
-  const communityName = "⟡ NEXUS COMMUNITY 🇪🇹";
+  const channelName = "⟡ LEARNYX ACADEMY | ET 🇪🇹";
+  const communityName = "⟡ LEARNYX COMMUNITY 🇪🇹";
 
   // Floating paper-plane animation: a few SVG planes drifting upward
   // at different speeds. Pure CSS animation via Tailwind's animate-*
@@ -1303,7 +1303,7 @@ function TelegramCommunitySection() {
             variants={fadeUp}
             className="mx-auto mt-4 max-w-xl text-muted-foreground"
           >
-            Nexus Academy ET 🇪🇹 isn&apos;t just a library — it&apos;s a community of
+            Learnyx Academy ET 🇪🇹 isn&apos;t just a library — it&apos;s a community of
             Ethiopian students preparing for the same exam, at the same time,
             with the same dream. Join our Telegram channel for study tips and
             exam updates, and hop into the community group to ask questions,
@@ -1346,7 +1346,7 @@ function TelegramCommunitySection() {
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 Official announcements, study tips, exam-date reminders, and
-                new-resource alerts. Follow for the latest from Nexus Academy ET 🇪🇹 —
+                new-resource alerts. Follow for the latest from Learnyx Academy ET 🇪🇹 —
                 straight to your Telegram.
               </p>
 

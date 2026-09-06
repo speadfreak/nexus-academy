@@ -77,7 +77,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden"
           style={{ background: "#030308" }}
           role="status"
-          aria-label="Loading Nexus Academy ET 🇪🇹"
+          aria-label="Loading Learnyx Academy ET 🇪🇹"
         >
           {/* ══ LAYER 1: Deep ambient radial glow ══ */}
           <div
@@ -303,7 +303,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
                   filter: "drop-shadow(0 0 18px rgba(34,211,238,0.4))",
                 }}
               >
-                N
+                L
               </span>
             </div>
           </motion.div>
@@ -314,7 +314,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
             style={{ height: 18 }}
           >
             <div className="flex">
-              {"NEXUS ACADEMY".split("").map((char, i) => (
+              {"LEARNYX ACADEMY".split("").map((char, i) => (
                 <span
                   key={i}
                   className="inline-block font-mono text-[11px] font-bold uppercase tracking-[0.14em]"
@@ -379,7 +379,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
               </div>
             </div>
             <div className="mt-2 font-mono text-[6px] font-bold uppercase tracking-[0.2em] text-cyan-400/20">
-              NEXUS//BOOT
+              LEARNYX//BOOT
             </div>
           </div>
 
@@ -456,7 +456,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
             />
           ))}
 
-          <span className="sr-only">Loading Nexus Academy ET 🇪🇹…</span>
+          <span className="sr-only">Loading Learnyx Academy ET 🇪🇹…</span>
         </motion.div>
       )}
     </AnimatePresence>

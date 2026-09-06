@@ -264,7 +264,7 @@ function composeDigest({
   });
 
   const lines: string[] = [];
-  lines.push(`📚 <b>Nexus Academy — Weekly Report Card</b>`);
+  lines.push(`📚 <b>Learnyx Academy — Weekly Report Card</b>`);
   lines.push(`<i>${dateStr}</i>`);
   lines.push(`Hi <b>${escapeHtml(firstName)}</b> 👋 here's how your week went.`);
   lines.push("");
@@ -332,7 +332,7 @@ function composeDigest({
   lines.push("");
   lines.push(`──────────────────────`);
   lines.push(`<i>See you next Monday. You've got this 💪</i>`);
-  lines.push(`<i>— Nexus Academy ET 🇪🇹</i>`);
+  lines.push(`<i>— Learnyx Academy ET 🇪🇹</i>`);
 
   return lines.join("\n");
 }

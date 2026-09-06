@@ -59,7 +59,7 @@ const schema = defineSchema(
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
     // ------------------------------------------------------------------
-    // Nexus Academy ET 🇪🇹 content library
+    // Learnyx Academy ET 🇪🇹 content library
     // ------------------------------------------------------------------
 
     // Subjects across the three streams. e.g. { name: "Physics", stream: "natural", slug: "physics" }

@@ -162,7 +162,7 @@ export function GuestLockOverlay({
         {/* Sparkle accent */}
         <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/40">
           <Sparkles className="size-3" />
-          Nexus Academy ET 🇪🇹 · Ethiopian exam prep
+          Learnyx Academy ET 🇪🇹 · Ethiopian exam prep
         </div>
       </motion.div>
     </motion.div>

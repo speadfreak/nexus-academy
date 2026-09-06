@@ -462,7 +462,7 @@ http.route({
 
     if (!code) {
       await reply(
-        "👋 <b>Welcome to Nexus Academy's weekly digest bot!</b>\n\n" +
+        "👋 <b>Welcome to Learnyx Academy's weekly digest bot!</b>\n\n" +
         "To link your account, open <b>Settings → Link Telegram</b> in the app " +
         "and send me the 6-character code shown there.\n\n" +
         "Once linked, you'll get a personalized progress report every Monday " +

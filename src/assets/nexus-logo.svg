@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="nxg" x1="8" y1="4" x2="56" y2="62" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#5b7cfa"/>
-      <stop offset="0.55" stop-color="#4f6ef2"/>
-      <stop offset="1" stop-color="#38bdf8"/>
+    <linearGradient id="lyx" x1="8" y1="4" x2="56" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
     </linearGradient>
     <linearGradient id="etflag" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#009A44"/>
@@ -11,8 +11,11 @@
       <stop offset="1" stop-color="#DA121A"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="17" fill="url(#nxg)"/>
-  <path d="M21 45V19l22 26V19" stroke="white" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="48.5" cy="15.5" r="3.4" fill="white" fill-opacity="0.9"/>
+  <rect width="64" height="64" rx="17" fill="url(#lyx)"/>
+  <!-- Stylized L — geometric, bold, with a spark angle at the base -->
+  <path d="M22 16 L22 48 L44 48" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Spark accent — a small angled notch at the top-right of the L, evoking the "spark" in Learnyx -->
+  <path d="M42 16 L48 22 L42 28" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.8"/>
+  <!-- Ethiopian flag stripe on the left edge -->
   <rect x="3" y="3" width="6" height="58" rx="3" fill="url(#etflag)" opacity="0.9"/>
 </svg>

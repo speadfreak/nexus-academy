@@ -164,6 +164,9 @@ const RESERVED_USERNAMES = new Set([
   "help",
   "nexus",
   "nexusacademy",
+  "learnyx",
+  "learnyxacade",
+  "learnyxacademy",
   "moderator",
   "guest",
 ]);

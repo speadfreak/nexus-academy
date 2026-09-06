@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// main.tsx — Nexus Academy ET 🇪🇹 entry point
+// main.tsx — Learnyx Academy ET 🇪🇹 entry point
 //
 // CRITICAL: Do NOT add static imports to Vly platform tooling here.
 // Any module that can fail at load-time (snapdom, vly-ai, etc.) MUST be
@@ -716,5 +716,5 @@ if (rootEl) {
 } else {
   // If #root doesn't exist, something is very wrong with index.html.
   document.body.textContent =
-    "Nexus Academy ET failed to start. Please hard-refresh the page (Ctrl+Shift+R).";
+    "Learnyx Academy ET failed to start. Please hard-refresh the page (Ctrl+Shift+R).";
 }

@@ -107,7 +107,7 @@ function composeAdminDigest({
   const dateRange = `${weekStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
   const lines: string[] = [];
-  lines.push(`📊 <b>Nexus Academy — Weekly Business Digest</b>`);
+  lines.push(`📊 <b>Learnyx Academy — Weekly Business Digest</b>`);
   lines.push(`<i>${dateRange}</i>`);
   lines.push(`──────────────────────`);
 
@@ -150,7 +150,7 @@ function composeAdminDigest({
   lines.push("");
   lines.push(`──────────────────────`);
   lines.push(`<i>Numbers are real, computed from live data. No fabrication.</i>`);
-  lines.push(`<i>— Nexus Academy ET 🇪🇹 admin bot</i>`);
+  lines.push(`<i>— Learnyx Academy ET 🇪🇹 admin bot</i>`);
 
   return lines.join("\n");
 }

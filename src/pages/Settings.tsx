@@ -543,8 +543,8 @@ function ReferralSection() {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Nexus Academy ET 🇪🇹 — Ethiopian Exam Prep",
-          text: "Join me on Nexus Academy ET 🇪🇹 for the best EHEEE exam prep. Use my referral link!",
+          title: "Learnyx Academy ET 🇪🇹 — Ethiopian Exam Prep",
+          text: "Join me on Learnyx Academy ET 🇪🇹 for the best EHEEE exam prep. Use my referral link!",
           url: referralLink,
         });
       } catch {
