@@ -1607,6 +1607,7 @@ html.lenis, html.lenis body {
 .student-page-frame[data-page="groups"] { --page-accent: 175 80% 58%; }
 .student-page-frame[data-page="achievements"] { --page-accent: 42 95% 62%; }
 .student-page-frame[data-page="settings"] { --page-accent: 215 85% 68%; }
+.student-page-frame[data-page="aptitude-hub"] { --page-accent: 280 80% 65%; }
 
 .student-page-frame[data-page]::before {
   content: "";

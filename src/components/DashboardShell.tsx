@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
   Award,
   BookOpen,
+  Brain,
   CalendarDays,
   Crown,
   GraduationCap,
@@ -104,6 +105,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     { to: "/focus", label: "Focus", icon: Timer },
     { to: "/plans", label: "Plans", icon: Map },
     { to: "/mock-exam", label: "Mock Exam", icon: GraduationCap, premiumActive: true },
+    { to: "/aptitude-hub", label: "Aptitude Hub", icon: Brain },
     { to: "/journey", label: "Journey", icon: TrendingUp },
     { to: "/calendar", label: "Calendar", icon: CalendarDays },
     { to: "/notes", label: "Notes", icon: NotebookPen },

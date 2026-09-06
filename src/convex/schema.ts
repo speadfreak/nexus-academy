@@ -930,6 +930,120 @@ const schema = defineSchema(
     })
       .index("by_active", ["isActive"])
       .index("by_createdAt", ["createdAt"]),
+
+    // ── Aptitude (SAT) Practice Hub ───────────────────────────────────
+    // A dedicated deep-practice environment for the Scholastic Aptitude
+    // Test — compulsory for every student regardless of stream. Tests
+    // reasoning skill (verbal + quantitative) rather than pure curriculum
+    // recall, which is why it has its own specialized hub.
+
+    // Static skill-tree nodes — seeded once (no per-user state). Each
+    // node is a reasoning sub-skill (e.g. "Analogies", "Data
+    // Interpretation") with a description the AI uses to ground question
+    // generation. prerequisiteSlugs defines skill-tree progression
+    // (the brain map renders these as edges between nodes).
+    aptitudeSkillNodes: defineTable({
+      slug: v.string(),
+      category: v.union(v.literal("verbal"), v.literal("quantitative")),
+      name: v.string(),
+      description: v.string(),
+      prerequisiteSlugs: v.optional(v.array(v.string())),
+    })
+      .index("by_slug", ["slug"])
+      .index("by_category", ["category"]),
+
+    // Per-user mastery for each skill node. masteryScore is 0-100,
+    // computed from recent practice accuracy (weight recent attempts
+    // more than old ones — exponential decay). questionsAttempted +
+    // correctCount are lifetime counters; lastPracticedAt drives the
+    // "recently practiced" UI + the recency weighting.
+    userSkillMastery: defineTable({
+      userId: v.id("users"),
+      nodeSlug: v.string(),
+      masteryScore: v.number(), // 0-100
+      questionsAttempted: v.number(),
+      correctCount: v.number(),
+      lastPracticedAt: v.optional(v.number()),
+    })
+      .index("by_user_node", ["userId", "nodeSlug"])
+      .index("by_user", ["userId"]),
+
+    // Practice attempts log — every generateNodePractice call writes
+    // one row per question. Used for recency-weighted mastery
+    // recomputation + the "recently practiced" feed.
+    aptitudePracticeAttempts: defineTable({
+      userId: v.id("users"),
+      nodeSlug: v.string(),
+      questionCount: v.number(),
+      correctCount: v.number(),
+      masteryBefore: v.number(),
+      masteryAfter: v.number(),
+      difficulty: v.string(), // "foundational" | "intermediate" | "advanced"
+      completedAt: v.number(),
+    })
+      .index("by_user_node", ["userId", "nodeSlug"])
+      .index("by_user", ["userId"]),
+
+    // Standalone full Aptitude mock — separate from the 6-subject mock
+    // exam flow. ~40 questions, timed to match the real exam's aptitude
+    // section duration. Students can drill this specific section
+    // repeatedly. status drives the taking/results flow.
+    aptitudeMocks: defineTable({
+      userId: v.id("users"),
+      status: v.union(
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("abandoned"),
+      ),
+      startedAt: v.number(),
+      completedAt: v.optional(v.number()),
+      timeAllottedSeconds: v.number(),
+      totalScore: v.optional(v.number()), // 0-100, server-computed
+      correctCount: v.optional(v.number()),
+      totalQuestions: v.optional(v.number()),
+      timeSpentSeconds: v.optional(v.number()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_startedAt", ["userId", "startedAt"])
+      .index("by_user_status", ["userId", "status"]),
+
+    // Per-aptitude-mock questions + answers. Mirrors mockExamSections'
+    // shape (questionsJson stores the AI-generated questions; answers
+    // is the student's submitted answers; flagged for review).
+    aptitudeMockQuestions: defineTable({
+      mockId: v.id("aptitudeMocks"),
+      questionsJson: v.string(),
+      answers: v.array(v.number()), // -1 for unanswered
+      flagged: v.array(v.boolean()),
+      status: v.union(
+        v.literal("in_progress"),
+        v.literal("completed"),
+      ),
+      completedAt: v.optional(v.number()),
+    }).index("by_mock", ["mockId"]),
+
+    // Daily aptitude warm-up — one adaptive question per day, scoped
+    // to this hub (separate streak from the general Daily Challenge).
+    // Uses the same generate-on-first-visit pattern as dailyChallenge.
+    aptitudeDailyWarmups: defineTable({
+      warmupDate: v.string(), // "YYYY-MM-DD" in Africa/Addis_Ababa
+      nodeSlug: v.string(),
+      difficulty: v.string(),
+      questionJson: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_date", ["warmupDate"])
+      .index("by_date_node", ["warmupDate", "nodeSlug"]),
+
+    aptitudeDailyWarmupAttempts: defineTable({
+      userId: v.id("users"),
+      warmupDate: v.string(),
+      nodeSlug: v.string(),
+      answeredCorrectly: v.boolean(),
+      completedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_date", ["userId", "warmupDate"]),
   },
 );
 
