@@ -1414,7 +1414,7 @@ function TelegramCommunitySection() {
 
               {/* URL hint */}
               <p className="mt-3 type-mono text-[10px] text-muted-foreground/50">
-                t.me/NexusAcademyET
+                t.me/LearnyxAcademyET
               </p>
             </a>
           </motion.div>
@@ -1482,7 +1482,7 @@ function TelegramCommunitySection() {
 
               {/* URL hint */}
               <p className="mt-3 type-mono text-[10px] text-muted-foreground/50">
-                t.me/NexusETCommunity
+                t.me/LearnyxETCommunity
               </p>
             </a>
           </motion.div>
