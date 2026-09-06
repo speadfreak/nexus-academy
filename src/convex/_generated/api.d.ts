@@ -29,6 +29,7 @@ import type * as coverage from "../coverage.js";
 import type * as crons from "../crons.js";
 import type * as dailyChallenge from "../dailyChallenge.js";
 import type * as flashcards from "../flashcards.js";
+import type * as fraudDetection from "../fraudDetection.js";
 import type * as gemini from "../gemini.js";
 import type * as github from "../github.js";
 import type * as groq from "../groq.js";
@@ -101,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   dailyChallenge: typeof dailyChallenge;
   flashcards: typeof flashcards;
+  fraudDetection: typeof fraudDetection;
   gemini: typeof gemini;
   github: typeof github;
   groq: typeof groq;

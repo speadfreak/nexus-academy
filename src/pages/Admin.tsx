@@ -34,6 +34,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  ShieldAlert,
   Terminal,
   Timer,
   Trash2,
@@ -73,6 +74,7 @@ import { PaymentReviewsSection } from "@/components/admin/PaymentReviewsSection"
 import { StatCard2 } from "@/components/admin/StatCard2";
 import { ContactGroupPanel } from "@/components/admin/ContactGroupPanel";
 import { AdminCoverageSection } from "@/components/admin/AdminCoverageSection";
+import { AdminFraudSection } from "@/components/admin/AdminFraudSection";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -159,13 +161,14 @@ const ADMIN_TABS = [
   { id: "keys", label: "Keys", index: "06", icon: KeyRound },
   { id: "finance", label: "Finance", index: "07", icon: Wallet },
   { id: "payments", label: "Payment Reviews", index: "08", icon: Receipt },
-  { id: "marketing", label: "Marketing", index: "09", icon: Megaphone },
-  { id: "subscriptions", label: "Subscriptions", index: "10", icon: CalendarClock },
-  { id: "reports", label: "Reports", index: "11", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "12", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "13", icon: Send },
-  { id: "system", label: "System", index: "14", icon: Plug },
-  { id: "audit", label: "Audit Log", index: "15", icon: ScrollText },
+  { id: "fraud", label: "Fraud Patterns", index: "09", icon: ShieldAlert },
+  { id: "marketing", label: "Marketing", index: "10", icon: Megaphone },
+  { id: "subscriptions", label: "Subscriptions", index: "11", icon: CalendarClock },
+  { id: "reports", label: "Reports", index: "12", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "13", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "14", icon: Send },
+  { id: "system", label: "System", index: "15", icon: Plug },
+  { id: "audit", label: "Audit Log", index: "16", icon: ScrollText },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -173,7 +176,7 @@ type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const ADMIN_TAB_GROUPS = [
   { label: "OVERVIEW", ids: ["dashboard"] as const },
   { label: "CONTENT", ids: ["content", "coverage"] as const },
-  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "marketing", "subscriptions"] as const },
+  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "fraud", "marketing", "subscriptions"] as const },
   { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
 ] as const;
 
@@ -2143,6 +2146,9 @@ export default function Admin() {
             {tab === "payments" && (
               <PaymentReviewsSection />
             )}
+
+            {/* ══════ FRAUD PATTERNS — review-only suspicious-pattern detection ══════ */}
+            {tab === "fraud" && <AdminFraudSection />}
 
             {/* ══════ MARKETING — referral + discounts + announcements ══════ */}
             {tab === "marketing" && (
