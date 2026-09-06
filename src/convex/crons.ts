@@ -47,4 +47,16 @@ crons.hourly(
   internal.manualPayments.checkSlaBreach,
 );
 
+// Weekly: personal Telegram digest for every linked user. Runs every
+// Monday at 08:00 UTC. The action iterates every telegramLinks row,
+// computes their weekly stats (XP, quiz trend, streak, weakest topic),
+// and sends a personalized HTML message via the bot. Skips users who
+// already received a digest in the last 6 days (idempotent re-runs
+// don't spam). See src/convex/telegramDigest.ts.
+crons.weekly(
+  "personal-weekly-digest",
+  { dayOfWeek: "monday", hourUTC: 8, minuteUTC: 0 },
+  internal.telegramDigest.sendWeeklyDigests,
+);
+
 export default crons;

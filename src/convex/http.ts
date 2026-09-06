@@ -355,4 +355,167 @@ http.route({
   }),
 });
 
+// ── Telegram webhook — handles the /start CODE linking flow ──────────────
+//
+// Students link their own Telegram account by sending `/start CODE` (or
+// just `CODE`) to the bot. Telegram forwards the message to this webhook
+// (configured via the BotFather → Set Webhook URL). We:
+//   1. Parse the message text for a 6-char alphanumeric code.
+//   2. Look up the code in telegramLinkCodes (valid + not expired).
+//   3. Consume the code → create the telegramLinks row linking this
+//      Telegram chat to the Nexus user.
+//   4. Reply via the Telegram API so the student gets immediate feedback.
+//
+// Webhook URL: <CONVEX_URL>/http/webhooks/telegram
+// Set it via the BotFather or:
+//   curl https://api.telegram.org/bot<TOKEN>/setWebhook?url=<CONVEX_URL>/http/webhooks/telegram
+//
+// The webhook doesn't require a signature — the URL is unguessable (it's
+// the Convex deployment URL) and any spam would just create invalid
+// code lookups that return not_found. We still log every call.
+http.route({
+  path: "/webhooks/telegram",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response(JSON.stringify({ ok: false, error: "invalid_json" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const message = body?.message;
+    if (!message) {
+      // Could be an edited_message, channel_post, or callback_query — we
+      // only handle direct messages for the linking flow. Acknowledge
+      // with 200 so Telegram doesn't retry.
+      return new Response(JSON.stringify({ ok: true, skipped: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const chatId = message?.chat?.id;
+    const text: string = (message?.text ?? "").trim();
+    if (!chatId || !text) {
+      return new Response(JSON.stringify({ ok: true, skipped: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Resolve the bot token so we can reply.
+    let token: string | null = null;
+    try {
+      token = await ctx.runQuery(internal.configKeys.resolveConfigValue, {
+        key: "TELEGRAM_BOT_TOKEN",
+      });
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      await ctx.runMutation(internal.systemEvents.logEvent, {
+        eventType: "api_call",
+        source: "telegram.webhook.noToken",
+        status: "error",
+        metadata: JSON.stringify({ chatId }),
+      });
+      return new Response(JSON.stringify({ ok: true, skipped: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Extract the code: support both "/start ABC123" and just "ABC123".
+    // Telegram sends "/start <payload>" when the user clicks a t.me link
+    // with a start parameter; we also accept a bare code for manual entry.
+    let code: string | null = null;
+    const startMatch = text.match(/^\/start\s+([A-Za-z0-9]{6})\b/);
+    if (startMatch) {
+      code = startMatch[1]!.toUpperCase();
+    } else {
+      const bareMatch = text.match(/^([A-Za-z0-9]{6})$/);
+      if (bareMatch) {
+        code = bareMatch[1]!.toUpperCase();
+      }
+    }
+
+    const reply = async (text: string) => {
+      try {
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          }),
+        });
+      } catch {
+        // non-fatal — webhook still 200s so Telegram doesn't retry spam
+      }
+    };
+
+    if (!code) {
+      await reply(
+        "👋 <b>Welcome to Nexus Academy's weekly digest bot!</b>\n\n" +
+        "To link your account, open <b>Settings → Link Telegram</b> in the app " +
+        "and send me the 6-character code shown there.\n\n" +
+        "Once linked, you'll get a personalized progress report every Monday " +
+        "morning — XP, quiz trends, streak, and a focus tip. 📚",
+      );
+      return new Response(JSON.stringify({ ok: true, handled: "help" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Try to consume the code.
+    const result = (await ctx.runMutation(internal.telegram.consumeLinkCode, {
+      code,
+      telegramChatId: String(chatId),
+    })) as { ok: boolean; reason?: string; userId?: string };
+
+    if (!result.ok) {
+      const reasonText =
+        result.reason === "code_expired"
+          ? "❌ That code has expired (codes last 10 minutes). Open Settings → Link Telegram and generate a new one."
+          : "❌ I couldn't find that code. Make sure you typed it exactly as shown in Settings → Link Telegram. Codes expire after 10 minutes.";
+      await reply(reasonText);
+      await ctx.runMutation(internal.systemEvents.logEvent, {
+        eventType: "api_call",
+        source: "telegram.webhook.linkFailed",
+        status: "error",
+        metadata: JSON.stringify({ chatId, reason: result.reason ?? "unknown" }),
+      });
+      return new Response(JSON.stringify({ ok: true, handled: "link_failed" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await reply(
+      "✅ <b>Linked!</b>\n\n" +
+      "You'll now receive a weekly progress digest every Monday morning — " +
+      "XP, quiz trends, your streak, and a personalized focus tip.\n\n" +
+      "To stop receiving digests, open Settings → Link Telegram in the app " +
+      "and tap Unlink. 📚",
+    );
+    await ctx.runMutation(internal.systemEvents.logEvent, {
+      eventType: "api_call",
+      source: "telegram.webhook.linked",
+      status: "success",
+      metadata: JSON.stringify({ chatId, userId: result.userId }),
+    });
+    return new Response(JSON.stringify({ ok: true, handled: "linked" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
 export default http;

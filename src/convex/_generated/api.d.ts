@@ -65,6 +65,7 @@ import type * as subscriptions from "../subscriptions.js";
 import type * as systemEvents from "../systemEvents.js";
 import type * as telegram from "../telegram.js";
 import type * as telegramActions from "../telegramActions.js";
+import type * as telegramDigest from "../telegramDigest.js";
 import type * as todos from "../todos.js";
 import type * as tour from "../tour.js";
 import type * as users from "../users.js";
@@ -134,6 +135,7 @@ declare const fullApi: ApiFromModules<{
   systemEvents: typeof systemEvents;
   telegram: typeof telegram;
   telegramActions: typeof telegramActions;
+  telegramDigest: typeof telegramDigest;
   todos: typeof todos;
   tour: typeof tour;
   users: typeof users;

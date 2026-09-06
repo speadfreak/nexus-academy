@@ -6,7 +6,8 @@
 //   - topic correlations: contentTopics links that span two different subjects
 
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { query } from "./_generated/server";
+import { v } from "convex/values";
+import { internalQuery, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isPremiumStatus } from "./subscriptions";
 
@@ -15,6 +16,14 @@ interface PlanWeek {
   topics: Id<"topics">[];
   focusHours: number;
 }
+
+/** Internal — fetch a single topic row by ID. Used by the weekly Telegram
+ *  digest to resolve the topic name when computing the user's weakest
+ *  topic. Returns null if the topic was deleted. */
+export const getTopicById = internalQuery({
+  args: { topicId: v.id("topics") },
+  handler: async (ctx, { topicId }) => (await ctx.db.get(topicId)) ?? null,
+});
 
 export const getJourney = query({
   args: {},

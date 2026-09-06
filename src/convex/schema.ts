@@ -588,6 +588,35 @@ const schema = defineSchema(
       .index("by_createdAt", ["createdAt"])
       .index("by_user", ["userId"]),
 
+    // ── Personal Telegram weekly digest ─────────────────────────────
+    // Each student can link their OWN Telegram account (separate from the
+    // admin-only broadcast bot usage) to receive a weekly progress digest.
+    // The link is established via a short-lived code the student sends to
+    // the bot with /start CODE.
+
+    // One row per linked user. `userId` is unique — a student can only
+    // link one Telegram chat at a time.
+    telegramLinks: defineTable({
+      userId: v.id("users"),
+      telegramChatId: v.string(), // numeric Telegram chat id (private chat with the bot)
+      linkedAt: v.number(),
+      lastDigestSentAt: v.optional(v.number()), // epoch ms of the last weekly digest
+    })
+      .index("by_user", ["userId"])
+      .index("by_chatId", ["telegramChatId"]),
+
+    // Short-lived linking codes. Student sees a code in Settings, sends
+    // `/start CODE` to the bot, the webhook matches it here, then moves
+    // the row into `telegramLinks`. Codes expire after 10 minutes.
+    telegramLinkCodes: defineTable({
+      userId: v.id("users"),
+      code: v.string(), // 6-char alphanumeric, uppercase
+      createdAt: v.number(),
+      expiresAt: v.number(), // createdAt + 10 minutes
+    })
+      .index("by_user", ["userId"])
+      .index("by_code", ["code"]),
+
     // ------------------------------------------------------------------
     // Cinematic library: bookmarks + reader scratchpads
     // ------------------------------------------------------------------

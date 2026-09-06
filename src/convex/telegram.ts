@@ -304,6 +304,209 @@ export const listContactMessages = query({
   },
 });
 
+// ── Personal Telegram weekly digest — internal helpers ────────────────
+//
+// These are called from the link-flow action (startTelegramLink,
+// consumeTelegramLinkCode) and the weekly cron digest action. They
+// don't enforce auth themselves — the public actions that call them do.
+
+/** Create a short-lived linking code for the signed-in user. Returns the
+ *  plaintext code (only shown once in Settings). Codes are 6-char
+ *  alphanumeric uppercase, expire 10 minutes after creation. If the user
+ *  already has an unexpired code, we replace it. */
+export const createTelegramLinkCode = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    // Generate a 6-char alphanumeric uppercase code (no ambiguous chars).
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    // Delete any existing unexpired codes for this user first so we don't
+    // accumulate stale ones — the latest one wins.
+    const existing = await ctx.db
+      .query("telegramLinkCodes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const row of existing) {
+      await ctx.db.delete(row._id);
+    }
+    const now = Date.now();
+    const linkCodeId = await ctx.db.insert("telegramLinkCodes", {
+      userId,
+      code,
+      createdAt: now,
+      expiresAt: now + 10 * 60 * 1000, // 10 minutes
+    });
+    return { code, linkCodeId, expiresAt: now + 10 * 60 * 1000 };
+  },
+});
+
+/** Look up a linking code by its plaintext value. Used by the webhook
+ *  handler to validate the `/start CODE` message the student sends. */
+export const getLinkCodeByValue = internalQuery({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const row = await ctx.db
+      .query("telegramLinkCodes")
+      .withIndex("by_code", (q) => q.eq("code", code.toUpperCase()))
+      .first();
+    if (!row) return null;
+    return {
+      _id: row._id,
+      userId: row.userId,
+      code: row.code,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      expired: Date.now() > row.expiresAt,
+    };
+  },
+});
+
+/** Consume a link code — delete it (single-use) and create the
+ *  telegramLinks row. If the user already had a link, we replace it
+ *  (a student can only be linked to one chat at a time). */
+export const consumeLinkCode = internalMutation({
+  args: { code: v.string(), telegramChatId: v.string() },
+  handler: async (ctx, { code, telegramChatId }) => {
+    const row = await ctx.db
+      .query("telegramLinkCodes")
+      .withIndex("by_code", (q) => q.eq("code", code.toUpperCase()))
+      .first();
+    if (!row) return { ok: false, reason: "code_not_found" };
+    if (Date.now() > row.expiresAt) {
+      // Expired — delete and bail.
+      await ctx.db.delete(row._id);
+      return { ok: false, reason: "code_expired" };
+    }
+    // Replace any existing link for this user (single chat at a time).
+    const existingLink = await ctx.db
+      .query("telegramLinks")
+      .withIndex("by_user", (q) => q.eq("userId", row.userId))
+      .first();
+    if (existingLink) {
+      await ctx.db.delete(existingLink._id);
+    }
+    await ctx.db.insert("telegramLinks", {
+      userId: row.userId,
+      telegramChatId: String(telegramChatId),
+      linkedAt: Date.now(),
+    });
+    // Delete the consumed code.
+    await ctx.db.delete(row._id);
+    return { ok: true, userId: row.userId };
+  },
+});
+
+/** Get the current user's Telegram link status. Returns null if not
+ *  linked. */
+export const getMyTelegramLink = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const link = await ctx.db
+      .query("telegramLinks")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!link) return null;
+    return {
+      _id: link._id,
+      telegramChatId: link.telegramChatId,
+      linkedAt: link.linkedAt,
+      lastDigestSentAt: link.lastDigestSentAt ?? null,
+    };
+  },
+});
+
+/** Unlink the current user's Telegram. Used by the Settings UI "Unlink"
+ *  button. */
+export const unlinkMyTelegram = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    const link = await ctx.db
+      .query("telegramLinks")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (link) {
+      await ctx.db.delete(link._id);
+    }
+    return { ok: true };
+  },
+});
+
+/** Public mutation — generate a fresh linking code for the signed-in user.
+ *  Returns the plaintext code + its expiry timestamp. The student sees
+ *  this code once in Settings and sends `/start CODE` to the bot within
+ *  10 minutes. Any previous unexpired code for this user is replaced. */
+export const startTelegramLink = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    // Generate a 6-char alphanumeric uppercase code (no ambiguous chars).
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    // Delete any existing unexpired codes for this user first.
+    const existing = await ctx.db
+      .query("telegramLinkCodes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const row of existing) {
+      await ctx.db.delete(row._id);
+    }
+    const now = Date.now();
+    const expiresAt = now + 10 * 60 * 1000; // 10 minutes
+    await ctx.db.insert("telegramLinkCodes", {
+      userId,
+      code,
+      createdAt: now,
+      expiresAt,
+    });
+    return { code, expiresAt };
+  },
+});
+
+/** List every linked user — used by the weekly cron to iterate. */
+export const listLinkedUsers = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const links = await ctx.db.query("telegramLinks").collect();
+    return links.map((l) => ({
+      _id: l._id,
+      userId: l.userId,
+      telegramChatId: l.telegramChatId,
+      linkedAt: l.linkedAt,
+      lastDigestSentAt: l.lastDigestSentAt ?? null,
+    }));
+  },
+});
+
+/** Update the lastDigestSentAt timestamp after a digest send. */
+export const markDigestSent = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const link = await ctx.db
+      .query("telegramLinks")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (link) {
+      await ctx.db.patch(link._id, { lastDigestSentAt: Date.now() });
+    }
+    return { ok: true };
+  },
+});
+
 /**
  * Admin-only — get the current contact-form delivery configuration
  * (configured group chat ID + invite link). Values come from the

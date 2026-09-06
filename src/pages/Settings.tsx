@@ -10,15 +10,20 @@ import {
   Atom,
   Camera,
   Check,
+  Clock,
   Compass,
   Crown,
   Landmark,
+  Link2,
   Loader2,
   LogOut,
   MessageSquareText,
   Moon,
+  RefreshCw,
   Send,
+  Send as TelegramIcon,
   Sun,
+  Unlink,
   Copy,
   Share2,
   UserRound,
@@ -476,6 +481,9 @@ export default function Settings() {
         {/* ------- Contact the team ------- */}
         <ContactSection userEmail={profile?.email ?? user?.email ?? ""} displayName={profile?.displayName ?? user?.name ?? ""} />
 
+        {/* ------- Link Telegram for weekly updates ------- */}
+        <TelegramLinkSection />
+
         {/* ------- Danger zone ------- */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -776,6 +784,239 @@ function ContactSection({
             </Button>
           </div>
         </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Telegram weekly digest linking ───────────────────────────────────
+// Students link their OWN Telegram account (separate from the admin
+// broadcast bot) to receive a personalized progress digest every Monday
+// morning — XP, quiz trends, streak, and a focus tip.
+//
+// Flow: student clicks "Get linking code" → we generate a 6-char code
+// (valid for 10 minutes) → student sends `/start CODE` to the bot → the
+// webhook matches the code + creates the link → student gets a
+// confirmation reply in Telegram. The Settings UI polls `getMyTelegramLink`
+// so the "linked" state appears within a few seconds of the bot reply.
+function TelegramLinkSection() {
+  const link = useQuery(api.telegram.getMyTelegramLink);
+  const startLink = useMutation(api.telegram.startTelegramLink);
+  const unlink = useMutation(api.telegram.unlinkMyTelegram);
+  const [code, setCode] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [unLinking, setUnLinking] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [nowTick, setNowTick] = useState(Date.now());
+
+  // Tick every second so the countdown updates live.
+  useEffect(() => {
+    if (!code) return;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [code]);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const result = await startLink({});
+      setCode({ code: result.code, expiresAt: result.expiresAt });
+      setCopied(false);
+      toast.success("Linking code generated — send it to the bot within 10 minutes.");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not generate a linking code."));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code.code);
+      setCopied(true);
+      toast.success("Code copied.");
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error("Could not copy — type the code manually.");
+    }
+  };
+
+  const handleUnlink = async () => {
+    setUnLinking(true);
+    try {
+      await unlink({});
+      toast.success("Telegram unlinked. You won't receive weekly digests anymore.");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not unlink Telegram."));
+    } finally {
+      setUnLinking(false);
+    }
+  };
+
+  const isLinked = Boolean(link);
+  const secondsLeft = code ? Math.max(0, Math.ceil((code.expiresAt - nowTick) / 1000)) : 0;
+  const codeExpired = code && secondsLeft === 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="glass-panel relative overflow-hidden rounded-2xl p-6"
+    >
+      <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-[#229ED9]/[0.08] blur-3xl" />
+      <div className="relative">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-[#229ED9]/10 text-[#229ED9] shadow-[0_0_16px_-4px_rgb(34,158,217/0.45)]">
+            <TelegramIcon className="size-4" />
+          </div>
+          <p className="uppercase tracking-[0.22em] text-[#229ED9] font-semibold">
+            // weekly digest
+          </p>
+        </div>
+        <h2 className="mt-4 text-lg font-extrabold tracking-tight">
+          Link Telegram for weekly updates
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Get a personalized progress report every Monday morning — XP earned,
+          quiz trends, your streak, and a focus tip. Honest numbers, no spam,
+          cancel anytime.
+        </p>
+
+        {/* Linked state */}
+        {isLinked ? (
+          <div className="mt-5 flex flex-col gap-4">
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300">
+                <Check className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">
+                  Telegram linked
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Chat ID <span className="font-mono">{link?.telegramChatId}</span> · linked{" "}
+                  {link?.linkedAt
+                    ? new Date(link.linkedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : "—"}
+                  {link?.lastDigestSentAt
+                    ? ` · last digest ${new Date(link.lastDigestSentAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                    : " · no digest sent yet (first one lands next Monday)"}
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => void handleUnlink()}
+              disabled={unLinking}
+              variant="outline"
+              className="interactive-press cursor-pointer gap-2 rounded-xl bg-white/5 text-muted-foreground hover:text-rose-300 disabled:opacity-50"
+            >
+              {unLinking ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Unlink className="size-4" />
+              )}
+              {unLinking ? "Unlinking…" : "Unlink Telegram"}
+            </Button>
+          </div>
+        ) : code && !codeExpired ? (
+          /* Code generated — show the code + countdown + instructions */
+          <div className="mt-5 flex flex-col gap-4">
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-[#229ED9]/20 bg-[#229ED9]/[0.04] p-5 text-center">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                your linking code · expires in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
+              </p>
+              <button
+                onClick={() => void handleCopy()}
+                className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-[#229ED9]/30 bg-[#229ED9]/[0.08] px-6 py-4 transition-colors hover:bg-[#229ED9]/[0.12]"
+                title="Click to copy"
+              >
+                <span className="font-mono text-3xl font-extrabold tracking-[0.3em] text-[#229ED9]">
+                  {code.code}
+                </span>
+                <span className="flex items-center gap-1 rounded-lg bg-[#229ED9]/15 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-[#229ED9]">
+                  {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  {copied ? "Copied" : "Copy"}
+                </span>
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <TelegramIcon className="size-3.5 text-[#229ED9]" />
+                How to link
+              </p>
+              <ol className="mt-2 flex flex-col gap-1.5 text-xs text-muted-foreground">
+                <li className="flex gap-2">
+                  <span className="font-mono font-bold text-[#229ED9]">1.</span>
+                  Open Telegram and search for our bot (the admin adds it via BotFather, then shares the bot username with you).
+                </li>
+                <li className="flex gap-2">
+                  <span className="font-mono font-bold text-[#229ED9]">2.</span>
+                  Send the message <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-foreground">/start {code.code}</code> to the bot.
+                </li>
+                <li className="flex gap-2">
+                  <span className="font-mono font-bold text-[#229ED9]">3.</span>
+                  The bot replies with a confirmation. This page will update automatically within a few seconds.
+                </li>
+              </ol>
+            </div>
+
+            <Button
+              onClick={() => void handleGenerate()}
+              disabled={generating}
+              variant="outline"
+              className="interactive-press cursor-pointer gap-2 rounded-xl bg-white/5 disabled:opacity-50"
+            >
+              <RefreshCw className="size-4" />
+              Generate a new code
+            </Button>
+          </div>
+        ) : (
+          /* Not linked, no code yet (or code expired) — CTA */
+          <div className="mt-5 flex flex-col gap-4">
+            {codeExpired && (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3 text-xs text-amber-200">
+                <Clock className="size-3.5" />
+                Your previous code expired. Generate a new one to continue.
+              </div>
+            )}
+            <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#229ED9]/10 text-[#229ED9]">
+                <Link2 className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">
+                  How it works
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Click "Get linking code" → send the code to our bot in
+                  Telegram → you're linked. Codes expire after 10 minutes.
+                  You'll get one digest every Monday morning — that's it, no
+                  other messages.
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => void handleGenerate()}
+              disabled={generating}
+              className="interactive-press cursor-pointer gap-2 rounded-xl bg-[#229ED9] text-white hover:bg-[#1b8dc7] disabled:opacity-50"
+            >
+              {generating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Link2 className="size-4" />
+              )}
+              {generating ? "Generating…" : "Get linking code"}
+            </Button>
+          </div>
+        )}
       </div>
     </motion.div>
   );

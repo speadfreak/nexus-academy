@@ -54,6 +54,32 @@ export const getRecentXpByUser = internalQuery({
 });
 
 /**
+ * Sum XP earned by a user in a [since, until) time window. Used by the
+ * weekly Telegram digest to compute "XP this week vs last week" —
+ * honest numbers, no fabrication. Returns 0 if there are no ledger rows
+ * in the window.
+ */
+export const getXpInWindow = internalQuery({
+  args: {
+    userId: v.id("users"),
+    since: v.number(),
+    until: v.optional(v.number()),
+  },
+  handler: async (ctx, { userId, since, until }) => {
+    const rows = await ctx.db
+      .query("xpLedger")
+      .withIndex("by_user_createdAt", (q) =>
+        q.eq("userId", userId).gte("createdAt", since),
+      )
+      .collect();
+    const inRange = until
+      ? rows.filter((r) => r.createdAt < until)
+      : rows;
+    return inRange.reduce((sum, r) => sum + r.amount, 0);
+  },
+});
+
+/**
  * Award XP for a real study action. Appends to the ledger, updates the
  * denormalized level row, and — when the level ticks over — creates a
  * level-up notification. Returns the delta so callers can surface a
