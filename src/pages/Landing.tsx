@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Atom,
   AudioLines,
+  Award,
   BookOpen,
   Brain,
   CalendarDays,
@@ -20,6 +21,7 @@ import {
   HelpCircle,
   Landmark,
   Languages,
+  Layers,
   Lock,
   Map,
   NotebookPen,
@@ -37,6 +39,7 @@ import {
   Users,
   Bell,
   MessageCircle,
+  Trophy,
 } from "lucide-react";
 import { useState, useEffect as useEff } from "react";
 import { Link, useNavigate } from "react-router";
@@ -195,6 +198,41 @@ const COMPANION = [
     description:
       "AI generates ~340 original questions across all 6 EHEEE subjects — 50 min per section, no pausing, auto-graded per subject with progress tracking across attempts.",
     tag: "mock-exam",
+  },
+  {
+    icon: Users,
+    title: "Study squads",
+    description:
+      "Private groups with a shared invite code — live video rooms, group chat, and a weekly leaderboard that ranks real study effort, not guesswork.",
+    tag: "groups",
+  },
+  {
+    icon: Trophy,
+    title: "Levels & achievements",
+    description:
+      "Real XP for real study — streaks, badges, and a level that actually reflects the work you've put in, not just time spent.",
+    tag: "achievements",
+  },
+  {
+    icon: Layers,
+    title: "AI flashcards",
+    description:
+      "Turn any textbook or tutor conversation into a flashcard deck in seconds, with smart review that resurfaces what you're still shaky on.",
+    tag: "flashcards",
+  },
+  {
+    icon: TrendingUp,
+    title: "Your journey, tracked honestly",
+    description:
+      "Real progress charts, quiz trends, and the connections between topics across your subjects — no vanity metrics, just where you actually are.",
+    tag: "journey",
+  },
+  {
+    icon: CalendarDays,
+    title: "Auto-scheduled calendar",
+    description:
+      "Your study plan turns into a real calendar automatically — plus your own exam dates and reminders, all in one place.",
+    tag: "calendar",
   },
 ];
 
