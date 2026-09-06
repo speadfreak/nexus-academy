@@ -59,4 +59,17 @@ crons.weekly(
   internal.telegramDigest.sendWeeklyDigests,
 );
 
+// Weekly: admin business digest. Runs every Monday at 08:05 UTC (5 min
+// after the personal digest so they don't compete for the Telegram API).
+// Sends a single HTML message to the already-configured
+// TELEGRAM_ADMIN_CHAT_ID with real weekly numbers — revenue (approved
+// payments), new signups, referral conversions, active users, paid
+// subscriptions, pending reviews, SLA breaches. Honest data, no
+// fabrication. See src/convex/adminDigest.ts.
+crons.weekly(
+  "admin-weekly-business-digest",
+  { dayOfWeek: "monday", hourUTC: 8, minuteUTC: 5 },
+  internal.adminDigest.sendWeeklyBusinessDigest,
+);
+
 export default crons;
