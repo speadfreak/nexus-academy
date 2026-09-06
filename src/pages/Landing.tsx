@@ -10,6 +10,7 @@ import {
   CalendarDays,
   Check,
   ChevronUp,
+  Grid3x3,
   ClipboardList,
   Clock,
   Dna,
@@ -265,6 +266,9 @@ export default function Landing() {
             <a href="#library" className="transition-colors hover:text-foreground">
               library
             </a>
+            <Link to="/coverage" className="transition-colors hover:text-amber-300">
+              coverage map
+            </Link>
             <a href="#how" className="transition-colors hover:text-foreground">
               how-it-works
             </a>
@@ -413,6 +417,25 @@ export default function Landing() {
             <span className="flex items-center gap-1.5">
               <Lock className="size-4 text-primary" /> free to browse, premium to download
             </span>
+          </motion.div>
+
+          {/* See exactly what's inside — coverage map CTA */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
+            className="mt-6"
+          >
+            <Link
+              to="/coverage"
+              className="group inline-flex items-center gap-2.5 rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] px-4 py-2.5 transition-colors hover:border-amber-400/40 hover:bg-amber-400/[0.08]"
+            >
+              <Grid3x3 className="size-4 text-amber-300" />
+              <span className="text-sm font-semibold text-foreground">
+                See <span className="text-gradient">exactly</span> what&apos;s inside
+              </span>
+              <ArrowRight className="size-3.5 text-amber-300 transition-transform group-hover:translate-x-1" />
+            </Link>
           </motion.div>
         </motion.div>
 

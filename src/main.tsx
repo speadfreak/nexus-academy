@@ -76,6 +76,7 @@ function logErrorToServer(source: string, err: unknown) {
 
 // Lazy load route components for better code splitting
 const Landing = lazy(() => import("./pages/Landing.tsx"));
+const Coverage = lazy(() => import("./pages/Coverage.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const Tutor = lazy(() => import("./pages/Tutor.tsx"));
@@ -535,6 +536,7 @@ if (rootEl) {
                             path="/auth"
                             element={<AuthPage redirectAfterAuth="/dashboard" />}
                           />
+                          <Route path="/coverage" element={<Coverage />} />
                           <Route
                             path="/dashboard"
                             element={

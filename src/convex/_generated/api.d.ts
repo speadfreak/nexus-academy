@@ -23,6 +23,7 @@ import type * as constants from "../constants.js";
 import type * as content from "../content.js";
 import type * as contentAI from "../contentAI.js";
 import type * as contentAdmin from "../contentAdmin.js";
+import type * as coverage from "../coverage.js";
 import type * as crons from "../crons.js";
 import type * as dailyChallenge from "../dailyChallenge.js";
 import type * as flashcards from "../flashcards.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   content: typeof content;
   contentAI: typeof contentAI;
   contentAdmin: typeof contentAdmin;
+  coverage: typeof coverage;
   crons: typeof crons;
   dailyChallenge: typeof dailyChallenge;
   flashcards: typeof flashcards;
