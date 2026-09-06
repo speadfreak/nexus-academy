@@ -17,6 +17,8 @@ import {
   BrainCircuit,
   GraduationCap,
   MessageCircle,
+  Mic,
+  MicOff,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -36,6 +38,7 @@ import {
 import { clockTime, relativeTime } from "@/lib/dates";
 import { errorCode, errorMessage } from "@/lib/errors";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { cn } from "@/lib/utils";
 
 type MessageDoc = {
@@ -206,6 +209,38 @@ export default function Tutor() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState<{ content: string } | null>(null);
   const [isAwaiting, setIsAwaiting] = useState(false);
+
+  // Voice input — browser-native Web Speech API (no backend cost, no
+  // audio uploads, no privacy concerns). Transcribed text populates the
+  // input field but is NEVER auto-sent — the student reviews + edits +
+  // presses send themselves.
+  const speech = useSpeechRecognition({ lang: "en-US", continuous: false });
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync the speech transcript into the input field. We APPEND (with a
+  // space separator) rather than replace so the student can speak
+  // multiple phrases + edit between them. Clear the transcript once
+  // merged so we don't double-merge on the next render.
+  useEffect(() => {
+    if (speech.transcript) {
+      setInput((prev) => (prev ? prev + " " : "") + speech.transcript);
+      speech.reset();
+      // Refocus the input so the student can immediately edit + send.
+      inputRef.current?.focus();
+    }
+  }, [speech.transcript, speech.reset]);
+
+  // Toast on speech errors (e.g. mic permission denied).
+  useEffect(() => {
+    if (!speech.error) return;
+    if (speech.error === "not-allowed" || speech.error === "service-not-allowed") {
+      toast.error("Microphone access denied. Enable it in your browser settings to use voice input.");
+    } else if (speech.error === "no-speech") {
+      // Silent — the user just didn't say anything audible.
+    } else {
+      toast.error(`Voice input error: ${speech.error}`);
+    }
+  }, [speech.error]);
 
   // Follow-up suggestions + mini-check state
   const [followUps, setFollowUps] = useState<string[]>([]);
@@ -894,6 +929,7 @@ export default function Tutor() {
                 {scopeSubject ? scopeSubject.name : "general"}
               </span>
               <Input
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -902,10 +938,55 @@ export default function Tutor() {
                     handleSend();
                   }
                 }}
-                placeholder="Ask the tutor anything about your exams…"
+                placeholder={
+                  speech.listening
+                    ? "Listening… speak now"
+                    : "Ask the tutor anything about your exams…"
+                }
                 disabled={isAwaiting}
-                className="type-body h-10 flex-1 rounded-xl bg-white/5 font-mono"
+                className={cn(
+                  "type-body h-10 flex-1 rounded-xl bg-white/5 font-mono",
+                  speech.listening && "border-rose-400/40 bg-rose-400/[0.04] ring-1 ring-rose-400/30",
+                )}
               />
+              {/* Voice input button — uses the browser's native Web Speech
+                  API. Hidden entirely on unsupported browsers (older
+                  Safari, Firefox without the flag) so there's no broken
+                  UX. While listening, the button turns red + pulses so
+                  it's visually obvious the mic is hot. Transcribed text
+                  populates the input above but is NEVER auto-sent — the
+                  student reviews + edits first. */}
+              {speech.supported && (
+                <Button
+                  size="icon"
+                  variant={speech.listening ? "default" : "outline"}
+                  className={cn(
+                    "size-10 shrink-0 cursor-pointer rounded-xl interactive-press",
+                    speech.listening
+                      ? "bg-rose-500 text-white hover:bg-rose-600"
+                      : "bg-white/5 text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => (speech.listening ? speech.stop() : speech.start())}
+                  disabled={isAwaiting}
+                  aria-label={speech.listening ? "Stop voice input" : "Start voice input"}
+                  title={
+                    speech.listening
+                      ? "Stop listening"
+                      : "Speak your question — transcribed text appears in the input, never auto-sent"
+                  }
+                >
+                  {speech.listening ? (
+                    <motion.span
+                      animate={{ scale: [1, 1.15, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      <MicOff className="size-4" />
+                    </motion.span>
+                  ) : (
+                    <Mic className="size-4" />
+                  )}
+                </Button>
+              )}
               <Button
                 size="icon"
                 className="size-10 shrink-0 rounded-xl interactive-press"
