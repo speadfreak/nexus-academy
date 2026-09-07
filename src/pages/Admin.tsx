@@ -1873,7 +1873,7 @@ export default function Admin() {
                             <TableCell className="font-mono text-[11px] text-muted-foreground">{u.stream ?? "—"}</TableCell>
                             <TableCell>
                               <Badge className={cn("gap-1 font-mono text-[10px]", SUB_STATUS_STYLES[u.subscriptionStatus])}>
-                                {u.subscriptionStatus}{u.subscriptionStatus === "trial" ? ` · ${u.trialActiveDays}/14` : ""}
+                                {u.subscriptionStatus}{u.subscriptionStatus === "trial" ? ` · ${u.trialActiveDays}/${u.freeTrialDays}` : ""}
                               </Badge>
                             </TableCell>
                             <TableCell>

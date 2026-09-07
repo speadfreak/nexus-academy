@@ -183,6 +183,7 @@ export interface AdminUserRow {
   createdAt: number;
   subscriptionStatus: string;
   trialActiveDays: number;
+  freeTrialDays: number;
   planTier: string | null;
   stream: string | null;
   displayName: string | null;
@@ -205,6 +206,15 @@ export const listUsers = query({
     const sessions = await ctx.db.query("studySessions").collect();
     const xpRows = await ctx.db.query("xpLedger").collect();
     const attempts = await ctx.db.query("quizAttempts").collect();
+
+    // Resolve the configured free trial days (default 14) so the admin
+    // UI shows the correct denominator — e.g. "trial · 1/3" when the
+    // admin set FREE_TRIAL_DAYS to 3, not the hardcoded 14.
+    const trialDaysRow = await ctx.db
+      .query("configKeys")
+      .filter((q) => q.eq(q.field("key"), "FREE_TRIAL_DAYS"))
+      .first();
+    const freeTrialDays = trialDaysRow ? parseInt(trialDaysRow.value, 10) || 14 : 14;
 
     const subByUser = new Map(
       subscriptions.map((sub) => [sub.userId, sub]),
@@ -250,6 +260,7 @@ export const listUsers = query({
         createdAt: user._creationTime,
         subscriptionStatus: sub?.status ?? "none",
         trialActiveDays: sub?.trialActiveDays ?? 0,
+        freeTrialDays,
         planTier: sub?.planTier ?? null,
         stream: profile?.stream ?? null,
         displayName: profile?.displayName ?? null,

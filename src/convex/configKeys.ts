@@ -6,8 +6,8 @@
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query, internalQuery } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import { internalMutation, mutation, query, internalQuery } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { isAdminDoc } from "./admin";
 
 // ── Known integrations registry ──────────────────────────────────────

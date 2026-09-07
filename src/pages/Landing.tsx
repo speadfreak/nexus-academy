@@ -1172,7 +1172,7 @@ export default function Landing() {
             <div className="flex items-center gap-4">
               {/* Telegram links — quick access from the footer */}
               <a
-                href="https://t.me/NexusAcademyET"
+                href="https://t.me/LearnyxAcademyET"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
@@ -1182,7 +1182,7 @@ export default function Landing() {
               </a>
               <span className="text-muted-foreground/30">·</span>
               <a
-                href="https://t.me/NexusETCommunity"
+                href="https://t.me/LearnyxETCommunity"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
@@ -1241,8 +1241,8 @@ function TelegramPaperPlane({ className }: { className?: string }) {
 
 function TelegramCommunitySection() {
   // Channel + community group links.
-  const channelUrl = "https://t.me/NexusAcademyET";
-  const communityUrl = "https://t.me/NexusETCommunity";
+  const channelUrl = "https://t.me/LearnyxAcademyET";
+  const communityUrl = "https://t.me/LearnyxETCommunity";
   const channelName = "⟡ LEARNYX ACADEMY | ET 🇪🇹";
   const communityName = "⟡ LEARNYX COMMUNITY 🇪🇹";
 

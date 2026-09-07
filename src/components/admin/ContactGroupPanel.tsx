@@ -5,7 +5,7 @@
 //   - Chat ID (required) — e.g. "-1001234567890" for a supergroup. Find
 //     this by adding @userinfobot to the group and asking it for the
 //     chat ID, OR by inspecting the group's invite link.
-//   - Invite link (optional) — e.g. "https://t.me/NexusETCommunity".
+//   - Invite link (optional) — e.g. "https://t.me/LearnyxETCommunity".
 //     Shown as a "Open group" link in the admin UI for convenience.
 //
 // Both values are stored in the configKeys table. The chat ID is what
@@ -155,7 +155,7 @@ export function ContactGroupPanel() {
               id="contact-group-invite-link"
               value={inviteLink}
               onChange={(e) => setInviteLink(e.target.value)}
-              placeholder="https://t.me/NexusETCommunity"
+              placeholder="https://t.me/LearnyxETCommunity"
               className="h-11 text-sm"
             />
             {inviteLinkIsTelegram && (
