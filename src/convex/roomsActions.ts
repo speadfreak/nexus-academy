@@ -44,7 +44,6 @@ import type { Id } from "./_generated/dataModel";
 import { assertGroupMember, assertNoBlockWithParticipants } from "./rooms";
 import { logEventAction } from "./systemEvents";
 
-const LIVEKIT_API_BASE = "https://api.livekit.io";
 const TOKEN_TTL_SECONDS = 60 * 15; // 15 minutes — short-lived by design
 const ROOM_EMPTY_TIMEOUT_SECONDS = 60 * 15; // auto-close after 15 min empty
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -80,9 +79,39 @@ async function resolveHostname(hostname: string): Promise<string> {
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
+/**
+ * Derive the REST API base URL from the configured LIVEKIT_URL.
+ *
+ * LIVEKIT_URL is the WebSocket URL (e.g. "wss://my-project.livekit.cloud").
+ * The REST API lives on the same hostname but with HTTPS:
+ * "https://my-project.livekit.cloud".
+ *
+ * Previously this was hardcoded to "https://api.livekit.io" — the generic
+ * LiveKit API domain — which caused "DNS resolution failed for
+ * api.livekit.io: queryA ENODATA" errors in Convex's action runtime.
+ * Each LiveKit Cloud project has its own hostname; the generic domain
+ * doesn't always resolve.
+ */
+function liveKitApiBaseFromUrl(livekitUrl: string): string {
+  let url = livekitUrl;
+  // Convert wss:// → https://, ws:// → http://
+  if (url.startsWith("wss://")) {
+    url = "https://" + url.slice(6);
+  } else if (url.startsWith("ws://")) {
+    url = "http://" + url.slice(5);
+  }
+  // Strip any trailing slash + path — we only want the origin.
+  try {
+    const parsed = new URL(url);
+    return parsed.origin;
+  } catch {
+    return url.replace(/\/$/, "");
+  }
+}
+
 async function requireLiveKitConfig(
   ctx: ActionCtx,
-): Promise<{ url: string; apiKey: string; apiSecret: string }> {
+): Promise<{ url: string; apiKey: string; apiSecret: string; apiBase: string }> {
   const resolved = await ctx.runQuery(internal.configKeys.resolveConfigValues, {
     keys: ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"],
   });
@@ -96,7 +125,8 @@ async function requireLiveKitConfig(
       code: "not_configured",
     });
   }
-  return { url, apiKey, apiSecret };
+  const apiBase = liveKitApiBaseFromUrl(url);
+  return { url, apiKey, apiSecret, apiBase };
 }
 
 // ─── Low-level HTTP (node:https) ─────────────────────────────────────────────
@@ -190,11 +220,12 @@ async function httpRequest(
 // ─── LiveKit REST helpers ────────────────────────────────────────────────────
 
 async function liveKitCreateRoom(
+  apiBase: string,
   apiKey: string,
   apiSecret: string,
   name: string,
 ): Promise<void> {
-  const url = `${LIVEKIT_API_BASE}/rtc/rooms`;
+  const url = `${apiBase}/rtc/rooms`;
   const { status, body } = await httpRequest(
     "POST",
     url,
@@ -215,11 +246,12 @@ async function liveKitCreateRoom(
 }
 
 async function liveKitDeleteRoom(
+  apiBase: string,
   apiKey: string,
   apiSecret: string,
   name: string,
 ): Promise<void> {
-  const url = `${LIVEKIT_API_BASE}/rtc/rooms/${encodeURIComponent(name)}`;
+  const url = `${apiBase}/rtc/rooms/${encodeURIComponent(name)}`;
   const { status, body } = await httpRequest(
     "DELETE",
     url,
@@ -315,12 +347,12 @@ export const createRoom = action({
     }
     await assertGroupMember(ctx, groupId, userId);
 
-    const { apiKey, apiSecret } = await requireLiveKitConfig(ctx);
+    const { apiKey, apiSecret, apiBase } = await requireLiveKitConfig(ctx);
 
     // LiveKit room names are unique per project — timestamp guarantees it.
     const providerRoomId = `nexus-${groupId}-${Date.now()}`;
     try {
-      await liveKitCreateRoom(apiKey, apiSecret, providerRoomId);
+      await liveKitCreateRoom(apiBase, apiKey, apiSecret, providerRoomId);
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Could not create the video room.";
@@ -394,7 +426,7 @@ export const getJoinToken = action({
     await assertGroupMember(ctx, room.groupId, userId);
     await assertNoBlockWithParticipants(ctx, userId, roomId);
 
-    const { url, apiKey, apiSecret } = await requireLiveKitConfig(ctx);
+    const { url, apiKey, apiSecret, apiBase } = await requireLiveKitConfig(ctx);
     const profile = await ctx.runQuery(internal.profile.getProfileByUser, { userId });
     const user = await ctx.runQuery(internal.admin.getUserById, { userId });
     const groupRole = await ctx.runQuery(internal.studyGroups.getGroupRole, {
@@ -448,9 +480,9 @@ export const endRoom = action({
       });
     }
 
-    const { apiKey, apiSecret } = await requireLiveKitConfig(ctx);
+    const { apiKey, apiSecret, apiBase } = await requireLiveKitConfig(ctx);
     try {
-      await liveKitDeleteRoom(apiKey, apiSecret, room.videoProviderRoomId);
+      await liveKitDeleteRoom(apiBase, apiKey, apiSecret, room.videoProviderRoomId);
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Could not end the video room.";

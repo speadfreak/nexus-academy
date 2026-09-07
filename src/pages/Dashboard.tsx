@@ -1765,14 +1765,15 @@ export default function Dashboard() {
         )}
 
         {/* ═══ CONTENT GALLERY ═══ */}
+        <AnimatePresence mode="wait">
         {content === undefined ? (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <motion.div key="loading" exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {Array.from({ length: 8 }).map((_, i) => (
               <BookSkeleton key={i} />
             ))}
-          </div>
+          </motion.div>
         ) : (visibleContent ?? []).length === 0 ? (
-          <div className="glass-soft flex flex-col items-center justify-center rounded-3xl px-6 py-20 text-center">
+            <motion.div key="empty" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="glass-soft flex flex-col items-center justify-center rounded-3xl px-6 py-20 text-center">
             <div className="flex size-16 items-center justify-center rounded-3xl bg-amber-400/10 text-amber-300">
               <FileSearch className="size-7" />
             </div>
@@ -1791,7 +1792,7 @@ export default function Dashboard() {
                 </Link>
               </Button>
             )}
-          </div>
+          </motion.div>
         ) : (
           <>
             {/* Result count header */}
@@ -1832,6 +1833,7 @@ export default function Dashboard() {
             </motion.div>
           </>
         )}
+        </AnimatePresence>
       </div>
 
       <QuizFlow
