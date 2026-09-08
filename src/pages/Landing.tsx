@@ -1170,6 +1170,15 @@ export default function Landing() {
               © {new Date().getFullYear()} Learnyx Academy ET 🇪🇹 · EHEEE exam prep, grades 9–12
             </p>
             <div className="flex items-center gap-4">
+              {/* Legal links */}
+              <Link to="/privacy" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                Privacy
+              </Link>
+              <span className="text-muted-foreground/30">·</span>
+              <Link to="/terms" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                Terms
+              </Link>
+              <span className="text-muted-foreground/30">·</span>
               {/* Telegram links — quick access from the footer */}
               <a
                 href="https://t.me/LearnyxAcademyET"

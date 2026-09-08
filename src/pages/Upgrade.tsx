@@ -56,6 +56,7 @@ export default function Upgrade() {
   const entitlements = useQuery(api.subscriptions.getEntitlements, {});
   const subscription = useQuery(api.subscriptions.getSubscriptionStatus, {});
   const paymentConfig = useQuery(api.manualPayments.getPaymentConfig, {});
+  const pricingOptions = useQuery(api.manualPayments.getPricingOptions, {});
   const mySubmissions = useQuery(api.manualPayments.getMySubmissions, {});
   const payments = useQuery(api.paymentsDb.getMyPayments, {}) as any;
 
@@ -165,6 +166,10 @@ export default function Upgrade() {
           slaHours={paymentConfig?.slaHours ?? 24}
           goodwillHours={paymentConfig?.goodwillBonusHours ?? 24}
           submissions={mySubmissions ?? []}
+          pricingPresets={pricingOptions?.presets ?? []}
+          monthlyPrice={pricingOptions?.monthlyPrice ?? 500}
+          currentPeriodEnd={subscription?.currentPeriodEnd ?? null}
+          isPremium={subscription?.premiumAccess ?? false}
         />
 
         {/* Payment history (merged: existing + manual) */}
@@ -228,6 +233,10 @@ function ManualPaymentSection({
   slaHours,
   goodwillHours,
   submissions,
+  pricingPresets,
+  monthlyPrice,
+  currentPeriodEnd,
+  isPremium,
 }: {
   priceEtb: number;
   telebirrNumber: string;
@@ -245,7 +254,13 @@ function ManualPaymentSection({
     slaBreached: boolean;
     goodwillBonusHoursApplied?: number;
     reviewedBy?: string;
+    durationMonths?: number;
+    customMonths?: number;
   }>;
+  pricingPresets: Array<{ months: number; price: number; savingsPercent: number }>;
+  monthlyPrice: number;
+  currentPeriodEnd: number | null;
+  isPremium: boolean;
 }) {
   const submitPaymentProof = useAction(api.manualPayments.submitPaymentProof);
   const generateUploadUrl = useAction(api.manualPayments.generateUploadUrl);
@@ -255,11 +270,35 @@ function ManualPaymentSection({
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  // ── Duration selection ─────────────────────────────────────────────
+  const [selectedMonths, setSelectedMonths] = useState(1); // default 1-month
+  const [isCustom, setIsCustom] = useState(false);
+  const [customMonths, setCustomMonths] = useState(3);
+
+  // Compute the selected plan's price + end date
+  const selectedPreset = pricingPresets.find((p) => p.months === selectedMonths);
+  const computedPrice = isCustom
+    ? monthlyPrice * customMonths
+    : selectedPreset?.price ?? priceEtb;
+  const effectiveMonths = isCustom ? customMonths : selectedMonths;
+  const computedSavings = isCustom
+    ? 0
+    : selectedPreset?.savingsPercent ?? 0;
+
+  // End date calculation — stacks on top of current period if premium
+  const baseDate = currentPeriodEnd && currentPeriodEnd > Date.now()
+    ? new Date(currentPeriodEnd)
+    : new Date();
+  const endDate = new Date(baseDate);
+  endDate.setDate(endDate.getDate() + effectiveMonths * 30);
+
+  // Find the best-value preset (highest savings)
+  const bestValueMonths = pricingPresets.reduce(
+    (best, p) => (p.savingsPercent > (best?.savingsPercent ?? 0) ? p : best),
+    pricingPresets[0] as { months: number; savingsPercent: number } | undefined,
+  )?.months;
+
   // ── Discount code state ────────────────────────────────────────────
-  // Live-validate the discount code with a debounced query. The student
-  // sees the adjusted price immediately, and the validated code is sent
-  // along with submitPaymentProof — which calls redeemDiscountCode on the
-  // server to atomically increment the code's usedCount.
   const [discountInput, setDiscountInput] = useState("");
   const trimmedCode = discountInput.trim();
   const validateQuery = useQuery(
@@ -282,11 +321,10 @@ function ManualPaymentSection({
   const validatingCode = validateQuery === undefined && trimmedCode.length > 0;
 
   // The effective price — discounted if a valid code is applied.
-  const effectivePrice = validatedDiscount ? validatedDiscount.adjustedAmount : priceEtb;
-  const savedAmount = priceEtb - effectivePrice;
+  const effectivePrice = validatedDiscount ? validatedDiscount.adjustedAmount : computedPrice;
+  const savedAmount = computedPrice - effectivePrice;
 
-  // The latest pending submission (or the most recent one).
-  const latestSubmission = submissions[0]; // submissions are desc by date
+  const latestSubmission = submissions[0];
 
   // Handle file selection
   const handleFile = useCallback((next: File | null) => {
@@ -353,6 +391,8 @@ function ManualPaymentSection({
         proofStorageId: storageId,
         method: "telebirr_personal",
         discountCode: validatedDiscount ? validatedDiscount.code : undefined,
+        durationMonths: isCustom ? undefined : effectiveMonths,
+        customMonths: isCustom ? effectiveMonths : undefined,
       });
 
       toast.success("Payment proof submitted! An admin will review it shortly.");
@@ -382,11 +422,100 @@ function ManualPaymentSection({
         {/* Section header */}
         <div className="flex items-center justify-between">
           <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
-            // manual payment · TeleBirr
+            {isPremium ? "// extend your plan" : "// manual payment · TeleBirr"}
           </p>
           <span className="font-mono text-[10px] text-muted-foreground">
             personal transfer · no merchant API needed
           </span>
+        </div>
+
+        {/* Duration selector — preset buttons + custom option */}
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-muted-foreground mb-2">
+            {isPremium ? "Choose how long to extend" : "Choose your plan duration"}
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {pricingPresets.map((preset) => (
+              <button
+                key={preset.months}
+                onClick={() => { setSelectedMonths(preset.months); setIsCustom(false); }}
+                className={cn(
+                  "relative flex cursor-pointer flex-col items-center gap-1 rounded-xl border p-3 text-center transition-all",
+                  !isCustom && selectedMonths === preset.months
+                    ? "border-amber-400/40 bg-amber-400/[0.08] ring-1 ring-amber-400/30"
+                    : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]",
+                )}
+              >
+                {bestValueMonths === preset.months && preset.savingsPercent > 0 && (
+                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-emerald-400/20 px-2 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-emerald-300">
+                    Best value
+                  </span>
+                )}
+                <span className="text-sm font-bold text-foreground">
+                  {preset.months === 1 ? "1 month" : `${preset.months} months`}
+                </span>
+                <span className="font-mono text-xs font-bold tabular-nums text-amber-300">
+                  {preset.price} ETB
+                </span>
+                {preset.savingsPercent > 0 && (
+                  <span className="font-mono text-[9px] text-emerald-300">
+                    Save {preset.savingsPercent}%
+                  </span>
+                )}
+              </button>
+            ))}
+            {/* Custom option */}
+            <button
+              onClick={() => setIsCustom(true)}
+              className={cn(
+                "flex cursor-pointer flex-col items-center gap-1 rounded-xl border p-3 text-center transition-all",
+                isCustom
+                  ? "border-violet-400/40 bg-violet-400/[0.08] ring-1 ring-violet-400/30"
+                  : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]",
+              )}
+            >
+              <span className="text-sm font-bold text-foreground">Custom</span>
+              <span className="font-mono text-[9px] text-muted-foreground">pick months</span>
+            </button>
+          </div>
+          {/* Custom months slider */}
+          {isCustom && (
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
+              <span className="text-xs font-semibold text-muted-foreground">Months:</span>
+              <input
+                type="range"
+                min={1}
+                max={24}
+                value={customMonths}
+                onChange={(e) => setCustomMonths(Number(e.target.value))}
+                className="flex-1 cursor-pointer accent-violet-400"
+              />
+              <span className="font-mono text-sm font-bold tabular-nums text-violet-300">{customMonths}</span>
+              <span className="font-mono text-xs text-muted-foreground">
+                = {monthlyPrice * customMonths} ETB
+              </span>
+            </div>
+          )}
+          {/* End date display */}
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+            <Clock className="size-3.5 shrink-0 text-amber-300" />
+            <p className="text-xs text-muted-foreground">
+              {isPremium ? "Your premium will be active until " : "Premium active until "}
+              <span className="font-bold text-foreground">
+                {endDate.toLocaleDateString(undefined, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+              {isPremium && currentPeriodEnd && currentPeriodEnd > Date.now() && (
+                <span className="text-muted-foreground/60">
+                  {" "}(stacked on top of your current plan — no time lost)
+                </span>
+              )}
+            </p>
+          </div>
         </div>
 
         {/* Price + receiving number — the "pay to" card */}
@@ -408,7 +537,7 @@ function ManualPaymentSection({
               {validatedDiscount ? (
                 <>
                   <span className="font-mono text-2xl font-bold tabular-nums text-muted-foreground line-through opacity-60">
-                    {priceEtb}
+                    {computedPrice}
                   </span>
                   <span className="font-mono text-4xl font-extrabold tabular-nums text-gradient">
                     {effectivePrice}
@@ -423,9 +552,14 @@ function ManualPaymentSection({
               ) : (
                 <>
                   <span className="font-mono text-4xl font-extrabold tabular-nums text-gradient">
-                    {priceEtb}
+                    {effectivePrice}
                   </span>
                   <span className="font-mono text-sm text-muted-foreground">ETB</span>
+                  {computedSavings > 0 && !isCustom && (
+                    <Badge className="ml-1.5 bg-emerald-400/15 text-emerald-300">
+                      Save {computedSavings}%
+                    </Badge>
+                  )}
                 </>
               )}
             </div>
@@ -434,6 +568,9 @@ function ManualPaymentSection({
                 You save {savedAmount} ETB with code {validatedDiscount.code}
               </p>
             )}
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+              {effectiveMonths} month{effectiveMonths === 1 ? "" : "s"} of premium access
+            </p>
             <ul className="mt-4 space-y-1.5 text-xs text-muted-foreground">
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-premium" />
@@ -498,7 +635,7 @@ function ManualPaymentSection({
             {/* Numbered instructions */}
             <div className="mt-4 space-y-2.5">
               {[
-                { n: 1, text: `Send ${effectivePrice} ETB to the TeleBirr number above.${savedAmount > 0 ? ` (${priceEtb} ETB minus your ${savedAmount} ETB discount.)` : ""}` },
+                { n: 1, text: `Send ${effectivePrice} ETB to the TeleBirr number above.${savedAmount > 0 ? ` (${computedPrice} ETB minus your ${savedAmount} ETB discount.)` : ""} for ${effectiveMonths} month${effectiveMonths === 1 ? "" : "s"} of premium.` },
                 { n: 2, text: "Screenshot the confirmation SMS you receive." },
                 { n: 3, text: "Enter the transaction reference below (e.g. DHA1O2T6RN)." },
                 { n: 4, text: "Upload the screenshot and submit. An admin reviews it — usually within " + slaHours + " hours." },
@@ -634,9 +771,10 @@ function ManualPaymentSection({
           <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="font-mono text-[10px] leading-5 text-muted-foreground">
             How renewal works: manual, never automatic. Your premium lasts{" "}
-            {SUBSCRIPTION_DAYS} days from the moment your payment is confirmed.
+            {effectiveMonths} month{effectiveMonths === 1 ? "" : "s"}
+            {" "}({effectiveMonths * 30} days) from the moment your payment is confirmed.
             When it ends, nothing is charged and nothing is lost — your
-            streaks, notes and progress stay. {priceEtb} ETB is the full
+            streaks, notes and progress stay. {effectivePrice} ETB is the full
             amount you pay; there are no hidden fees.
           </p>
         </div>
@@ -747,6 +885,8 @@ function SubmissionStatusCard({
     slaBreached: boolean;
     goodwillBonusHoursApplied?: number;
     reviewedBy?: string;
+    durationMonths?: number;
+    customMonths?: number;
   };
   slaHours: number;
   goodwillHours: number;
@@ -766,7 +906,8 @@ function SubmissionStatusCard({
           <p className="mt-1 text-xs text-muted-foreground">
             Your payment (ref: {submission.transactionRef}) was{" "}
             {isAutoApproved ? "auto-verified from your SMS" : "confirmed by an admin"}.
-            Premium is active for {SUBSCRIPTION_DAYS} days
+            Premium is active for {submission.durationMonths ?? 1} month{((submission.durationMonths ?? 1) === 1) ? "" : "s"}
+            {" "}({(submission.durationMonths ?? 1) * 30} days)
             {submission.goodwillBonusHoursApplied
               ? ` + ${submission.goodwillBonusHoursApplied} bonus hours (sorry for the wait!)`
               : ""}

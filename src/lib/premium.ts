@@ -68,10 +68,40 @@ export const PREMIUM_COMPARISON: ComparisonRow[] = [
     free: "Streaks & hours",
     premium: "Score trends · topic correlations · completion",
   },
+  {
+    id: "mock-exam",
+    feature: "Full mock national exam",
+    free: "Intro screen only",
+    premium: "6 subjects · ~340 AI questions · timed · scored",
+  },
+  {
+    id: "aptitude",
+    feature: "Aptitude Hub — brain map",
+    free: "Visual map only",
+    premium: "Adaptive practice · full mock · vocabulary decks",
+  },
+  {
+    id: "flashcards",
+    feature: "AI flashcards",
+    free: "—",
+    premium: "Auto-generate from any textbook or tutor chat",
+  },
+  {
+    id: "groups",
+    feature: "Study groups + video rooms",
+    free: "Fully free",
+    premium: "Fully free",
+  },
+  {
+    id: "notifications",
+    feature: "Weekly Telegram digest",
+    free: "—",
+    premium: "XP, quiz trends, streak + focus tip",
+  },
 ];
 
 /** Which rows are free-tier features (shown with a checkmark on /upgrade). */
-export const FREE_INCLUDED_IDS = new Set(["library", "habits"]);
+export const FREE_INCLUDED_IDS = new Set(["library", "habits", "groups"]);
 
 // ---------------------------------------------------------------------------
 // Contextual prompt copy per gate reason. Honest, calm, dismissible — no
