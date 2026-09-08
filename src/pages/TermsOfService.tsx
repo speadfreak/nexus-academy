@@ -36,9 +36,9 @@ const SECTIONS = [
   {
     title: "Free tier and premium access",
     body: [
-      "A free account gives you: library browsing, 15 AI tutor messages per day, 1 quiz per subject per week, todos, focus timer, streaks, study groups, and the daily challenge. No payment is required for these features — they are available forever.",
-      "Premium access unlocks: unlimited tutor messages, unlimited quizzes, full mock exams, AI study plans, premium content (curated past exams and teacher guides), full journey analytics, AI flashcards, and the Aptitude Hub with adaptive practice. Premium is purchased via manual TeleBirr or M-Pesa payment — there is no automatic renewal and no subscription trap.",
-      "Your free trial gives you full premium access for a configurable number of active study days (default 14, set by the admin). The trial counts days you actually open the app, not calendar days — so if you sign up and don't study for a week, that week doesn't count against your trial.",
+      "A free account gives you: library browsing, 15 AI tutor messages per day, 1 quiz per subject per week, todos, focus timer, streaks, study groups, and the daily challenge. No payment is required for these features — they are available to every student, forever. We believe a student who cannot pay should never lose all access to AI help.",
+      "Premium access unlocks: unlimited tutor messages, unlimited quizzes, full mock exams, AI study plans, premium content (curated past exams and teacher guides), full journey analytics, AI flashcards, and the Aptitude Hub with adaptive practice and vocabulary decks. Premium is purchased via manual TeleBirr or M-Pesa payment — there is no automatic renewal and no subscription trap.",
+      "Your free trial gives you full premium access for a configurable number of active study days (default 14, set by the admin). The trial counts days you actually open the app, not calendar days — so if you sign up and don't study for a week, that week doesn't count against your trial. The Aptitude Hub's practice and mock features are available to all signed-in users, including those in their free trial.",
     ],
   },
   {
@@ -46,14 +46,15 @@ const SECTIONS = [
     body: [
       "Premium payments are made via personal transfer to a designated TeleBirr or M-Pesa account. After sending the payment, you submit a screenshot and transaction reference through the /upgrade page. Our admin team reviews it (typically within 24 hours) and activates your premium access.",
       "If your payment is auto-verified via SMS webhook, activation may be near-instant. If there's a delay beyond the SLA (default 24 hours), you receive bonus premium hours as goodwill compensation — we don't make you wait for free.",
-      "Refunds: if your payment is rejected (e.g., the transaction reference doesn't match a real transfer), no charge is applied. If your premium is activated and you're unsatisfied within 48 hours, contact us for a full refund. After 48 hours, premium periods are non-refundable but you keep access until the period ends — nothing is lost.",
+      "If your payment is rejected (e.g., the transaction reference doesn't match a real transfer), no charge is applied and your account is unaffected. If you experience an issue with your premium access after activation, contact us through the Settings → Contact the Team form and we will work with you to resolve it — whether that means fixing a technical issue, extending your access, or arranging a refund where appropriate. We handle each case individually and fairly.",
     ],
   },
   {
     title: "AI features and accuracy",
     body: [
-      "The AI tutor, quiz generator, mock exam generator, flashcard generator, and study plan generator use third-party AI providers (Groq, Google Gemini, OpenRouter, Cerebras). While we design our prompts to produce accurate, curriculum-grounded content, AI can make mistakes. Always cross-reference AI answers with your textbooks and teacher's guidance.",
-      "We do not guarantee that AI-generated content is 100% correct or complete. The platform is a study aid, not a substitute for your teacher, your textbook, or your own judgment. If you find an error in AI-generated content, please report it so we can improve our prompts.",
+      "The platform uses artificial intelligence to generate study content — including tutor answers, quiz questions, mock exam questions, study plans, and flashcards. Our AI systems are carefully prompted and grounded in the Ethiopian national curriculum, but AI can make mistakes. Always cross-reference AI-generated answers with your textbooks and your teacher's guidance.",
+      "We do not guarantee that AI-generated content is 100% correct or complete. The platform is a study aid, not a substitute for your teacher, your textbook, or your own judgment. If you find an error in AI-generated content, please report it through the Contact the Team form so we can investigate and improve.",
+      "The specific AI technologies and providers we use may change over time as we improve the platform. We select providers based on accuracy, cost-efficiency, and data privacy standards. Your conversations with the AI tutor and any content you generate are stored on our servers to provide the service — they are not shared with third parties for training or advertising.",
     ],
   },
   {

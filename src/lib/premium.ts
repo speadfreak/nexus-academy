@@ -77,8 +77,8 @@ export const PREMIUM_COMPARISON: ComparisonRow[] = [
   {
     id: "aptitude",
     feature: "Aptitude Hub — brain map",
-    free: "Visual map only",
-    premium: "Adaptive practice · full mock · vocabulary decks",
+    free: "Visual map + adaptive practice during trial",
+    premium: "Full adaptive practice · mock · vocabulary decks",
   },
   {
     id: "flashcards",
