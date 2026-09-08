@@ -812,6 +812,13 @@ const schema = defineSchema(
       // price change doesn't retroactively affect pending submissions.
       expectedAmount: v.number(),
       currency: v.string(), // default "ETB"
+      // Duration of the subscription the student purchased — 1, 3, 6, 12
+      // for preset bundles, or any custom month count. The approval flow
+      // uses this to grant the correct duration (not hardcoded 30 days).
+      // Optional for backward compatibility — existing submissions
+      // predate this field and default to 1 month.
+      durationMonths: v.optional(v.number()), // default 1
+      customMonths: v.optional(v.number()), // set when the student picked a custom duration
       method: v.union(
         v.literal("telebirr_personal"),
         v.literal("other"),

@@ -49,6 +49,9 @@ export const INTEGRATION_KEYS = [
   { key: "GITHUB_TOKEN", label: "GitHub Token", category: "integrations", description: "Personal access token with repo scope", helpUrl: "https://github.com/settings/tokens", helpLabel: "github.com/settings/tokens" },
   // ── Manual payment system ──────────────────────────────────────────
   { key: "PREMIUM_PRICE_ETB", label: "Premium Price (ETB)", category: "payments", description: "Price in ETB for a premium subscription period (30 days). Snapshotted into each submission at submission time — changing this doesn't affect pending submissions." },
+  { key: "PREMIUM_PRICE_3MO", label: "Premium Price 3 Months (ETB)", category: "payments", description: "Price for a 3-month bundle. Admin sets independently — not auto-calculated. Default: 0 (falls back to monthly × 3)." },
+  { key: "PREMIUM_PRICE_6MO", label: "Premium Price 6 Months (ETB)", category: "payments", description: "Price for a 6-month bundle. Admin sets independently. Default: 0 (falls back to monthly × 6)." },
+  { key: "PREMIUM_PRICE_12MO", label: "Premium Price 12 Months (ETB)", category: "payments", description: "Price for a 12-month bundle. Admin sets independently. Default: 0 (falls back to monthly × 12)." },
   { key: "SLA_HOURS", label: "Review SLA (hours)", category: "payments", description: "Hours within which an admin should review a payment submission. Overdue submissions trigger goodwill compensation. Default: 24." },
   { key: "GOODWILL_BONUS_HOURS", label: "Goodwill Bonus (hours)", category: "payments", description: "Extra premium hours granted on top of the normal period when a submission's SLA is breached — an apology for the delay. Default: 24." },
   { key: "MANUAL_PAYMENT_TELEBIRR_NUMBER", label: "TeleBirr Receiver Number", category: "payments", description: "The personal TeleBirr phone number students send their payment to. Shown on the /upgrade page." },
@@ -72,6 +75,9 @@ export const INTEGRATION_KEYS = [
  */
 export const CONFIG_DEFAULTS: Record<string, string> = {
   PREMIUM_PRICE_ETB: "500",
+  PREMIUM_PRICE_3MO: "0",
+  PREMIUM_PRICE_6MO: "0",
+  PREMIUM_PRICE_12MO: "0",
   SLA_HOURS: "24",
   GOODWILL_BONUS_HOURS: "24",
   MANUAL_PAYMENT_TELEBIRR_NUMBER: "",

@@ -97,6 +97,8 @@ export const insertSubmission = internalMutation({
   args: {
     userId: v.id("users"),
     expectedAmount: v.number(),
+    durationMonths: v.optional(v.number()),
+    customMonths: v.optional(v.number()),
     method: v.string(),
     transactionRef: v.string(),
     proofStorageId: v.string(),
@@ -106,6 +108,8 @@ export const insertSubmission = internalMutation({
       userId: args.userId,
       expectedAmount: args.expectedAmount,
       currency: "ETB",
+      durationMonths: args.durationMonths ?? 1,
+      customMonths: args.customMonths,
       method: args.method as "telebirr_personal" | "other",
       transactionRef: args.transactionRef,
       proofStorageId: args.proofStorageId,
@@ -128,6 +132,8 @@ export const submitPaymentProof = action({
     proofStorageId: v.string(),
     method: v.optional(v.union(v.literal("telebirr_personal"), v.literal("other"))),
     discountCode: v.optional(v.string()),
+    durationMonths: v.optional(v.number()),
+    customMonths: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{ submissionId: string }> => {
     const userId = await getAuthUserId(ctx);
@@ -143,16 +149,33 @@ export const submitPaymentProof = action({
       throw new ConvexError({ message: "Transaction reference is too long (max 100 chars).", code: "invalid" });
     }
 
-    // Snapshot the current premium price — the KEY design decision: the
-    // expectedAmount is frozen at submission time. A later price change
-    // doesn't retroactively affect pending submissions.
-    let priceEtb = await getConfigNumber(ctx, "PREMIUM_PRICE_ETB", 500);
+    // Determine the duration + price for this submission.
+    const durationMonths = args.durationMonths ?? 1;
+    const customMonths = args.customMonths;
+    const months = customMonths ?? durationMonths;
+
+    // Resolve the price for the selected duration.
+    let priceEtb: number;
+    if (customMonths && customMonths > 0) {
+      // Custom duration — calculate linearly from the 1-month price.
+      const monthlyPrice = await getConfigNumber(ctx, "PREMIUM_PRICE_ETB", 500);
+      priceEtb = monthlyPrice * customMonths;
+    } else {
+      // Preset — use the configured bundle price if set, otherwise
+      // fall back to monthly × months.
+      const monthlyPrice = await getConfigNumber(ctx, "PREMIUM_PRICE_ETB", 500);
+      const presetKey = `PREMIUM_PRICE_${durationMonths}MO`;
+      const presetPrice = await getConfigNumber(ctx, presetKey, 0);
+      priceEtb = presetPrice > 0 ? presetPrice : monthlyPrice * durationMonths;
+    }
     const method = args.method ?? "telebirr_personal";
 
     // Insert the submission via an internal mutation.
     const submissionId = await ctx.runMutation(internal.manualPayments.insertSubmission, {
       userId,
       expectedAmount: priceEtb,
+      durationMonths,
+      customMonths,
       method,
       transactionRef: txRef,
       proofStorageId: args.proofStorageId,
@@ -335,6 +358,34 @@ export const getPaymentConfig = query({
   },
 });
 
+/**
+ * Public query — returns all 4 preset prices + the base monthly rate.
+ * The frontend uses this to compute "you save X%" automatically for any
+ * preset by comparing preset price to (monthly rate × months).
+ */
+export const getPricingOptions = query({
+  args: {},
+  handler: async (ctx): Promise<{
+    monthlyPrice: number;
+    presets: Array<{ months: number; price: number; savingsPercent: number }>;
+  }> => {
+    const monthlyPrice = await getConfigNumber(ctx, "PREMIUM_PRICE_ETB", 500);
+    const presets: Array<{ months: number; price: number; savingsPercent: number }> = [];
+    for (const months of [1, 3, 6, 12]) {
+      const key = `PREMIUM_PRICE_${months}MO`;
+      const presetPrice = await getConfigNumber(ctx, key, 0);
+      const price = presetPrice > 0 ? presetPrice : monthlyPrice * months;
+      const linearPrice = monthlyPrice * months;
+      const savingsPercent =
+        linearPrice > 0 && price < linearPrice
+          ? Math.round(((linearPrice - price) / linearPrice) * 100)
+          : 0;
+      presets.push({ months, price, savingsPercent });
+    }
+    return { monthlyPrice, presets };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // getPendingSubmissions — admin review queue (query)
 // ---------------------------------------------------------------------------
@@ -446,12 +497,16 @@ export const approveSubmission = mutation({
 
     const goodwillHours = await getConfigNumber(ctx, "GOODWILL_BONUS_HOURS", 24);
 
-    // Calculate duration: 30 days base + goodwill bonus if SLA breached.
-    let durationMs = SUBSCRIPTION_MS;
+    // Calculate duration: the ACTUAL purchased duration (from the
+    // submission row's durationMonths) × 30 days, plus goodwill bonus if
+    // SLA breached. Previously this was hardcoded to SUBSCRIPTION_MS
+    // (30 days) regardless of what the student paid for.
+    const months = sub.durationMonths ?? 1;
+    let durationMs = months * SUBSCRIPTION_MS;
     let goodwillApplied = 0;
     if (sub.slaBreached) {
       goodwillApplied = goodwillHours;
-      durationMs = SUBSCRIPTION_MS + goodwillHours * 60 * 60 * 1000;
+      durationMs += goodwillHours * 60 * 60 * 1000;
     }
 
     // Grant premium via the EXISTING setUserPremium mutation — no duplicate logic.
@@ -537,11 +592,12 @@ export const approveFromSms = internalMutation({
     if (sub.status !== "pending") return { ok: false, goodwillApplied: 0 }; // idempotent
 
     const goodwillHours = await getConfigNumber(ctx, "GOODWILL_BONUS_HOURS", 24);
-    let durationMs = SUBSCRIPTION_MS;
+    const months = sub.durationMonths ?? 1;
+    let durationMs = months * SUBSCRIPTION_MS;
     let goodwillApplied = 0;
     if (sub.slaBreached) {
       goodwillApplied = goodwillHours;
-      durationMs = SUBSCRIPTION_MS + goodwillHours * 60 * 60 * 1000;
+      durationMs += goodwillHours * 60 * 60 * 1000;
     }
 
     await ctx.runMutation(api.adminCenter.setUserPremium, {
@@ -565,8 +621,8 @@ export const approveFromSms = internalMutation({
         title: "Premium activated! 🎉",
         body:
           goodwillApplied > 0
-            ? `Your payment was auto-verified from your SMS. Premium is active for 30 days + ${goodwillApplied} bonus hours (sorry for the wait!).`
-            : "Your payment was auto-verified from your SMS. Premium is now active for 30 days. Thank you!",
+            ? `Your payment was auto-verified from your SMS. Premium is active for ${months} month${months === 1 ? "" : "s"} + ${goodwillApplied} bonus hours (sorry for the wait!).`
+            : `Your payment was auto-verified from your SMS. Premium is now active for ${months} month${months === 1 ? "" : "s"}. Thank you!`,
         actionUrl: "/dashboard",
       });
     } catch {

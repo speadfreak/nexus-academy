@@ -60,6 +60,7 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AuthRequiredPrompt } from "@/components/AuthRequiredPrompt";
 import { cn } from "@/lib/utils";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Link } from "react-router";
@@ -160,6 +161,7 @@ export default function MockExamPage() {
     questionCount: number;
   }[] | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
   const subjectNames = useSubjectNames();
 
@@ -199,6 +201,12 @@ export default function MockExamPage() {
   }, [phase, exam]);
 
   const handleBegin = async (stream: "natural" | "social") => {
+    // Guest gate — anonymous users can see the mock exam intro but can't
+    // generate one without a real account.
+    if (profile?.isAnonymous) {
+      setShowAuthPrompt(true);
+      return;
+    }
     setPhase("generating");
     setGenError(null);
     setGenProgress([]);
@@ -468,6 +476,15 @@ export default function MockExamPage() {
           </div>
         )}
       </div>
+
+      {/* Guest auth prompt — shown when an anonymous user tries to begin a mock exam */}
+      {showAuthPrompt && (
+        <AuthRequiredPrompt
+          title="Mock exams need a real account"
+          description="Create a free account to generate full mock exams — sign in with email or Google, no cost, starts your free trial instantly."
+          returnTo="/mock-exam"
+        />
+      )}
     </DashboardShell>
   );
 }

@@ -45,6 +45,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
+import { AuthRequiredPrompt } from "@/components/AuthRequiredPrompt";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { QuizQuestion } from "@/convex/quizzes";
@@ -307,10 +308,14 @@ function PracticePanel({
   node,
   mastery,
   onClose,
+  isAnonymous,
+  onRequireAuth,
 }: {
   node: SkillNode;
   mastery: MasteryEntry | undefined;
   onClose: () => void;
+  isAnonymous: boolean;
+  onRequireAuth: (title: string, description: string) => boolean;
 }) {
   const generateNodePractice = useAction(api.aptitudeActions.generateNodePractice);
   const submitResult = useAction(api.aptitudeActions.submitNodePracticeResult);
@@ -329,6 +334,13 @@ function PracticePanel({
   } | null>(null);
 
   const handleGenerate = async () => {
+    if (isAnonymous) {
+      onRequireAuth(
+        "Aptitude practice needs a real account",
+        "Create a free account to practice reasoning skills — sign in with email or Google, no cost, starts your free trial instantly.",
+      );
+      return;
+    }
     setGenerating(true);
     setResult(null);
     setQuestions([]);
@@ -563,7 +575,24 @@ function PracticePanel({
 
 export default function AptitudeHub() {
   const skillMap = useQuery(api.aptitude.getSkillMap);
+  const profile = useQuery(api.profile.getProfile);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
+  const [authPromptConfig, setAuthPromptConfig] = useState<{ title: string; description: string }>({
+    title: "",
+    description: "",
+  });
+
+  // Helper: gate any action for anonymous users. Returns true if the
+  // action should proceed (user is NOT anonymous), false if it was blocked.
+  const requireRealAccount = (title: string, description: string): boolean => {
+    if (profile?.isAnonymous) {
+      setAuthPromptConfig({ title, description });
+      setShowAuthPrompt(true);
+      return false;
+    }
+    return true;
+  };
 
   // Seed skill nodes on first visit (idempotent — the mutation checks
   // for existing nodes and only inserts missing ones).
@@ -722,17 +751,25 @@ export default function AptitudeHub() {
                   node={selectedNode}
                   mastery={masteryBySlug.get(selectedNode.slug)}
                   onClose={() => setSelectedSlug(null)}
+                  isAnonymous={profile?.isAnonymous ?? false}
+                  onRequireAuth={(title, description) => requireRealAccount(title, description)}
                 />
               ) : (
                 <>
                   {/* Full Aptitude Mock entry */}
-                  <FullAptitudeMockCard />
+                  <FullAptitudeMockCard
+                    isAnonymous={profile?.isAnonymous ?? false}
+                    onRequireAuth={(title, description) => requireRealAccount(title, description)}
+                  />
 
                   {/* Daily warm-up */}
                   <DailyWarmupCard />
 
                   {/* Vocabulary deck */}
-                  <AptitudeVocabDeckCard />
+                  <AptitudeVocabDeckCard
+                    isAnonymous={profile?.isAnonymous ?? false}
+                    onRequireAuth={(title, description) => requireRealAccount(title, description)}
+                  />
 
                   {/* Time-pressure trainer */}
                   <TimePressureTrainerCard
@@ -785,6 +822,15 @@ export default function AptitudeHub() {
           </div>
         )}
       </div>
+
+      {/* Guest auth prompt — shown when an anonymous user tries to practice */}
+      {showAuthPrompt && (
+        <AuthRequiredPrompt
+          title={authPromptConfig.title}
+          description={authPromptConfig.description}
+          returnTo="/aptitude-hub"
+        />
+      )}
     </DashboardShell>
   );
 }
@@ -807,12 +853,25 @@ function LegendItem({ color, label, ring }: { color: string; label: string; ring
 
 // ── Full Aptitude Mock card ───────────────────────────────────────────
 
-function FullAptitudeMockCard() {
+function FullAptitudeMockCard({
+  isAnonymous,
+  onRequireAuth,
+}: {
+  isAnonymous: boolean;
+  onRequireAuth: (title: string, description: string) => boolean;
+}) {
   const generateMock = useAction(api.aptitudeActions.generateFullAptitudeMock);
   const navigate = useNavigate();
   const [generating, setGenerating] = useState(false);
 
   const handleStart = async () => {
+    if (isAnonymous) {
+      onRequireAuth(
+        "Full aptitude mock needs a real account",
+        "Create a free account to take the full 40-question aptitude mock — sign in with email or Google, no cost, starts your free trial instantly.",
+      );
+      return;
+    }
     setGenerating(true);
     try {
       const result = await generateMock({});
@@ -1028,13 +1087,26 @@ function DailyWarmupCard() {
 
 // ── Vocabulary deck card ──────────────────────────────────────────────
 
-function AptitudeVocabDeckCard() {
+function AptitudeVocabDeckCard({
+  isAnonymous,
+  onRequireAuth,
+}: {
+  isAnonymous: boolean;
+  onRequireAuth: (title: string, description: string) => boolean;
+}) {
   const generateDeck = useAction(api.aptitudeActions.generateAptitudeVocabDeck);
   const navigate = useNavigate();
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
 
   const handleGenerate = async () => {
+    if (isAnonymous) {
+      onRequireAuth(
+        "Vocabulary decks need a real account",
+        "Create a free account to generate vocabulary flashcards — sign in with email or Google, no cost, starts your free trial instantly.",
+      );
+      return;
+    }
     setGenerating(true);
     try {
       const result = await generateDeck({});

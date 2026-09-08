@@ -462,6 +462,17 @@ export function PaymentReviewsSection() {
                         <Wallet className="size-3 text-amber-300" />
                         {sub.expectedAmount} {sub.currency}
                       </span>
+                      {/* Duration badge — show when non-standard (not 1 month) */}
+                      {sub.durationMonths && sub.durationMonths > 1 && (
+                        <span className="flex items-center gap-1 rounded-md border border-sky-400/20 bg-sky-400/[0.06] px-1.5 py-0.5 font-mono text-[10px] font-bold text-sky-300">
+                          Extended: {sub.durationMonths} months · {sub.expectedAmount} {sub.currency}
+                        </span>
+                      )}
+                      {sub.customMonths && (
+                        <span className="flex items-center gap-1 rounded-md border border-violet-400/20 bg-violet-400/[0.06] px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-300">
+                          Custom: {sub.customMonths} months
+                        </span>
+                      )}
                       <span className="flex items-center gap-1.5 font-mono">
                         <span className="text-muted-foreground">ref:</span>
                         <code className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-amber-200">
