@@ -6,43 +6,23 @@
 //   om  — Afaan Oromoo
 //   ti  — ትግርኛ (Tigrigna)
 //
-// NAMESPACES (lazy-loaded per language to keep the initial bundle small):
-//   common     — shared buttons, labels, errors used across pages
-//   landing    — Landing page hero, features, footer (Phase 3)
-//   dashboard  — DashboardShell nav + Dashboard/Library (Phase 4)
-//   account    — Account sheet (Phase 2)
-//   tutor, todos, focus, plans, journey, calendar, notes, flashcards,
-//   achievements, groups, settings, aptitude, mockExam — Phase 5
-//   footer, pages — Phase 6 (expanded footer + new marketing pages)
+// ARCHITECTURE:
+//   All translation JSON files are statically imported and bundled.
+//   This guarantees language switching works instantly at runtime —
+//   no lazy-loading, no dynamic imports that Vite can't resolve, no
+//   silent fallback to English. The total size of all 4 languages ×
+//   all namespaces is ~80KB — negligible vs the 400KB+ index bundle.
 //
 // GATING:
-//   When MULTI_LANGUAGE_ENABLED configKey is "true", the language switcher
-//   UI appears on the landing page + dashboard account sheet. When unset
-//   or "false", the frontend forces English (i18n.language = "en") and
-//   hides all language UI. See src/hooks/useLanguage.ts for the gate hook.
-//
-// PERSISTENCE:
-//   - Signed-in users: preferredLanguage stored on userProfiles (cross-
-//     device sync via the Convex profile mutation)
-//   - Guests/landing visitors: localStorage key "learnyx.lang"
-//
-// BROWSER DETECTION:
-//   On first visit, i18next-browser-languagedetector picks up the browser
-//   language. If MULTI_LANGUAGE_ENABLED and the detected language is one
-//   of am/om/ti, we soft-suggest switching (Phase 7 — see LandingPage).
-//
-// TRANSLATION QUALITY NOTE (Phase 7):
-//   Amharic translations are full coverage. Afaan Oromo + Tigrigna are
-//   admin-flagged as "needs native-speaker review before wide promotion"
-//   — see the small note in the language switcher UI (admin-only).
+//   When MULTI_LANGUAGE_ENABLED configKey is "true", the language
+//   switcher UI appears. When unset/false, the frontend forces English.
+//   See src/hooks/useLanguage.ts for the gate hook.
 
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 
-// Static imports for the English namespace — English is the fallback so it
-// must always be loaded synchronously (no lazy-load = no missing-key flash
-// on first paint). All other languages are lazy-loaded below.
+// ── English (bundled synchronously — always available) ─────────────
 import enCommon from "./en/common.json";
 import enLanding from "./en/landing.json";
 import enDashboard from "./en/dashboard.json";
@@ -63,18 +43,30 @@ import enSettings from "./en/settings.json";
 import enAptitude from "./en/aptitude.json";
 import enMockExam from "./en/mockExam.json";
 
-// Lazy-loaders for non-English locales. Each returns a Promise that resolves
-// to the namespace JSON. i18next calls these on demand when the user
-// switches language — keeps the initial bundle small.
-const lazyLoad = (lang: "am" | "om" | "ti", ns: string) => async () => {
-  // Vite supports dynamic imports of JSON with explicit path strings.
-  // The `/* @vite-ignore */` keeps the bundler from warning about unknown
-  // keys at build time (the language toggle is dynamic).
-  const mod = await import(
-    /* @vite-ignore */ `./${lang}/${ns}.json`
-  );
-  return mod.default ?? mod;
-};
+// ── Amharic (አማርኛ) — statically imported, always bundled ──────────
+import amCommon from "./am/common.json";
+import amLanding from "./am/landing.json";
+import amDashboard from "./am/dashboard.json";
+import amAccount from "./am/account.json";
+import amFooter from "./am/footer.json";
+import amPages from "./am/pages.json";
+import amTutor from "./am/tutor.json";
+
+// ── Afaan Oromoo — statically imported, always bundled ──────────────
+import omCommon from "./om/common.json";
+import omLanding from "./om/landing.json";
+import omDashboard from "./om/dashboard.json";
+import omAccount from "./om/account.json";
+import omFooter from "./om/footer.json";
+import omPages from "./om/pages.json";
+
+// ── Tigrigna (ትግርኛ) — statically imported, always bundled ───────────
+import tiCommon from "./ti/common.json";
+import tiLanding from "./ti/landing.json";
+import tiDashboard from "./ti/dashboard.json";
+import tiAccount from "./ti/account.json";
+import tiFooter from "./ti/footer.json";
+import tiPages from "./ti/pages.json";
 
 export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English", nativeLabel: "English", flag: "🇬🇧" },
@@ -92,27 +84,34 @@ export function isSupportedLanguage(code: string | undefined | null): code is "e
   return (SUPPORTED_LANGUAGES as readonly { code: string }[]).some((l) => l.code === code);
 }
 
-// Initialize i18n. English namespaces are bundled; the other three
-// languages are lazy-loaded on first switch (and cached by i18n).
+// ── All namespace resources for all 4 languages ────────────────────
+// Namespaces missing for am/om/ti fall back to English automatically
+// via i18next's fallbackLng + fallbackNS mechanism. This means: if a
+// user switches to Amharic and opens the Flashcards page (which doesn't
+// have an am/flashcards.json yet), the English flashcards strings
+// render — graceful degradation, not broken UI.
+
+// Build the full resource map — each language has all namespaces.
+// For namespaces without a translation file in am/om/ti, we simply
+// omit them from that language's resource map. i18next's fallbackLng
+// will fill in the English strings for those missing namespaces.
+const ALL_NS_KEYS = [
+  "common", "landing", "dashboard", "account", "footer", "pages",
+  "tutor", "todos", "focus", "plans", "journey", "calendar",
+  "notes", "flashcards", "achievements", "groups", "settings",
+  "aptitude", "mockExam",
+] as const;
+
 void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    // Start in English. The useLanguage hook will switch to the user's
-    // preferredLanguage (signed-in) or the detected browser language
-    // (guest, when MULTI_LANGUAGE_ENABLED is true) after mount.
     lng: DEFAULT_LANGUAGE,
     fallbackLng: DEFAULT_LANGUAGE,
-    // Don't fail on missing keys — log a warning instead so we can find
-    // un-translated strings during development.
     saveMissing: false,
-    // Don't escape — React already escapes. Lets us use HTML entities in
-    // translation strings if needed.
-    interpolation: {
-      escapeValue: false,
-    },
-    // English is bundled (synchronous). The other three are lazy-loaded
-    // via `resources` callbacks that resolve to JSON imports.
+    interpolation: { escapeValue: false },
+    // All resources are statically bundled — no lazy loading. This
+    // guarantees language switching works instantly at runtime.
     resources: {
       en: {
         common: enCommon,
@@ -136,86 +135,47 @@ void i18n
         mockExam: enMockExam,
       },
       am: {
-        common: lazyLoad("am", "common"),
-        landing: lazyLoad("am", "landing"),
-        dashboard: lazyLoad("am", "dashboard"),
-        account: lazyLoad("am", "account"),
-        footer: lazyLoad("am", "footer"),
-        pages: lazyLoad("am", "pages"),
-        tutor: lazyLoad("am", "tutor"),
-        todos: lazyLoad("am", "todos"),
-        focus: lazyLoad("am", "focus"),
-        plans: lazyLoad("am", "plans"),
-        journey: lazyLoad("am", "journey"),
-        calendar: lazyLoad("am", "calendar"),
-        notes: lazyLoad("am", "notes"),
-        flashcards: lazyLoad("am", "flashcards"),
-        achievements: lazyLoad("am", "achievements"),
-        groups: lazyLoad("am", "groups"),
-        settings: lazyLoad("am", "settings"),
-        aptitude: lazyLoad("am", "aptitude"),
-        mockExam: lazyLoad("am", "mockExam"),
+        common: amCommon,
+        landing: amLanding,
+        dashboard: amDashboard,
+        account: amAccount,
+        footer: amFooter,
+        pages: amPages,
+        tutor: amTutor,
+        // Namespaces without am/ translations fall back to English
+        // automatically via fallbackLng.
       },
       om: {
-        common: lazyLoad("om", "common"),
-        landing: lazyLoad("om", "landing"),
-        dashboard: lazyLoad("om", "dashboard"),
-        account: lazyLoad("om", "account"),
-        footer: lazyLoad("om", "footer"),
-        pages: lazyLoad("om", "pages"),
-        tutor: lazyLoad("om", "tutor"),
-        todos: lazyLoad("om", "todos"),
-        focus: lazyLoad("om", "focus"),
-        plans: lazyLoad("om", "plans"),
-        journey: lazyLoad("om", "journey"),
-        calendar: lazyLoad("om", "calendar"),
-        notes: lazyLoad("om", "notes"),
-        flashcards: lazyLoad("om", "flashcards"),
-        achievements: lazyLoad("om", "achievements"),
-        groups: lazyLoad("om", "groups"),
-        settings: lazyLoad("om", "settings"),
-        aptitude: lazyLoad("om", "aptitude"),
-        mockExam: lazyLoad("om", "mockExam"),
+        common: omCommon,
+        landing: omLanding,
+        dashboard: omDashboard,
+        account: omAccount,
+        footer: omFooter,
+        pages: omPages,
       },
       ti: {
-        common: lazyLoad("ti", "common"),
-        landing: lazyLoad("ti", "landing"),
-        dashboard: lazyLoad("ti", "dashboard"),
-        account: lazyLoad("ti", "account"),
-        footer: lazyLoad("ti", "footer"),
-        pages: lazyLoad("ti", "pages"),
-        tutor: lazyLoad("ti", "tutor"),
-        todos: lazyLoad("ti", "todos"),
-        focus: lazyLoad("ti", "focus"),
-        plans: lazyLoad("ti", "plans"),
-        journey: lazyLoad("ti", "journey"),
-        calendar: lazyLoad("ti", "calendar"),
-        notes: lazyLoad("ti", "notes"),
-        flashcards: lazyLoad("ti", "flashcards"),
-        achievements: lazyLoad("ti", "achievements"),
-        groups: lazyLoad("ti", "groups"),
-        settings: lazyLoad("ti", "settings"),
-        aptitude: lazyLoad("ti", "aptitude"),
-        mockExam: lazyLoad("ti", "mockExam"),
+        common: tiCommon,
+        landing: tiLanding,
+        dashboard: tiDashboard,
+        account: tiAccount,
+        footer: tiFooter,
+        pages: tiPages,
       },
     },
-    // Always load these namespaces so common buttons/labels work even
-    // before a page-specific namespace is requested.
-    ns: ["common", "landing", "dashboard", "account", "footer", "pages"],
+    // Load all namespaces so fallback works correctly.
+    ns: ALL_NS_KEYS,
     defaultNS: "common",
-    // Detect language from localStorage first, then browser. We override
-    // this on mount via the useLanguage hook (which reads the user's
-    // preferredLanguage from their profile when signed in).
+    // When a key is missing in the current language's namespace,
+    // fall back to the same namespace in English, then to "common".
+    fallbackNS: "common",
+    returnEmptyString: false,
+    // Detection: localStorage first (so returning visitors keep their
+    // choice), then browser navigator, then HTML tag.
     detection: {
       order: ["localStorage", "navigator", "htmlTag"],
       lookupLocalStorage: LANG_STORAGE_KEY,
       caches: ["localStorage"],
     },
-    // If a key is missing in the current language, fall back to English
-    // (not the raw key) — so an untranslated page in Amharic still shows
-    // English text instead of "missing.translation.key".
-    fallbackNS: "common",
-    returnEmptyString: false,
   });
 
 export default i18n;
