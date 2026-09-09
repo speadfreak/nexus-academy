@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  FileDown,
   FileUp,
   FileText,
   Layers,
@@ -30,6 +31,7 @@ import { extractPdfText } from "@/lib/pdf";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BulkUploadSection } from "@/components/admin/BulkUploadSection";
+import { BrandingPanel } from "@/components/admin/BrandingPanel";
 import { CategoriesManagement } from "@/components/admin/CategoriesManagement";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -224,7 +226,7 @@ export function AdminContentSection() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadMode, setUploadMode] = useState<"single" | "bulk" | "categories">("single");
+  const [uploadMode, setUploadMode] = useState<"single" | "bulk" | "categories" | "branding">("single");
 
   // Browser→Convex storage→R2 flow. Convex handles the browser-side CORS
   // for the upload POST (same project, no cross-origin signature issues),
@@ -235,6 +237,13 @@ export function AdminContentSection() {
   // R2 token enforcement levels, etc.).
   const generateUploadUrl = useAction(api.contentAdmin.generateUploadUrl);
   const adminUploadContent = useAction(api.contentAdmin.adminUploadContent);
+  // Preview the branded cover page — generates a full branded PDF in-memory
+  // and returns it as a data URL so the admin can review the cover before
+  // committing the upload. Used by the Single Upload form's "Preview Cover"
+  // button.
+  const previewBrandingAction = useAction(api.contentAdmin.previewBranding);
+  const [brandingPreview, setBrandingPreview] = useState<string | null>(null);
+  const [previewingBranding, setPreviewingBranding] = useState(false);
   const classifyContentText = useAction(api.contentAI.classifyContentText);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<Awaited<
@@ -290,7 +299,35 @@ export function AdminContentSection() {
   const needsReviewCount = useQuery(api.categories.countNeedsReview);
   const deleteContentItem = useAction(api.contentAdmin.deleteContentItem);
   const updateContentItem = useAction(api.contentAdmin.updateContentItem);
+  // Admin-only raw-file download action — returns a URL for the original
+  // (unbranded) file when preserved, or the current fileUrl as fallback.
+  // Always audit-logged by the backend (systemEvents + adminManagement
+  // audit log). Sensitive: used for auditing licensed/sourced material.
+  const adminGetRawFileUrl = useAction(api.contentAdmin.adminGetRawFileUrl);
+  const [downloadingRawId, setDownloadingRawId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Download original (unbranded) file — admin-only, audit-logged.
+  // Opens in a new tab so the browser's native PDF viewer handles it.
+  const handleDownloadRaw = async (item: ContentItemWithSubject) => {
+    setDownloadingRawId(item._id);
+    try {
+      const result = await adminGetRawFileUrl({ contentId: item._id as never });
+      // Open in a new tab — the URL is the R2 public URL of the original
+      // (or the current fileUrl if no original is preserved). The browser
+      // handles the actual download via Content-Disposition.
+      window.open(result.url, "_blank", "noopener,noreferrer");
+      toast.success(
+        result.isOriginal
+          ? `Opening original (unbranded) file. Download is audit-logged.`
+          : `Opening current file (no separate original preserved). Download is audit-logged.`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloadingRawId(null);
+    }
+  };
 
   // --- Edit dialog state -----------------------------------------------
   const [editItem, setEditItem] = useState<ContentItemWithSubject | null>(null);
@@ -468,6 +505,78 @@ export function AdminContentSection() {
    *    large files (>50 MB) can OOM the action. The handleFile cap enforces
    *    this. For most PDFs (textbooks, past papers, worksheets) this is fine.
    */
+
+  /** Preview the Learnyx-branded cover page before committing the upload.
+   *  Uploads the file to Convex temp storage, calls previewBranding (which
+   *  runs brandPdf in-flight and returns the full branded PDF as a data
+   *  URL), then opens the preview in a dialog so the admin can review the
+   *  cover before clicking "Save to library".
+   *
+   *  No file is saved to R2 until the admin clicks "Save to library" —
+   *  this is purely a preview, matching the existing "review AI suggestions
+   *  before confirming" principle already built for content classification.
+   */
+  const handlePreviewBranding = () => {
+    if (!file) {
+      toast.error("Choose a PDF file first.");
+      return;
+    }
+    if (!title.trim()) {
+      toast.error("Add a title first — it appears on the cover page.");
+      return;
+    }
+    (async () => {
+      setPreviewingBranding(true);
+      setBrandingPreview(null);
+      try {
+        // Step 1: upload to Convex temp storage so the backend can read it.
+        const url = await generateUploadUrl();
+        const storageId = await new Promise<string>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", url);
+          xhr.setRequestHeader("Content-Type", file.type || "application/pdf");
+          xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const res = JSON.parse(xhr.responseText) as { storageId: string };
+                if (res.storageId) resolve(res.storageId);
+                else reject(new Error("No storageId in upload response"));
+              } catch {
+                reject(new Error("Upload response was not JSON"));
+              }
+            } else {
+              reject(new Error(`Upload HTTP ${xhr.status}`));
+            }
+          });
+          xhr.addEventListener("error", () => reject(new Error("Network error")));
+          xhr.send(file);
+        });
+
+        // Step 2: call previewBranding — runs brandPdf and returns base64 data URL.
+        const subjectNameForPreview =
+          subjects?.find((s) => s._id === subjectId)?.name ?? "";
+        const typeLabelForPreview =
+          contentTypeOptions.find((t) => t.value === contentType)?.label ??
+          contentType;
+        const result = await previewBrandingAction({
+          storageId,
+          title: title.trim(),
+          subjectName: subjectNameForPreview,
+          grade: grade ? Number(grade) : undefined,
+          contentTypeLabel: typeLabelForPreview,
+          examYear: contentTypeHasYear(contentType) && examYear ? Number(examYear) : undefined,
+          sourceName: sourceName.trim() || undefined,
+        });
+        setBrandingPreview(result.previewDataUrl);
+        toast.success(`Cover preview ready — ${result.finalPageCount} pages (${result.originalPageCount} original + 1 cover). Review before saving.`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Preview failed");
+      } finally {
+        setPreviewingBranding(false);
+      }
+    })();
+  };
+
   const handleUpload = () => {
     if (!file) {
       toast.error("Choose a PDF file first.");
@@ -552,6 +661,13 @@ export function AdminContentSection() {
         // credentials — no browser, no presigned URL, no CORS.
         toast.info("Saving to library…");
         setUploadProgress(100); // R2 copy is server-side, no progress events
+        // Resolve subject display name + content type label for branding.
+        // We pass them through so the backend doesn't need to re-query.
+        const subjectName =
+          subjects?.find((s) => s._id === subjectId)?.name ?? "";
+        const contentTypeLabelForBranding =
+          contentTypeOptions.find((t) => t.value === contentType)?.label ??
+          contentType;
         await adminUploadContent({
           title: title.trim(),
           contentType,
@@ -564,6 +680,10 @@ export function AdminContentSection() {
           topicCandidates: aiSuggestion?.analyzed ? aiSuggestion.topics : undefined,
           sourceName: sourceName.trim() || undefined,
           sourceUrl: sourceUrl.trim() || undefined,
+          // Branding — defaults to true (applied in-flight before R2 upload)
+          applyBranding: true,
+          subjectName,
+          contentTypeLabel: contentTypeLabelForBranding,
         });
 
         toast.success("Content uploaded to the library.");
@@ -783,6 +903,19 @@ export function AdminContentSection() {
           <Layers className="size-3.5" />
           Categories
         </button>
+        <button
+          type="button"
+          onClick={() => setUploadMode("branding")}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors",
+            uploadMode === "branding"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+          )}
+        >
+          <Sparkles className="size-3.5" />
+          Branding
+        </button>
       </div>
 
       {/* Bulk upload mode */}
@@ -790,6 +923,9 @@ export function AdminContentSection() {
 
       {/* Categories management mode */}
       {uploadMode === "categories" && <CategoriesManagement />}
+
+      {/* Branding panel — branding stats + retroactive rebranding job */}
+      {uploadMode === "branding" && <BrandingPanel />}
 
       {/* Single upload form */}
       {uploadMode === "single" && (
@@ -867,6 +1003,24 @@ export function AdminContentSection() {
                   <Wand2 className="size-3.5" />
                 )}
                 {analyzing ? "Analyzing with AI…" : "Analyze with AI"}
+              </Button>
+            )}
+            {file && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 cursor-pointer border-amber-400/30 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20"
+                onClick={handlePreviewBranding}
+                disabled={previewingBranding}
+                title="Generate the Learnyx cover page + watermark in-memory and review it before saving"
+              >
+                {previewingBranding ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="size-3.5" />
+                )}
+                {previewingBranding ? "Generating cover…" : "Preview Learnyx cover"}
               </Button>
             )}
           </div>
@@ -1298,6 +1452,19 @@ export function AdminContentSection() {
                             <AlertTriangle className="size-2.5" /> Needs Review
                           </Badge>
                         )}
+                        {item.brandingApplied ? (
+                          <Badge className="gap-1 bg-emerald-500/10 text-emerald-300 border-emerald-500/30" title={`Branded at v${item.brandingVersion ?? 1}`}>
+                            <Check className="size-2.5" /> Branded v{item.brandingVersion ?? 1}
+                          </Badge>
+                        ) : (
+                          // Only show "Unbranded" badge if we have explicit brandingApplied=false.
+                          // (legacy rows have it undefined — we don't want to clutter with "Unbranded" for everything pre-rebrand.)
+                          item.brandingApplied === false && (
+                            <Badge className="gap-1 bg-rose-500/10 text-rose-300 border-rose-500/30">
+                              <AlertTriangle className="size-2.5" /> Unbranded
+                            </Badge>
+                          )
+                        )}
                         <Badge variant="outline" className="bg-white/5 text-[10px] font-normal text-muted-foreground">
                           {item.sourceName || "\u2014"}
                         </Badge>
@@ -1347,6 +1514,31 @@ export function AdminContentSection() {
                         >
                           <ExternalLink className="size-3.5" />
                         </a>
+                        {/* Download original (unbranded) — admin-only audit-logged
+                            download of the raw source file. Only shown when the
+                            item has been branded (originalFileUrl is set). The
+                            backend action enforces admin role + logs to
+                            systemEvents + adminManagement audit log. */}
+                        {item.brandingApplied && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "size-7 cursor-pointer text-muted-foreground hover:text-amber-300",
+                              downloadingRawId === item._id && "opacity-50",
+                            )}
+                            disabled={downloadingRawId === item._id}
+                            onClick={() => handleDownloadRaw(item)}
+                            aria-label={`Download original (unbranded) ${item.title}`}
+                            title="Download original (unbranded) — audit logged"
+                          >
+                            {downloadingRawId === item._id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <FileDown className="size-3.5" />
+                            )}
+                          </Button>
+                        )}
                         {/* Premium toggle */}
                         <Button
                           variant="ghost"
@@ -1531,6 +1723,56 @@ export function AdminContentSection() {
             <Button className="rounded-xl" disabled={editSaving || !editTitle.trim()} onClick={handleEditSave}>
               {editSaving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
               Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Branding preview dialog — shows the branded cover page (page 1) +
+          the next few pages in an iframe so the admin can review before
+          committing the upload. No file is saved to R2 until "Save to
+          library" is clicked — this is a pure preview. */}
+      <Dialog open={!!brandingPreview} onOpenChange={(open) => !open && setBrandingPreview(null)}>
+        <DialogContent className="glass-panel max-w-4xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Learnyx branding preview</DialogTitle>
+            <DialogDescription>
+              Review the cover page (page 1) and the original content (page 2+)
+              before saving to the library. Original content is fully preserved —
+              branding is additive only.
+            </DialogDescription>
+          </DialogHeader>
+          {brandingPreview && (
+            <div className="flex flex-col gap-3">
+              <iframe
+                src={brandingPreview}
+                title="Branded PDF preview"
+                className="h-[600px] w-full rounded-xl border border-white/10 bg-white"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                The cover page is page 1 — Learnyx logo, title, subject/grade,
+                source attribution. Pages 2+ are your original PDF with a
+                small corner watermark added at the bottom-right.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBrandingPreview(null)}
+              className="rounded-xl bg-white/5"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setBrandingPreview(null);
+                handleUpload();
+              }}
+              className="gap-2 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600"
+            >
+              <Sparkles className="size-3.5" />
+              Save to library
             </Button>
           </DialogFooter>
         </DialogContent>

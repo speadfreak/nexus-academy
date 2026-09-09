@@ -134,6 +134,25 @@ const schema = defineSchema(
       // admin-provided defaults because the classifier couldn't fully
       // classify it. The admin should review these later (edit metadata).
       needsReview: v.optional(v.boolean()),
+      // ── PDF BRANDING ─────────────────────────────────────────────────
+      // True after the Learnyx cover page + corner watermark have been
+      // applied to the file at this.fileUrl. False/undefined = unbranded
+      // (either freshly uploaded before branding runs, or legacy content
+      // that hasn't been processed by the retroactive rebranding job).
+      brandingApplied: v.optional(v.boolean()),
+      // Bumped every time the cover page design changes. Lets the admin
+      // selectively re-run branding only on resources with an older
+      // version rather than reprocessing everything. Starts at 1.
+      brandingVersion: v.optional(v.number()),
+      // Optional: keeps the original (pre-branding) R2 URL so the admin
+      // can download the raw unbranded file for licensed/sourced material
+      // audit. Only set when the retroactive rebranding job re-uploads a
+      // new branded file (the original fileUrl is preserved here).
+      // New uploads don't set this — the original IS the file the admin
+      // picked, which gets branded in-flight and only the branded copy is
+      // uploaded to R2. So for new uploads, fileUrl IS the branded file
+      // and originalFileUrl is undefined.
+      originalFileUrl: v.optional(v.string()),
       createdAt: v.number(), // epoch ms (mirrors a created_at timestamp column)
     })
       .index("by_subject", ["subjectId"])
@@ -142,7 +161,13 @@ const schema = defineSchema(
       .index("by_subject_grade", ["subjectId", "grade"])
       .index("by_createdAt", ["createdAt"])
       .index("by_answerKey", ["answerKeyContentId"])
-      .index("by_needsReview", ["needsReview"]),
+      .index("by_needsReview", ["needsReview"])
+      // Lets the retroactive rebranding job efficiently find unbranded
+      // items: .eq("brandingApplied", undefined) OR .eq("brandingApplied", false).
+      // Convex indexes treat missing fields as undefined, so we use this
+      // to find both legacy items (field absent) and items where branding
+      // was attempted but failed (false).
+      .index("by_brandingApplied", ["brandingApplied"]),
 
     // Topics per subject/grade — built now for the future AI topic-correlation
     // feature so we don't need a migration later.

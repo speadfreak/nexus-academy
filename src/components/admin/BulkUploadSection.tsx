@@ -243,6 +243,10 @@ export function BulkUploadSection() {
   const [batchPremium, setBatchPremium] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Currently-saving file id + label — set during Save All so the UI shows
+  // "Branding + saving: <filename>" instead of a generic spinner. Branding
+  // happens in-flight inside adminUploadContent (cover page + watermark).
+  const [savingFile, setSavingFile] = useState<{ id: string; name: string } | null>(null);
   const [savedCount, setSavedCount] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [autoSkipDuplicates, setAutoSkipDuplicates] = useState(true);
@@ -1112,18 +1116,31 @@ export function BulkUploadSection() {
     let failed = 0;
 
     for (const bulkFile of toSave) {
+      setSavingFile({ id: bulkFile.id, name: bulkFile.file.name });
       try {
+        // Pass subject display name + content type label so the backend
+        // branding step can build the cover page without an extra query.
+        const subjectName =
+          subjects?.find((s) => s._id === bulkFile.subjectId)?.name ?? "";
+        const contentTypeLabel =
+          contentTypeOptions.find((t) => t.value === bulkFile.contentType)?.label ??
+          bulkFile.contentType;
         await originalAdminUpload({
           title: bulkFile.title.trim(),
           contentType: bulkFile.contentType as never,
           grade: Number(bulkFile.grade),
           subjectId: bulkFile.subjectId as Id<"subjects">,
-          examYear: bulkFile.contentType === "past_exam" ? Number(bulkFile.examYear) : undefined,
+          examYear: typeHasYear(bulkFile.contentType) ? Number(bulkFile.examYear) : undefined,
           isPremium: bulkFile.isPremium,
           storageId: bulkFile.storageId!,
           filename: bulkFile.file.name,
           topicCandidates: bulkFile.topics.length > 0 ? bulkFile.topics : undefined,
           needsReview: bulkFile.blindUploaded || undefined,
+          // Branding is on by default in adminUploadContent; we pass these
+          // so the cover page can be built without an extra DB query.
+          applyBranding: true,
+          subjectName,
+          contentTypeLabel,
         });
         saved++;
       } catch (err) {
@@ -1135,6 +1152,7 @@ export function BulkUploadSection() {
     }
 
     setSaving(false);
+    setSavingFile(null);
     setSavedCount(saved);
     if (saved > 0) {
       toast.success(`${saved} resource${saved === 1 ? "" : "s"} added to the library.`);
@@ -1251,6 +1269,24 @@ export function BulkUploadSection() {
       {/* File list + process button */}
       {files.length > 0 && (
         <>
+          {/* Branding + saving banner — shown during the Save All loop.
+              Branding happens in-flight inside adminUploadContent, so we
+              surface this as a clear banner with the current filename. */}
+          {saving && savingFile && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-3">
+              <Loader2 className="size-4 animate-spin text-amber-300" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-amber-300">
+                  Branding + saving in progress
+                </p>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  <Sparkles className="mr-1 inline size-2.5" />
+                  Adding Learnyx cover page + watermark to "{savingFile.name}"
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Process bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
             <div className="flex items-center gap-3">

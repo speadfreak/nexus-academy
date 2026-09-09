@@ -9,8 +9,9 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdminAction } from "./admin";
 import { requireActiveSubscriptionAction } from "./subscriptions";
 import { contentTypeValidator } from "./schema";
-import { CONTENT_TYPE_SLUGS, type ContentType } from "./constants";
+import { CONTENT_TYPE_LABELS, CONTENT_TYPE_SLUGS } from "./constants";
 import { logEventAction } from "./systemEvents";
+import { brandPdf, BRANDING_VERSION } from "./pdfBranding";
 import {
   deleteFile,
   ensureBucketCors,
@@ -164,6 +165,17 @@ export const adminUploadContent = action({
     topicCandidates: v.optional(v.array(v.string())),
     sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
     needsReview: v.optional(v.boolean()),
+    // When true (default), run the file through brandPdf before uploading
+    // to R2. Set to false to upload the raw unbranded file (used by the
+    // retroactive rebranding job to upload the branded version with the
+    // original unbranded kept separately).
+    applyBranding: v.optional(v.boolean()),
+    // The subject display name + content type label — needed by brandPdf
+    // to build the cover page. The backend could resolve these itself but
+    // the frontend already has them, so we pass them through to avoid an
+    // extra query.
+    subjectName: v.optional(v.string()),
+    contentTypeLabel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { user: adminUser } = await requireAdminAction(ctx);
@@ -174,7 +186,50 @@ export const adminUploadContent = action({
     const stored = await ctx.storage.get(storageId);
     if (!stored) throw new ConvexError({ message: "File not found in temp storage.", code: "storage" });
     const arrayBuffer = typeof Blob !== "undefined" && stored instanceof Blob ? await stored.arrayBuffer() : (stored as unknown as ArrayBuffer);
-    const bytes = new Uint8Array(arrayBuffer);
+    let bytes = new Uint8Array(arrayBuffer);
+
+    // ── PDF Branding (Priority 2 — Single Upload) ───────────────────
+    // Apply branding in-flight unless explicitly skipped. By default,
+    // every new upload gets the Learnyx cover page + watermark. Failure
+    // here is non-fatal — if branding throws (corrupted PDF, weird
+    // structure), we fall back to uploading the raw bytes and DON'T set
+    // brandingApplied (so the retroactive rebranding job can try again
+    // later or the admin can re-run it manually).
+    const applyBranding = args.applyBranding !== false;
+    let brandingApplied = false;
+    let brandingVersion: number | undefined = undefined;
+    if (applyBranding && /\.pdf$/i.test(args.filename)) {
+      try {
+        const result = await brandPdf({
+          pdfBytes: bytes,
+          title: args.title.trim(),
+          subjectName: args.subjectName || subject.name,
+          grade: args.grade,
+          contentTypeLabel: args.contentTypeLabel || CONTENT_TYPE_LABELS[args.contentType] || args.contentType,
+          examYear: args.examYear,
+          sourceName: args.sourceName,
+        });
+        // Wrap in new Uint8Array to ensure the type matches what
+        // uploadFile expects (Uint8Array<ArrayBuffer>) — pdf-lib's save()
+        // returns Uint8Array<ArrayBufferLike> which isn't directly assignable.
+        bytes = new Uint8Array(result.brandedBytes);
+        brandingApplied = true;
+        brandingVersion = result.version;
+      } catch (err) {
+        // Non-fatal — log and continue with unbranded upload.
+        await logEventAction(ctx, {
+          eventType: "content_event",
+          source: "contentAdmin.branding_failed",
+          status: "error",
+          userId: adminUser._id,
+          metadata: {
+            filename: args.filename,
+            error: err instanceof Error ? err.message : "unknown branding failure",
+          },
+          durationMs: 0,
+        });
+      }
+    }
 
     try {
       const overrides = await getR2Overrides(ctx);
@@ -191,6 +246,8 @@ export const adminUploadContent = action({
         sourceName: args.sourceName?.trim() || undefined,
         sourceUrl: args.sourceUrl?.trim() || undefined,
         needsReview: args.needsReview,
+        brandingApplied,
+        brandingVersion,
       });
 
       if (args.topicCandidates && args.topicCandidates.length > 0) {
@@ -201,7 +258,7 @@ export const adminUploadContent = action({
 
       await logEventAction(ctx, {
         eventType: "content_event", source: "contentAdmin.upload", status: "success", userId: adminUser._id,
-        metadata: { contentId: createdId, contentType: args.contentType, grade: args.grade, fileSizeBytes: bytes.byteLength, topics: args.topicCandidates?.length ?? 0 },
+        metadata: { contentId: createdId, contentType: args.contentType, grade: args.grade, fileSizeBytes: bytes.byteLength, topics: args.topicCandidates?.length ?? 0, brandingApplied, brandingVersion },
         durationMs: 0,
       });
 
@@ -209,8 +266,260 @@ export const adminUploadContent = action({
         title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectName: subject.name, contentId: createdId,
       }).catch(() => {});
 
-      return { success: true as const };
+      return { success: true as const, brandingApplied, brandingVersion };
     } catch (error) { throw asConvexError(error, "Upload failed"); }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Branding preview — generate the cover page only (no full PDF processing)
+// and return a thumbnail-ready PNG/JPEG data URL the admin can review before
+// committing the upload. Used by the Single Upload flow.
+// ---------------------------------------------------------------------------
+
+export const previewBranding = action({
+  args: {
+    storageId: v.string(), // temp storage id of the uploaded PDF
+    title: v.string(),
+    subjectName: v.string(),
+    grade: v.optional(v.number()),
+    contentTypeLabel: v.optional(v.string()),
+    examYear: v.optional(v.number()),
+    sourceName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdminAction(ctx);
+    const storageId = args.storageId as Id<"_storage">;
+    const stored = await ctx.storage.get(storageId);
+    if (!stored) throw new ConvexError({ message: "File not found in temp storage.", code: "storage" });
+    const arrayBuffer = typeof Blob !== "undefined" && stored instanceof Blob ? await stored.arrayBuffer() : (stored as unknown as ArrayBuffer);
+    const bytes = new Uint8Array(arrayBuffer);
+
+    try {
+      const result = await brandPdf({
+        pdfBytes: bytes,
+        title: args.title,
+        subjectName: args.subjectName,
+        grade: args.grade,
+        contentTypeLabel: args.contentTypeLabel,
+        examYear: args.examYear,
+        sourceName: args.sourceName,
+      });
+      // Return the branded PDF as base64 so the browser can render it in
+      // an <iframe> for preview. (Generating a PNG thumbnail server-side
+      // would require a PDF→PNG renderer like pdfjs — heavy. The iframe
+      // approach is simpler, faster, and shows the FULL branded cover
+      // + first page rather than a tiny thumbnail.)
+      const base64 = Buffer.from(result.brandedBytes).toString("base64");
+      return {
+        previewDataUrl: `data:application/pdf;base64,${base64}`,
+        version: result.version,
+        originalPageCount: result.originalPageCount,
+        finalPageCount: result.finalPageCount,
+      };
+    } catch (err) {
+      throw asConvexError(err, "Branding preview failed");
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Branding stats — for the admin Content tab
+// ---------------------------------------------------------------------------
+
+export const getBrandingStats = action({
+  args: {},
+  handler: async (ctx): Promise<{ branded: number; total: number; pending: number; version: number }> => {
+    await requireAdminAction(ctx);
+    // Use the internal query to count — returns { branded, total }
+    const stats = await ctx.runQuery(internal.content.getBrandingCounts, {});
+    return {
+      branded: stats.branded,
+      total: stats.total,
+      pending: stats.total - stats.branded,
+      version: BRANDING_VERSION,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Retroactive rebranding — resumable, one-file-at-a-time
+// ---------------------------------------------------------------------------
+
+export const rebrandOneContent = action({
+  args: {
+    contentId: v.id("contentItems"),
+    // When true, the action returns the next pending content item id so the
+    // admin UI can show "47/197" progress and queue the next call. Set to
+    // false on the final iteration to stop the loop.
+    returnNext: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { user: adminUser } = await requireAdminAction(ctx);
+    const item = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
+    if (!item) throw new ConvexError({ message: "Content item not found.", code: "not_found" });
+
+    const overrides = await getR2Overrides(ctx);
+    const config = getR2Config(overrides);
+    if (!config.configured) throw new ConvexError({ message: `R2 not configured: ${config.missing.join(", ")}`, code: "storage_not_configured" });
+
+    const start = Date.now();
+    let branded = false;
+    let error: string | undefined = undefined;
+
+    try {
+      // Step 1: resolve subject FIRST so we can build the cover with the
+      // proper subject name in a single brandPdf call.
+      const subject: Doc<"subjects"> | null = await ctx.runQuery(internal.content.getSubjectById, { subjectId: item.subjectId });
+
+      // Step 2: download the existing PDF from R2.
+      const response = await fetch(item.fileUrl);
+      if (!response.ok) {
+        throw new Error(`Download failed: HTTP ${response.status}`);
+      }
+      const originalBytes = new Uint8Array(await response.arrayBuffer());
+
+      // Step 3: run branding with the proper subject name
+      const result = await brandPdf({
+        pdfBytes: originalBytes,
+        title: item.title,
+        subjectName: subject?.name ?? "",
+        grade: item.grade,
+        contentTypeLabel: CONTENT_TYPE_LABELS[item.contentType] ?? item.contentType,
+        examYear: item.examYear ?? undefined,
+        sourceName: item.sourceName ?? undefined,
+      });
+
+      // Step 4: upload the branded version to R2 with a new key (so the
+      // original unbranded file stays untouched at the old key — we keep
+      // the old URL in originalFileUrl for the audit / raw download).
+      const safeName = item.title.slice(0, 40).replace(/[^a-zA-Z0-9._-]+/g, "-").toLowerCase() || "resource";
+      const brandedKey = buildKey(
+        subject?.stream ?? "common",
+        item.grade,
+        subject?.slug ?? "subject",
+        item.contentType,
+        `branded-${safeName}.pdf`,
+      );
+      const brandedBytes = new Uint8Array(result.brandedBytes);
+      const newFileUrl = await uploadFile(brandedKey, brandedBytes, "application/pdf", overrides);
+
+      // Step 5: update the content item row — point fileUrl at the branded
+      // version, preserve originalFileUrl, set brandingApplied + version.
+      await ctx.runMutation(internal.content.updateContentItem, {
+        contentId: args.contentId,
+        patch: {
+          fileUrl: newFileUrl,
+          originalFileUrl: item.fileUrl, // preserve the raw unbranded
+          brandingApplied: true,
+          brandingVersion: result.version,
+          fileSizeBytes: brandedBytes.byteLength,
+        },
+      });
+      branded = true;
+    } catch (err) {
+      error = err instanceof Error ? err.message : "unknown error";
+      // Mark brandingApplied=false explicitly so the next rebrand-all run
+      // picks this up again (instead of leaving it undefined which would
+      // ALSO be picked up, but the explicit false is clearer in the DB).
+      await ctx.runMutation(internal.content.updateContentItem, {
+        contentId: args.contentId,
+        patch: { brandingApplied: false },
+      }).catch(() => {});
+    }
+
+    // Always log to systemEvents for audit
+    await logEventAction(ctx, {
+      eventType: "content_event",
+      source: "contentAdmin.rebrand",
+      status: branded ? "success" : "error",
+      userId: adminUser._id,
+      metadata: {
+        contentId: args.contentId,
+        title: item.title,
+        branded,
+        error,
+      },
+      durationMs: Date.now() - start,
+    });
+
+    // Optionally fetch the next pending item so the UI can chain.
+    let next: { _id: string; title: string } | null = null;
+    if (args.returnNext !== false) {
+      const pending: Array<{ _id: string; title: string }> = await ctx.runQuery(internal.content.getNextUnbranded, { afterId: args.contentId });
+      if (pending && pending.length > 0 && pending[0]) {
+        next = { _id: pending[0]._id, title: pending[0].title };
+      }
+    }
+
+    return { branded, error, next, version: BRANDING_VERSION };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Get the list of unbranded items (for the admin UI to render the queue)
+// ---------------------------------------------------------------------------
+
+export const listUnbranded = action({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<Array<{ _id: string; title: string; contentType: string; grade: number }>> => {
+    await requireAdminAction(ctx);
+    const limit = Math.min(args.limit ?? 25, 200);
+    const items: Array<{ _id: string; title: string; contentType: string; grade: number }> =
+      await ctx.runQuery(internal.content.listUnbranded, { limit });
+    return items.map((item) => ({
+      _id: item._id,
+      title: item.title,
+      contentType: item.contentType,
+      grade: item.grade,
+    }));
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Admin-only raw file download — returns a signed URL for the ORIGINAL
+// unbranded file (if preserved) or the current fileUrl. Always logged to
+// systemEvents for audit.
+// ---------------------------------------------------------------------------
+
+export const adminGetRawFileUrl = action({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, args): Promise<{ url: string; isOriginal: boolean }> => {
+    const { user: adminUser } = await requireAdminAction(ctx);
+    const item: Doc<"contentItems"> | null = await ctx.runQuery(internal.content.getContentItemById, { contentId: args.contentId });
+    if (!item) throw new ConvexError({ message: "Content item not found.", code: "not_found" });
+
+    // Prefer the original unbranded file when it exists — that's what
+    // admins auditing licensed material need. Fall back to fileUrl.
+    const url = item.originalFileUrl ?? item.fileUrl;
+    const isOriginal = !!item.originalFileUrl;
+
+    // Audit log — admin raw-file download is a sensitive action involving
+    // licensed/sourced educational material.
+    await logEventAction(ctx, {
+      eventType: "content_event",
+      source: "contentAdmin.raw_download",
+      status: "success",
+      userId: adminUser._id,
+      metadata: {
+        contentId: args.contentId,
+        title: item.title,
+        isOriginal,
+        hasOriginal: !!item.originalFileUrl,
+      },
+      durationMs: 0,
+    });
+
+    // Also log to the dedicated audit log (adminManagement).
+    await ctx.runMutation(internal.adminManagement.internalInsertAuditLog, {
+      actorUserId: adminUser._id,
+      action: "content.raw_download",
+      targetType: "content",
+      targetId: args.contentId,
+      details: JSON.stringify({ title: item.title, isOriginal }),
+    }).catch(() => {});
+
+    return { url, isOriginal };
   },
 });
 

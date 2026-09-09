@@ -45,6 +45,9 @@ export const insertContentItem = internalMutation({
     sourceUrl: v.optional(v.string()),
     isPremium: v.boolean(),
     needsReview: v.optional(v.boolean()),
+    brandingApplied: v.optional(v.boolean()),
+    brandingVersion: v.optional(v.number()),
+    originalFileUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("contentItems", {
@@ -60,6 +63,9 @@ export const insertContentItem = internalMutation({
       sourceUrl: args.sourceUrl,
       isPremium: args.isPremium,
       needsReview: args.needsReview,
+      brandingApplied: args.brandingApplied,
+      brandingVersion: args.brandingVersion,
+      originalFileUrl: args.originalFileUrl,
       createdAt: Date.now(),
     });
     return id;
@@ -184,6 +190,73 @@ export const getContentItemById = internalQuery({
   args: { contentId: v.id("contentItems") },
   handler: async (ctx, { contentId }) =>
     (await ctx.db.get(contentId)) ?? null,
+});
+
+// ---------------------------------------------------------------------------
+// Branding queries (used by contentAdmin.ts retroactive rebranding + stats)
+// ---------------------------------------------------------------------------
+
+/** Counts branded vs total content items. Used by the admin stats view. */
+export const getBrandingCounts = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<{ branded: number; total: number }> => {
+    const items = await ctx.db.query("contentItems").collect();
+    return {
+      branded: items.filter((i) => i.brandingApplied === true).length,
+      total: items.length,
+    };
+  },
+});
+
+/**
+ * Returns up to N unbranded content items in creation order, skipping the
+ * item with `afterId`. Used by the retroactive rebranding job to fetch the
+ * next file to process. We collect all items then filter+slice in JS because
+ * Convex indexes don't support querying for "field is undefined or false"
+ * in a single withIndex call — easier and fast enough for libraries of
+ * a few hundred items.
+ */
+export const listUnbranded = internalQuery({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const cap = Math.min(limit ?? 25, 200);
+    const all = await ctx.db.query("contentItems").order("asc").collect();
+    const unbranded = all.filter((i) => i.brandingApplied !== true);
+    return unbranded.slice(0, cap).map((i) => ({
+      _id: i._id,
+      title: i.title,
+      contentType: i.contentType,
+      grade: i.grade,
+    }));
+  },
+});
+
+/**
+ * Returns the next unbranded item strictly after `afterId` (by creation
+ * order). Used by rebrandOneContent to chain to the next file. Returns []
+ * when there's nothing left to brand.
+ */
+export const getNextUnbranded = internalQuery({
+  args: { afterId: v.id("contentItems") },
+  handler: async (ctx, { afterId }) => {
+    const pivot = await ctx.db.get(afterId);
+    if (!pivot) return [];
+    const all = await ctx.db.query("contentItems").order("asc").collect();
+    const afterIdx = all.findIndex((i) => i._id === afterId);
+    if (afterIdx === -1) return [];
+    // Search items AFTER the pivot that are unbranded.
+    const after = all.slice(afterIdx + 1).filter((i) => i.brandingApplied !== true);
+    if (after.length > 0) {
+      return [after[0]].map((i) => ({ _id: i._id, title: i.title }));
+    }
+    // Otherwise wrap around — pick the FIRST unbranded (the loop hasn't
+    // wrapped, we just hit the end). Return the first unbranded overall.
+    const before = all.slice(0, afterIdx).filter((i) => i.brandingApplied !== true);
+    if (before.length > 0) {
+      return [before[0]].map((i) => ({ _id: i._id, title: i.title }));
+    }
+    return [];
+  },
 });
 
 // ---------------------------------------------------------------------------
