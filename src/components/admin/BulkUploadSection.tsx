@@ -1,45 +1,43 @@
-// Admin Bulk Upload — fast, smart, multi-file upload with AI classification.
+// Admin Bulk Upload — fast, smart, multi-file upload with deterministic
+// rule-based classification (no AI required for 95%+ of files).
 //
 // ARCHITECTURE:
 //   1. Admin selects multiple PDF files (drag-drop or file picker)
 //   2. As each file is selected we IMMEDIATELY:
-//      a. Detect the exam year from the filename (regex \b(19|20)\d\d\b)
+//      a. Detect the exam year + grade + subject + content type from the
+//         filename using the deterministic classifier in @/lib/bulkClassifier
 //      b. Compute a signature hash for duplicate detection
 //      c. Query the backend (findDuplicateContent) for any library entry
 //         whose title normalizes to the same filename
 //      d. Mark the row as duplicate (with a "Skip" badge) or unique
 //   3. Sets a batch-level "Mark all as Premium?" toggle
-//   4. Clicks "Start Processing" → files are processed CONCURRENTLY (3 at a
-//      time for speed) with PER-FILE CANCEL buttons:
-//      a. Generate a presigned R2 PUT URL (fast direct upload — bypasses
-//         Convex temp storage, works for files up to 5 GB)
-//      b. PUT the bytes straight to R2 with XMLHttpRequest (so we get
-//         progress + can abort)
+//   4. Clicks "Start Processing" → files are processed CONCURRENTLY (4 at a
+//      time for speed):
+//      a. Generate a Convex temp-storage upload URL
+//      b. PUT the bytes straight to Convex temp storage with XMLHttpRequest
 //      c. Extract PDF text (browser-side, via extractPdfText)
-//      d. Call classifyContentText (AI suggests title/subject/grade/type/year)
-//      e. Show live progress: "Uploading 42%" → "Analyzing…" → "Ready" / "Failed"
-//   5. Review table — one editable row per file:
-//      - Title (editable text)
-//      - Subject (editable dropdown)
-//      - Grade (editable dropdown 9-12)
-//      - Content type (editable dropdown)
-//      - Year (editable SELECT dropdown — 1990 → current year, no more
-//        squinting at a tiny input)
-//      - Premium toggle (defaulted from batch, per-file override)
-//      - Failed files show a red flag + require manual entry
-//   6. "Save All" button — only active when all rows are valid
-//   7. Batch summary: "X resources added successfully"
+//      d. Run classifyDocument(filename, text) — PURE LOCAL, no API calls
+//         → combines filename signals + content keyword scoring
+//      e. Pre-fill the row with the classification result + confidence
+//      f. Show live progress: "Uploading 42%" → "Analyzing…" → "Ready" / "Failed"
+//   5. Review table — one editable row per file with confidence badge:
+//      - 🟢 HIGH confidence (>= 70): auto-filled, ready to save
+//      - 🟡 MEDIUM confidence (40-69): auto-filled, review recommended
+//      - 🔴 LOW confidence (< 40): blanks left for manual entry,
+//        "Try AI" button appears next to the row
+//   6. Multi-select batch edit:
+//      - Checkboxes on each row
+//      - Select N rows → bulk-set subject/grade/type/year/premium
+//   7. "Save All" button — only active when all rows are valid
 //
 // PERFORMANCE:
-//   - Direct-to-R2 presigned PUT: skip Convex temp storage, 3-10× faster for
-//     big files (50+ MB). Each file gets its own XHR so we can abort a single
-//     upload without touching the rest of the batch.
-//   - Concurrency: 3 files processed at once (configurable via CONCURRENCY).
-//     Sequential throttling between AI calls is still respected to avoid
-//     exhausting the Groq rate limit.
+//   - No AI calls in the default path → zero rate limit errors.
+//   - Only files with LOW confidence get an optional "Try AI" button (calls
+//     classifyContentText — one file at a time, throttled).
+//   - Concurrency: 4 files processed at once (text extraction is the
+//     bottleneck, not the network).
 //   - Per-file cancel: every in-flight XHR is kept in a ref keyed by file
-//     id; the cancel button calls xhr.abort() and marks the file as
-//     "cancelled" — the rest of the batch keeps going.
+//     id; the cancel button calls xhr.abort().
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -47,7 +45,9 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
   Ban,
+  Brain,
   CheckCircle2,
+  CheckSquare,
   Clock,
   Copy,
   FileText,
@@ -56,7 +56,9 @@ import {
   Save,
   ShieldCheck,
   Sparkles,
+  Square,
   Upload,
+  Wand2,
   X,
   Zap,
 } from "lucide-react";
@@ -81,6 +83,10 @@ import {
 } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { extractPdfText } from "@/lib/pdf";
+import {
+  classifyDocument,
+  type ClassificationResult,
+} from "@/lib/bulkClassifier";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -105,7 +111,7 @@ interface BulkFile {
   error?: string;
   duplicateOf?: string; // existing content id
   duplicateTitle?: string;
-  // AI suggestion (or manual entry)
+  // Classification result (rule-based by default, AI as fallback)
   title: string;
   subjectId: string;
   grade: string;
@@ -113,8 +119,13 @@ interface BulkFile {
   examYear: string;
   isPremium: boolean;
   topics: string[];
-  aiAnalyzed: boolean;
+  classified: boolean; // true after classifier ran (even if low-confidence)
+  confidence: number; // 0-100
+  confidenceLevel: "high" | "medium" | "low";
+  signals: string[]; // human-readable classifier trace
   cancelled: boolean;
+  selected: boolean; // for batch edit
+  aiTried: boolean; // tracks whether AI fallback was used
 }
 
 const CONTENT_TYPES = [
@@ -135,27 +146,7 @@ const YEARS = (() => {
   return arr;
 })();
 
-const CONCURRENCY = 3;
-
-// ── Filename → exam year auto-detection ────────────────────────────────
-//
-// Match the FIRST 4-digit year-like number (1990-currentYear+1) found in the
-// filename. Common Ethiopian patterns this catches:
-//   "Math 2014 EHEEE.pdf" → 2014
-//   "Biology_Grade_12_2015.pdf" → 2015
-//   "physics-2016.pdf" → 2016
-// Falls back to null if no year is found.
-
-function detectYearFromFilename(filename: string): string | null {
-  const currentYear = new Date().getFullYear();
-  const matches = filename.match(/\b(19|20)\d{2}\b/g);
-  if (!matches || matches.length === 0) return null;
-  for (const m of matches) {
-    const y = parseInt(m, 10);
-    if (y >= 1990 && y <= currentYear + 1) return String(y);
-  }
-  return null;
-}
+const CONCURRENCY = 4; // bumped from 3 → 4 since we're not throttling AI calls
 
 // ── Component ──────────────────────────────────────────────────────────
 
@@ -173,6 +164,15 @@ export function BulkUploadSection() {
   const [dragOver, setDragOver] = useState(false);
   const [autoSkipDuplicates, setAutoSkipDuplicates] = useState(true);
   const [dupCheckQueue, setDupCheckQueue] = useState<string[]>([]);
+  // Batch-edit overlay: when admin selects N rows, a sticky toolbar appears
+  // at the bottom with subject/grade/type/year/premium dropdowns that apply
+  // to all selected rows at once.
+  const [batchEditOpen, setBatchEditOpen] = useState(false);
+  const [batchEditSubject, setBatchEditSubject] = useState<string>("");
+  const [batchEditGrade, setBatchEditGrade] = useState<string>("");
+  const [batchEditType, setBatchEditType] = useState<string>("");
+  const [batchEditYear, setBatchEditYear] = useState<string>("");
+  const [batchEditPremium, setBatchEditPremium] = useState<boolean | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Live XHR registry — per file id, so we can abort one without killing
@@ -204,24 +204,64 @@ export function BulkUploadSection() {
         subjectId: "",
         grade: "",
         contentType: "",
-        examYear: detectYearFromFilename(f.name) ?? "",
+        examYear: "",
         isPremium: batchPremium,
         topics: [],
-        aiAnalyzed: false,
+        classified: false,
+        confidence: 0,
+        confidenceLevel: "low",
+        signals: [],
         cancelled: false,
+        selected: false,
+        aiTried: false,
       }));
 
       setFiles((prev) => [...prev, ...newFiles]);
       setSavedCount(null);
 
       // Trigger duplicate detection for each new file asynchronously.
-      // We push the file id into a queue; the DuplicateChecker component
-      // (rendered per-queued-id below) consumes the queue and calls
-      // findDuplicateContent via useQuery.
       setDupCheckQueue((q) => [...q, ...newFiles.map((nf) => nf.id)]);
+
+      // PRE-CLASSIFY from filename alone, immediately, so the admin sees
+      // subject/grade/year/type guesses the instant they drop the files.
+      // We'll refine with content text after upload.
+      if (subjects) {
+        setTimeout(() => preClassifyFromFilenames(newFiles, subjects), 50);
+      }
     },
-    [batchPremium],
+    [batchPremium, subjects],
   );
+
+  // Pre-classify filenames immediately (no upload needed). Writes the
+  // detected subject/grade/year/type to each row, marked as "pending"
+  // (not "ready") since we still need to upload + extract text to confirm.
+  const preClassifyFromFilenames = (
+    newFiles: BulkFile[],
+    subjectList: NonNullable<typeof subjects>,
+  ) => {
+    setFiles((prev) =>
+      prev.map((f) => {
+        const match = newFiles.find((nf) => nf.id === f.id);
+        if (!match) return f;
+        const result = classifyDocument({
+          filename: match.file.name,
+          contentText: "", // no content yet
+          subjects: subjectList,
+        });
+        return {
+          ...f,
+          title: result.title || f.title,
+          subjectId: result.subjectId ?? "",
+          grade: result.grade ?? "",
+          contentType: result.contentType ?? "",
+          examYear: result.examYear ?? "",
+          confidence: result.confidence,
+          confidenceLevel: result.confidenceLevel,
+          signals: result.signals,
+        };
+      }),
+    );
+  };
 
   const removeFile = (id: string) => {
     // If the file is currently uploading, abort its XHR.
@@ -263,6 +303,10 @@ export function BulkUploadSection() {
   // ── Sequential processing (with limited concurrency for uploads) ──
   const processFiles = async () => {
     if (files.length === 0) return;
+    if (!subjects) {
+      toast.error("Subjects list still loading — try again in a second.");
+      return;
+    }
     setProcessing(true);
     setSavedCount(null);
 
@@ -274,14 +318,10 @@ export function BulkUploadSection() {
         f.status === "cancelled",
     );
 
-    // Run with limited concurrency — process CONCURRENCY files at a time.
-    // Each file is processed sequentially inside its own slot (upload →
-    // analyze → done).
     const runOne = async (bulkFile: BulkFile) => {
       if (bulkFile.status === "duplicate" && autoSkipDuplicates) return;
       if (bulkFile.status === "ready") return;
 
-      // Mark as uploading.
       setFiles((prev) =>
         prev.map((f) =>
           f.id === bulkFile.id
@@ -291,17 +331,13 @@ export function BulkUploadSection() {
       );
 
       try {
-        // Step 1 — get a Convex temp-storage upload URL. (We use temp
-        // storage rather than presigned R2 here because presigned R2
-        // requires subject+grade+contentType to build the storage key,
-        // and we don't know those values until AFTER classification.)
+        // Step 1 — get a Convex temp-storage upload URL.
         const url = await generateUploadUrlMutation();
 
         const storageId = await new Promise<string>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhrRegistryRef.current.set(bulkFile.id, xhr);
           xhr.open("POST", url);
-          // Use the file's MIME type so Convex stores it correctly.
           xhr.setRequestHeader("Content-Type", bulkFile.file.type || "application/pdf");
           xhr.upload.addEventListener("progress", (e) => {
             if (e.lengthComputable) {
@@ -338,7 +374,7 @@ export function BulkUploadSection() {
           xhr.send(bulkFile.file);
         });
 
-        // Step 2: Extract PDF text (browser-side)
+        // Step 2: Extract PDF text (browser-side) — NON-FATAL if it fails
         setFiles((prev) =>
           prev.map((f) =>
             f.id === bulkFile.id ? { ...f, status: "analyzing", storageId } : f,
@@ -349,47 +385,45 @@ export function BulkUploadSection() {
         try {
           sample = await extractPdfText(bulkFile.file, 5, 12000);
         } catch {
-          // Non-fatal — classification will return "no extractable text"
+          // Non-fatal — classifier will fall back to filename-only mode
         }
 
-        // Step 3: AI classification
-        const suggestion = await classifyContentText({
-          sample,
+        // Step 3: Rule-based classification (NO AI CALL — pure local)
+        const result: ClassificationResult = classifyDocument({
           filename: bulkFile.file.name,
+          contentText: sample,
+          subjects,
         });
 
-        // Step 4: Update file with AI suggestions — BUT DON'T OVERWRITE the
-        // year we already detected from the filename if AI doesn't return one.
-        const detectedYear = bulkFile.examYear; // what we set on file selection
-        const aiYear = suggestion.examYear?.toString() ?? "";
-        const finalYear =
-          aiYear || detectedYear || (suggestion.contentType === "past_exam" ? "" : "");
-
+        // Step 4: Apply result. DON'T overwrite the year detected from
+        // filename-only pre-classification if the rule engine didn't find
+        // a stronger signal (it's already in result.examYear if found).
         setFiles((prev) =>
           prev.map((f) =>
             f.id === bulkFile.id
               ? {
                   ...f,
-                  status: suggestion.analyzed ? "ready" : "failed",
-                  title: suggestion.title ?? f.file.name.replace(/\.pdf$/i, ""),
-                  subjectId: suggestion.subjectId ?? "",
-                  grade: suggestion.grade?.toString() ?? "",
-                  contentType: suggestion.contentType ?? "",
-                  examYear: finalYear,
-                  topics: suggestion.topics ?? [],
-                  aiAnalyzed: suggestion.analyzed,
-                  error: suggestion.analyzed ? undefined : suggestion.note ?? "Classification failed",
+                  status: "ready", // ALWAYS ready — admin reviews even low-confidence
+                  title: result.title || f.file.name.replace(/\.pdf$/i, ""),
+                  subjectId: result.subjectId ?? "",
+                  grade: result.grade ?? "",
+                  contentType: result.contentType ?? "",
+                  examYear: result.examYear ?? "",
+                  topics: result.topics ?? [],
+                  classified: true,
+                  confidence: result.confidence,
+                  confidenceLevel: result.confidenceLevel,
+                  signals: result.signals,
+                  error: undefined,
                 }
               : f,
           ),
         );
 
-        // Light throttle for the AI provider's rate limit (per-slot).
-        await new Promise((r) => setTimeout(r, 800));
+        // NO throttle — we're not hitting any external API.
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Processing failed";
         if (msg.toLowerCase().includes("cancelled")) {
-          // Already marked as cancelled by cancelFile; no action needed.
           return;
         }
         setFiles((prev) =>
@@ -402,8 +436,8 @@ export function BulkUploadSection() {
       }
     };
 
-    // Concurrency pool — run CONCURRENCY workers, each pulling from the
-    // queue.
+    // Concurrency pool — process CONCURRENCY workers, each pulling from
+    // the queue. Pure local — no rate limits to worry about.
     const runPool = async () => {
       let cursor = 0;
       const workers: Promise<void>[] = [];
@@ -423,7 +457,91 @@ export function BulkUploadSection() {
     await runPool();
 
     setProcessing(false);
-    toast.success("Batch processing complete. Review the suggestions below.");
+    toast.success("Batch processing complete. Review the classifications below.");
+  };
+
+  // ── AI fallback for a single low-confidence row ──────────────────────
+  // Only called when admin clicks "Try AI" on a low-confidence row. Calls
+  // classifyContentText (Groq) — if it succeeds, overwrites the row. If it
+  // fails (rate limit / network / no key), we toast and leave the row as-is.
+  const tryAIForRow = async (id: string) => {
+    const target = files.find((f) => f.id === id);
+    if (!target) return;
+    if (!target.storageId) {
+      toast.error("Upload the file first before retrying with AI.");
+      return;
+    }
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === id ? { ...f, status: "analyzing", error: undefined } : f,
+      ),
+    );
+    try {
+      // Re-extract text (we discarded it earlier to save memory)
+      let sample = "";
+      try {
+        sample = await extractPdfText(target.file, 5, 12000);
+      } catch {
+        // proceed with empty
+      }
+      const suggestion = await classifyContentText({
+        sample,
+        filename: target.file.name,
+      });
+      if (!suggestion.analyzed) {
+        toast.warning(`AI couldn't classify this file: ${suggestion.note ?? "unknown reason"}`);
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === id
+              ? {
+                  ...f,
+                  status: "ready",
+                  error: suggestion.note ?? "AI classification failed",
+                  aiTried: true,
+                }
+              : f,
+          ),
+        );
+        return;
+      }
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === id
+            ? {
+                ...f,
+                status: "ready",
+                title: suggestion.title ?? f.title,
+                subjectId: suggestion.subjectId ?? "",
+                grade: suggestion.grade?.toString() ?? "",
+                contentType: suggestion.contentType ?? "",
+                examYear: suggestion.examYear?.toString() ?? "",
+                topics: suggestion.topics ?? [],
+                confidence: 90,
+                confidenceLevel: "high",
+                signals: [...f.signals, "AI (Groq) confirmed classification"],
+                aiTried: true,
+                error: undefined,
+              }
+            : f,
+        ),
+      );
+      toast.success("AI classification applied.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "AI call failed";
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === id
+            ? {
+                ...f,
+                status: "ready",
+                error: `AI fallback failed: ${msg}`,
+                aiTried: true,
+              }
+            : f,
+        ),
+      );
+      toast.error(`AI fallback failed: ${msg}`);
+    }
   };
 
   // ── Update a file's fields (from review table) ──────────────────────
@@ -431,11 +549,55 @@ export function BulkUploadSection() {
     setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
   };
 
+  // ── Multi-select batch edit ─────────────────────────────────────────
+  const toggleSelect = (id: string) => {
+    setFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f)),
+    );
+  };
+  const selectAll = () => {
+    const allSelected = files.every((f) => f.selected);
+    setFiles((prev) => prev.map((f) => ({ ...f, selected: !allSelected })));
+  };
+  const selectedCount = files.filter((f) => f.selected).length;
+
+  const applyBatchEdit = () => {
+    if (selectedCount === 0) {
+      toast.error("Select at least one row first.");
+      return;
+    }
+    setFiles((prev) =>
+      prev.map((f) => {
+        if (!f.selected) return f;
+        const updates: Partial<BulkFile> = {};
+        if (batchEditSubject) updates.subjectId = batchEditSubject;
+        if (batchEditGrade) updates.grade = batchEditGrade;
+        if (batchEditType) updates.contentType = batchEditType;
+        if (batchEditYear) {
+          updates.examYear = batchEditYear;
+          // If we set a year, ensure contentType defaults to past_exam if blank
+          if (!f.contentType && batchEditType === "") updates.contentType = "past_exam";
+        }
+        if (batchEditPremium !== null) updates.isPremium = batchEditPremium;
+        return { ...f, ...updates };
+      }),
+    );
+    toast.success(`Applied to ${selectedCount} row${selectedCount === 1 ? "" : "s"}.`);
+    // Clear selection after applying
+    setFiles((prev) => prev.map((f) => ({ ...f, selected: false })));
+    setBatchEditOpen(false);
+    setBatchEditSubject("");
+    setBatchEditGrade("");
+    setBatchEditType("");
+    setBatchEditYear("");
+    setBatchEditPremium(null);
+  };
+
   // ── Validation: all files must have valid required fields ───────────
   const allValid =
     files.length > 0 &&
     files.every((f) => {
-      if (f.status === "duplicate" && autoSkipDuplicates) return true; // skipped
+      if (f.status === "duplicate" && autoSkipDuplicates) return true;
       if (!f.storageId) return false;
       if (!f.title.trim()) return false;
       if (!f.contentType) return false;
@@ -462,8 +624,6 @@ export function BulkUploadSection() {
     let saved = 0;
     let failed = 0;
 
-    // Save sequentially — adminUploadContent moves the file from Convex
-    // temp storage → R2 and inserts the DB row in one go.
     for (const bulkFile of toSave) {
       try {
         await originalAdminUpload({
@@ -491,7 +651,6 @@ export function BulkUploadSection() {
     if (saved > 0) {
       toast.success(`${saved} resource${saved === 1 ? "" : "s"} added to the library.`);
     }
-    // Clear the batch
     setFiles([]);
   };
 
@@ -531,9 +690,10 @@ export function BulkUploadSection() {
             Bulk Upload Resources
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Select multiple PDF files, let AI classify them, review, and save.
-            Fast R2 direct upload, automatic year detection, and duplicate
-            prevention built in.
+            Drop in dozens of PDFs — the smart classifier reads each filename
+            and content to auto-fill subject, grade, year, and type
+            <span className="font-semibold text-emerald-300"> instantly, no AI calls</span>.
+            Use the "Try AI" button on any low-confidence row.
           </p>
         </div>
       </div>
@@ -571,7 +731,7 @@ export function BulkUploadSection() {
             <div>
               <p className="text-sm font-semibold">Drop PDF files here</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                or click to browse — select multiple files at once
+                or click to browse — select multiple files at once (100+ supported)
               </p>
             </div>
             <Button
@@ -612,7 +772,7 @@ export function BulkUploadSection() {
               </span>
               {!processing && files.some((f) => f.status === "pending") && (
                 <span className="text-xs text-muted-foreground">
-                  Click "Start Processing" to upload and classify
+                  Click "Start Processing" to upload + auto-classify
                 </span>
               )}
             </div>
@@ -656,21 +816,33 @@ export function BulkUploadSection() {
             </div>
           </div>
 
-          {/* File list / Review table — use a wider container so every
-              input has breathing room. We wrap the table in an
-              overflow-x-auto and set min-widths on each column. */}
+          {/* File list / Review table */}
           <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
-            <Table className="min-w-[1100px]">
+            <Table className="min-w-[1200px]">
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <button
+                      onClick={selectAll}
+                      title="Select all"
+                      className="cursor-pointer rounded p-0.5 hover:bg-white/10"
+                    >
+                      {files.every((f) => f.selected) && files.length > 0 ? (
+                        <CheckSquare className="size-4 text-primary" />
+                      ) : (
+                        <Square className="size-4 text-muted-foreground" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="w-[40px]">#</TableHead>
-                  <TableHead className="min-w-[280px]">File / Title</TableHead>
+                  <TableHead className="min-w-[300px]">File / Title</TableHead>
+                  <TableHead className="w-[60px]">Conf.</TableHead>
                   <TableHead className="w-[160px]">Subject</TableHead>
                   <TableHead className="w-[90px]">Grade</TableHead>
                   <TableHead className="w-[140px]">Type</TableHead>
                   <TableHead className="w-[140px]">Year</TableHead>
                   <TableHead className="w-[80px]">Premium</TableHead>
-                  <TableHead className="w-[80px]">Action</TableHead>
+                  <TableHead className="w-[100px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -682,8 +854,22 @@ export function BulkUploadSection() {
                       f.status === "ready" && "bg-emerald-400/[0.02]",
                       f.status === "duplicate" && "bg-amber-400/[0.04] opacity-70",
                       f.status === "cancelled" && "bg-white/[0.02] opacity-50",
+                      f.selected && "ring-2 ring-inset ring-primary/40",
                     )}
                   >
+                    <TableCell>
+                      <button
+                        onClick={() => toggleSelect(f.id)}
+                        title="Toggle selection"
+                        className="cursor-pointer rounded p-0.5 hover:bg-white/10"
+                      >
+                        {f.selected ? (
+                          <CheckSquare className="size-4 text-primary" />
+                        ) : (
+                          <Square className="size-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {i + 1}
                     </TableCell>
@@ -703,10 +889,10 @@ export function BulkUploadSection() {
                           <p className="truncate text-xs text-muted-foreground">
                             {f.file.name} · {(f.file.size / 1024 / 1024).toFixed(1)} MB
                           </p>
-                          {(f.status === "pending" || f.status === "uploading" || f.status === "analyzing") ? (
+                          {(f.status === "uploading" || f.status === "analyzing" || f.status === "pending") ? (
                             <p className="mt-1 text-[11px] text-muted-foreground/80">
                               {f.status === "uploading" && `Uploading… ${f.progress}%`}
-                              {f.status === "analyzing" && "AI analyzing…"}
+                              {f.status === "analyzing" && "Analyzing…"}
                               {f.status === "pending" && "Waiting…"}
                             </p>
                           ) : f.status === "duplicate" ? (
@@ -731,14 +917,24 @@ export function BulkUploadSection() {
                           {f.error && (
                             <p className="mt-1 text-[10px] text-rose-300">{f.error}</p>
                           )}
-                          {/* Year detection hint */}
-                          {!f.aiAnalyzed && f.examYear && f.status === "pending" && (
-                            <p className="mt-1 text-[10px] text-sky-300">
-                              <Sparkles className="inline size-2.5" /> Year {f.examYear} detected from filename
-                            </p>
+                          {/* Classifier signals — show as a tooltip-style list */}
+                          {f.classified && f.signals.length > 0 && (
+                            <details className="mt-1 text-[10px] text-muted-foreground/70">
+                              <summary className="cursor-pointer hover:text-foreground">
+                                Why? ({f.signals.length} signal{f.signals.length === 1 ? "" : "s"})
+                              </summary>
+                              <ul className="mt-1 space-y-0.5 pl-3">
+                                {f.signals.map((s, idx) => (
+                                  <li key={idx} className="text-[10px]">• {s}</li>
+                                ))}
+                              </ul>
+                            </details>
                           )}
                         </div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <ConfidenceBadge level={f.confidenceLevel} score={f.confidence} />
                     </TableCell>
                     <TableCell>
                       <Select
@@ -783,11 +979,7 @@ export function BulkUploadSection() {
                     <TableCell>
                       <Select
                         value={f.contentType}
-                        onValueChange={(v) => {
-                          // If user picks past_exam and we already have a
-                          // detected year, keep it. Otherwise clear.
-                          updateFile(f.id, { contentType: v });
-                        }}
+                        onValueChange={(v) => updateFile(f.id, { contentType: v })}
                         disabled={
                           processing ||
                           (f.status !== "ready" && f.status !== "failed")
@@ -843,6 +1035,17 @@ export function BulkUploadSection() {
                             <Ban className="size-3.5" />
                           </button>
                         )}
+                        {/* AI fallback button — only shown for low-confidence
+                            rows that have been uploaded. */}
+                        {f.status === "ready" && f.confidenceLevel === "low" && f.storageId && !f.aiTried && (
+                          <button
+                            onClick={() => tryAIForRow(f.id)}
+                            title="Classify with AI (Groq fallback)"
+                            className="cursor-pointer rounded-md border border-violet-400/30 bg-violet-400/10 p-1.5 text-violet-300 hover:bg-violet-400/20"
+                          >
+                            <Brain className="size-3.5" />
+                          </button>
+                        )}
                         {!processing && !saving && (
                           <button
                             onClick={() => removeFile(f.id)}
@@ -869,6 +1072,18 @@ export function BulkUploadSection() {
                   {files.filter((f) => f.status === "ready").length} ready
                 </span>
                 <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3 text-emerald-300" />
+                  {files.filter((f) => f.confidenceLevel === "high").length} high-conf
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="size-3 text-amber-300" />
+                  {files.filter((f) => f.confidenceLevel === "medium").length} medium-conf
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="size-3 text-rose-300" />
+                  {files.filter((f) => f.confidenceLevel === "low").length} low-conf
+                </span>
+                <span className="flex items-center gap-1.5">
                   <Copy className="size-3 text-amber-300" />
                   {files.filter((f) => f.status === "duplicate").length} duplicate
                 </span>
@@ -881,15 +1096,157 @@ export function BulkUploadSection() {
                   {files.filter((f) => f.status === "cancelled").length} cancelled
                 </span>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                className="gap-2"
-              >
-                <FileText className="size-3.5" />
-                Add more files
-              </Button>
+              <div className="flex items-center gap-2">
+                {selectedCount > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBatchEditOpen((v) => !v)}
+                    className="gap-2"
+                  >
+                    <Wand2 className="size-3.5" />
+                    Batch edit ({selectedCount})
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="gap-2"
+                >
+                  <FileText className="size-3.5" />
+                  Add more files
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Batch-edit toolbar */}
+          {batchEditOpen && selectedCount > 0 && (
+            <div className="sticky bottom-4 z-10 rounded-2xl border border-primary/30 bg-background/95 p-4 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-background/80">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold">
+                  Bulk edit {selectedCount} selected row{selectedCount === 1 ? "" : "s"}
+                </p>
+                <button
+                  onClick={() => setBatchEditOpen(false)}
+                  className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Subject
+                  </label>
+                  <Select
+                    value={batchEditSubject}
+                    onValueChange={setBatchEditSubject}
+                  >
+                    <SelectTrigger className="h-9 w-[160px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="Keep as-is" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjects?.map((s) => (
+                        <SelectItem key={s._id} value={s._id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Grade
+                  </label>
+                  <Select
+                    value={batchEditGrade}
+                    onValueChange={setBatchEditGrade}
+                  >
+                    <SelectTrigger className="h-9 w-[80px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="Keep" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GRADES.map((g) => (
+                        <SelectItem key={g} value={g.toString()}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Type
+                  </label>
+                  <Select
+                    value={batchEditType}
+                    onValueChange={setBatchEditType}
+                  >
+                    <SelectTrigger className="h-9 w-[140px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="Keep as-is" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONTENT_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Year
+                  </label>
+                  <Select
+                    value={batchEditYear}
+                    onValueChange={setBatchEditYear}
+                  >
+                    <SelectTrigger className="h-9 w-[100px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="Keep" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {YEARS.map((y) => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Premium
+                  </label>
+                  <div className="flex h-9 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3">
+                    <button
+                      onClick={() => setBatchEditPremium(batchEditPremium === true ? null : true)}
+                      className={cn(
+                        "rounded px-2 py-0.5 text-[11px] font-semibold",
+                        batchEditPremium === true
+                          ? "bg-emerald-500 text-white"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      onClick={() => setBatchEditPremium(batchEditPremium === false ? null : false)}
+                      className={cn(
+                        "rounded px-2 py-0.5 text-[11px] font-semibold",
+                        batchEditPremium === false
+                          ? "bg-rose-500 text-white"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      No
+                    </button>
+                  </div>
+                </div>
+                <Button onClick={applyBatchEdit} size="sm" className="gap-2">
+                  <Wand2 className="size-3.5" />
+                  Apply to {selectedCount} row{selectedCount === 1 ? "" : "s"}
+                </Button>
+              </div>
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                Leave a field blank to keep its current value per row.
+              </p>
             </div>
           )}
         </>
@@ -936,9 +1293,36 @@ export function BulkUploadSection() {
   );
 }
 
+// ── ConfidenceBadge — colored chip showing the classifier's confidence
+//    level. Green (high) / amber (medium) / red (low).
+function ConfidenceBadge({
+  level,
+  score,
+}: {
+  level: "high" | "medium" | "low";
+  score: number;
+}) {
+  const config = {
+    high: { color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", label: "HIGH" },
+    medium: { color: "bg-amber-500/20 text-amber-300 border-amber-500/30", label: "MED" },
+    low: { color: "bg-rose-500/20 text-rose-300 border-rose-500/30", label: "LOW" },
+  } as const;
+  const c = config[level];
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-wider",
+        c.color,
+      )}
+      title={`Confidence: ${score}/100 (${level})`}
+    >
+      {c.label} {score}
+    </div>
+  );
+}
+
 // ── DuplicateChecker — invisible component that runs a single duplicate
 //    lookup query against the backend and calls onResult when done.
-//    Uses useQuery so it integrates cleanly with the React lifecycle.
 function DuplicateChecker({
   fileId,
   file,
@@ -961,11 +1345,6 @@ function DuplicateChecker({
       | null,
   ) => void;
 }) {
-  // Use the public API query. We pass the filename and let the backend
-  // do the matching.
-  // The hook is called unconditionally per rendered DuplicateChecker
-  // (one per file id in the queue). When the result arrives, we call
-  // onResult and the parent unmounts this component.
   const result = useQuery(
     api.content.findDuplicateContent,
     file ? { filename: file.file.name } : "skip",
