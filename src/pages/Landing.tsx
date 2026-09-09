@@ -250,19 +250,19 @@ export default function Landing() {
 
           <div className="hidden items-center gap-6 type-mono font-medium text-muted-foreground md:flex">
             <a href="#companion" className="transition-colors hover:text-foreground">
-              {t("landing:companion.eyebrow", { defaultValue: "companion" }).toLowerCase()}
+              companion
             </a>
             <a href="#streams" className="transition-colors hover:text-foreground">
-              {t("landing:streams.eyebrow", { defaultValue: "streams" }).toLowerCase()}
+              streams
             </a>
             <a href="#library" className="transition-colors hover:text-foreground">
-              {t("landing:nav.library", { defaultValue: "library" }).toLowerCase()}
+              library
             </a>
             <Link to="/coverage" className="transition-colors hover:text-amber-300">
               coverage map
             </Link>
             <a href="#how" className="transition-colors hover:text-foreground">
-              {t("landing:howItWorks.eyebrow", { defaultValue: "how-it-works" }).toLowerCase()}
+              how-it-works
             </a>
           </div>
 
@@ -310,7 +310,7 @@ export default function Landing() {
             ) : (
               <Button asChild size="sm" className="rounded-lg">
                 <Link to="/auth?returnTo=%2Fdashboard">
-                  {t("landing:nav.signIn", { defaultValue: "Sign in" })} <ArrowRight className="size-4" />
+                  Sign in <ArrowRight className="size-4" />
                 </Link>
               </Button>
             )}
