@@ -15,6 +15,8 @@
 //      time for speed):
 //      a. Generate a Convex temp-storage upload URL
 //      b. PUT the bytes straight to Convex temp storage with XMLHttpRequest
+//         (with AUTOMATIC RETRY on network errors — exponential backoff,
+//         up to MAX_UPLOAD_RETRIES attempts)
 //      c. Extract PDF text (browser-side, via extractPdfText)
 //      d. Run classifyDocument(filename, text) — PURE LOCAL, no API calls
 //         → combines filename signals + content keyword scoring
@@ -29,6 +31,24 @@
 //      - Checkboxes on each row
 //      - Select N rows → bulk-set subject/grade/type/year/premium
 //   7. "Save All" button — only active when all rows are valid
+//
+// RETRY SYSTEM:
+//   - Upload failures (network errors, 5xx HTTP) trigger an automatic retry
+//     with exponential backoff (1s → 2s → 4s → 8s → 16s). Up to MAX_UPLOAD_RETRIES
+//     attempts per file before marking it as "failed".
+//   - "Retry Failed" button at the top re-runs the entire pipeline for every
+//     failed row, with the same retry logic.
+//   - A per-row "retry" icon next to failed rows lets you retry a single file.
+//
+// BLIND UPLOAD MODE:
+//   - Toggle "Blind upload" in the process bar → enables saving rows that
+//     the classifier couldn't fully classify, using admin-provided DEFAULTS.
+//   - Admin picks a default subject + grade + type (and optional year) —
+//     these defaults are applied to every row missing those fields at
+//     "Save All" time.
+//   - This lets you upload even completely-unclassified files (e.g., scanned
+//     PDFs with cryptic filenames) and fix them up later in the admin
+//     content editor.
 //
 // PERFORMANCE:
 //   - No AI calls in the default path → zero rate limit errors.
@@ -50,9 +70,11 @@ import {
   CheckSquare,
   Clock,
   Copy,
+  Eye,
   FileText,
   Loader2,
   Package,
+  RotateCw,
   Save,
   ShieldCheck,
   Sparkles,
@@ -95,6 +117,7 @@ type FileStatus =
   | "pending"
   | "uploading"
   | "analyzing"
+  | "retrying"
   | "ready"
   | "failed"
   | "cancelled"
@@ -109,6 +132,8 @@ interface BulkFile {
   fileUrl?: string;
   key?: string;
   error?: string;
+  retryCount: number; // attempts so far (resets on manual retry)
+  maxRetries: number; // per-file override (defaults to MAX_UPLOAD_RETRIES)
   duplicateOf?: string; // existing content id
   duplicateTitle?: string;
   // Classification result (rule-based by default, AI as fallback)
@@ -126,6 +151,7 @@ interface BulkFile {
   cancelled: boolean;
   selected: boolean; // for batch edit
   aiTried: boolean; // tracks whether AI fallback was used
+  blindUploaded?: boolean; // true if this row was saved via blind-upload defaults
 }
 
 const CONTENT_TYPES = [
@@ -147,6 +173,30 @@ const YEARS = (() => {
 })();
 
 const CONCURRENCY = 4; // bumped from 3 → 4 since we're not throttling AI calls
+
+// Retry configuration — exponential backoff for network errors.
+// 1s, 2s, 4s, 8s, 16s — total worst-case wait before giving up: 31s.
+const MAX_UPLOAD_RETRIES = 4; // total attempts = MAX_UPLOAD_RETRIES + 1 = 5
+const BASE_RETRY_DELAY_MS = 1000; // first retry waits 1s, then doubles each time
+
+// Network errors worth retrying. Don't retry 4xx (those won't fix themselves).
+function isRetryableError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  // Network blips, timeouts, server errors
+  return (
+    lower.includes("network error") ||
+    lower.includes("timeout") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("http 5") || // 500, 502, 503, 504
+    lower.includes("http 429") || // rate limit — wait and retry
+    lower.includes("service unavailable") ||
+    lower.includes("connection")
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 // ── Component ──────────────────────────────────────────────────────────
 
@@ -173,6 +223,16 @@ export function BulkUploadSection() {
   const [batchEditType, setBatchEditType] = useState<string>("");
   const [batchEditYear, setBatchEditYear] = useState<string>("");
   const [batchEditPremium, setBatchEditPremium] = useState<boolean | null>(null);
+  // Blind Upload mode — lets the admin save rows that the classifier
+  // couldn't fully classify, by applying admin-chosen defaults to fill in
+  // the missing fields. Designed for batches where the admin knows ALL files
+  // are the same subject/grade/type (e.g., "all of these are Biology Grade 12
+  // past exams") even if the classifier couldn't tell.
+  const [blindMode, setBlindMode] = useState(false);
+  const [blindSubject, setBlindSubject] = useState<string>("");
+  const [blindGrade, setBlindGrade] = useState<string>("");
+  const [blindType, setBlindType] = useState<string>("");
+  const [blindYear, setBlindYear] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Live XHR registry — per file id, so we can abort one without killing
@@ -214,6 +274,8 @@ export function BulkUploadSection() {
         cancelled: false,
         selected: false,
         aiTried: false,
+        retryCount: 0,
+        maxRetries: MAX_UPLOAD_RETRIES,
       }));
 
       setFiles((prev) => [...prev, ...newFiles]);
@@ -322,17 +384,34 @@ export function BulkUploadSection() {
       if (bulkFile.status === "duplicate" && autoSkipDuplicates) return;
       if (bulkFile.status === "ready") return;
 
+      // Reset error state and mark as uploading.
       setFiles((prev) =>
         prev.map((f) =>
           f.id === bulkFile.id
-            ? { ...f, status: "uploading", progress: 0, error: undefined }
+            ? {
+                ...f,
+                status: "uploading",
+                progress: 0,
+                error: undefined,
+                retryCount: 0,
+              }
             : f,
         ),
       );
 
-      try {
-        // Step 1 — get a Convex temp-storage upload URL.
-        const url = await generateUploadUrlMutation();
+      // Helper: run ONE upload+classify attempt. Returns true on success,
+      // false on a retryable failure (caller will retry).
+      const attemptOnce = async (attemptNumber: number): Promise<boolean> => {
+        let url: string;
+        try {
+          url = await generateUploadUrlMutation();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Could not get upload URL";
+          if (attemptNumber < bulkFile.maxRetries && isRetryableError(msg)) {
+            return false; // retryable
+          }
+          throw new Error(`Could not get upload URL: ${msg}`);
+        }
 
         const storageId = await new Promise<string>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -374,7 +453,7 @@ export function BulkUploadSection() {
           xhr.send(bulkFile.file);
         });
 
-        // Step 2: Extract PDF text (browser-side) — NON-FATAL if it fails
+        // Step 2: Extract PDF text — NON-FATAL if it fails
         setFiles((prev) =>
           prev.map((f) =>
             f.id === bulkFile.id ? { ...f, status: "analyzing", storageId } : f,
@@ -395,9 +474,7 @@ export function BulkUploadSection() {
           subjects,
         });
 
-        // Step 4: Apply result. DON'T overwrite the year detected from
-        // filename-only pre-classification if the rule engine didn't find
-        // a stronger signal (it's already in result.examYear if found).
+        // Step 4: Apply result.
         setFiles((prev) =>
           prev.map((f) =>
             f.id === bulkFile.id
@@ -415,25 +492,86 @@ export function BulkUploadSection() {
                   confidenceLevel: result.confidenceLevel,
                   signals: result.signals,
                   error: undefined,
+                  retryCount: attemptNumber,
                 }
               : f,
           ),
         );
+        return true;
+      };
 
-        // NO throttle — we're not hitting any external API.
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Processing failed";
-        if (msg.toLowerCase().includes("cancelled")) {
-          return;
+      // Retry loop — try attemptOnce up to maxRetries+1 times, with
+      // exponential backoff between attempts.
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt <= bulkFile.maxRetries; attempt++) {
+        try {
+          const ok = await attemptOnce(attempt);
+          if (ok) return; // success
+          // Retryable failure — fall through to backoff
+          lastError = new Error("Retryable failure (network or 5xx)");
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error("Processing failed");
+          const msg = lastError.message;
+          if (msg.toLowerCase().includes("cancelled")) {
+            return; // user cancelled — don't retry
+          }
+          // Non-retryable error → bail out immediately
+          if (!isRetryableError(msg) || attempt >= bulkFile.maxRetries) {
+            setFiles((prev) =>
+              prev.map((f) =>
+                f.id === bulkFile.id
+                  ? {
+                      ...f,
+                      status: "failed",
+                      error: `${msg}${attempt > 0 ? ` (after ${attempt + 1} attempt${attempt === 0 ? "" : "s"})` : ""}`,
+                      retryCount: attempt,
+                    }
+                  : f,
+              ),
+            );
+            return;
+          }
         }
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.id === bulkFile.id
-              ? { ...f, status: "failed", error: msg }
-              : f,
-          ),
-        );
+        // Backoff before next attempt
+        if (attempt < bulkFile.maxRetries) {
+          const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === bulkFile.id
+                ? {
+                    ...f,
+                    status: "retrying",
+                    progress: 0,
+                    error: `Retry ${attempt + 1}/${bulkFile.maxRetries} in ${(delay / 1000).toFixed(0)}s — ${lastError?.message ?? "network error"}`,
+                    retryCount: attempt + 1,
+                  }
+                : f,
+            ),
+          );
+          await sleep(delay);
+          // Mark as uploading again for the next attempt
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === bulkFile.id
+                ? { ...f, status: "uploading", progress: 0 }
+                : f,
+            ),
+          );
+        }
       }
+      // Exhausted retries
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === bulkFile.id
+            ? {
+                ...f,
+                status: "failed",
+                error: `Failed after ${bulkFile.maxRetries + 1} attempts: ${lastError?.message ?? "unknown"}`,
+                retryCount: bulkFile.maxRetries,
+              }
+            : f,
+        ),
+      );
     };
 
     // Concurrency pool — process CONCURRENCY workers, each pulling from
@@ -594,30 +732,300 @@ export function BulkUploadSection() {
   };
 
   // ── Validation: all files must have valid required fields ───────────
+  // Compute the effective validation state. With blind mode enabled,
+  // rows missing fields are considered valid AS LONG AS the blind defaults
+  // can fill them in. We don't mutate the rows here — we just allow Save All
+  // to proceed and let handleSaveAll apply the defaults at save time.
+  const blindCanFillMissing = blindMode && blindSubject && blindGrade && blindType;
+
   const allValid =
     files.length > 0 &&
     files.every((f) => {
       if (f.status === "duplicate" && autoSkipDuplicates) return true;
-      if (!f.storageId) return false;
-      if (!f.title.trim()) return false;
-      if (!f.contentType) return false;
-      if (!f.grade) return false;
-      if (!f.subjectId) return false;
-      if (f.contentType === "past_exam" && !f.examYear) return false;
+      if (!f.storageId) return false; // not uploaded yet
+      // Title — use filename as fallback if blind mode is on
+      if (!f.title.trim()) {
+        if (!blindMode) return false;
+      }
+      // Content type — use blind default if missing
+      if (!f.contentType && !(blindMode && blindType)) return false;
+      // Grade — use blind default if missing
+      if (!f.grade && !(blindMode && blindGrade)) return false;
+      // Subject — use blind default if missing
+      if (!f.subjectId && !(blindMode && blindSubject)) return false;
+      // Year — required for past_exam, but blind year can fill it
+      if (f.contentType === "past_exam" || (blindMode && blindType === "past_exam")) {
+        if (!f.examYear && !(blindMode && blindYear)) return false;
+      }
       return true;
     });
 
+  // ── Retry all failed rows ───────────────────────────────────────────
+  // Re-runs the entire upload+classify pipeline for every row currently in
+  // "failed" or "cancelled" status. Uses the same retry-with-backoff logic
+  // inside runOne (so each row gets up to MAX_UPLOAD_RETRIES attempts).
+  const retryFailed = async () => {
+    const failedRows = files.filter(
+      (f) => f.status === "failed" || f.status === "cancelled",
+    );
+    if (failedRows.length === 0) {
+      toast.info("No failed rows to retry.");
+      return;
+    }
+    if (!subjects) {
+      toast.error("Subjects list still loading — try again in a second.");
+      return;
+    }
+    setProcessing(true);
+    setSavedCount(null);
+    toast.info(`Retrying ${failedRows.length} failed row${failedRows.length === 1 ? "" : "s"}…`);
+
+    const queue = failedRows;
+    const runOneRetry = async (bulkFile: BulkFile) => {
+      // Reset status + retry counter
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === bulkFile.id
+            ? {
+                ...f,
+                status: "uploading",
+                progress: 0,
+                error: undefined,
+                retryCount: 0,
+              }
+            : f,
+        ),
+      );
+
+      // Reuse the same upload+classify logic (simplified inline to avoid
+      // stale closures). Identical retry/backoff handling.
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt <= bulkFile.maxRetries; attempt++) {
+        try {
+          let url: string;
+          try {
+            url = await generateUploadUrlMutation();
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "Could not get upload URL";
+            if (attempt < bulkFile.maxRetries && isRetryableError(msg)) {
+              lastError = new Error(msg);
+              continue;
+            }
+            throw new Error(`Could not get upload URL: ${msg}`);
+          }
+
+          const storageId = await new Promise<string>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhrRegistryRef.current.set(bulkFile.id, xhr);
+            xhr.open("POST", url);
+            xhr.setRequestHeader("Content-Type", bulkFile.file.type || "application/pdf");
+            xhr.upload.addEventListener("progress", (e) => {
+              if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                setFiles((prev) =>
+                  prev.map((f) =>
+                    f.id === bulkFile.id ? { ...f, progress: pct } : f,
+                  ),
+                );
+              }
+            });
+            xhr.addEventListener("load", () => {
+              xhrRegistryRef.current.delete(bulkFile.id);
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  const res = JSON.parse(xhr.responseText) as { storageId: string };
+                  if (res.storageId) resolve(res.storageId);
+                  else reject(new Error("No storageId in response"));
+                } catch {
+                  reject(new Error("Upload response was not JSON"));
+                }
+              } else {
+                reject(new Error(`Upload HTTP ${xhr.status}`));
+              }
+            });
+            xhr.addEventListener("error", () => {
+              xhrRegistryRef.current.delete(bulkFile.id);
+              reject(new Error("Network error"));
+            });
+            xhr.addEventListener("abort", () => {
+              xhrRegistryRef.current.delete(bulkFile.id);
+              reject(new Error("Cancelled"));
+            });
+            xhr.send(bulkFile.file);
+          });
+
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === bulkFile.id ? { ...f, status: "analyzing", storageId } : f,
+            ),
+          );
+
+          let sample = "";
+          try {
+            sample = await extractPdfText(bulkFile.file, 5, 12000);
+          } catch {
+            // Non-fatal
+          }
+
+          const result: ClassificationResult = classifyDocument({
+            filename: bulkFile.file.name,
+            contentText: sample,
+            subjects,
+          });
+
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === bulkFile.id
+                ? {
+                    ...f,
+                    status: "ready",
+                    title: result.title || f.file.name.replace(/\.pdf$/i, ""),
+                    subjectId: result.subjectId ?? "",
+                    grade: result.grade ?? "",
+                    contentType: result.contentType ?? "",
+                    examYear: result.examYear ?? "",
+                    topics: result.topics ?? [],
+                    classified: true,
+                    confidence: result.confidence,
+                    confidenceLevel: result.confidenceLevel,
+                    signals: result.signals,
+                    error: undefined,
+                    retryCount: attempt,
+                  }
+                : f,
+            ),
+          );
+          return; // success
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error("Processing failed");
+          const msg = lastError.message;
+          if (msg.toLowerCase().includes("cancelled")) return;
+          if (!isRetryableError(msg) || attempt >= bulkFile.maxRetries) {
+            setFiles((prev) =>
+              prev.map((f) =>
+                f.id === bulkFile.id
+                  ? {
+                      ...f,
+                      status: "failed",
+                      error: `${msg}${attempt > 0 ? ` (after ${attempt + 1} attempt${attempt === 0 ? "" : "s"})` : ""}`,
+                      retryCount: attempt,
+                    }
+                  : f,
+              ),
+            );
+            return;
+          }
+        }
+        // Backoff
+        if (attempt < bulkFile.maxRetries) {
+          const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === bulkFile.id
+                ? {
+                    ...f,
+                    status: "retrying",
+                    progress: 0,
+                    error: `Retry ${attempt + 1}/${bulkFile.maxRetries} in ${(delay / 1000).toFixed(0)}s — ${lastError?.message ?? "network error"}`,
+                    retryCount: attempt + 1,
+                  }
+                : f,
+            ),
+          );
+          await sleep(delay);
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === bulkFile.id
+                ? { ...f, status: "uploading", progress: 0 }
+                : f,
+            ),
+          );
+        }
+      }
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === bulkFile.id
+            ? {
+                ...f,
+                status: "failed",
+                error: `Failed after ${bulkFile.maxRetries + 1} attempts: ${lastError?.message ?? "unknown"}`,
+                retryCount: bulkFile.maxRetries,
+              }
+            : f,
+        ),
+      );
+    };
+
+    // Sequential (not concurrent) on retries — typically only 1-5 failed rows
+    // so concurrency doesn't help. Avoids spawning 4 workers for 1 file.
+    for (const f of queue) {
+      await runOneRetry(f);
+    }
+    setProcessing(false);
+    const stillFailed = files.filter((f) => f.status === "failed").length;
+    if (stillFailed === 0) {
+      toast.success(`Retried all ${failedRows.length} row${failedRows.length === 1 ? "" : "s"} successfully.`);
+    } else {
+      toast.warning(`Retry complete — ${stillFailed} row${stillFailed === 1 ? "" : "s"} still failing. Check the errors below.`);
+    }
+  };
+
   // ── Save all ────────────────────────────────────────────────────────
   const handleSaveAll = async () => {
-    const toSave = files.filter(
+    let toSave = files.filter(
       (f) => !(f.status === "duplicate" && autoSkipDuplicates),
     );
     if (toSave.length === 0) {
       toast.error("Nothing to save — all files are duplicates or unprocessed.");
       return;
     }
+
+    // If blind mode is on, apply the admin-provided defaults to every row
+    // missing those fields. This is the "blind upload" path — even totally
+    // unclassified files get saved with the defaults.
+    if (blindMode && blindCanFillMissing) {
+      const blindDefaultsApplied: BulkFile[] = [];
+      let filledCount = 0;
+      for (const f of toSave) {
+        const updates: Partial<BulkFile> = {};
+        if (!f.title.trim()) {
+          // Use the filename as the title (stripped of extension)
+          updates.title = f.file.name.replace(/\.pdf$/i, "");
+          filledCount++;
+        }
+        if (!f.subjectId && blindSubject) {
+          updates.subjectId = blindSubject;
+          filledCount++;
+        }
+        if (!f.grade && blindGrade) {
+          updates.grade = blindGrade;
+          filledCount++;
+        }
+        if (!f.contentType && blindType) {
+          updates.contentType = blindType;
+          filledCount++;
+        }
+        if (!f.examYear && blindYear && (f.contentType === "past_exam" || blindType === "past_exam")) {
+          updates.examYear = blindYear;
+          filledCount++;
+        }
+        if (Object.keys(updates).length > 0) {
+          blindDefaultsApplied.push({ ...f, ...updates, blindUploaded: true });
+        } else {
+          blindDefaultsApplied.push(f);
+        }
+      }
+      toSave = blindDefaultsApplied;
+      // Persist the blind-applied fields back to state so the review table
+      // shows what was saved.
+      setFiles(blindDefaultsApplied);
+      if (filledCount > 0) {
+        toast.info(`Blind upload: filled ${filledCount} missing field${filledCount === 1 ? "" : "s"} with your defaults.`);
+      }
+    }
+
     if (!allValid) {
-      toast.error("Some files are missing required fields. Please review all rows.");
+      toast.error("Some files are missing required fields. Please review all rows or enable Blind Upload.");
       return;
     }
     setSaving(true);
@@ -775,6 +1183,11 @@ export function BulkUploadSection() {
                   Click "Start Processing" to upload + auto-classify
                 </span>
               )}
+              {!processing && !saving && files.some((f) => f.status === "failed" || f.status === "cancelled") && (
+                <span className="text-xs text-rose-300">
+                  {files.filter((f) => f.status === "failed" || f.status === "cancelled").length} failed/cancelled — click "Retry Failed"
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* Auto-skip duplicates toggle */}
@@ -788,6 +1201,38 @@ export function BulkUploadSection() {
                   Auto-skip duplicates
                 </span>
               </label>
+              {/* Blind Upload toggle — enables saving rows even when classifier
+                  couldn't fully classify them, by applying admin defaults. */}
+              <label
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors",
+                  blindMode
+                    ? "border-violet-500/40 bg-violet-500/10"
+                    : "border-white/[0.06] bg-white/[0.02]",
+                )}
+                title="Blind Upload: use admin-chosen defaults to save even unclassified files"
+              >
+                <Switch
+                  checked={blindMode}
+                  onCheckedChange={setBlindMode}
+                  className="scale-90"
+                />
+                <span className="text-[11px] font-semibold text-violet-300">
+                  <Eye className="inline size-3 mr-1" />
+                  Blind Upload
+                </span>
+              </label>
+              {/* Retry Failed button */}
+              {!processing && !saving && files.some((f) => f.status === "failed" || f.status === "cancelled") && (
+                <Button
+                  onClick={retryFailed}
+                  className="gap-2 bg-amber-500 text-white hover:bg-amber-600"
+                  size="sm"
+                >
+                  <RotateCw className="size-3.5" />
+                  Retry Failed ({files.filter((f) => f.status === "failed" || f.status === "cancelled").length})
+                </Button>
+              )}
               {!processing && !saving && files.some((f) => f.status === "pending") && (
                 <Button
                   onClick={processFiles}
@@ -808,13 +1253,107 @@ export function BulkUploadSection() {
                   Save All ({files.filter((f) => !(f.status === "duplicate" && autoSkipDuplicates)).length})
                 </Button>
               )}
-              {!processing && !saving && !allValid && files.every((f) => f.status !== "pending") && (
+              {!processing && !saving && !allValid && !blindMode && files.every((f) => f.status !== "pending") && (
                 <span className="text-xs text-amber-300">
-                  Fill in missing fields to enable Save All
+                  Fill in missing fields OR enable Blind Upload
                 </span>
               )}
             </div>
           </div>
+
+          {/* Blind Upload defaults — visible only when blind mode is on */}
+          {blindMode && (
+            <div className="rounded-xl border border-violet-500/30 bg-violet-500/[0.04] p-3">
+              <div className="mb-2 flex items-start gap-2">
+                <Eye className="size-4 mt-0.5 shrink-0 text-violet-300" />
+                <div>
+                  <p className="text-xs font-semibold text-violet-300">
+                    Blind Upload defaults
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    These will fill any missing subject/grade/type/year on rows
+                    the classifier couldn't fully classify. Files with the
+                    right fields keep their values; only blanks get the defaults.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Subject *
+                  </label>
+                  <Select value={blindSubject} onValueChange={setBlindSubject}>
+                    <SelectTrigger className="h-9 w-[160px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="Select subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjects?.map((s) => (
+                        <SelectItem key={s._id} value={s._id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Grade *
+                  </label>
+                  <Select value={blindGrade} onValueChange={setBlindGrade}>
+                    <SelectTrigger className="h-9 w-[80px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GRADES.map((g) => (
+                        <SelectItem key={g} value={g.toString()}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Type *
+                  </label>
+                  <Select value={blindType} onValueChange={setBlindType}>
+                    <SelectTrigger className="h-9 w-[140px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONTENT_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {blindType === "past_exam" && (
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Year *
+                    </label>
+                    <Select value={blindYear} onValueChange={setBlindYear}>
+                      <SelectTrigger className="h-9 w-[100px] rounded-md bg-white/5 text-xs">
+                        <SelectValue placeholder="—" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {YEARS.map((y) => (
+                          <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {blindCanFillMissing ? (
+                  <span className="text-[11px] font-semibold text-emerald-300">
+                    ✓ Defaults valid — Save All will fill all blanks
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-amber-300">
+                    Pick subject + grade + type to enable blind save
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* File list / Review table */}
           <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
@@ -879,6 +1418,7 @@ export function BulkUploadSection() {
                         <div className="mt-1 shrink-0">
                           {f.status === "pending" && <Clock className="size-3.5 text-muted-foreground" />}
                           {f.status === "uploading" && <Loader2 className="size-3.5 animate-spin text-amber-300" />}
+                          {f.status === "retrying" && <RotateCw className="size-3.5 animate-spin text-amber-400" />}
                           {f.status === "analyzing" && <Loader2 className="size-3.5 animate-spin text-sky-300" />}
                           {f.status === "ready" && <CheckCircle2 className="size-3.5 text-emerald-300" />}
                           {f.status === "failed" && <AlertTriangle className="size-3.5 text-rose-300" />}
@@ -888,10 +1428,16 @@ export function BulkUploadSection() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-xs text-muted-foreground">
                             {f.file.name} · {(f.file.size / 1024 / 1024).toFixed(1)} MB
+                            {f.retryCount > 0 && f.status !== "ready" && (
+                              <span className="ml-2 text-[10px] text-amber-400">
+                                retry #{f.retryCount}
+                              </span>
+                            )}
                           </p>
-                          {(f.status === "uploading" || f.status === "analyzing" || f.status === "pending") ? (
+                          {(f.status === "uploading" || f.status === "analyzing" || f.status === "pending" || f.status === "retrying") ? (
                             <p className="mt-1 text-[11px] text-muted-foreground/80">
                               {f.status === "uploading" && `Uploading… ${f.progress}%`}
+                              {f.status === "retrying" && (f.error ?? "Retrying…")}
                               {f.status === "analyzing" && "Analyzing…"}
                               {f.status === "pending" && "Waiting…"}
                             </p>
@@ -914,8 +1460,14 @@ export function BulkUploadSection() {
                               disabled={processing}
                             />
                           )}
-                          {f.error && (
+                          {f.error && f.status === "failed" && (
                             <p className="mt-1 text-[10px] text-rose-300">{f.error}</p>
+                          )}
+                          {f.blindUploaded && (
+                            <p className="mt-1 text-[10px] text-violet-300">
+                              <Eye className="inline size-2.5 mr-0.5" />
+                              Saved with blind-upload defaults — review later
+                            </p>
                           )}
                           {/* Classifier signals — show as a tooltip-style list */}
                           {f.classified && f.signals.length > 0 && (
@@ -1026,13 +1578,37 @@ export function BulkUploadSection() {
                       <div className="flex items-center gap-1.5">
                         {/* Per-file cancel button — only visible while
                             the file is actively uploading or analyzing. */}
-                        {(f.status === "uploading" || f.status === "analyzing") && (
+                        {(f.status === "uploading" || f.status === "analyzing" || f.status === "retrying") && (
                           <button
                             onClick={() => cancelFile(f.id)}
                             title="Cancel this upload"
                             className="cursor-pointer rounded-md border border-rose-400/30 bg-rose-400/10 p-1.5 text-rose-300 hover:bg-rose-400/20"
                           >
                             <Ban className="size-3.5" />
+                          </button>
+                        )}
+                        {/* Per-row retry button — only visible for failed or
+                            cancelled rows. Re-runs the entire pipeline for
+                            just this one file, with full backoff retry. */}
+                        {!processing && !saving && (f.status === "failed" || f.status === "cancelled") && (
+                          <button
+                            onClick={() => {
+                              // Inline single-row retry — set status back to
+                              // pending and call processFiles, which only
+                              // processes pending/failed/cancelled rows.
+                              setFiles((prev) =>
+                                prev.map((pf) =>
+                                  pf.id === f.id
+                                    ? { ...pf, status: "pending", error: undefined, retryCount: 0 }
+                                    : pf,
+                                ),
+                              );
+                              setTimeout(() => void processFiles(), 50);
+                            }}
+                            title="Retry this file"
+                            className="cursor-pointer rounded-md border border-amber-400/30 bg-amber-400/10 p-1.5 text-amber-300 hover:bg-amber-400/20"
+                          >
+                            <RotateCw className="size-3.5" />
                           </button>
                         )}
                         {/* AI fallback button — only shown for low-confidence
@@ -1095,6 +1671,12 @@ export function BulkUploadSection() {
                   <Ban className="size-3 text-muted-foreground" />
                   {files.filter((f) => f.status === "cancelled").length} cancelled
                 </span>
+                {blindMode && (
+                  <span className="flex items-center gap-1.5">
+                    <Eye className="size-3 text-violet-300" />
+                    {files.filter((f) => f.blindUploaded).length} blind-uploaded
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {selectedCount > 0 && (
