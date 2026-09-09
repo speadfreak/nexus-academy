@@ -567,7 +567,7 @@ export default function Reader() {
             </>)}
             <span className="size-1 rounded-full bg-white/20" />
             <span className={cn("type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase text-[10px]", subjectHue(item.subjectSlug ?? ""))}>
-              {CONTENT_TYPE_LABELS[item.contentType as ContentType]}
+              {CONTENT_TYPE_LABELS[item.contentType as ContentType] ?? item.contentType}
             </span>
             {item.sourceName && (
               <>

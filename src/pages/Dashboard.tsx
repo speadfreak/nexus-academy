@@ -301,10 +301,16 @@ function BookTile({
   onOpen: (item: ContentItemWithSubject) => void;
   onQuiz: (item: ContentItemWithSubject) => void;
 }) {
-  const style = TYPE_STYLES[item.contentType];
+  // Use the type-specific style if defined, otherwise fall back to a neutral
+  // palette so admin-added content types (which aren't in TYPE_STYLES) don't
+  // crash the dashboard with "Cannot read properties of undefined".
+  const style = TYPE_STYLES[item.contentType] ?? {
+    icon: BookOpen,
+    classes: "bg-slate-400/10 text-slate-300",
+  };
   const cover = coverFor(item.subjectSlug);
   const GlyphIcon = SUBJECT_GLYPHS[item.subjectSlug] ?? BookOpen;
-  const typeLabel = CONTENT_TYPE_LABELS[item.contentType];
+  const typeLabel = CONTENT_TYPE_LABELS[item.contentType] ?? item.contentType;
 
   return (
     <motion.div
@@ -1345,7 +1351,7 @@ export default function Dashboard() {
             </motion.button>
             {subjects?.map((subject, i) => {
               const cover = coverFor(subject.slug);
-              const GlyphIcon = SUBJECT_GLYPHS[subject.slug];
+              const GlyphIcon = SUBJECT_GLYPHS[subject.slug] ?? BookOpen;
               const isActive = subjectSlug === subject.slug;
               return (
                 <motion.button
@@ -1756,7 +1762,7 @@ export default function Dashboard() {
                 {recentContent.map((item) => (
                   <button key={item._id} type="button" onClick={() => handleOpen(item)} className="min-w-0 sm:min-w-[190px] sm:max-w-[230px] rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-amber-300/30 hover:bg-white/[0.07]">
                     <p className="line-clamp-2 type-caption font-bold">{item.title}</p>
-                    <p className="mt-2 type-caption text-amber-200/60">{CONTENT_TYPE_LABELS[item.contentType]} · {item.subjectName}</p>
+                    <p className="mt-2 type-caption text-amber-200/60">{CONTENT_TYPE_LABELS[item.contentType] ?? item.contentType} · {item.subjectName}</p>
                   </button>
                 ))}
               </div>

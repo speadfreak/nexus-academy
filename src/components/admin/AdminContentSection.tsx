@@ -373,7 +373,7 @@ export function AdminContentSection() {
       (item) =>
         item.title.toLowerCase().includes(q) ||
         item.subjectName.toLowerCase().includes(q) ||
-        CONTENT_TYPE_LABELS[item.contentType].toLowerCase().includes(q),
+        (CONTENT_TYPE_LABELS[item.contentType] ?? item.contentType).toLowerCase().includes(q),
     );
   }, [adminContent, searchQuery]);
 
@@ -1304,7 +1304,7 @@ export function AdminContentSection() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      {CONTENT_TYPE_LABELS[item.contentType]}
+                      {CONTENT_TYPE_LABELS[item.contentType] ?? item.contentType}
                     </TableCell>
                     <TableCell className="text-xs">Grade {item.grade}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">{item.subjectName}</TableCell>
