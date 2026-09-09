@@ -1,0 +1,50 @@
+{
+  "nav": {
+    "home": "Mata Duree",
+    "library": "Kuusaa",
+    "tutor": "AI Barsiisaa",
+    "todos": "Hoijeta",
+    "focus": "Xiyyeeffannoo",
+    "plans": "Karoo",
+    "journey": "Imala",
+    "calendar": "Kaleessa",
+    "notes": "Yaada",
+    "flashcards": "Kaardii If-tuqaa",
+    "achievements": "Morksaa",
+    "groups": "Garee",
+    "settings": "Qindoomina",
+    "aptitude": "Wiirtuu Akeekuu",
+    "mockExam": "Imtila Qopheessya",
+    "upgrade": "Kabalchiisi"
+  },
+  "library": {
+    "yourLibrary": "Kuusaa Kee",
+    "resources": "Kuusaa",
+    "saved": "Olkaa'aa",
+    "subjects": "Gabaasa",
+    "allResources": "Kuusaa Hunda",
+    "textbooks": "Kitaaba",
+    "pastExams": "Imtila Darbe",
+    "manage": "Bulchi",
+    "surpriseMe": "Na jaari",
+    "bookmarked": "Mallattoo qabu",
+    "readyToDiveIn": "Galmuu kee qophaa'aa?",
+    "pickASection": "Gosa gadi qofa fili, ykn wanti barbaadamu barbaadi.",
+    "coreTextbooks": "Kitaaba Bu'uuraa",
+    "buildTheFoundation": "Uumama ijaari",
+    "pastExamsSection": "Imtila Darbe",
+    "testYourReadiness": "Qopheessya kee qormaasi",
+    "askTutor": "AI Barsiisa gaafadhaa",
+    "anyQuestion247": "Gaafat kamiyyuu, 24/7",
+    "openBook": "Bani",
+    "continue": "Itti fufi"
+  },
+  "search": {
+    "placeholder": "Kuusaa barbaadi…",
+    "noResults": "Filannoo kanaan waliin homaa hin argabamne.",
+    "noResultsSaved": "Tarree qopheessya kee homaa hin olkaa'e — kitaaba kamiyyuu jalqabu mallattoo cuqqisi.",
+    "emptyLibrary": "Kuusaa guutu jira. Yeroo xiqqoo deebi'i, ykn bulchaa gabaasa olkaa'i.",
+    "uploadFirst": "Meera jalqabaa olkaa'i"
+  },
+  "subjectFilter": "Gabaasa Hunda"
+}

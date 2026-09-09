@@ -1,0 +1,33 @@
+{
+  "title": "Herrega",
+  "profile": {
+    "signedInAs": "Akka akka",
+    "guest": "Dhiyooftuu",
+    "guestSubtitle": "Seeni akka qopheessa kee olkaa'itu.",
+    "subscriptionStatus": {
+      "premium": "Premiyaamu",
+      "free": "Balaaxaa",
+      "trial": "Qormaata"
+    }
+  },
+  "menu": {
+    "settings": "Qindoomina",
+    "settingsSubtitle": "Profaayilii, labsi, bocaa, herrega",
+    "help": "Gargaarsa",
+    "helpSubtitle": "FAQ, qunnala, deeggersa",
+    "appearance": "Bocaa",
+    "appearanceSubtitle": "Ifaa ykn dukkana",
+    "language": "Afaan",
+    "languageSubtitle": "Afaan sagaleessa kee fili",
+    "logout": "Ba'i"
+  },
+  "theme": {
+    "light": "Ifaa",
+    "dark": "Dukkanaa",
+    "system": "Sirna"
+  },
+  "appearance": {
+    "title": "Bocaa",
+    "subtitle": "Haalata ifaa fi dukkanaa gidduu jijjiiri."
+  }
+}

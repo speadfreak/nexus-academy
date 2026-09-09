@@ -1,0 +1,50 @@
+{
+  "appName": "Learnyx Academy ET",
+  "tagline": "የሀገር ፈተና ዝግጅት",
+  "actions": {
+    "save": "አስቀምጥ",
+    "cancel": "ይቅር",
+    "delete": "ሰርዝ",
+    "edit": "አርትዕ",
+    "confirm": "አረጋግጥ",
+    "close": "ዝጋ",
+    "back": "ተመለስ",
+    "next": "ቀጣይ",
+    "previous": "ቀዳሚ",
+    "retry": "እንደገና ሞክር",
+    "loading": "በመጫን ላይ…",
+    "saving": "በማስቀመጥ ላይ…",
+    "search": "ፈልግ",
+    "filter": "ፊልተር",
+    "all": "ሁሉም",
+    "none": "ምንም",
+    "yes": "አዎ",
+    "no": "አይ",
+    "ok": "እሺ",
+    "continue": "ቀጥል",
+    "skip": "ዝለል",
+    "done": "ተጠናቀቀ",
+    "dismiss": "ዝም በል",
+    "gotIt": "ገባኝ"
+  },
+  "errors": {
+    "generic": "የሆነ ችግር ተፈጥሯል። እባክዎ እንደገና ይሞክሩ።",
+    "network": "የኔትወርክ ችግር። ግንኙነትዎን ያረጋግጡ።",
+    "notFound": "አልተገኘም።",
+    "unauthorized": "መግባት ያስፈልግዎታል።",
+    "forbidden": "የመድረስ ፍቃድ የሎትም።",
+    "rateLimited": "ብዙ ጥያቄዎች። ትንሽ ጠብቀው እንደገና ይሞክሩ።"
+  },
+  "language": {
+    "label": "ቋንቋ",
+    "switcher": {
+      "title": "ቋንቋዎን ይምረጡ",
+      "subtitle": "ምርጫዎ በተለያዩ ክፍለ-ጊዜዎች ይታወቃል።",
+      "english": "English",
+      "amharic": "አማርኛ",
+      "afaanOromoo": "Afaan Oromoo",
+      "tigrigna": "ትግርኛ",
+      "needsReview": "የትርጉም ቅድመ-እይታ — አሁን በተወለደ ተናጋሪ ግምገማ ላይ ለስፖንሰር ሊጠበቅ ይገባል"
+    }
+  }
+}

@@ -43,10 +43,13 @@ import {
 } from "lucide-react";
 import { useState, useEffect as useEff } from "react";
 import { Link, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { BrowserLanguagePrompt } from "@/components/BrowserLanguagePrompt";
 import logo from "@/assets/nexus-logo.svg";
 
 const fadeUp: Variants = {
@@ -264,6 +267,9 @@ export default function Landing() {
   const { isAuthenticated, isLoading, user, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  // i18n — `t` is the translation function. Namespaced under "landing"
+  // for the page-specific content; common buttons/labels use "common".
+  const { t } = useTranslation(["landing", "common"]);
 
   const libraryHref = isAuthenticated
     ? "/dashboard"
@@ -296,19 +302,19 @@ export default function Landing() {
 
           <div className="hidden items-center gap-6 type-mono font-medium text-muted-foreground md:flex">
             <a href="#companion" className="transition-colors hover:text-foreground">
-              companion
+              {t("landing:companion.eyebrow", { defaultValue: "companion" }).toLowerCase()}
             </a>
             <a href="#streams" className="transition-colors hover:text-foreground">
-              streams
+              {t("landing:streams.eyebrow", { defaultValue: "streams" }).toLowerCase()}
             </a>
             <a href="#library" className="transition-colors hover:text-foreground">
-              library
+              {t("landing:nav.library", { defaultValue: "library" }).toLowerCase()}
             </a>
             <Link to="/coverage" className="transition-colors hover:text-amber-300">
               coverage map
             </Link>
             <a href="#how" className="transition-colors hover:text-foreground">
-              how-it-works
+              {t("landing:howItWorks.eyebrow", { defaultValue: "how-it-works" }).toLowerCase()}
             </a>
           </div>
 
@@ -331,6 +337,10 @@ export default function Landing() {
                 {theme === "light" ? "Dark mode" : "Light mode"}
               </span>
             </Button>
+            {/* Language switcher — only renders when MULTI_LANGUAGE_ENABLED
+                is true (gated inside the component via useLanguage). When
+                disabled, returns null and the layout collapses cleanly. */}
+            <LanguageSwitcher variant="nav" />
             {isAuthenticated ? (
               <>
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
@@ -347,7 +357,7 @@ export default function Landing() {
             ) : (
               <Button asChild size="sm" className="rounded-lg">
                 <Link to="/auth?returnTo=%2Fdashboard">
-                  Sign in <ArrowRight className="size-4" />
+                  {t("landing:nav.signIn", { defaultValue: "Sign in" })} <ArrowRight className="size-4" />
                 </Link>
               </Button>
             )}
@@ -391,6 +401,12 @@ export default function Landing() {
 
       {/* ------- Announcement banner ------- */}
       <AnnouncementBanner />
+
+      {/* ------- Browser language prompt (Phase 7) — soft suggestion
+              only, dismissible, persisted in localStorage. Auto-detects
+              the browser language; if it's am/om/ti, shows a "Prefer
+              {language}? Switch here" banner. No forcing. ------- */}
+      <BrowserLanguagePrompt />
 
       {/* ------- Hero ------- */}
       <section className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 lg:grid-cols-[1.02fr_0.98fr] lg:pt-20">
@@ -1164,13 +1180,145 @@ export default function Landing() {
           {/* Divider */}
           <div className="mx-auto my-8 h-px max-w-md bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-          {/* Bottom row */}
-          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+          {/* ── Expanded footer link columns (Phase 6) ───────────────────
+              Three columns: Product / Who it's for / Company — matching the
+              reference structure. Each link points to a real new page
+              (built in Phase 6 of the multi-language project). */}
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+            {/* Product column */}
+            <div>
+              <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
+                Product
+              </p>
+              <ul className="space-y-2">
+                <li>
+                  <Link to="/tools" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    Tools
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/pricing" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    Pricing
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/coverage" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    Coverage Map
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/library" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    Library
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            {/* Who it's for column */}
+            <div>
+              <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
+                Who it's for
+              </p>
+              <ul className="space-y-2">
+                <li>
+                  <Link to="/for-students" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    For Students
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/for-teachers" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    For Teachers
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/for-parents" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    For Parents
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/for-schools" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    For Schools
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            {/* Company column */}
+            <div>
+              <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
+                Company
+              </p>
+              <ul className="space-y-2">
+                <li>
+                  <Link to="/about" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    About
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/faq" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    FAQ
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/contact" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    Contact
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/privacy" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/terms" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                    Terms of Service
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            {/* Stay connected column — keeps the existing Telegram/payment
+                quick-access links close to the new pages */}
+            <div>
+              <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
+                Stay connected
+              </p>
+              <ul className="space-y-2">
+                <li>
+                  <a
+                    href="https://t.me/LearnyxAcademyET"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
+                  >
+                    <Send className="size-3" /> Channel
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://t.me/LearnyxETCommunity"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
+                  >
+                    <Users className="size-3" /> Community
+                  </a>
+                </li>
+                <li>
+                  <span className="type-caption text-muted-foreground">TeleBirr · M-Pesa</span>
+                </li>
+                <li>
+                  <span className="flex items-center gap-1 type-caption text-primary/80">
+                    <Sparkles className="size-3" /> 3-day trial
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom row — copyright + legal */}
+          <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-white/[0.06] pt-6 sm:flex-row">
             <p className="type-caption text-muted-foreground">
               © {new Date().getFullYear()} Learnyx Academy ET 🇪🇹 · EHEEE exam prep, grades 9–12
             </p>
             <div className="flex items-center gap-4">
-              {/* Legal links */}
               <Link to="/privacy" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
                 Privacy
               </Link>
@@ -1178,35 +1326,6 @@ export default function Landing() {
               <Link to="/terms" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
                 Terms
               </Link>
-              <span className="text-muted-foreground/30">·</span>
-              {/* Telegram links — quick access from the footer */}
-              <a
-                href="https://t.me/LearnyxAcademyET"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
-                title="Learnyx Academy ET 🇪🇹 Telegram channel"
-              >
-                <Send className="size-3" /> Channel
-              </a>
-              <span className="text-muted-foreground/30">·</span>
-              <a
-                href="https://t.me/LearnyxETCommunity"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 type-caption text-[#229ED9] transition-opacity hover:opacity-80"
-                title="Learnyx Academy ET Community Telegram group"
-              >
-                <Users className="size-3" /> Community
-              </a>
-              <span className="text-muted-foreground/30">·</span>
-              <span className="type-caption text-muted-foreground">TeleBirr</span>
-              <span className="text-muted-foreground/30">·</span>
-              <span className="type-caption text-muted-foreground">M-Pesa</span>
-              <span className="text-muted-foreground/30">·</span>
-              <span className="flex items-center gap-1 type-caption text-primary/80">
-                <Sparkles className="size-3" /> 3-day trial
-              </span>
             </div>
           </div>
         </div>

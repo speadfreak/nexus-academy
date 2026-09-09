@@ -64,6 +64,15 @@ export const INTEGRATION_KEYS = [
   { key: "REFEREE_REWARD_DAYS", label: "Referee Reward (days)", category: "payments", description: "Bonus premium days granted to the referred user on top of their first payment. Default: 3." },
   // ── Trial / subscription program ───────────────────────────────────
   { key: "FREE_TRIAL_DAYS", label: "Free Trial Days (active days)", category: "payments", description: "Number of ACTIVE-usage days new users get as a free premium trial. The trial counts days the student actually opens the app, not calendar days since signup. Default: 14. Changing this does NOT retroactively affect users whose trial already expired — use the Subscriptions tab → 'Bulk extend all trials' for that." },
+  // ── Multi-language system ──────────────────────────────────────────
+  // When "true", the language switcher UI is shown on the landing page + in
+  // the dashboard account sheet, and signed-in users' preferredLanguage is
+  // honoured. When unset/false, the frontend forces English everywhere and
+  // hides all language UI (no visible trace the system exists).
+  // Useful for keeping the UI clean while translations are still being
+  // generated/reviewed — the platform owner can flip the switch the moment
+  // they're happy with the Amharic/Afaan Oromo/Tigrigna translations.
+  { key: "MULTI_LANGUAGE_ENABLED", label: "Multi-Language Enabled", category: "system", description: "Master switch for the 4-language UI (English / አማርኛ / Afaan Oromoo / ትግርኛ). When 'true', language switchers appear on the landing page and dashboard. When unset/false, the entire UI forces English and no language UI is visible. Default: false (English-only)." },
 ] as const;
 
 /**
@@ -100,6 +109,7 @@ const CATEGORIES: Record<string, { label: string; icon: string }> = {
   auth: { label: "Authentication", icon: "shield" },
   video: { label: "Video (Rooms)", icon: "video" },
   integrations: { label: "Integrations", icon: "git-branch" },
+  system: { label: "System", icon: "settings" },
   custom: { label: "Custom Keys", icon: "key-round" },
 };
 
@@ -283,4 +293,25 @@ export const getBackendVersion = query({
     version: 4,
     features: ["db_key_resolution", "configKeys_table", "resolveConfigValue", "all_keys_db_backed", "custom_keys", "livekit_db", "github_db", "telegram_db", "payment_providers_db", "contact_group_config"],
   }),
+});
+
+/**
+ * Public query (no auth required) — returns true if the multi-language UI
+ * is enabled. The landing page + dashboard call this to decide whether to
+ * render the language switcher. Honours the MULTI_LANGUAGE_ENABLED
+ * configKey: "true" → on, anything else (or unset) → off.
+ *
+ * Default is OFF — admin must explicitly enable it via the Keys tab →
+ * System category once translations are ready. This keeps the UI clean
+ * while the platform owner is still reviewing translations.
+ */
+export const getMultiLanguageEnabled = query({
+  args: {},
+  handler: async (ctx): Promise<boolean> => {
+    const row = await ctx.db
+      .query("configKeys")
+      .withIndex("by_key", (q) => q.eq("key", "MULTI_LANGUAGE_ENABLED"))
+      .first();
+    return row?.value === "true";
+  },
 });

@@ -1,0 +1,96 @@
+{
+  "nav": {
+    "library": "Library",
+    "features": "Features",
+    "about": "About",
+    "signIn": "Sign in",
+    "getStarted": "Get started",
+    "openApp": "Open app"
+  },
+  "hero": {
+    "eyebrow": "🇪🇹 Built for Ethiopian students",
+    "title": "Ace your national exams with confidence.",
+    "subtitle": "A complete exam prep companion for grades 9–12 — AI tutor, mock exams, flashcards, aptitude practice, and the full textbook library, all in one place.",
+    "cta": "Start studying free",
+    "ctaSecondary": "Explore the library",
+    "trustLine": "Used by students across Ethiopia • Free forever tier"
+  },
+  "companion": {
+    "eyebrow": "Your study companion",
+    "title": "Everything you need, nothing you don't.",
+    "subtitle": "Learnyx brings together every tool a grade 9–12 student needs for the EHEEE — organized, focused, and built for the way you actually study.",
+    "aiTutor": {
+      "title": "AI Tutor",
+      "description": "Ask any question, get an answer in seconds. Available 24/7, never gets impatient, always explains the way you need it."
+    },
+    "mockExams": {
+      "title": "Mock Exams",
+      "description": "Full-length practice exams with real exam timing, instant scoring, and detailed explanations for every question."
+    },
+    "flashcards": {
+      "title": "Flashcards",
+      "description": "Spaced-repetition decks that adapt to what you know and what you don't. Built for memorization that lasts."
+    },
+    "aptitude": {
+      "title": "Aptitude Hub",
+      "description": "SAT-style reasoning practice with a brain-map that shows exactly which skills you've mastered and which need work."
+    },
+    "library": {
+      "title": "Textbook Library",
+      "description": "Every textbook, past exam, and worksheet — organized by subject, grade, and unit. Searchable, bookmarkable, downloadable."
+    },
+    "groups": {
+      "title": "Study Groups",
+      "description": "Private rooms for your class or friends. Chat, share notes, jump into live video sessions, and stay motivated together."
+    }
+  },
+  "streams": {
+    "eyebrow": "Both streams, fully covered",
+    "title": "Built for the Ethiopian national curriculum.",
+    "subtitle": "Natural Science and Social Science streams are equally supported — every subject, every grade, every unit, with the same care.",
+    "natural": "Natural Science",
+    "social": "Social Science",
+    "common": "Common subjects"
+  },
+  "libraryTypes": {
+    "eyebrow": "The full library",
+    "title": "Every resource you need — in one place.",
+    "subtitle": "Textbooks, past exams, worksheets, student and teacher guides — organized by subject, grade, and unit so you can find exactly what you need in seconds.",
+    "textbook": "Textbook",
+    "pastExam": "Past Exam",
+    "worksheet": "Worksheet",
+    "studentGuide": "Student Guide",
+    "teacherGuide": "Teacher Guide"
+  },
+  "howItWorks": {
+    "eyebrow": "How it works",
+    "title": "Start in 60 seconds.",
+    "subtitle": "No setup, no waiting. Pick your stream and grade, and you're studying.",
+    "step1": {
+      "title": "Sign up free",
+      "description": "Use your email or Google account. Get 14 active days of premium access as a trial — no card required."
+    },
+    "step2": {
+      "title": "Pick your stream",
+      "description": "Natural or Social Science — we'll show you the right subjects and resources automatically."
+    },
+    "step3": {
+      "title": "Start studying",
+      "description": "Open the library, ask the AI tutor a question, take a mock exam, or start a flashcard deck. That's it."
+    }
+  },
+  "cta": {
+    "title": "Ready to dive in?",
+    "subtitle": "Join thousands of Ethiopian students preparing with Learnyx. Free forever — no credit card, no trial timer pressure.",
+    "primary": "Start studying free",
+    "secondary": "Explore the library"
+  },
+  "footer": {
+    "tagline": "Built for Ethiopian students, by Ethiopian developers.",
+    "rights": "All rights reserved.",
+    "more": "More",
+    "product": "Product",
+    "whoItsFor": "Who it's for",
+    "company": "Company"
+  }
+}

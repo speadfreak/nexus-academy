@@ -1,0 +1,33 @@
+{
+  "title": "Account",
+  "profile": {
+    "signedInAs": "Signed in as",
+    "guest": "Guest",
+    "guestSubtitle": "Sign in to save your progress.",
+    "subscriptionStatus": {
+      "premium": "Premium",
+      "free": "Free",
+      "trial": "Trial"
+    }
+  },
+  "menu": {
+    "settings": "Settings",
+    "settingsSubtitle": "Profile, stream, theme, account",
+    "help": "Help",
+    "helpSubtitle": "FAQ, contact, support",
+    "appearance": "Appearance",
+    "appearanceSubtitle": "Light or dark",
+    "language": "Language",
+    "languageSubtitle": "Choose your interface language",
+    "logout": "Log out"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "subtitle": "Switch between light and dark mode."
+  }
+}

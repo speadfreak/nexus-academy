@@ -1,0 +1,33 @@
+{
+  "title": "መለያ",
+  "profile": {
+    "signedInAs": "እንደ",
+    "guest": "እንግዳ",
+    "guestSubtitle": "እንዲያስቀምጡ ይግቡ።",
+    "subscriptionStatus": {
+      "premium": "ፕሪሚየም",
+      "free": "ነጻ",
+      "trial": "ሙከራ"
+    }
+  },
+  "menu": {
+    "settings": "ቅንብሮች",
+    "settingsSubtitle": "መገለጫ፣ ዥረት፣ ጭብጥ፣ መለያ",
+    "help": "እገዛ",
+    "helpSubtitle": "FAQ፣ እውቅና፣ ድጋፍ",
+    "appearance": "ገጽታ",
+    "appearanceSubtitle": "ብርሃን ወይም ጨለማ",
+    "language": "ቋንቋ",
+    "languageSubtitle": "የበይነገጽ ቋንቋዎን ይምረጡ",
+    "logout": "ውጣ"
+  },
+  "theme": {
+    "light": "ብርሃን",
+    "dark": "ጨለማ",
+    "system": "ስርአት"
+  },
+  "appearance": {
+    "title": "ገጽታ",
+    "subtitle": "ከብርሃን እና ከጨለማ ሁነታ ይቀይሩ።"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "nav": {
+    "home": "Home",
+    "library": "Library",
+    "tutor": "AI Tutor",
+    "todos": "Tasks",
+    "focus": "Focus",
+    "plans": "Plans",
+    "journey": "Journey",
+    "calendar": "Calendar",
+    "notes": "Notes",
+    "flashcards": "Flashcards",
+    "achievements": "Achievements",
+    "groups": "Groups",
+    "settings": "Settings",
+    "aptitude": "Aptitude Hub",
+    "mockExam": "Mock Exam",
+    "upgrade": "Upgrade"
+  },
+  "library": {
+    "yourLibrary": "Your Library",
+    "resources": "Resources",
+    "saved": "Saved",
+    "subjects": "Subjects",
+    "allResources": "All resources",
+    "textbooks": "Textbooks",
+    "pastExams": "Past exams",
+    "manage": "Manage",
+    "surpriseMe": "Surprise me",
+    "bookmarked": "Bookmarked",
+    "readyToDiveIn": "Ready to dive in?",
+    "pickASection": "Pick a section below, or search for something specific.",
+    "coreTextbooks": "Core textbooks",
+    "buildTheFoundation": "Build the foundation",
+    "pastExamsSection": "Past exams",
+    "testYourReadiness": "Test your readiness",
+    "askTutor": "Ask the AI tutor",
+    "anyQuestion247": "Any question, 24/7",
+    "openBook": "Open",
+    "continue": "Continue"
+  },
+  "search": {
+    "placeholder": "Search the library…",
+    "noResults": "Nothing matches those filters.",
+    "noResultsSaved": "Nothing saved to your reading list yet — tap the bookmark on any book to start one.",
+    "emptyLibrary": "The library is being stocked. Check back soon, or ask an admin to upload content.",
+    "uploadFirst": "Upload the first item"
+  },
+  "subjectFilter": "All subjects"
+}

@@ -1,0 +1,33 @@
+{
+  "title": "ኣካውንት",
+  "profile": {
+    "signedInAs": "ከም",
+    "guest": "እንግዳ",
+    "guestSubtitle": "ክትዓቕቡ ስጉም።",
+    "subscriptionStatus": {
+      "premium": "ፕሪሚየም",
+      "free": "ነፃ",
+      "trial": "ምልምል"
+    }
+  },
+  "menu": {
+    "settings": "ምድላዋት",
+    "settingsSubtitle": "መርእዮ፣ ፍልፂታ፣ መልክዕ፣ ኣካውንቲ",
+    "help": "ሓገዝ",
+    "helpSubtitle": "FAQ፣ ርክእ፣ ደገፍ",
+    "appearance": "መልክዕ",
+    "appearanceSubtitle": "ብርሃን ወይ ጸልማት",
+    "language": "ቋንቋ",
+    "languageSubtitle": "ቋንቋ ኣንጻር ምረጽ",
+    "logout": "ውጻእ"
+  },
+  "theme": {
+    "light": "ብርሃን",
+    "dark": "ጸልማት",
+    "system": "ስርዓት"
+  },
+  "appearance": {
+    "title": "መልክዕ",
+    "subtitle": "ኣብ መንጎ ብርሃንን ጸልማትን ቕይር።"
+  }
+}

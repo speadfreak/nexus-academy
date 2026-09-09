@@ -1,0 +1,50 @@
+{
+  "nav": {
+    "home": "መነሻ",
+    "library": "ቤተ-መጻሕፍቲ",
+    "tutor": "AI ኣማኻይ",
+    "todos": "ተግባራት",
+    "focus": "ኣኽብሮ",
+    "plans": "ኣታዎታት",
+    "journey": "ጉዕዞ",
+    "calendar": "ዝርዝር መዓልቲ",
+    "notes": "ምልክታታት",
+    "flashcards": "ፍላሽካርድ",
+    "achievements": "ስኬታት",
+    "groups": "ጉጅለታት",
+    "settings": "ምድላዋት",
+    "aptitude": "ማእከል ኣካል ብቃት",
+    "mockExam": "ሞክ ፈተና",
+    "upgrade": "ምልምል"
+  },
+  "library": {
+    "yourLibrary": "ቤተ-መጻሕፍትኻ",
+    "resources": "ሀብቲታት",
+    "saved": "ተዓቂቡ",
+    "subjects": "ትምህርትታት",
+    "allResources": "ኩሉ ሀብቲታት",
+    "textbooks": "መጻሕፍቲ",
+    "pastExams": "ዝሓለፉ ፈተናታት",
+    "manage": "ኣመሓድር",
+    "surpriseMe": "ሓደርኒ",
+    "bookmarked": "ተዓቂቡ",
+    "readyToDiveIn": "ንምእታው ታዕጹበት?",
+    "pickASection": "ክፍሊ ኣታይ ምረጽ፣ ወይ ዝርከብ ዝኾነ ሓድሽ።",
+    "coreTextbooks": "መሰረታዊ መጻሕፍቲ",
+    "buildTheFoundation": "መሰረት ስርሓቱ",
+    "pastExamsSection": "ዝሓለፉ ፈተናታት",
+    "testYourReadiness": "ዝግጁነትካ ፈትን",
+    "askTutor": "AI ኣማኻይ ሕተቱ",
+    "anyQuestion247": "ዝዀነ ሕቶ፣ 24/7",
+    "openBook": "ከፈት",
+    "continue": "ቀጽል"
+  },
+  "search": {
+    "placeholder": "ቤተ-መጻሕፍቲ ድለፍ…",
+    "noResults": "ኣብዚኣ ፊልተርታት ጥራይ ከምኡ ኣይተረኽበን።",
+    "noResultsSaved": "ኣብ ዝርዝር ምንባብካ ገይካ ከምኡ ዝተዓቐበ የለን — ምስ ክልተ ናይ ምልክት ክፍሊ ምስ ጀምር።",
+    "emptyLibrary": "ቤተ-መጻሕፍቲ ኣብ ምእታው ኣሎ። ቅሩብ ግዜ ምልምል፣ ወይ ኣመሓዳሪ ኣስኣቱ።",
+    "uploadFirst": "ናይ መጀመርታ ሀብቲ ኣቐምጥ"
+  },
+  "subjectFilter": "ኩሉ ትምህርትታት"
+}

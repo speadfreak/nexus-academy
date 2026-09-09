@@ -1,0 +1,182 @@
+{
+  "about": {
+    "title": "About Learnyx Academy ET",
+    "subtitle": "Built in Ethiopia, for Ethiopia.",
+    "founder": {
+      "name": "Joseph James",
+      "age": "18",
+      "role": "Founder & Developer",
+      "intro": "Learnyx Academy ET started as a single question — why does preparing for the EHEEE feel so lonely?",
+      "story": "I'm Joseph. I built Learnyx while preparing for my own national exams. The textbooks were heavy, the past papers were scattered, and the few apps that existed were either in English with no Ethiopian context or so full of ads that studying became impossible. I wanted a single tool that felt like a friend who already knew the syllabus — and that's what Learnyx is. Every feature on this platform was built because I needed it during my own exam prep: the AI tutor that never gets tired of explaining photosynthesis at midnight, the mock exams that score themselves, the flashcards that remember what I forget. It's not a corporate product. It's the tool I wish I'd had."
+    },
+    "mission": {
+      "title": "Our mission",
+      "body": "Every Ethiopian student — regardless of school, region, or family income — deserves a fair shot at the EHEEE. We make the best exam-prep tools free for as many students as possible, and keep the premium tier priced honestly so it stays within reach."
+    },
+    "values": {
+      "title": "What we stand for",
+      "honesty": {
+        "title": "Honesty",
+        "body": "No fabricated testimonials. No fake stats. No fake 'AI-generated' study tips that are just marketing. What we say, we can prove."
+      },
+      "accessibility": {
+        "title": "Accessibility",
+        "body": "The free tier is genuinely useful, not a demo. A student who can't pay should never lose access to all AI help — that's why we keep a 15-message/day free tier forever."
+      },
+      "transparency": {
+        "title": "Transparency",
+        "body": "Our Terms, Privacy Policy, and pricing are written in plain language. No dark patterns, no hidden trial timers, no auto-renewals you can't cancel."
+      }
+    }
+  },
+  "faq": {
+    "title": "Frequently asked questions",
+    "subtitle": "Real answers to the questions students actually ask.",
+    "items": {
+      "free": {
+        "question": "Is Learnyx really free?",
+        "answer": "Yes — there's a free forever tier. You get 15 AI tutor messages per day, weekly quizzes, the full library (textbooks, past exams, worksheets), flashcards, and access to study groups. The premium tier adds unlimited AI, full-length mock exams, the Aptitude Hub, and longer AI tutor responses. You can use the free tier as long as you want — it's not a trial."
+      },
+      "payment": {
+        "question": "How does payment work?",
+        "answer": "Premium subscriptions are manual — you pay via TeleBirr or M-Pesa to a phone number we show on the /upgrade page, then upload your payment proof. An admin reviews it (usually within 24 hours) and your premium access is activated. No card required, no auto-renewal — you only pay for the period you choose (1, 3, 6, or 12 months)."
+      },
+      "dataSafety": {
+        "question": "Is my data safe?",
+        "answer": "We store your account (email, display name, study progress) on Convex — a serverless database built by ex-Firebase engineers. Files (PDFs) are stored on Cloudflare R2. We never sell your data, never run third-party tracking on the study pages, and never share your reading history with anyone. Read the full Privacy Policy for what we collect and why."
+      },
+      "aiWrong": {
+        "question": "What if the AI tutor gives a wrong answer?",
+        "answer": "The AI can make mistakes — it's a tool, not an oracle. Always cross-check important answers against your textbook or ask your teacher. We use the best available models (Groq + Gemini) and tune prompts for accuracy, but no AI is 100% correct. If you notice a wrong answer, you can report it via the Help menu and we'll look into the underlying prompt."
+      },
+      "refund": {
+        "question": "What if I'm not happy with premium?",
+        "answer": "If you report an issue within 7 days of premium activation and we can't resolve it, we'll extend your access as goodwill. We don't auto-refund (since payments are manual and reviewed case-by-case), but we treat unfair situations seriously. Reach out via the Contact page."
+      },
+      "grades": {
+        "question": "Which grades and subjects do you cover?",
+        "answer": "Grades 9–12, both Natural Science and Social Science streams. Subjects include English, Mathematics, Amharic, IT, Citizenship, SAT, Physics, Chemistry, Biology, Agriculture, History, Geography, and Economics. Every subject has the full textbook library, past exams, and worksheets. AI tutor, quizzes, and flashcards work for every subject."
+      },
+      "language": {
+        "question": "Is the platform available in Amharic / Afaan Oromoo / Tigrigna?",
+        "answer": "We're rolling out multi-language support. English is fully available now. Amharic translations are in review. Afaan Oromoo and Tigrigna are preview translations — usable, but we recommend native-speaker review before relying on them for exams. Use the language switcher in the top nav (when enabled by the admin) to switch."
+      },
+      "offline": {
+        "question": "Can I use Learnyx offline?",
+        "answer": "PDFs in the library are streamed from Cloudflare R2 — they need an internet connection to load the first time. Once a PDF is open in the reader, you can keep reading without a connection as long as you don't reload. AI features (tutor, mock exams, quizzes) require a live connection."
+      }
+    }
+  },
+  "audiences": {
+    "students": {
+      "title": "For Students",
+      "subtitle": "Your unfair advantage for the EHEEE.",
+      "body": "Learnyx is built for the way you actually study — late nights, tight deadlines, and a syllabus that feels endless. The AI tutor is available 24/7, the mock exams score themselves, and the flashcard decks adapt to what you forget. Everything is free for the daily essentials; premium unlocks the deep-practice tools (mock exams, aptitude hub, unlimited AI) when you're ready to commit.",
+      "cta": "Start studying free"
+    },
+    "teachers": {
+      "title": "For Teachers",
+      "subtitle": "A second teacher for every student, after school hours.",
+      "body": "You can't be available at midnight — but Learnyx can. The AI tutor answers student questions in seconds, with explanations you'd approve of. The library gives your students access to every textbook and past exam. The study groups let your class work together outside school hours. Use Learnyx as a complement to your teaching, not a replacement.",
+      "cta": "Explore the library"
+    },
+    "parents": {
+      "title": "For Parents",
+      "subtitle": "Honest tools, honest pricing.",
+      "body": "Learnyx is built so your child can study without being sold to. No ads on study pages, no in-app purchases, no dark patterns pushing them toward premium. The free tier is genuinely useful — your child can study the full library and get 15 AI tutor answers per day at no cost. Premium is manual payment via TeleBirr or M-Pesa — you only pay for the period you choose, with no auto-renewal.",
+      "cta": "See how it works"
+    },
+    "schools": {
+      "title": "For Schools",
+      "subtitle": "Complement your teaching, not replace it.",
+      "body": "Schools across Ethiopia use Learnyx as an after-hours study companion. The library covers the full national curriculum for grades 9–12. Study groups let teachers create private rooms for their classes. There's no school-level admin dashboard yet — but if you're a school administrator interested in piloting Learnyx with your students, contact us and we'll work with you directly.",
+      "cta": "Contact us"
+    }
+  },
+  "tools": {
+    "title": "Every tool you need, in one place.",
+    "subtitle": "Browse the full Learnyx toolkit. Each feature links to its real page inside the app.",
+    "list": {
+      "library": {
+        "title": "Textbook Library",
+        "description": "Every textbook, past exam, and worksheet — organized by subject, grade, and unit."
+      },
+      "tutor": {
+        "title": "AI Tutor",
+        "description": "Ask any question, get an answer in seconds. 15 free messages/day, unlimited on premium."
+      },
+      "mockExam": {
+        "title": "Mock Exams",
+        "description": "Full-length practice exams with real timing, instant scoring, and explanations."
+      },
+      "flashcards": {
+        "title": "Flashcards",
+        "description": "Spaced-repetition decks that adapt to what you know."
+      },
+      "aptitude": {
+        "title": "Aptitude Hub",
+        "description": "SAT-style reasoning practice with a brain-map showing mastery."
+      },
+      "groups": {
+        "title": "Study Groups",
+        "description": "Private rooms for your class — chat, share notes, live video."
+      },
+      "calendar": {
+        "title": "Calendar",
+        "description": "Plan study sessions, see your streaks, and track exam dates."
+      },
+      "journey": {
+        "title": "Journey",
+        "description": "Your study timeline — every session, quiz, and milestone."
+      },
+      "focus": {
+        "title": "Focus Mode",
+        "description": "Distraction-free study sessions with built-in timer."
+      }
+    }
+  },
+  "contact": {
+    "title": "Contact the team",
+    "subtitle": "Questions, feedback, partnership ideas — we read everything.",
+    "form": {
+      "name": "Your name",
+      "email": "Email",
+      "subject": "Subject",
+      "message": "Message",
+      "submit": "Send message",
+      "success": "Message sent. We'll get back to you within 48 hours.",
+      "error": "Could not send. Please try again."
+    }
+  },
+  "pricing": {
+    "title": "Honest pricing. Free forever tier.",
+    "subtitle": "No credit card required for free. Manual payment via TeleBirr or M-Pesa for premium — no auto-renewal.",
+    "free": {
+      "name": "Free",
+      "price": "ETB 0",
+      "period": "forever",
+      "tagline": "Everything you need to start.",
+      "features": {
+        "library": "Full textbook + past exam library",
+        "tutor15": "15 AI tutor messages per day",
+        "quizzesWeekly": "Weekly quizzes per subject",
+        "flashcards": "Unlimited flashcard decks",
+        "groups": "Study group access"
+      },
+      "cta": "Start free"
+    },
+    "premium": {
+      "name": "Premium",
+      "tagline": "For students ready to commit.",
+      "features": {
+        "unlimitedAi": "Unlimited AI tutor messages",
+        "mockExams": "Full-length mock exams with scoring",
+        "aptitudeHub": "Aptitude Hub (SAT-style reasoning)",
+        "longerResponses": "Longer AI responses + context",
+        "priority": "Priority support"
+      },
+      "cta": "Choose a plan"
+    },
+    "note": "Prices and durations are managed live by the admin and shown on the /upgrade page. This page is a summary — for the exact current pricing, visit /upgrade."
+  }
+}

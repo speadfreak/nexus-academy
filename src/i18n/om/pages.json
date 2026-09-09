@@ -1,0 +1,28 @@
+{
+  "about": {
+    "title": "Waa'ee Learnyx Academy ET",
+    "subtitle": "Itoophiyaan hojjetame, Itoophiyaaf."
+  },
+  "faq": {
+    "title": "Gaafatoomsa",
+    "subtitle": "Deebii dhugaa gaafat barattoota dhugaa."
+  },
+  "audiences": {
+    "students": { "title": "Barattootaaf", "subtitle": "Mallaqa kan hin qopheessne EHEEE" },
+    "teachers": { "title": "Barsiisotaaf", "subtitle": "Barsiisa lammata barattoota hundaaf, yeroo mana barummaa booda." },
+    "parents": { "title": "Abbaamansaaf", "subtitle": "Meessalee dhugaa, gatii dhugaa." },
+    "schools": { "title": "Mana Barumaaf", "subtitle": "Barsiisa kee guutii, hin jijjiiri." }
+  },
+  "tools": {
+    "title": "Meessalee ati barbaadu hundi, iddoo tokko.",
+    "subtitle": "Meessalee Learnyx guutu daawadhaa. Amalli hundi fuula dhugaa app keessatti."
+  },
+  "contact": {
+    "title": "Garee qunnali",
+    "subtitle": "Gaafat, debii, fikaa hirmaanna — hunda dubbisa."
+  },
+  "pricing": {
+    "title": "Gatii dhugaa. Balaaxaa adoolesaa.",
+    "subtitle": "Balaaxaaf kaardii homaa. Premiyaamaf TeleBirr ykn M-Pesa hojjetuu — ofii hin cabne."
+  }
+}

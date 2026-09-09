@@ -349,6 +349,14 @@ const schema = defineSchema(
       stream: v.optional(streamValidator),
       hasCompletedTour: v.optional(v.boolean()),
       tourSkippedAt: v.optional(v.number()),
+      // ── I18N ─────────────────────────────────────────────────────────
+      // Preferred UI language code: "en" | "am" | "om" | "ti".
+      // Default "en" when unset (legacy rows predating multi-language support).
+      // Only honoured when MULTI_LANGUAGE_ENABLED configKey is "true" —
+      // otherwise the frontend forces English regardless of this value.
+      // Persisted per-user so signed-in users keep their language across
+      // devices/sessions. Guests use localStorage (see src/i18n/index.ts).
+      preferredLanguage: v.optional(v.string()),
     })
       .index("by_user", ["userId"])
       .index("by_username", ["username"]),

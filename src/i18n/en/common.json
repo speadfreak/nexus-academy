@@ -1,0 +1,50 @@
+{
+  "appName": "Learnyx Academy ET",
+  "tagline": "National Exam Prep",
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "search": "Search",
+    "filter": "Filter",
+    "all": "All",
+    "none": "None",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK",
+    "continue": "Continue",
+    "skip": "Skip",
+    "done": "Done",
+    "dismiss": "Dismiss",
+    "gotIt": "Got it"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Network error. Check your connection.",
+    "notFound": "Not found.",
+    "unauthorized": "Sign in required.",
+    "forbidden": "You don't have access to this.",
+    "rateLimited": "Too many requests. Try again in a moment."
+  },
+  "language": {
+    "label": "Language",
+    "switcher": {
+      "title": "Choose your language",
+      "subtitle": "Your choice is remembered across sessions.",
+      "english": "English",
+      "amharic": "አማርኛ",
+      "afaanOromoo": "Afaan Oromoo",
+      "tigrigna": "ትግርኛ",
+      "needsReview": "Translation preview — pending native-speaker review"
+    }
+  }
+}

@@ -110,6 +110,9 @@ export const getProfile = query({
       // overlay — guest users can browse the library but can't open resources
       // until they provide an email and convert to a real account.
       isAnonymous: user?.isAnonymous ?? false,
+      // I18N — preferred UI language. "en" | "am" | "om" | "ti" | null
+      // (null = legacy user, defaults to English via useLanguage hook).
+      preferredLanguage: profile?.preferredLanguage ?? null,
     };
   },
 });
@@ -119,6 +122,16 @@ export const updateProfile = mutation({
     displayName: v.optional(v.string()),
     themePreference: v.optional(v.union(v.literal("dark"), v.literal("light"))),
     stream: v.optional(streamValidator),
+    // Preferred UI language: "en" | "am" | "om" | "ti". Server-side validation
+    // keeps the value in this set so a bad client request can't pollute the
+    // profile row with an arbitrary string. When MULTI_LANGUAGE_ENABLED is
+    // false, the frontend ignores this value and forces English.
+    preferredLanguage: v.optional(v.union(
+      v.literal("en"),
+      v.literal("am"),
+      v.literal("om"),
+      v.literal("ti"),
+    )),
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
@@ -141,6 +154,7 @@ export const updateProfile = mutation({
     }
     if (args.themePreference !== undefined) patch.themePreference = args.themePreference;
     if (args.stream !== undefined) patch.stream = args.stream;
+    if (args.preferredLanguage !== undefined) patch.preferredLanguage = args.preferredLanguage;
     await ctx.db.patch(row._id, patch);
     return { ok: true };
   },

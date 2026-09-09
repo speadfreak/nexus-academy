@@ -16,6 +16,11 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
 import { useLenis } from "@/hooks/useLenis";
+// i18n — MUST be imported before any component that uses useTranslation.
+// The import has a side effect: it initializes i18next + registers the
+// language detector. English namespaces are bundled synchronously;
+// other languages lazy-load on first switch.
+import "@/i18n";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { useConvexAuth } from "convex/react";
 import { ConvexReactClient } from "convex/react";
@@ -79,6 +84,18 @@ const Landing = lazy(() => import("./pages/Landing.tsx"));
 const Coverage = lazy(() => import("./pages/Coverage.tsx"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy.tsx"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService.tsx"));
+// Phase 6 — marketing pages (expanded footer destinations).
+const AboutPage = lazy(() => import("./pages/marketing/About.tsx"));
+const FaqPage = lazy(() => import("./pages/marketing/FAQ.tsx"));
+const ToolsPage = lazy(() => import("./pages/marketing/Tools.tsx"));
+const ContactPage = lazy(() => import("./pages/marketing/Contact.tsx"));
+const PricingPage = lazy(() => import("./pages/marketing/Pricing.tsx"));
+import {
+  ForStudentsPage,
+  ForTeachersPage,
+  ForParentsPage,
+  ForSchoolsPage,
+} from "./pages/marketing/Audiences";
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const Tutor = lazy(() => import("./pages/Tutor.tsx"));
@@ -542,6 +559,29 @@ if (rootEl) {
                           <Route path="/coverage" element={<Coverage />} />
                           <Route path="/privacy" element={<PrivacyPolicy />} />
                           <Route path="/terms" element={<TermsOfService />} />
+                          {/* Phase 6 — new marketing pages */}
+                          <Route path="/about" element={<AboutPage />} />
+                          <Route path="/faq" element={<FaqPage />} />
+                          <Route path="/help" element={<FaqPage />} />
+                          <Route path="/tools" element={<ToolsPage />} />
+                          <Route path="/contact" element={<ContactPage />} />
+                          <Route path="/pricing" element={<PricingPage />} />
+                          <Route path="/for-students" element={<ForStudentsPage />} />
+                          <Route path="/for-teachers" element={<ForTeachersPage />} />
+                          <Route path="/for-parents" element={<ForParentsPage />} />
+                          <Route path="/for-schools" element={<ForSchoolsPage />} />
+                          {/* /library — alias for the dashboard (the library
+                              page is the dashboard's main view). Public
+                              visitors get redirected to auth if they try
+                              to open a resource. */}
+                          <Route
+                            path="/library"
+                            element={
+                              <RequireAuth>
+                                <Dashboard />
+                              </RequireAuth>
+                            }
+                          />
                           <Route
                             path="/dashboard"
                             element={

@@ -1,0 +1,50 @@
+{
+  "appName": "Learnyx Academy ET",
+  "tagline": "Qopheessya Imtila Imaammata",
+  "actions": {
+    "save": "Olkaa'i",
+    "cancel": "Dhiisi",
+    "delete": "Haqi",
+    "edit": "Gulaali",
+    "confirm": "Mirkaneessi",
+    "close": "Cufi",
+    "back": "Deebi'i",
+    "next": "Itti aanu",
+    "previous": "Duraa",
+    "retry": "Irra deebi'i",
+    "loading": "Fe'aa jira…",
+    "saving": "Olkaa'aa jira…",
+    "search": "Barbaadi",
+    "filter": "Filaa",
+    "all": "Hunda",
+    "none": "Homaa",
+    "yes": "Eeyyee",
+    "no": "Lakki",
+    "ok": "Tole",
+    "continue": "Itti fufi",
+    "skip": "Darbi",
+    "done": "Xumurame",
+    "dismiss": "Dhiisi",
+    "gotIt": "Naa gale"
+  },
+  "errors": {
+    "generic": "Dogoggora raawwate. Irra deebi'i yaali.",
+    "network": "Dogoggora sasaa'aatti. Konnekshinii kee mirkaneessi.",
+    "notFound": "Hin argabamne.",
+    "unauthorized": "Seeniin tuqa.",
+    "forbidden": "Daangaa'aatif dhabuu.",
+    "rateLimited": "Gaafatamii baay'ee. Yeroo xiqqoo eegi irradeebi'i."
+  },
+  "language": {
+    "label": "Afaan",
+    "switcher": {
+      "title": "Afaan kee fili",
+      "subtitle": "Filatoonni kee sagaleessa walii galte.",
+      "english": "English",
+      "amharic": "አማርኛ",
+      "afaanOromoo": "Afaan Oromoo",
+      "tigrigna": "ትግርኛ",
+      "needsReview": "Ibsa sararaa qabu — qorannoo dubartii lammummaa qabu eegala"
+    }
+  }
+}

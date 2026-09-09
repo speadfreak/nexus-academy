@@ -25,6 +25,8 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
+import { AccountSheet } from "@/components/AccountSheet";
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router";
@@ -49,6 +51,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const touch = useMutation(api.subscriptions.touch);
   const navigate = useNavigate();
   const location = useLocation();
+  // i18n — `t` for translating nav labels. Namespaced under "dashboard"
+  // (which contains nav.* keys). Falls back to "common" for missing keys.
+  const { t } = useTranslation(["dashboard", "common"]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) === "true"; } catch { return false; }
@@ -99,33 +104,33 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     icon: typeof Crown;
     premiumActive?: boolean;
   }[] = [
-    { to: "/dashboard", label: "Library", icon: BookOpen },
-    { to: "/tutor", label: "Tutor", icon: MessageSquareText },
-    { to: "/todos", label: "Todos", icon: ListChecks },
-    { to: "/focus", label: "Focus", icon: Timer },
-    { to: "/plans", label: "Plans", icon: Map },
-    { to: "/mock-exam", label: "Mock Exam", icon: GraduationCap, premiumActive: true },
-    { to: "/aptitude-hub", label: "Aptitude Hub", icon: Brain },
-    { to: "/journey", label: "Journey", icon: TrendingUp },
-    { to: "/calendar", label: "Calendar", icon: CalendarDays },
-    { to: "/notes", label: "Notes", icon: NotebookPen },
-    { to: "/flashcards", label: "Flashcards", icon: Layers },
-    { to: "/achievements", label: "Achievements", icon: Award },
-    { to: "/groups", label: "Groups", icon: Users },
-    { to: "/notifications", label: "Notifications", icon: Bell },
-    { to: "/settings", label: "Settings", icon: Settings },
+    { to: "/dashboard", label: t("dashboard:nav.library", { defaultValue: "Library" }), icon: BookOpen },
+    { to: "/tutor", label: t("dashboard:nav.tutor", { defaultValue: "Tutor" }), icon: MessageSquareText },
+    { to: "/todos", label: t("dashboard:nav.todos", { defaultValue: "Todos" }), icon: ListChecks },
+    { to: "/focus", label: t("dashboard:nav.focus", { defaultValue: "Focus" }), icon: Timer },
+    { to: "/plans", label: t("dashboard:nav.plans", { defaultValue: "Plans" }), icon: Map },
+    { to: "/mock-exam", label: t("dashboard:nav.mockExam", { defaultValue: "Mock Exam" }), icon: GraduationCap, premiumActive: true },
+    { to: "/aptitude-hub", label: t("dashboard:nav.aptitude", { defaultValue: "Aptitude Hub" }), icon: Brain },
+    { to: "/journey", label: t("dashboard:nav.journey", { defaultValue: "Journey" }), icon: TrendingUp },
+    { to: "/calendar", label: t("dashboard:nav.calendar", { defaultValue: "Calendar" }), icon: CalendarDays },
+    { to: "/notes", label: t("dashboard:nav.notes", { defaultValue: "Notes" }), icon: NotebookPen },
+    { to: "/flashcards", label: t("dashboard:nav.flashcards", { defaultValue: "Flashcards" }), icon: Layers },
+    { to: "/achievements", label: t("dashboard:nav.achievements", { defaultValue: "Achievements" }), icon: Award },
+    { to: "/groups", label: t("dashboard:nav.groups", { defaultValue: "Groups" }), icon: Users },
+    { to: "/notifications", label: t("dashboard:nav.notifications", { defaultValue: "Notifications" }), icon: Bell },
+    { to: "/settings", label: t("dashboard:nav.settings", { defaultValue: "Settings" }), icon: Settings },
     {
       to: "/upgrade",
       label:
         subscription?.status === "trial"
-          ? `Premium \u00b7 ${subscription.trialDaysRemaining}d trial`
+          ? `${t("dashboard:nav.upgrade", { defaultValue: "Premium" })} · ${subscription.trialDaysRemaining}d trial`
           : subscription?.needsUpgrade
-            ? "Premium \u00b7 upgrade"
-            : "Premium",
+            ? `${t("dashboard:nav.upgrade", { defaultValue: "Premium" })} · upgrade`
+            : t("dashboard:nav.upgrade", { defaultValue: "Premium" }),
       icon: Crown,
       premiumActive: Boolean(subscription?.premiumAccess),
     },
-    ...(isAdmin?.isAdmin ? [{ to: "/admin", label: "Admin", icon: ShieldCheck }] : []),
+    ...(isAdmin?.isAdmin ? [{ to: "/admin", label: t("dashboard:nav.admin", { defaultValue: "Admin" }), icon: ShieldCheck }] : []),
   ];
 
   const initials = (user?.name || user?.email || "N")
@@ -302,31 +307,36 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               return <div key="admin">{link}</div>;
             })()}
 
-            {/* Profile card */}
-            <div className={cn(
-              "student-profile-card glass-soft relative flex items-center gap-2.5 rounded-2xl border border-white/10 p-2.5 transition-all duration-300",
-              collapsed && "justify-center p-2",
-            )}>
-              <Link to="/settings" title="Open settings">
+            {/* Profile card — opens the AccountSheet (slide-up menu with
+                Settings, Help, Appearance, Language, Log out). The
+                account sheet handles all the account-related quick actions
+                in a polished, cinematic slide-up consistent with the
+                app's premium dark/gold design. */}
+            <AccountSheet initials={initials}>
+              <button
+                type="button"
+                className={cn(
+                  "student-profile-card glass-soft relative flex w-full items-center gap-2.5 rounded-2xl border border-white/10 p-2.5 text-left transition-all duration-300 hover:border-amber-400/40 hover:bg-amber-400/[0.04]",
+                  collapsed && "justify-center p-2",
+                )}
+                aria-label="Open account menu"
+              >
                 <Avatar className="size-9 cursor-pointer">
                   <AvatarFallback className="bg-gradient-to-br from-amber-400/25 to-amber-400/5 text-xs font-bold text-amber-300">
                     {initials || "N"}
                   </AvatarFallback>
                 </Avatar>
-              </Link>
-              <div className={cn(
-                "sidebar-label flex min-w-0 flex-1 leading-tight transition-all duration-300",
-                collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
-              )}>
-                <Link to="/settings" className="min-w-0 flex-1 leading-tight">
-                  <p className="truncate text-xs font-semibold hover:text-amber-300">{user?.name || "Guest"}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
-                </Link>
-                <Button variant="ghost" size="icon" onClick={handleSignOut} aria-label="Sign out" className="cursor-pointer text-muted-foreground hover:text-destructive">
-                  <LogOut className="size-4" />
-                </Button>
-              </div>
-            </div>
+                <div className={cn(
+                  "sidebar-label flex min-w-0 flex-1 leading-tight transition-all duration-300",
+                  collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
+                )}>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <p className="truncate text-xs font-semibold">{user?.name || "Guest"}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">{user?.email || "Anonymous session"}</p>
+                  </div>
+                </div>
+              </button>
+            </AccountSheet>
           </div>
         </motion.aside>
 

@@ -1,0 +1,50 @@
+{
+  "nav": {
+    "home": "መነሻ",
+    "library": "ቤተ-መጻሕፍት",
+    "tutor": "AI አማኝ",
+    "todos": "ተግባራት",
+    "focus": "ትኩረት",
+    "plans": "እቅዶች",
+    "journey": "ጉዞ",
+    "calendar": "ቀን መቁጠሪያ",
+    "notes": "ማስታወሻዎች",
+    "flashcards": "ፍላሽካርዶች",
+    "achievements": "ስኬቶች",
+    "groups": "ቡድኖች",
+    "settings": "ቅንብሮች",
+    "aptitude": "የአካል ብቃት ማዕከል",
+    "mockExam": "ሞክ ፈተና",
+    "upgrade": "አሻሽል"
+  },
+  "library": {
+    "yourLibrary": "ቤተ-መጻሕፍትዎ",
+    "resources": "ሀብቶች",
+    "saved": "ተቆጥቧል",
+    "subjects": "ትምህርቶች",
+    "allResources": "ሁሉም ሀብቶች",
+    "textbooks": "መጻሕፍት",
+    "pastExams": "ያለፉ ፈተናዎች",
+    "manage": "አስተዳድር",
+    "surpriseMe": "አስደንቅኝ",
+    "bookmarked": "ተቆጥቧል",
+    "readyToDiveIn": "ለመግባት ዝግጁ ነዎት?",
+    "pickASection": "ከታች ያለውን ክፍል ይምሩ፣ ወይም የሚወስን ነገር ይፈልጉ።",
+    "coreTextbooks": "ዋና መጻሕፍት",
+    "buildTheFoundation": "መሰረት ይገንቡ",
+    "pastExamsSection": "ያለፉ ፈተናዎች",
+    "testYourReadiness": "ዝግጁነትዎን ይሞክሩ",
+    "askTutor": "AI አማኙን ይጠይቁ",
+    "anyQuestion247": "ማንኛውንም ጥያቄ፣ 24/7",
+    "openBook": "ክፈት",
+    "continue": "ቀጥል"
+  },
+  "search": {
+    "placeholder": "ቤተ-መጻሕፍት ይፈልጉ…",
+    "noResults": "ምንም ከነዚህ ማጣሪያዎች ጋር አይገናኝም።",
+    "noResultsSaved": "በንባብ ዝርዝርዎ ላይ ገና ምንም አልተቆጠበም — ማንኛውንም መጽሐፍ ለመጀመር ቋሚውን ምልክት ይጫኑ።",
+    "emptyLibrary": "ቤተ-መጻሕፍት በማስቀመጥ ላይ ነው። በቅርቡ ይመለሱ፣ ወይም አስተዳዳሪ ይዘጋጁ ይላኩ።",
+    "uploadFirst": "የመጀመሪያውን ውጤት ስቀላ"
+  },
+  "subjectFilter": "ሁሉም ትምህርቶች"
+}

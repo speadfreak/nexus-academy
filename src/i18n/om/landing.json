@@ -1,0 +1,96 @@
+{
+  "nav": {
+    "library": "Kuusaa",
+    "features": "Amala",
+    "about": "Waa'ee keenya",
+    "signIn": "Seeni",
+    "getStarted": "Banimaa",
+    "openApp": "App bani"
+  },
+  "hero": {
+    "eyebrow": "🇪🇹 Baratoota Itoophiyaaf kan hojjetame",
+    "title": "Imtila immaammataa kabajaa ofii kee darbi.",
+    "subtitle": "Barattoota saddeetta 9–12f qopheessya imtila guutu — AI barsiisaa, imtila qopheessya, kaardii if-tuqaa, qopheessya akeekuu fi kuusaa kallattii guutu, hunda iddoo tokkotti.",
+    "cta": "Balaaxxa baradhu",
+    "ctaSecondary": "Kuusaa daawadhaa",
+    "trustLine": "Barattoota Itoophiyaa hundaan fayyadamaa • Balaaxaa adoolesaa"
+  },
+  "companion": {
+    "eyebrow": "Hiriyaa qopheessya kee",
+    "title": "Wanti si barbaachisu hundi, wanti si hin barbaachisu homaa.",
+    "subtitle": "Meera barattoota saddeetta 9–12 EHEEE barbaadu hunda Learnyx iddoo tokko qabdi — qindoomina, xiyyeeffannoo, fi kana akka barattu akka baraadhu hojjetame.",
+    "aiTutor": {
+      "title": "AI Barsiisaa",
+      "description": "Gaafat kamiyyuu gaafadhaa, daqiiqaa tokko keessatti deebii argadhaa. 24/7 jira, hin bofa, yeroo hunda akka si barbaadu ibsa."
+    },
+    "mockExams": {
+      "title": "Imtila Qopheessya",
+      "description": "Imtila guutu-chaala kan yeroo dhugaa qabu, galtee saffisaa, fi ibsa bal'aa gaafata hundaaf."
+    },
+    "flashcards": {
+      "title": "Kaardii If-tuqaa",
+      "description": "Kutaalee adda-baay'ee kan beekuu fi hin beekumne kee hordofu. Yaad-rimee dhaabbataa hojjechuf kan hojjetame."
+    },
+    "aptitude": {
+      "title": "Wiirtuu Akeekuu",
+      "description": "Qopheessya yaada-SAT nagaree karooraa beekumsa ati moomsite fi ati hojii qabu agarsiisu waliin."
+    },
+    "library": {
+      "title": "Kuusaa Kitaaba",
+      "description": "Kitaaba hundi, imtila darbe, fi dhaamota hojii — gabaasa, saddeetta fi kutaan qindoomin. Barbaadama, mallattoo, buufama."
+    },
+    "groups": {
+      "title": "Garee Qopheessya",
+      "description": "Kutaalee dhuunfaa garee yammaa fi hiriyyaa keef. Haasa'i, mallattoo qabi, xiyyeeffanno kallattii seali fi waliin kaka'aa."
+    }
+  },
+  "streams": {
+    "eyebrow": "Labsi hunda gadi-labisi",
+    "title": "Qopheessa Immaammataa Itoophiyaaaf hojjetame.",
+    "subtitle": "Uumama Saayinsii fi Hawaasa Saayinsii gabaabsi gumaacha — gabaasa hundi, saddeetta hundi, kutaa hundi, kanaan walqixa.",
+    "natural": "Uumama Saayinsii",
+    "social": "Hawaasa Saayinsii",
+    "common": "Gabaasa walfakkaataa"
+  },
+  "libraryTypes": {
+    "eyebrow": "Kuusaa guutu",
+    "title": "Wanti ati barbaadu hundi — iddoo tokko.",
+    "subtitle": "Kitaaba, imtila darbe, dhaamota hojii, qopheessa barattuu fi barsiisaa — gabaasa, saddeetta fi kutaan qindoomin daqiiqa tokko keessatti wanti ati barbaadu argachuu dandeessa.",
+    "textbook": "Kitaaba",
+    "pastExam": "Imtila Darbe",
+    "worksheet": "Dhaamota Hojii",
+    "studentGuide": "Qopheessa Barattuu",
+    "teacherGuide": "Qopheessa Barsiisaa"
+  },
+  "howItWorks": {
+    "eyebrow": "Akkamitti akka hojjetu",
+    "title": "Daqiiqaa 60 keessatti banadhu.",
+    "subtitle": "Qindoomina homaa, eeguu homaa. Labsi fi saddeetta kee fili, ati qopheessa jirta.",
+    "step1": {
+      "title": "Balaaxxa galmaa'i",
+      "description": "Imeelii ykn fayyadama Google kee fayyadami. Guyyaa 14 hojjetuu premiyaamu qopheessya ta'e argadha — kaardii homaa."
+    },
+    "step2": {
+      "title": "Labsi kee fili",
+      "description": "Uumama ykn Hawaasa Saayinsii — gabaasa fi kuusaa sirrii ofii dhaan agarsiina."
+    },
+    "step3": {
+      "title": "Qopheessa banadhu",
+      "description": "Kuusaa bani, AI barsiisaa gaafadhaa, imtila qopheessya fudhadhaa, ykn kaardii if-tuqaa kutaalee banadhu. Isha."
+    }
+  },
+  "cta": {
+    "title": "Galmuu kee qophaa'aa?",
+    "subtitle": "Barattoota Itoophiyaaa kumaan Learnyx qopheessu waliin maxxansi. Balaaxaa adoolesaa — kaardii qopheessaa homaa, yeroo qopheessya homaa.",
+    "primary": "Balaaxxa qopheessa banadhu",
+    "secondary": "Kuusaa daawadhaa"
+  },
+  "footer": {
+    "tagline": "Barattoota Itoophiyaaf kan hojjetame, hojjetoota Itoophiyaan.",
+    "rights": "Dirqama hunda eegame.",
+    "more": "Dabalata",
+    "product": "Meera",
+    "whoItsFor": "Akka atiif",
+    "company": "Dhaabbata"
+  }
+}

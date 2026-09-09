@@ -1,0 +1,50 @@
+{
+  "appName": "Learnyx Academy ET",
+  "tagline": "ዝግጅት ፈተና ሃገር",
+  "actions": {
+    "save": "ኣቐምጥ",
+    "cancel": "ስረዝ",
+    "delete": "ሰርዝ",
+    "edit": "ስርዕ",
+    "confirm": "ኣረጋግጥ",
+    "close": "ዕጾ",
+    "back": "ተመለስ",
+    "next": "ቀጣይ",
+    "previous": "ቀዳማይ",
+    "retry": "ዳግማይ ፈትዐ",
+    "loading": "ኣብ ምጽዓን…",
+    "saving": "ኣብ ምቕማጥ…",
+    "search": "ድለ",
+    "filter": "ናይ ምጥራይ",
+    "all": "ኩሉ",
+    "none": "ነይሩ",
+    "yes": "እወ",
+    "no": "ነይኣ",
+    "ok": "ሕራይ",
+    "continue": "ቀጽል",
+    "skip": "ልለይ",
+    "done": "ተወዲኡ",
+    "dismiss": "ዕረፍ",
+    "gotIt": "ፈሊጠ"
+  },
+  "errors": {
+    "generic": "ጸገም ተወሲዱ። ዳግማይ ፈትዑ።",
+    "network": "ጸገም መርኸብ። መርኸብኩም ምግላጽ።",
+    "notFound": "ኣይተረኽበን።",
+    "unauthorized": "መእተዊ የድልዮ።",
+    "forbidden": "ዝውክል መርሕካ የለን።",
+    "rateLimited": "ብዙ ሕቶታት። ቁሩቕ ጠብቑ ዳግማይ ፈትዑ።"
+  },
+  "language": {
+    "label": "ቋንቋ",
+    "switcher": {
+      "title": "ቋንቋካ ምረጽ",
+      "subtitle": "ምርጫኻ ኣብ ኩሉ ምዕራፍ ይሕሎ።",
+      "english": "English",
+      "amharic": "አማርኛ",
+      "afaanOromoo": "Afaan Oromoo",
+      "tigrigna": "ትግርኛ",
+      "needsReview": "ቅድመ-እይታ ትርጉም — ቅድመ-ምግላጽ ተዛረብ ቋንቋ ምርራይ ይጠሎብ"
+    }
+  }
+}
