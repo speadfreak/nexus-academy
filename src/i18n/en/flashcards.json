@@ -1,0 +1,16 @@
+{
+  "eyebrow": "flashcards",
+  "title": "Flashcards",
+  "subtitle": "Spaced-repetition decks that adapt to what you forget.",
+  "newDeck": "New deck",
+  "study": "Study",
+  "flip": "Flip",
+  "next": "Next",
+  "gotIt": "Got it",
+  "again": "Again",
+  "hard": "Hard",
+  "good": "Good",
+  "easy": "Easy",
+  "noDecks": "No decks yet. Create one from any textbook or tutor conversation.",
+  "deckProgress": "{{known}}/{{total}} known"
+}

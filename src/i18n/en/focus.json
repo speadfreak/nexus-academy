@@ -1,0 +1,20 @@
+{
+  "eyebrow": "focus mode",
+  "title": "Focus",
+  "subtitle": "Block distractions. Track every minute you put in.",
+  "start": "Start session",
+  "pause": "Pause",
+  "resume": "Resume",
+  "stop": "Stop",
+  "endSession": "End session",
+  "selectSubject": "Select a subject to focus on…",
+  "durationLabel": "Duration",
+  "minutes": "{{count}} min",
+  "hours": "{{count}} h",
+  "sessionComplete": "Session complete",
+  "youEarned": "You earned {{xp}} XP for this session.",
+  "streakSaved": "Your streak is safe for today.",
+  "todayStats": "Today",
+  "totalTime": "Total focus time",
+  "noSessions": "No sessions yet — start your first one above."
+}

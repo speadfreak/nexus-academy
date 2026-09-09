@@ -1,0 +1,15 @@
+{
+  "eyebrow": "study groups",
+  "title": "Groups",
+  "subtitle": "Private rooms for your class or friends — chat, share notes, live video.",
+  "createGroup": "Create group",
+  "joinGroup": "Join with code",
+  "noGroups": "No groups yet. Create one or join with an invite code.",
+  "members": "{{count}} members",
+  "leaderboard": "Weekly leaderboard",
+  "liveRoom": "Live room",
+  "startRoom": "Start a live room",
+  "joinRoom": "Join room",
+  "endRoom": "End room",
+  "inviteCode": "Invite code"
+}

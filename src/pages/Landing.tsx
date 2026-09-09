@@ -49,7 +49,6 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { BrowserLanguagePrompt } from "@/components/BrowserLanguagePrompt";
 import logo from "@/assets/nexus-logo.svg";
 
 const fadeUp: Variants = {
@@ -152,116 +151,27 @@ const STATS = [
   { value: "14", label: "Active trial days" },
 ];
 
-const COMPANION = [
-  {
-    icon: Brain,
-    title: "AI tutor that knows your syllabus",
-    description:
-      "AI-powered tutor grounded in the real curriculum. It remembers your stream, your hard subjects and every conversation.",
-    tag: "tutor",
-  },
-  {
-    icon: HelpCircle,
-    title: "Quick-check quizzes",
-    description:
-      "AI writes exam-style questions from your subject's topics. Answer one at a time, get instant feedback, watch scores trend on your journey.",
-    tag: "quizzes",
-  },
-  {
-    icon: Map,
-    title: "Weekly study plans",
-    description:
-      "The AI sequences the syllabus into 4–8 focused weeks, exam-critical topics first, and mirrors them onto your calendar.",
-    tag: "plans",
-  },
-  {
-    icon: Timer,
-    title: "Focus timer + streaks",
-    description:
-      "Log every session. Streaks, hours and per-subject history build up on your dashboard — and reminders nudge you before the streak breaks.",
-    tag: "focus",
-  },
-  {
-    icon: NotebookPen,
-    title: "Sticky notes with difficulty tags",
-    description:
-      "Pin formulas and exam tricks. Mark a subject hard and the tutor slows down and explains from the foundation up.",
-    tag: "notes",
-  },
-  {
-    icon: AudioLines,
-    title: "Study-vibe sound",
-    description:
-      "Rain, deep focus or breeze — a persistent ambient player tuned for concentration. Never autoplays; always your call.",
-    tag: "vibe",
-  },
-  {
-    icon: GraduationCap,
-    title: "Full mock exams under real conditions",
-    description:
-      "AI generates ~340 original questions across all 6 EHEEE subjects — 50 min per section, no pausing, auto-graded per subject with progress tracking across attempts.",
-    tag: "mock-exam",
-  },
-  {
-    icon: Users,
-    title: "Study squads",
-    description:
-      "Private groups with a shared invite code — live video rooms, group chat, and a weekly leaderboard that ranks real study effort, not guesswork.",
-    tag: "groups",
-  },
-  {
-    icon: Trophy,
-    title: "Levels & achievements",
-    description:
-      "Real XP for real study — streaks, badges, and a level that actually reflects the work you've put in, not just time spent.",
-    tag: "achievements",
-  },
-  {
-    icon: Layers,
-    title: "AI flashcards",
-    description:
-      "Turn any textbook or tutor conversation into a flashcard deck in seconds, with smart review that resurfaces what you're still shaky on.",
-    tag: "flashcards",
-  },
-  {
-    icon: TrendingUp,
-    title: "Your journey, tracked honestly",
-    description:
-      "Real progress charts, quiz trends, and the connections between topics across your subjects — no vanity metrics, just where you actually are.",
-    tag: "journey",
-  },
-  {
-    icon: CalendarDays,
-    title: "Auto-scheduled calendar",
-    description:
-      "Your study plan turns into a real calendar automatically — plus your own exam dates and reminders, all in one place.",
-    tag: "calendar",
-  },
+const COMPANION_ICONS = [
+  Brain, HelpCircle, Map, Timer, NotebookPen, AudioLines, GraduationCap, Users,
+  Trophy, Layers, TrendingUp, CalendarDays,
 ];
 
-const STEPS = [
-  {
-    icon: Terminal,
-    step: "01",
-    title: "Sign in and pick your stream",
-    description:
-      "Create an account in seconds — email, Google or guest. Choose natural, social or common and the AI organizes your dashboard around your exam subjects.",
-  },
-  {
-    icon: Search,
-    step: "02",
-    title: "Study with the companion",
-    description:
-      "Search the library, open past papers, chat with the tutor, run quizzes, plan your weeks and pin notes — every action feeds your real progress.",
-  },
-  {
-    icon: TrendingUp,
-    step: "03",
-    title: "Watch your journey",
-    description:
-      "Streaks, hours, quiz scores and topic completion, charted honestly. Premium unlocks past exams, plans and unlimited tutoring.",
-  },
+const COMPANION_TAGS = [
+  "tutor", "quizzes", "plans", "focus", "notes", "vibe", "mock-exam", "groups",
+  "achievements", "flashcards", "journey", "calendar",
 ];
+
+// COMPANION is now built at render-time from the translated
+// companion.features array in the landing namespace. We keep the icon +
+// tag arrays at module level (so they stay stable references) and
+// combine them with the translated title + description in the component.
+// Each feature's tag must match the index in COMPANION_TAGS above.
+
+const STEPS_ICONS = [Terminal, Search, TrendingUp];
+
+// STEPS titles + descriptions are translated at render-time via the
+// howItWorks.steps array in the landing namespace. The icon array stays
+// at module level for stable references.
 
 export default function Landing() {
   const { isAuthenticated, isLoading, user, signOut } = useAuth();
@@ -274,6 +184,44 @@ export default function Landing() {
   const libraryHref = isAuthenticated
     ? "/dashboard"
     : "/auth?returnTo=%2Fdashboard";
+
+  // ── Build translated COMPANION features at render time ─────────────
+  // The English defaults live in src/i18n/en/landing.json under
+  // companion.features (an array of { title, description, tag }). When
+  // the active language has a translated version (am/om/ti), the array
+  // comes back translated. Falls back to English defaultValue per-key
+  // if any individual key is missing.
+  const companionFeatures = (t("landing:companion.features", { returnObjects: true, defaultValue: [] }) as Array<{ title: string; description: string; tag: string }>)
+    .map((feat, i) => ({
+      icon: COMPANION_ICONS[i] ?? Brain,
+      title: feat.title,
+      description: feat.description,
+      tag: feat.tag ?? COMPANION_TAGS[i] ?? `feature-${i}`,
+    }));
+  // Defensive: if i18next returns an empty array (e.g. translation file
+  // missing for the active language), fall back to the English defaults
+  // by reading the bundled English namespace directly.
+  const companion = companionFeatures.length > 0 ? companionFeatures : COMPANION_ICONS.map((icon, i) => ({
+    icon,
+    title: `feature ${i}`,
+    description: "",
+    tag: COMPANION_TAGS[i] ?? `feature-${i}`,
+  }));
+
+  // ── Build translated STEPS at render time ───────────────────────────
+  const stepRows = (t("landing:howItWorks.steps", { returnObjects: true, defaultValue: [] }) as Array<{ step: string; title: string; description: string }>)
+    .map((row, i) => ({
+      icon: STEPS_ICONS[i] ?? Terminal,
+      step: row.step ?? String(i + 1).padStart(2, "0"),
+      title: row.title,
+      description: row.description,
+    }));
+  const steps = stepRows.length > 0 ? stepRows : STEPS_ICONS.map((icon, i) => ({
+    icon,
+    step: `0${i + 1}`,
+    title: "",
+    description: "",
+  }));
 
   const handleSignOut = async () => {
     await signOut();
@@ -337,10 +285,15 @@ export default function Landing() {
                 {theme === "light" ? "Dark mode" : "Light mode"}
               </span>
             </Button>
-            {/* Language switcher — only renders when MULTI_LANGUAGE_ENABLED
-                is true (gated inside the component via useLanguage). When
-                disabled, returns null and the layout collapses cleanly. */}
-            <LanguageSwitcher variant="nav" />
+            {/* NOTE: LanguageSwitcher removed from the nav per the
+                platform owner's preference — the nav stays minimal.
+                The language switcher lives in:
+                (a) the dashboard AccountSheet (slide-up menu) for
+                    signed-in users, AND
+                (b) the footer's "Stay connected" column for landing
+                    visitors.
+                This keeps the nav bar exactly as it was before the
+                multi-language feature was added. */}
             {isAuthenticated ? (
               <>
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
@@ -402,11 +355,13 @@ export default function Landing() {
       {/* ------- Announcement banner ------- */}
       <AnnouncementBanner />
 
-      {/* ------- Browser language prompt (Phase 7) — soft suggestion
-              only, dismissible, persisted in localStorage. Auto-detects
-              the browser language; if it's am/om/ti, shows a "Prefer
-              {language}? Switch here" banner. No forcing. ------- */}
-      <BrowserLanguagePrompt />
+      {/* BrowserLanguagePrompt removed — kept the layout minimal above
+          the hero per the platform owner's preference. The language
+          switcher is accessible in the footer's "Stay connected" column
+          and (for signed-in users) in the dashboard AccountSheet. The
+          auto-detect feature is still available via the LanguageSwitcher
+          component — if you want to re-enable it later, just import and
+          render <BrowserLanguagePrompt /> here. */}
 
       {/* ------- Hero ------- */}
       <section className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 lg:grid-cols-[1.02fr_0.98fr] lg:pt-20">
@@ -422,7 +377,7 @@ export default function Landing() {
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
               </span>
-              // EHEEE / ESSLCE exam prep · grades 9–12
+              // {t("landing:hero.badge", { defaultValue: "EHEEE / ESSLCE exam prep · grades 9–12" })}
             </Badge>
           </motion.div>
 
@@ -430,31 +385,27 @@ export default function Landing() {
             variants={fadeUp}
             className="type-display mt-5"
           >
-            Every subject.
+            {t("landing:hero.title1", { defaultValue: "Every subject." })}
             <br />
-            Every grade.{" "}
-            <span className="text-gradient">One indexed library.</span>
+            {t("landing:hero.title2", { defaultValue: "Every grade." })}{" "}
+            <span className="text-gradient">{t("landing:hero.title3", { defaultValue: "One indexed library." })}</span>
           </motion.h1>
 
           <motion.p
             variants={fadeUp}
             className="type-body-lg mt-5 max-w-xl text-muted-foreground"
           >
-            Learnyx Academy ET 🇪🇹 is the complete content library for the EHEEE
-            (Ethiopian Higher Education Entrance Examination, also called ESSLCE) —
-            textbooks, past papers, worksheets and study guides across all nine
-            subjects. Sign in, search the catalog, and download exactly what your
-            grade and stream require.
+            {t("landing:hero.subtitle", { defaultValue: "Learnyx Academy ET 🇪🇹 is the complete content library for the EHEEE (Ethiopian Higher Education Entrance Examination, also called ESSLCE) — textbooks, past papers, worksheets and study guides across all nine subjects. Sign in, search the catalog, and download exactly what your grade and stream require." })}
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center gap-3">
             <Button asChild size="lg" className="rounded-xl">
               <Link to={libraryHref}>
-                Explore the library <ArrowRight className="size-4" />
+                {t("landing:hero.cta", { defaultValue: "Explore the library" })} <ArrowRight className="size-4" />
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline" className="rounded-xl bg-white/5">
-              <a href="#streams">Browse subjects</a>
+              <a href="#streams">{t("landing:hero.ctaSecondary", { defaultValue: "Browse subjects" })}</a>
             </Button>
           </motion.div>
 
@@ -463,13 +414,13 @@ export default function Landing() {
             className="type-mono mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-muted-foreground"
           >
             <span className="flex items-center gap-1.5">
-              <Check className="size-4 text-primary" /> 09 subjects indexed
+              <Check className="size-4 text-primary" /> {t("landing:hero.trustLine1", { defaultValue: "09 subjects indexed" })}
             </span>
             <span className="flex items-center gap-1.5">
-              <Check className="size-4 text-primary" /> real national past papers
+              <Check className="size-4 text-primary" /> {t("landing:hero.trustLine2", { defaultValue: "real national past papers" })}
             </span>
             <span className="flex items-center gap-1.5">
-              <Lock className="size-4 text-primary" /> free to browse, premium to download
+              <Lock className="size-4 text-primary" /> {t("landing:hero.trustLine3", { defaultValue: "free to browse, premium to download" })}
             </span>
           </motion.div>
 
@@ -486,7 +437,7 @@ export default function Landing() {
             >
               <Grid3x3 className="size-4 text-amber-300" />
               <span className="text-sm font-semibold text-foreground">
-                See <span className="text-gradient">exactly</span> what&apos;s inside
+                {t("landing:hero.coverageCta", { defaultValue: "See" })} <span className="text-gradient">{t("landing:hero.coverageCta2", { defaultValue: "exactly" })}</span> {t("landing:hero.coverageCta3", { defaultValue: "what's inside" })}
               </span>
               <ArrowRight className="size-3.5 text-amber-300 transition-transform group-hover:translate-x-1" />
             </Link>
@@ -574,18 +525,17 @@ export default function Landing() {
             variants={fadeUp}
             className="type-mono uppercase tracking-[0.2em] text-primary"
           >
-            // the companion
+            // {t("landing:companion.sectionEyebrow", { defaultValue: "the companion" })}
           </motion.p>
           <motion.h2
             variants={fadeUp}
             className="type-h1 mt-3"
           >
-            More than a library.{" "}
-            <span className="text-gradient">A study system.</span>
+            {t("landing:companion.sectionTitle1", { defaultValue: "More than a library." })}{" "}
+            <span className="text-gradient">{t("landing:companion.sectionTitle2", { defaultValue: "A study system." })}</span>
           </motion.h2>
           <motion.p variants={fadeUp} className="mt-4 text-muted-foreground">
-            Everything the national exams demand — organized, explained and tracked
-            by an AI that learns your stream and your pace.
+            {t("landing:companion.sectionSubtitle", { defaultValue: "Everything the national exams demand — organized, explained and tracked by an AI that learns your stream and your pace." })}
           </motion.p>
         </motion.div>
 
@@ -596,7 +546,7 @@ export default function Landing() {
           viewport={{ once: true, margin: "-60px" }}
           className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          {COMPANION.map((feature) => (
+          {companion.map((feature) => (
             <motion.div
               key={feature.tag}
               variants={fadeUp}
@@ -747,18 +697,16 @@ export default function Landing() {
             variants={fadeUp}
             className="type-mono uppercase tracking-[0.2em] text-primary"
           >
-            // the two streams
+            // {t("landing:streams.eyebrow", { defaultValue: "the two streams" })}
           </motion.p>
           <motion.h2
             variants={fadeUp}
             className="type-h1 mt-3"
           >
-            Two streams, one national exam
+            {t("landing:streams.title", { defaultValue: "Two streams, one national exam" })}
           </motion.h2>
           <motion.p variants={fadeUp} className="mt-4 text-muted-foreground">
-            English, Mathematics and the SAT are sat by every candidate — they&apos;re
-            part of both tracks. Pick your stream and the library is already
-            organized around your exam subjects.
+            {t("landing:streams.subtitle", { defaultValue: "English, Mathematics and the SAT are sat by every candidate — they're part of both tracks. Pick your stream and the library is already organized around your exam subjects." })}
           </motion.p>
         </motion.div>
 
@@ -825,17 +773,16 @@ export default function Landing() {
             variants={fadeUp}
             className="type-mono uppercase tracking-[0.2em] text-primary"
           >
-            // the library
+            // {t("landing:libraryTypes.eyebrow", { defaultValue: "the library" })}
           </motion.p>
           <motion.h2
             variants={fadeUp}
             className="type-h1 mt-3"
           >
-            Five resource types, one search
+            {t("landing:libraryTypes.title", { defaultValue: "Five resource types, one search" })}
           </motion.h2>
           <motion.p variants={fadeUp} className="mt-4 text-muted-foreground">
-            From full textbooks to real past papers — filter and search by grade,
-            subject and type in seconds.
+            {t("landing:libraryTypes.subtitle", { defaultValue: "From full textbooks to real past papers — filter and search by grade, subject and type in seconds." })}
           </motion.p>
         </motion.div>
 
@@ -913,13 +860,13 @@ export default function Landing() {
             variants={fadeUp}
             className="type-mono uppercase tracking-[0.2em] text-primary"
           >
-            // how it works
+            // {t("landing:howItWorks.eyebrow", { defaultValue: "how it works" })}
           </motion.p>
           <motion.h2
             variants={fadeUp}
             className="type-h1 mt-3"
           >
-            From sign-in to exam room in three steps
+            {t("landing:howItWorks.title", { defaultValue: "From sign-in to exam room in three steps" })}
           </motion.h2>
         </motion.div>
 
@@ -930,7 +877,7 @@ export default function Landing() {
           viewport={{ once: true, margin: "-60px" }}
           className="mt-12 grid gap-5 md:grid-cols-3"
         >
-          {STEPS.map((step) => (
+          {steps.map((step) => (
             <motion.div
               key={step.step}
               variants={fadeUp}
@@ -1113,23 +1060,21 @@ export default function Landing() {
           <div className="pointer-events-none absolute -bottom-24 -right-16 size-72 rounded-full bg-amber-400/10 blur-3xl" />
           <div className="relative">
             <p className="type-mono uppercase tracking-[0.2em] text-primary">
-              // get started
+              // {t("landing:cta.eyebrow", { defaultValue: "get started" })}
             </p>
             <h2 className="type-h1 mx-auto mt-3 max-w-2xl">
-              Ready to walk into the exam room{" "}
-              <span className="text-gradient">prepared?</span>
+              {t("landing:cta.title1", { defaultValue: "Ready to walk into the exam room" })}{" "}
+              <span className="text-gradient">{t("landing:cta.title2", { defaultValue: "prepared?" })}</span>
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-              Create your free account and get instant access to every textbook,
-              past paper and study guide for your stream — organized by grade and
-              subject. Free covers the library, todos, the focus timer, streaks,
-              15 tutor messages a day and a weekly quiz. Premium adds unlimited
-              tutoring, unlimited quizzes and AI study plans when you&apos;re ready.
+              {t("landing:cta.subtitle", { defaultValue: "Create your free account and get instant access to every textbook, past paper and study guide for your stream — organized by grade and subject. Free covers the library, todos, the focus timer, streaks, 15 tutor messages a day and a weekly quiz. Premium adds unlimited tutoring, unlimited quizzes and AI study plans when you're ready." })}
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button asChild size="lg" className="rounded-xl">
                 <Link to={libraryHref}>
-                  {isAuthenticated ? "Open the library" : "Start studying free"}
+                  {isAuthenticated
+                    ? t("landing:cta.primaryAuth", { defaultValue: "Open the library" })
+                    : t("landing:cta.primary", { defaultValue: "Start studying free" })}
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
@@ -1140,7 +1085,7 @@ export default function Landing() {
                 className="rounded-xl bg-white/5"
               >
                 <a href="#library">
-                  <FileText className="size-4" /> View the catalog
+                  <FileText className="size-4" /> {t("landing:cta.secondary", { defaultValue: "View the catalog" })}
                 </a>
               </Button>
             </div>
@@ -1188,7 +1133,7 @@ export default function Landing() {
             {/* Product column */}
             <div>
               <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
-                Product
+                {t("landing:footer.product", { defaultValue: "Product" })}
               </p>
               <ul className="space-y-2">
                 <li>
@@ -1216,7 +1161,7 @@ export default function Landing() {
             {/* Who it's for column */}
             <div>
               <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
-                Who it's for
+                {t("landing:footer.whoItsFor", { defaultValue: "Who it's for" })}
               </p>
               <ul className="space-y-2">
                 <li>
@@ -1244,7 +1189,7 @@ export default function Landing() {
             {/* Company column */}
             <div>
               <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
-                Company
+                {t("landing:footer.company", { defaultValue: "Company" })}
               </p>
               <ul className="space-y-2">
                 <li>
@@ -1278,7 +1223,7 @@ export default function Landing() {
                 quick-access links close to the new pages */}
             <div>
               <p className="type-mono mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">
-                Stay connected
+                {t("landing:footer.stayConnected", { defaultValue: "Stay connected" })}
               </p>
               <ul className="space-y-2">
                 <li>
@@ -1308,6 +1253,13 @@ export default function Landing() {
                   <span className="flex items-center gap-1 type-caption text-primary/80">
                     <Sparkles className="size-3" /> 3-day trial
                   </span>
+                </li>
+                {/* Language switcher — auto-gated (renders nothing when
+                    MULTI_LANGUAGE_ENABLED is off). Sits inline in the
+                    footer's "Stay connected" column so it doesn't crowd
+                    the nav bar. */}
+                <li>
+                  <LanguageSwitcher variant="nav" />
                 </li>
               </ul>
             </div>

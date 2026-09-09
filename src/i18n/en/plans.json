@@ -1,0 +1,13 @@
+{
+  "eyebrow": "study plans",
+  "title": "Plans",
+  "subtitle": "AI-generated weekly plans, mirrored on your calendar.",
+  "generate": "Generate a new plan",
+  "generating": "Generating…",
+  "currentPlan": "Current plan",
+  "noPlan": "No plan yet — generate one above.",
+  "weekLabel": "Week {{number}}",
+  "thisWeek": "This week",
+  "complete": "Complete",
+  "viewOnCalendar": "View on calendar"
+}

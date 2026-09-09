@@ -9,16 +9,42 @@
   },
   "hero": {
     "eyebrow": "🇪🇹 Built for Ethiopian students",
-    "title": "Ace your national exams with confidence.",
-    "subtitle": "A complete exam prep companion for grades 9–12 — AI tutor, mock exams, flashcards, aptitude practice, and the full textbook library, all in one place.",
-    "cta": "Start studying free",
-    "ctaSecondary": "Explore the library",
-    "trustLine": "Used by students across Ethiopia • Free forever tier"
+    "badge": "EHEEE / ESSLCE exam prep · grades 9–12",
+    "title1": "Every subject.",
+    "title2": "Every grade.",
+    "title3": "One indexed library.",
+    "subtitle": "Learnyx Academy ET 🇪🇹 is the complete content library for the EHEEE (Ethiopian Higher Education Entrance Examination, also called ESSLCE) — textbooks, past papers, worksheets and study guides across all nine subjects. Sign in, search the catalog, and download exactly what your grade and stream require.",
+    "cta": "Explore the library",
+    "ctaSecondary": "Browse subjects",
+    "trustLine1": "09 subjects indexed",
+    "trustLine2": "real national past papers",
+    "trustLine3": "free to browse, premium to download",
+    "coverageCta": "See",
+    "coverageCta2": "exactly",
+    "coverageCta3": "what's inside"
   },
   "companion": {
     "eyebrow": "Your study companion",
     "title": "Everything you need, nothing you don't.",
     "subtitle": "Learnyx brings together every tool a grade 9–12 student needs for the EHEEE — organized, focused, and built for the way you actually study.",
+    "sectionEyebrow": "the companion",
+    "sectionTitle1": "More than a library.",
+    "sectionTitle2": "A study system.",
+    "sectionSubtitle": "Everything the national exams demand — organized, explained and tracked by an AI that learns your stream and your pace.",
+    "features": [
+      { "title": "AI tutor that knows your syllabus", "description": "AI-powered tutor grounded in the real curriculum. It remembers your stream, your hard subjects and every conversation.", "tag": "tutor" },
+      { "title": "Quick-check quizzes", "description": "AI writes exam-style questions from your subject's topics. Answer one at a time, get instant feedback, watch scores trend on your journey.", "tag": "quizzes" },
+      { "title": "Weekly study plans", "description": "The AI sequences the syllabus into 4–8 focused weeks, exam-critical topics first, and mirrors them onto your calendar.", "tag": "plans" },
+      { "title": "Focus timer + streaks", "description": "Log every session. Streaks, hours and per-subject history build up on your dashboard — and reminders nudge you before the streak breaks.", "tag": "focus" },
+      { "title": "Sticky notes with difficulty tags", "description": "Pin formulas and exam tricks. Mark a subject hard and the tutor slows down and explains from the foundation up.", "tag": "notes" },
+      { "title": "Study-vibe sound", "description": "Rain, deep focus or breeze — a persistent ambient player tuned for concentration. Never autoplays; always your call.", "tag": "vibe" },
+      { "title": "Full mock exams under real conditions", "description": "AI generates ~340 original questions across all 6 EHEEE subjects — 50 min per section, no pausing, auto-graded per subject with progress tracking across attempts.", "tag": "mock-exam" },
+      { "title": "Study squads", "description": "Private groups with a shared invite code — live video rooms, group chat, and a weekly leaderboard that ranks real study effort, not guesswork.", "tag": "groups" },
+      { "title": "Levels & achievements", "description": "Real XP for real study — streaks, badges, and a level that actually reflects the work you've put in, not just time spent.", "tag": "achievements" },
+      { "title": "AI flashcards", "description": "Turn any textbook or tutor conversation into a flashcard deck in seconds, with smart review that resurfaces what you're still shaky on.", "tag": "flashcards" },
+      { "title": "Your journey, tracked honestly", "description": "Real progress charts, quiz trends, and the connections between topics across your subjects — no vanity metrics, just where you actually are.", "tag": "journey" },
+      { "title": "Auto-scheduled calendar", "description": "Your study plan turns into a real calendar automatically — plus your own exam dates and reminders, all in one place.", "tag": "calendar" }
+    ],
     "aiTutor": {
       "title": "AI Tutor",
       "description": "Ask any question, get an answer in seconds. Available 24/7, never gets impatient, always explains the way you need it."
@@ -45,17 +71,17 @@
     }
   },
   "streams": {
-    "eyebrow": "Both streams, fully covered",
-    "title": "Built for the Ethiopian national curriculum.",
-    "subtitle": "Natural Science and Social Science streams are equally supported — every subject, every grade, every unit, with the same care.",
+    "eyebrow": "the two streams",
+    "title": "Two streams, one national exam",
+    "subtitle": "English, Mathematics and the SAT are sat by every candidate — they're part of both tracks. Pick your stream and the library is already organized around your exam subjects.",
     "natural": "Natural Science",
     "social": "Social Science",
     "common": "Common subjects"
   },
   "libraryTypes": {
-    "eyebrow": "The full library",
-    "title": "Every resource you need — in one place.",
-    "subtitle": "Textbooks, past exams, worksheets, student and teacher guides — organized by subject, grade, and unit so you can find exactly what you need in seconds.",
+    "eyebrow": "the library",
+    "title": "Five resource types, one search",
+    "subtitle": "From full textbooks to real past papers — filter and search by grade, subject and type in seconds.",
     "textbook": "Textbook",
     "pastExam": "Past Exam",
     "worksheet": "Worksheet",
@@ -63,9 +89,14 @@
     "teacherGuide": "Teacher Guide"
   },
   "howItWorks": {
-    "eyebrow": "How it works",
-    "title": "Start in 60 seconds.",
+    "eyebrow": "how it works",
+    "title": "From sign-in to exam room in three steps",
     "subtitle": "No setup, no waiting. Pick your stream and grade, and you're studying.",
+    "steps": [
+      { "step": "01", "title": "Sign in and pick your stream", "description": "Create an account in seconds — email, Google or guest. Choose natural, social or common and the AI organizes your dashboard around your exam subjects." },
+      { "step": "02", "title": "Study with the companion", "description": "Search the library, open past papers, chat with the tutor, run quizzes, plan your weeks and pin notes — every action feeds your real progress." },
+      { "step": "03", "title": "Watch your journey", "description": "Streaks, hours, quiz scores and topic completion, charted honestly. Premium unlocks past exams, plans and unlimited tutoring." }
+    ],
     "step1": {
       "title": "Sign up free",
       "description": "Use your email or Google account. Get 14 active days of premium access as a trial — no card required."
@@ -80,10 +111,13 @@
     }
   },
   "cta": {
-    "title": "Ready to dive in?",
-    "subtitle": "Join thousands of Ethiopian students preparing with Learnyx. Free forever — no credit card, no trial timer pressure.",
+    "eyebrow": "get started",
+    "title1": "Ready to walk into the exam room",
+    "title2": "prepared?",
+    "subtitle": "Create your free account and get instant access to every textbook, past paper and study guide for your stream — organized by grade and subject. Free covers the library, todos, the focus timer, streaks, 15 tutor messages a day and a weekly quiz. Premium adds unlimited tutoring, unlimited quizzes and AI study plans when you're ready.",
     "primary": "Start studying free",
-    "secondary": "Explore the library"
+    "primaryAuth": "Open the library",
+    "secondary": "View the catalog"
   },
   "footer": {
     "tagline": "Built for Ethiopian students, by Ethiopian developers.",
@@ -91,6 +125,7 @@
     "more": "More",
     "product": "Product",
     "whoItsFor": "Who it's for",
-    "company": "Company"
+    "company": "Company",
+    "stayConnected": "Stay connected"
   }
 }

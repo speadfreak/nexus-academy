@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 export default function Flashcards() {
+  const { t } = useTranslation(["flashcards", "common"]);
   const decks = useQuery(api.flashcards.getMyDecks);
   const subjects = useQuery(api.subjects.getAll);
   const generateDeck = useAction(api.flashcards.generateDeck as any);
@@ -271,9 +273,9 @@ export default function Flashcards() {
         >
           <div>
             <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-              // spaced repetition · flashcards
+              // {t("flashcards:eyebrow", { defaultValue: "spaced repetition · flashcards" })}
             </p>
-            <h1 className="type-h1 mt-1">Flashcards</h1>
+            <h1 className="type-h1 mt-1">{t("flashcards:title", { defaultValue: "Flashcards" })}</h1>
             <p className="type-body mt-1 text-muted-foreground">
               AI-generated flashcard decks. Flip, review, repeat — spaced repetition does the rest.
             </p>

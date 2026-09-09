@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
@@ -189,6 +190,9 @@ function Bubble({ message, index }: { message: MessageDoc; index: number }) {
 export default function Tutor() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  // i18n — the tutor namespace holds the empty-state, input placeholder,
+  // and button labels. Falls back to "common" for missing keys.
+  const { t } = useTranslation(["tutor", "common"]);
   const subjects = useQuery(api.subjects.getAll);
   const conversations = useQuery(api.ai.listConversations);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
@@ -684,16 +688,15 @@ export default function Tutor() {
                     <Bot className="size-7" />
                   </div>
                   <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-                    // learnyx tutor
+                    // {t("tutor:eyebrow", { defaultValue: "learnyx tutor" })}
                   </p>
                   <h2 className="type-h1 mt-2">
                     {scopeSubject
-                      ? `Ask about ${scopeSubject.name}`
-                      : "Ask anything, exam-style"}
+                      ? t("tutor:titleScoped", { defaultValue: "Ask about {{subject}}", subject: scopeSubject.name })
+                      : t("tutor:titleGeneric", { defaultValue: "Ask anything, exam-style" })}
                   </h2>
                   <p className="type-body mt-2 max-w-md text-muted-foreground">
-                    A precise tutor for the Ethiopian national exams — grades
-                    9–12, grounded in your stream&apos;s syllabus.
+                    {t("tutor:subtitle", { defaultValue: "A precise tutor for the Ethiopian national exams — grades 9–12, grounded in your stream's syllabus." })}
                   </p>
                 </motion.div>
 
@@ -941,7 +944,7 @@ export default function Tutor() {
                 placeholder={
                   speech.listening
                     ? "Listening… speak now"
-                    : "Ask the tutor anything about your exams…"
+                    : t("tutor:inputPlaceholder", { defaultValue: "Ask the tutor anything about your exams…" })
                 }
                 disabled={isAwaiting}
                 className={cn(

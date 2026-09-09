@@ -1,0 +1,19 @@
+{
+  "eyebrow": "mock exam",
+  "title": "Mock",
+  "titleGradient": "Exam",
+  "subtitle": "Full-length practice exams under real exam conditions.",
+  "startExam": "Start exam",
+  "section": "Section {{number}}",
+  "timeRemaining": "Time remaining",
+  "nextQuestion": "Next question",
+  "previousQuestion": "Previous question",
+  "submitExam": "Submit exam",
+  "submitConfirm": "Submit exam? You can't change your answers after this.",
+  "examComplete": "Exam complete",
+  "yourScore": "Your score",
+  "reviewAnswers": "Review answers",
+  "retake": "Retake exam",
+  "premium": "Mock exams are a premium feature.",
+  "upgrade": "Upgrade to premium"
+}

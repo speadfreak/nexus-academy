@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ListChecks, Plus, Trash2, CircleDot, Sparkles } from "lucide-react";
 import { useMemo, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ function CompletionBurst({ show }: { show: boolean }) {
 }
 
 export default function Todos() {
+  const { t } = useTranslation(["todos", "common"]);
   const todos = useQuery(api.todos.list);
   const create = useMutation(api.todos.create);
   const toggleDone = useMutation(api.todos.toggleDone);
@@ -263,10 +265,10 @@ export default function Todos() {
         {/* Header */}
         <div>
           <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-            // study tasks
+            // {t("todos:eyebrow", { defaultValue: "study tasks" })}
           </p>
           <div className="mt-1 flex items-end justify-between gap-3">
-            <h1 className="type-h1">Todos</h1>
+            <h1 className="type-h1">{t("todos:title", { defaultValue: "Todos" })}</h1>
             <div className="flex items-center gap-3">
               {pending.length > 0 && (
                 <span className="type-mono text-muted-foreground">
@@ -288,13 +290,13 @@ export default function Todos() {
                 handleAdd();
               }
             }}
-            placeholder={'Add a task — e.g. Finish Physics worksheet on forces'}
+            placeholder={t("todos:addPlaceholder", { defaultValue: "Add a task — e.g. Finish Physics worksheet on forces" })}
             className="type-body h-10 flex-1 rounded-xl bg-white/5 font-mono"
           />
           <div className="flex items-center gap-2">
             <Select value={subjectId} onValueChange={setSubjectId}>
               <SelectTrigger className="type-caption h-10 w-36 rounded-xl bg-white/5">
-                <SelectValue placeholder="Subject…" />
+                <SelectValue placeholder={t("todos:subjectPlaceholder", { defaultValue: "Subject…" })} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">No subject</SelectItem>
@@ -349,11 +351,10 @@ export default function Todos() {
                 </div>
               </div>
               <h3 className="type-h3 mt-6 text-foreground">
-                Your task board is clear
+                {t("todos:empty", { defaultValue: "Your task board is clear" })}
               </h3>
               <p className="type-body mt-2 max-w-sm text-muted-foreground">
-                Add your first study task above — keep it specific so it&apos;s
-                easy to tick off and track your progress.
+                {t("todos:emptySubtitle", { defaultValue: "Add your first study task above — keep it specific so it's easy to tick off and track your progress." })}
               </p>
               <div className="mt-6 flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-2.5">
                 <CircleDot className="size-3.5 text-muted-foreground/50" />

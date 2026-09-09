@@ -8,6 +8,7 @@
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import {
   CalendarCheck,
   Flame,
@@ -69,6 +70,7 @@ const TIER_STYLES: Record<
 };
 
 export default function Achievements() {
+  const { t } = useTranslation(["achievements", "common"]);
   const achievements = useQuery(api.achievements.getMyAchievements);
   const level = useQuery(api.xp.getMyLevel);
 
@@ -89,10 +91,10 @@ export default function Achievements() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
           <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-            // gamification · progress
+            // {t("achievements:eyebrow", { defaultValue: "gamification · progress" })}
           </p>
           <h1 className="mt-1 type-h1">
-            Achievements
+            {t("achievements:title", { defaultValue: "Achievements" })}
           </h1>
           <p className="mt-1 type-body text-muted-foreground">
             Earned through real study — quizzes, focus, streaks, plans and daily challenges.

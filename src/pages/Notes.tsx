@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ const EMPTY_DRAFT: NoteDraft = {
 };
 
 export default function Notes() {
+  const { t } = useTranslation(["notes", "common"]);
   const [searchParams, setSearchParams] = useSearchParams();
   const subjectParam = searchParams.get("subject") ?? "";
   const [subjectFilter, setSubjectFilter] = useState(subjectParam);
@@ -171,9 +173,9 @@ export default function Notes() {
         >
           <div>
             <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-              // notes · sticky
+              // {t("notes:eyebrow", { defaultValue: "notes · sticky" })}
             </p>
-            <h1 className="type-h1 mt-1">Notes</h1>
+            <h1 className="type-h1 mt-1">{t("notes:title", { defaultValue: "Notes" })}</h1>
             <p className="type-body mt-1 text-muted-foreground">
               Pin what matters. Mark subjects easy or hard — the tutor reads those tags.
             </p>

@@ -1,0 +1,12 @@
+{
+  "eyebrow": "achievements",
+  "title": "Achievements",
+  "subtitle": "Real XP for real study — badges, streaks, and a level that reflects your work.",
+  "level": "Level {{level}}",
+  "totalXp": "Total XP",
+  "streak": "Streak",
+  "streakDays": "{{count}} days",
+  "badges": "Badges",
+  "recent": "Recent achievements",
+  "noAchievements": "No achievements yet — start studying to unlock them."
+}

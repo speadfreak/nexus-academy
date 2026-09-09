@@ -1,0 +1,20 @@
+{
+  "eyebrow": "learnyx tutor",
+  "titleGeneric": "Ask anything, exam-style",
+  "titleScoped": "Ask about {{subject}}",
+  "subtitle": "A precise tutor for the Ethiopian national exams — grades 9–12, grounded in your stream's syllabus.",
+  "inputPlaceholder": "Ask anything about your subjects — press Enter to send",
+  "inputPlaceholderScoped": "Ask about {{subject}} — press Enter to send",
+  "send": "Send",
+  "newChat": "New chat",
+  "clearChat": "Clear chat",
+  "scope": "Scope…",
+  "allSubjects": "All subjects",
+  "selectChat": "Select a chat…",
+  "freeLimit": "You've used your free tutor messages today. Premium unlocks unlimited messages.",
+  "upgrade": "Upgrade to premium",
+  "voiceInput": "Voice input",
+  "stopVoice": "Stop",
+  "generating": "Generating…",
+  "emptyChat": "No messages yet — ask your first question above."
+}

@@ -1,0 +1,13 @@
+{
+  "eyebrow": "calendar",
+  "title": "Calendar",
+  "subtitle": "Your study plan, exam dates, and reminders in one place.",
+  "today": "Today",
+  "week": "Week",
+  "month": "Month",
+  "addEvent": "Add event",
+  "noEvents": "No events this month.",
+  "examDates": "Exam dates",
+  "studySessions": "Study sessions",
+  "reminders": "Reminders"
+}

@@ -20,6 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { QuizFlow } from "@/components/QuizFlow";
@@ -110,6 +111,8 @@ function saveGoal(m: number) {
 type TimerStatus = "idle" | "running" | "paused" | "done" | "celebrating";
 
 export default function Focus() {
+  // i18n — focus namespace holds the timer labels + session text.
+  const { t } = useTranslation(["focus", "common"]);
   // ── Queries ──
   const subjects = useQuery(api.subjects.getAll);
   const history = useQuery(api.studySessions.getHistory);
@@ -324,8 +327,8 @@ export default function Focus() {
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
         {/* Header */}
         <div>
-          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">// focus sessions</p>
-          <h1 className="type-h1 mt-1">Focus timer</h1>
+          <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">// {t("focus:eyebrow", { defaultValue: "focus sessions" })}</p>
+          <h1 className="type-h1 mt-1">{t("focus:title", { defaultValue: "Focus timer" })}</h1>
           <p className="type-body mt-1 text-muted-foreground">
             Deep work builds streaks, earns XP, and locks in knowledge.
           </p>

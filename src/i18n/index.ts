@@ -49,6 +49,19 @@ import enDashboard from "./en/dashboard.json";
 import enAccount from "./en/account.json";
 import enFooter from "./en/footer.json";
 import enPages from "./en/pages.json";
+import enTutor from "./en/tutor.json";
+import enTodos from "./en/todos.json";
+import enFocus from "./en/focus.json";
+import enPlans from "./en/plans.json";
+import enJourney from "./en/journey.json";
+import enCalendar from "./en/calendar.json";
+import enNotes from "./en/notes.json";
+import enFlashcards from "./en/flashcards.json";
+import enAchievements from "./en/achievements.json";
+import enGroups from "./en/groups.json";
+import enSettings from "./en/settings.json";
+import enAptitude from "./en/aptitude.json";
+import enMockExam from "./en/mockExam.json";
 
 // Lazy-loaders for non-English locales. Each returns a Promise that resolves
 // to the namespace JSON. i18next calls these on demand when the user
@@ -108,6 +121,19 @@ void i18n
         account: enAccount,
         footer: enFooter,
         pages: enPages,
+        tutor: enTutor,
+        todos: enTodos,
+        focus: enFocus,
+        plans: enPlans,
+        journey: enJourney,
+        calendar: enCalendar,
+        notes: enNotes,
+        flashcards: enFlashcards,
+        achievements: enAchievements,
+        groups: enGroups,
+        settings: enSettings,
+        aptitude: enAptitude,
+        mockExam: enMockExam,
       },
       am: {
         common: lazyLoad("am", "common"),
@@ -116,6 +142,19 @@ void i18n
         account: lazyLoad("am", "account"),
         footer: lazyLoad("am", "footer"),
         pages: lazyLoad("am", "pages"),
+        tutor: lazyLoad("am", "tutor"),
+        todos: lazyLoad("am", "todos"),
+        focus: lazyLoad("am", "focus"),
+        plans: lazyLoad("am", "plans"),
+        journey: lazyLoad("am", "journey"),
+        calendar: lazyLoad("am", "calendar"),
+        notes: lazyLoad("am", "notes"),
+        flashcards: lazyLoad("am", "flashcards"),
+        achievements: lazyLoad("am", "achievements"),
+        groups: lazyLoad("am", "groups"),
+        settings: lazyLoad("am", "settings"),
+        aptitude: lazyLoad("am", "aptitude"),
+        mockExam: lazyLoad("am", "mockExam"),
       },
       om: {
         common: lazyLoad("om", "common"),
@@ -124,6 +163,19 @@ void i18n
         account: lazyLoad("om", "account"),
         footer: lazyLoad("om", "footer"),
         pages: lazyLoad("om", "pages"),
+        tutor: lazyLoad("om", "tutor"),
+        todos: lazyLoad("om", "todos"),
+        focus: lazyLoad("om", "focus"),
+        plans: lazyLoad("om", "plans"),
+        journey: lazyLoad("om", "journey"),
+        calendar: lazyLoad("om", "calendar"),
+        notes: lazyLoad("om", "notes"),
+        flashcards: lazyLoad("om", "flashcards"),
+        achievements: lazyLoad("om", "achievements"),
+        groups: lazyLoad("om", "groups"),
+        settings: lazyLoad("om", "settings"),
+        aptitude: lazyLoad("om", "aptitude"),
+        mockExam: lazyLoad("om", "mockExam"),
       },
       ti: {
         common: lazyLoad("ti", "common"),
@@ -132,6 +184,19 @@ void i18n
         account: lazyLoad("ti", "account"),
         footer: lazyLoad("ti", "footer"),
         pages: lazyLoad("ti", "pages"),
+        tutor: lazyLoad("ti", "tutor"),
+        todos: lazyLoad("ti", "todos"),
+        focus: lazyLoad("ti", "focus"),
+        plans: lazyLoad("ti", "plans"),
+        journey: lazyLoad("ti", "journey"),
+        calendar: lazyLoad("ti", "calendar"),
+        notes: lazyLoad("ti", "notes"),
+        flashcards: lazyLoad("ti", "flashcards"),
+        achievements: lazyLoad("ti", "achievements"),
+        groups: lazyLoad("ti", "groups"),
+        settings: lazyLoad("ti", "settings"),
+        aptitude: lazyLoad("ti", "aptitude"),
+        mockExam: lazyLoad("ti", "mockExam"),
       },
     },
     // Always load these namespaces so common buttons/labels work even

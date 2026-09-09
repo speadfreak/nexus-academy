@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ReportBlockMenu } from "@/components/ReportBlockMenu";
 import { GroupChatPanel } from "@/components/GroupChatPanel";
@@ -74,6 +75,7 @@ import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 export default function Groups() {
+  const { t } = useTranslation(["groups", "common"]);
   const navigate = useNavigate();
   const myGroups = useQuery(api.studyGroups.getMyGroups);
   const subjects = useQuery(api.subjects.getAll);
@@ -212,9 +214,9 @@ export default function Groups() {
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold type-caption">
-                // social · groups
+                // {t("groups:eyebrow", { defaultValue: "social · groups" })}
               </p>
-              <h1 className="mt-1 type-h1 text-gradient">Study groups</h1>
+              <h1 className="mt-1 type-h1 text-gradient">{t("groups:title", { defaultValue: "Study groups" })}</h1>
               <p className="mt-2 max-w-xl type-body text-muted-foreground">
                 Private squads of classmates. You can only join through a shared
                 invite code, and the weekly leaderboard ranks XP — one honest

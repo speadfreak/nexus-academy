@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,7 @@ function useSubjectNames() {
 // ---------------------------------------------------------------------------
 
 export default function MockExamPage() {
+  const { t } = useTranslation(["mockExam", "common"]);
   const navigate = useNavigate();
   const startMockExam = useAction(api.mockExam.startMockExam);
   const generateSection = useAction(api.mockExam.generateSection);
@@ -504,6 +506,8 @@ function StartScreen({
   onBegin: (stream: "natural" | "social") => void;
   onOpenHistory: (id: Id<"mockExams">) => void;
 }) {
+  // i18n — needed because the StartScreen renders the page title + subtitle.
+  const { t } = useTranslation(["mockExam", "common"]);
   const [stream, setStream] = useState<"natural" | "social">(userStream ?? "natural");
   const [confirmed, setConfirmed] = useState(false);
 
@@ -532,7 +536,7 @@ function StartScreen({
             </span>
           </div>
           <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
-            Mock <span className="text-gradient">Exam</span>
+            {t("mockExam:title", { defaultValue: "Mock" })} <span className="text-gradient">{t("mockExam:titleGradient", { defaultValue: "Exam" })}</span>
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             A complete simulated EHEEE sitting — six sections, around 340

@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { AuthRequiredPrompt } from "@/components/AuthRequiredPrompt";
@@ -574,6 +575,7 @@ function PracticePanel({
 // ── Main page ───────────────────────────────────────────────────────────
 
 export default function AptitudeHub() {
+  const { t } = useTranslation(["aptitude", "common"]);
   const skillMap = useQuery(api.aptitude.getSkillMap);
   const profile = useQuery(api.profile.getProfile);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
@@ -644,7 +646,7 @@ export default function AptitudeHub() {
               </span>
             </div>
             <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
-              The <span className="text-gradient">Brain Map</span>
+              {t("aptitude:title", { defaultValue: "The" })} <span className="text-gradient">{t("aptitude:titleGradient", { defaultValue: "Brain Map" })}</span>
             </h1>
             <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
               A dedicated deep-practice environment for the Scholastic

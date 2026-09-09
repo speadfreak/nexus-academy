@@ -4,6 +4,7 @@
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import {
   BookOpen,
   Brain,
@@ -79,6 +80,7 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 export default function Journey() {
+  const { t } = useTranslation(["journey", "common"]);
   const journey = useQuery(api.journey.getJourney);
   const [analyticsPromptOpen, setAnalyticsPromptOpen] = useState(false);
 
@@ -148,9 +150,9 @@ export default function Journey() {
           className="relative"
         >
           <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-            // analytics · journey
+            // {t("journey:eyebrow", { defaultValue: "analytics · journey" })}
           </p>
-          <h1 className="type-h1 mt-1">Your journey</h1>
+          <h1 className="type-h1 mt-1">{t("journey:title", { defaultValue: "Your journey" })}</h1>
           <p className="type-body mt-1 text-muted-foreground">
             Real data from your sessions, quizzes and plans — not estimates.
           </p>

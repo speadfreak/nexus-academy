@@ -1,0 +1,14 @@
+{
+  "eyebrow": "study tasks",
+  "title": "Todos",
+  "addPlaceholder": "Add a task — e.g. Finish Physics worksheet on forces",
+  "subjectPlaceholder": "Subject…",
+  "addButton": "Add",
+  "openCount": "{{count}} open",
+  "doneCount": "{{count}} done",
+  "empty": "Your task board is clear",
+  "emptySubtitle": "Add your first study task above — keep it specific so it's easy to tick off and track your progress.",
+  "clearCompleted": "Clear completed",
+  "allDone": "All caught up — nothing left to do today.",
+  "noSubject": "No subject"
+}

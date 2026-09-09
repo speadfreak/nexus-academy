@@ -14,6 +14,7 @@ import {
   Target,
 } from "lucide-react";
 import { useMemo, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,7 @@ import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Plans() {
+  const { t } = useTranslation(["plans", "common"]);
   const subjects = useQuery(api.subjects.getAll);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const [subjectId, setSubjectId] = useState("");
@@ -95,9 +97,9 @@ export default function Plans() {
         {/* Header */}
         <div>
           <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-            // ai study plans
+            // {t("plans:eyebrow", { defaultValue: "ai study plans" })}
           </p>
-          <h1 className="type-h1 mt-1">Plans</h1>
+          <h1 className="type-h1 mt-1">{t("plans:title", { defaultValue: "Plans" })}</h1>
           <p className="type-body mt-1 text-muted-foreground">
             AI sequences your subject&apos;s syllabus into a week-by-week roadmap, exam-critical
             topics first.

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,6 +63,7 @@ const STREAM_OPTIONS = [
 ] as const;
 
 export default function Settings() {
+  const { t } = useTranslation(["settings", "common"]);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const profile = useQuery(api.profile.getProfile);
@@ -179,9 +181,9 @@ export default function Settings() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
           <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-            // configuration · settings
+            // {t("settings:eyebrow", { defaultValue: "configuration · settings" })}
           </p>
-          <h1 className="type-h1 mt-1">Settings</h1>
+          <h1 className="type-h1 mt-1">{t("settings:title", { defaultValue: "Settings" })}</h1>
           <p className="type-body mt-1 text-muted-foreground">
             Your profile, appearance and study track.
           </p>

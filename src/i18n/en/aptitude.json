@@ -1,0 +1,15 @@
+{
+  "eyebrow": "aptitude hub",
+  "title": "The",
+  "titleGradient": "Brain Map",
+  "subtitle": "SAT-style reasoning practice with a brain-map showing your mastery.",
+  "startPractice": "Start practice",
+  "brainMap": "Your brain map",
+  "mastery": "{{percent}}% mastered",
+  "needsWork": "Needs work",
+  "practiceNodes": "Practice nodes",
+  "fullMock": "Full aptitude mock",
+  "vocabDeck": "Vocabulary deck",
+  "premium": "Premium feature — upgrade to unlock.",
+  "upgrade": "Upgrade"
+}

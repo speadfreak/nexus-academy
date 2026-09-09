@@ -1,0 +1,29 @@
+{
+  "eyebrow": "settings",
+  "title": "Settings",
+  "subtitle": "Profile, stream, theme, language, and account.",
+  "profile": {
+    "title": "Profile",
+    "displayName": "Display name",
+    "username": "Username",
+    "email": "Email",
+    "save": "Save changes"
+  },
+  "preferences": {
+    "title": "Preferences",
+    "stream": "Stream",
+    "streamNatural": "Natural Science",
+    "streamSocial": "Social Science",
+    "streamCommon": "Common (undecided)",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark"
+  },
+  "account": {
+    "title": "Account",
+    "linkTelegram": "Link Telegram",
+    "unlinkTelegram": "Unlink Telegram",
+    "deleteAccount": "Delete account",
+    "signOut": "Sign out"
+  }
+}

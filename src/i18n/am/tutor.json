@@ -1,0 +1,20 @@
+{
+  "eyebrow": "የሌርኒክስ አማኝ",
+  "titleGeneric": "ምንም ጥያቄ ጠይቅ፣ የፈተና አይነት",
+  "titleScoped": "ስለ {{subject}} ጠይቅ",
+  "subtitle": "ለኢትዮጵያ ሀገራዊ ፈተናዎች ትክክለኛ አማኝ — መደብ 9–12፣ በእርስዎ ዥረት ምሁርት የተመሰረተ።",
+  "inputPlaceholder": "ስለ ትምህርቶዎችዎ ምንም ጥያቄ ጠይቅ — ለመላክ Enter ተጫን",
+  "inputPlaceholderScoped": "ስለ {{subject}} ጠይቅ — ለመላክ Enter ተጫን",
+  "send": "ላክ",
+  "newChat": "አዲስ ውይይት",
+  "clearChat": "ውይይት አጽዳ",
+  "scope": "ክልል…",
+  "allSubjects": "ሁሉም ትምህርቶች",
+  "selectChat": "ውይይት ምረጥ…",
+  "freeLimit": "የነጫ አማኝ መልዕክቶችዎን ዛሬ አጠቀሙ። ፕሪሚየም ወሰን-አልባ መልዕክቶችን ይከፍታል።",
+  "upgrade": "ወደ ፕሪሚየም አሻሽል",
+  "voiceInput": "የድምጽ ግብዓት",
+  "stopVoice": "አቁም",
+  "generating": "በመፍጠር ላይ…",
+  "emptyChat": "ገና ምንም መልዕክት የለም — ከላይ የመጀመሪያውን ጥያቄዎ ጠይቅ።"
+}

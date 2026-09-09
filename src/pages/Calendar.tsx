@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,7 @@ interface EventDraft {
 }
 
 export default function CalendarPage() {
+  const { t } = useTranslation(["calendar", "common"]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<EventDraft | null>(null);
@@ -213,9 +215,9 @@ export default function CalendarPage() {
         >
           <div>
             <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
-              // schedule · calendar
+              // {t("calendar:eyebrow", { defaultValue: "schedule · calendar" })}
             </p>
-            <h1 className="mt-1 type-h1">Calendar</h1>
+            <h1 className="mt-1 type-h1">{t("calendar:title", { defaultValue: "Calendar" })}</h1>
             <p className="mt-1 type-body text-muted-foreground">
               Study blocks from your AI plans land here automatically.
             </p>
