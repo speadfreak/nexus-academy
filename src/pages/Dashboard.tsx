@@ -33,6 +33,7 @@ import {
   Quote,
   RotateCcw,
   Search,
+  Shuffle,
   Sparkles,
   Target,
   TrendingUp,
@@ -846,6 +847,26 @@ export default function Dashboard() {
     navigate(`/read/${item._id}`);
   };
 
+  // "Surprise me" — picks a random resource from the library and opens it.
+  // Delightful discovery feature for students who don't know what to study.
+  // Prefers non-premium items so free users don't hit the paywall surprise.
+  // Replaces the old leaked "Manage" button for non-admin users — same
+  // visual slot in the filter row, but actually useful for everyone.
+  const handleSurpriseMe = () => {
+    if (!content || content.length === 0) {
+      toast.info("The library is being stocked — check back soon.");
+      return;
+    }
+    // Prefer free items so the surprise doesn't bounce off the paywall.
+    const freeItems = content.filter((item) => !item.isPremium);
+    const pool = freeItems.length > 0 ? freeItems : content;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (pick) {
+      toast.success("Picked a random resource for you — enjoy!");
+      handleOpen(pick);
+    }
+  };
+
   const handleToggleBookmark = (item: ContentItemWithSubject) => {
     void toggleBookmark({ contentId: item._id })
       .then(() => {})
@@ -1029,10 +1050,30 @@ export default function Dashboard() {
                     {label}
                   </button>
                 ))}
-                {isAdmin && (
+                {/* Admin-only: Manage link to /admin. Previously rendered for
+                    ALL users because `isAdmin` is the raw query result
+                    ({ isAdmin: boolean, role: string | null }) which is always
+                    truthy as an object. Fixed by checking `isAdmin?.isAdmin`. */}
+                {isAdmin?.isAdmin && (
                   <Button asChild variant="ghost" size="sm" className="ml-auto h-7 rounded-lg px-2 text-muted-foreground hover:text-primary">
                     <Link to="/admin"><Sparkles className="mr-1 size-3" /> Manage</Link>
                   </Button>
+                )}
+                {/* Non-admin creative replacement: "Surprise me" — picks a
+                    random resource and opens it. A delightful discovery feature
+                    that earns the visual slot the old leaked Manage button
+                    was occupying. Prefers free items so the surprise doesn't
+                    bounce off the paywall. */}
+                {!isAdmin?.isAdmin && (content?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSurpriseMe}
+                    title="Pick a random resource from your library"
+                    className="ml-auto flex items-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-1.5 type-caption font-semibold text-amber-300 transition hover:border-amber-400/50 hover:bg-amber-400/20"
+                  >
+                    <Shuffle className="size-3" />
+                    Surprise me
+                  </button>
                 )}
               </div>
             </div>
@@ -1791,7 +1832,7 @@ export default function Dashboard() {
                   ? "Nothing matches those filters. Try widening your search."
                   : "The library is being stocked. Check back soon, or ask an admin to upload content."}
             </p>
-            {isAdmin && !hasFilters && (
+            {isAdmin?.isAdmin && !hasFilters && (
               <Button asChild size="sm" className="mt-6 rounded-xl interactive-press">
                 <Link to="/admin">
                   <Sparkles className="size-4" /> Upload the first item
