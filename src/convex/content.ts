@@ -44,6 +44,7 @@ export const insertContentItem = internalMutation({
     sourceName: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
     isPremium: v.boolean(),
+    needsReview: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("contentItems", {
@@ -58,6 +59,7 @@ export const insertContentItem = internalMutation({
       sourceName: args.sourceName,
       sourceUrl: args.sourceUrl,
       isPremium: args.isPremium,
+      needsReview: args.needsReview,
       createdAt: Date.now(),
     });
     return id;
@@ -412,6 +414,10 @@ export const getAdminContent = query({
     grade: v.optional(v.number()),
     subjectId: v.optional(v.id("subjects")),
     contentType: v.optional(contentTypeValidator),
+    // When true, only return content items flagged as needing review
+    // (i.e. blind-uploaded rows the admin should review). Used by the
+    // "Schedule cleanup pass" button on the admin content page.
+    needsReview: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<ContentItemWithSubject[]> => {
     const userId = await getAuthUserId(ctx);
@@ -420,12 +426,28 @@ export const getAdminContent = query({
       return [];
     }
 
-    const { grade, subjectId, contentType } = args;
+    const { grade, subjectId, contentType, needsReview } = args;
     const hasFilters =
-      grade !== undefined || subjectId !== undefined || contentType !== undefined;
+      grade !== undefined || subjectId !== undefined || contentType !== undefined || needsReview !== undefined;
 
     let items: ContentItem[];
-    if (hasFilters) {
+    if (needsReview === true) {
+      // Use the by_needsReview index for efficient lookup
+      items = await ctx.db
+        .query("contentItems")
+        .withIndex("by_needsReview", (q) => q.eq("needsReview", true))
+        .order("desc")
+        .take(200);
+      // Apply additional filters on top
+      if (grade !== undefined || subjectId !== undefined || contentType !== undefined) {
+        items = items.filter((item) => {
+          if (grade !== undefined && item.grade !== grade) return false;
+          if (subjectId !== undefined && item.subjectId !== subjectId) return false;
+          if (contentType !== undefined && item.contentType !== contentType) return false;
+          return true;
+        });
+      }
+    } else if (hasFilters) {
       items = await ctx.db
         .query("contentItems")
         .filter((q) => {

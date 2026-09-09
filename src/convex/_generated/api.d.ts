@@ -22,6 +22,7 @@ import type * as auth from "../auth.js";
 import type * as auth_emailOtp from "../auth/emailOtp.js";
 import type * as bookmarks from "../bookmarks.js";
 import type * as calendar from "../calendar.js";
+import type * as categories from "../categories.js";
 import type * as configKeys from "../configKeys.js";
 import type * as constants from "../constants.js";
 import type * as content from "../content.js";
@@ -97,6 +98,7 @@ declare const fullApi: ApiFromModules<{
   "auth/emailOtp": typeof auth_emailOtp;
   bookmarks: typeof bookmarks;
   calendar: typeof calendar;
+  categories: typeof categories;
   configKeys: typeof configKeys;
   constants: typeof constants;
   content: typeof content;

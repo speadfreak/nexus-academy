@@ -38,9 +38,10 @@ export const adminRoleValidator = v.union(
 export type AdminRole = Infer<typeof adminRoleValidator>;
 
 export const streamValidator = v.union(...STREAMS.map((s) => v.literal(s)));
-export const contentTypeValidator = v.union(
-  ...CONTENT_TYPES.map((t) => v.literal(t)),
-);
+// Content type validator — accepts any non-empty string, so admin can add new
+// content types dynamically via the Categories admin tab. The default content
+// types are still seeded from CONTENT_TYPES in constants.ts.
+export const contentTypeValidator = v.string();
 
 const schema = defineSchema(
   {
@@ -71,12 +72,50 @@ const schema = defineSchema(
       .index("by_slug", ["slug"])
       .index("by_stream", ["stream"]),
 
+    // Content types — admin-managed list of library content categories
+    // (textbook, past_exam, worksheet, student_guide, teacher_guide, etc.).
+    // Seeded from CONTENT_TYPES in constants.ts on first admin visit, but
+    // the admin can add/edit/delete entries here to introduce new types
+    // without a code change.
+    contentTypes: defineTable({
+      slug: v.string(), // e.g. "past_exam" — used in contentItems.contentType
+      label: v.string(), // e.g. "Past Exam" — human-readable
+      // R2 storage path segment. e.g. "past-exam" → natural/11/physics/past-exam/file.pdf
+      storageSlug: v.string(),
+      // Whether this content type carries an examYear (e.g. past_exam = true,
+      // textbook = false). Used by the upload form to show/hide the year
+      // picker.
+      hasYear: v.boolean(),
+      // Whether this content type is one of the original built-in types
+      // (true) or admin-added later (false). Built-in types can be edited
+      // (label) but not deleted — admin types can be deleted freely.
+      isBuiltIn: v.boolean(),
+      // Optional display order — admin can reorder types in the dropdown.
+      order: v.optional(v.number()),
+    })
+      .index("by_slug", ["slug"])
+      .index("by_storageSlug", ["storageSlug"]),
+
+    // Grades — admin-managed list of grade levels. Default 9-12 but admin
+    // can add/edit/delete (e.g. add Grade 8 for a primary prep expansion).
+    grades: defineTable({
+      grade: v.number(), // e.g. 9, 10, 11, 12
+      label: v.string(), // e.g. "Grade 9"
+      // Whether this grade is one of the original built-in grades (true)
+      // or admin-added later (false). Built-in grades can be edited but
+      // not deleted — admin grades can be deleted freely.
+      isBuiltIn: v.boolean(),
+      // Optional display order — admin can reorder grades in the dropdown.
+      order: v.optional(v.number()),
+    })
+      .index("by_grade", ["grade"]),
+
     // Library content items (textbooks, past exams, worksheets, guides).
     // fileUrl points at the public Cloudflare R2 object URL.
     contentItems: defineTable({
       title: v.string(),
       contentType: contentTypeValidator,
-      grade: v.number(), // 9-12
+      grade: v.number(), // 9-12 (or any grade the admin has added)
       subjectId: v.id("subjects"),
       examYear: v.optional(v.number()), // only populated when contentType = "past_exam"
       // Optional link from a past_exam item to its answer-key PDF (another
@@ -91,6 +130,10 @@ const schema = defineSchema(
       sourceName: v.optional(v.string()), // official attribution, when applicable
       sourceUrl: v.optional(v.string()), // official source page, when applicable
       isPremium: v.boolean(),
+      // Flag set by Blind Upload bulk-save: true if this row was saved with
+      // admin-provided defaults because the classifier couldn't fully
+      // classify it. The admin should review these later (edit metadata).
+      needsReview: v.optional(v.boolean()),
       createdAt: v.number(), // epoch ms (mirrors a created_at timestamp column)
     })
       .index("by_subject", ["subjectId"])
@@ -98,7 +141,8 @@ const schema = defineSchema(
       .index("by_contentType", ["contentType"])
       .index("by_subject_grade", ["subjectId", "grade"])
       .index("by_createdAt", ["createdAt"])
-      .index("by_answerKey", ["answerKeyContentId"]),
+      .index("by_answerKey", ["answerKeyContentId"])
+      .index("by_needsReview", ["needsReview"]),
 
     // Topics per subject/grade — built now for the future AI topic-correlation
     // feature so we don't need a migration later.

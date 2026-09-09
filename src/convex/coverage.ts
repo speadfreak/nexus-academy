@@ -46,7 +46,7 @@ export interface CoverageMatrix {
   totals: {
     bySubject: Record<string, number>; // subjectId -> total count
     byGrade: Record<number, number>; // grade -> total count
-    byContentType: Record<ContentType, number>;
+    byContentType: Record<string, number>;
     grandTotal: number;
   };
 }
@@ -108,7 +108,7 @@ export const getCoverageMatrix = query({
     // "Textbooks: 45 items", "Physics: 12 items", grand total).
     const bySubject: Record<string, number> = {};
     const byGrade: Record<number, number> = {};
-    const byContentType: Record<ContentType, number> = {} as Record<ContentType, number>;
+    const byContentType: Record<string, number> = {} as Record<string, number>;
     let grandTotal = 0;
     for (const contentType of CONTENT_TYPES) byContentType[contentType] = 0;
     for (const grade of GRADES) byGrade[grade] = 0;
@@ -174,7 +174,7 @@ export interface AdminGapDashboard {
   gaps: ContentGapRow[];
   gapCount: number;
   gapsByStream: Record<string, number>;
-  gapsByContentType: Record<ContentType, number>;
+  gapsByContentType: Record<string, number>;
   gapsByGrade: Record<number, number>;
 }
 
@@ -191,7 +191,7 @@ const GRADE_PRIORITY: Record<number, number> = {
   10: 2,
   9: 3,
 };
-const CONTENT_TYPE_PRIORITY: Record<ContentType, number> = {
+const CONTENT_TYPE_PRIORITY: Record<string, number> = {
   textbook: 0,
   past_exam: 1,
   worksheet: 2,
@@ -223,7 +223,7 @@ export const getAdminGapDashboard = query({
     const cells: CoverageCell[] = [];
     const bySubject: Record<string, number> = {};
     const byGrade: Record<number, number> = {};
-    const byContentType: Record<ContentType, number> = {} as Record<ContentType, number>;
+    const byContentType: Record<string, number> = {} as Record<string, number>;
     let grandTotal = 0;
     for (const contentType of CONTENT_TYPES) byContentType[contentType] = 0;
     for (const grade of GRADES) byGrade[grade] = 0;
@@ -273,7 +273,7 @@ export const getAdminGapDashboard = query({
       social: 0,
       common: 0,
     };
-    const gapsByContentType: Record<ContentType, number> = {} as Record<ContentType, number>;
+    const gapsByContentType: Record<string, number> = {} as Record<string, number>;
     for (const ct of CONTENT_TYPES) gapsByContentType[ct] = 0;
     const gapsByGrade: Record<number, number> = {};
     for (const g of GRADES) gapsByGrade[g] = 0;

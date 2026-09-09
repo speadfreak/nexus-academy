@@ -12,6 +12,7 @@ import {
   ExternalLink,
   FileUp,
   FileText,
+  Layers,
   Loader2,
   Package,
   Pencil,
@@ -29,6 +30,7 @@ import { extractPdfText } from "@/lib/pdf";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BulkUploadSection } from "@/components/admin/BulkUploadSection";
+import { CategoriesManagement } from "@/components/admin/CategoriesManagement";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -85,6 +87,29 @@ function formatBytes(bytes?: number): string {
 
 export function AdminContentSection() {
   const subjects = useQuery(api.subjects.getAll);
+  // Dynamic content types + grades — admin can add/edit them in the
+  // Categories tab, so we read from the categories table to populate
+  // dropdowns dynamically. Falls back to constants while loading.
+  const contentTypeRows = useQuery(api.categories.listContentTypes);
+  const gradeRows = useQuery(api.categories.listGrades);
+  const contentTypeOptions = contentTypeRows && contentTypeRows.length > 0
+    ? contentTypeRows.map((ct) => ({ value: ct.slug, label: ct.label }))
+    : CONTENT_TYPES.map((t) => ({ value: t, label: CONTENT_TYPE_LABELS[t] ?? t }));
+  const gradeOptions = gradeRows && gradeRows.length > 0
+    ? gradeRows.map((g) => g.grade)
+    : [9, 10, 11, 12];
+  // Whether a content-type slug requires an exam year (dynamic — based on
+  // the hasYear flag set by admin in the Categories tab). Falls back to
+  // the built-in rule (only past_exam needs a year) when the dynamic query
+  // hasn't loaded yet.
+  const contentTypeHasYear = (slug: string): boolean => {
+    if (!slug) return false;
+    if (contentTypeRows) {
+      const match = contentTypeRows.find((ct) => ct.slug === slug);
+      if (match) return match.hasYear;
+    }
+    return slug === "past_exam";
+  };
   const seedSubjects = useMutation(api.subjects.seed);
 
   // Auto-seed subjects on mount (idempotent — skips existing slugs).
@@ -199,7 +224,7 @@ export function AdminContentSection() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadMode, setUploadMode] = useState<"single" | "bulk">("single");
+  const [uploadMode, setUploadMode] = useState<"single" | "bulk" | "categories">("single");
 
   // Browser→Convex storage→R2 flow. Convex handles the browser-side CORS
   // for the upload POST (same project, no cross-origin signature issues),
@@ -248,12 +273,21 @@ export function AdminContentSection() {
   const [adminGrade, setAdminGrade] = useState("");
   const [adminType, setAdminType] = useState("");
   const [adminSubjectId, setAdminSubjectId] = useState("");
+  // When true, the admin content query is filtered to only items flagged
+  // as needsReview (blind-uploaded rows the admin should review). Toggled
+  // by the "Cleanup Pass" button — surfaces up to 200 flagged rows.
+  const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const adminContent = useQuery(api.content.getAdminContent, {
     grade: adminGrade ? Number(adminGrade) : undefined,
     subjectId: (adminSubjectId || undefined) as never,
     contentType: (adminType || undefined) as ContentType | undefined,
+    needsReview: showNeedsReviewOnly ? true : undefined,
   });
+  // Live count of items flagged needsReview (for the Cleanup Pass button
+  // badge — shows the admin how many blind-uploaded rows are pending
+  // review across the whole library, regardless of other filters).
+  const needsReviewCount = useQuery(api.categories.countNeedsReview);
   const deleteContentItem = useAction(api.contentAdmin.deleteContentItem);
   const updateContentItem = useAction(api.contentAdmin.updateContentItem);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -297,7 +331,7 @@ export function AdminContentSection() {
         grade: Number(editGrade),
         subjectId: editSubjectId as never,
         contentType: editContentType as ContentType,
-        examYear: editContentType === "past_exam" ? (editExamYear ? Number(editExamYear) : undefined) : undefined,
+        examYear: contentTypeHasYear(editContentType) ? (editExamYear ? Number(editExamYear) : undefined) : undefined,
         isPremium: editIsPremium,
       };
       // Only pass answerKeyContentId if it changed (avoids unnecessary
@@ -455,8 +489,8 @@ export function AdminContentSection() {
       toast.error("Pick a subject.");
       return;
     }
-    if (contentType === "past_exam" && !examYear) {
-      toast.error("Past exams need an exam year.");
+    if (contentTypeHasYear(contentType) && !examYear) {
+      toast.error("This content type needs an exam year.");
       return;
     }
 
@@ -523,7 +557,7 @@ export function AdminContentSection() {
           contentType,
           grade: Number(grade),
           subjectId: subjectId as never,
-          examYear: contentType === "past_exam" ? Number(examYear) : undefined,
+          examYear: contentTypeHasYear(contentType) ? Number(examYear) : undefined,
           isPremium,
           storageId,
           filename: file.name,
@@ -708,7 +742,7 @@ export function AdminContentSection() {
         </div>
       )}
 
-      {/* Upload mode toggle: Single vs Bulk */}
+      {/* Upload mode toggle: Single vs Bulk vs Categories */}
       <div className="flex gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1.5">
         <button
           type="button"
@@ -736,10 +770,26 @@ export function AdminContentSection() {
           <Package className="size-3.5" />
           Bulk Upload
         </button>
+        <button
+          type="button"
+          onClick={() => setUploadMode("categories")}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors",
+            uploadMode === "categories"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+          )}
+        >
+          <Layers className="size-3.5" />
+          Categories
+        </button>
       </div>
 
       {/* Bulk upload mode */}
       {uploadMode === "bulk" && <BulkUploadSection />}
+
+      {/* Categories management mode */}
+      {uploadMode === "categories" && <CategoriesManagement />}
 
       {/* Single upload form */}
       {uploadMode === "single" && (
@@ -893,9 +943,9 @@ export function AdminContentSection() {
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CONTENT_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {CONTENT_TYPE_LABELS[type]}
+                  {contentTypeOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -909,7 +959,7 @@ export function AdminContentSection() {
                   <SelectValue placeholder="Select grade" />
                 </SelectTrigger>
                 <SelectContent>
-                  {[9, 10, 11, 12].map((g) => (
+                  {gradeOptions.map((g) => (
                     <SelectItem key={g} value={String(g)}>
                       Grade {g}
                     </SelectItem>
@@ -934,7 +984,7 @@ export function AdminContentSection() {
               </Select>
             </div>
 
-            {contentType === "past_exam" ? (
+            {contentTypeHasYear(contentType) ? (
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-muted-foreground">Exam year</Label>
                 <Input
@@ -1116,7 +1166,7 @@ export function AdminContentSection() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All grades</SelectItem>
-              {[9, 10, 11, 12].map((g) => (
+              {gradeOptions.map((g) => (
                 <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
               ))}
             </SelectContent>
@@ -1127,8 +1177,8 @@ export function AdminContentSection() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
-              {CONTENT_TYPES.map((type) => (
-                <SelectItem key={type} value={type}>{CONTENT_TYPE_LABELS[type]}</SelectItem>
+              {contentTypeOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -1143,7 +1193,32 @@ export function AdminContentSection() {
               ))}
             </SelectContent>
           </Select>
-          {(adminGrade || adminType || adminSubjectId || searchQuery) && (
+          {/* Cleanup Pass button — surfaces blind-uploaded rows that need
+              admin review. Shows a live count badge so the admin can see at
+              a glance how many items are pending. */}
+          {needsReviewCount !== undefined && needsReviewCount > 0 && (
+            <Button
+              variant={showNeedsReviewOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowNeedsReviewOnly((v) => !v)}
+              className={cn(
+                "h-8 gap-1.5 text-xs",
+                showNeedsReviewOnly && "bg-amber-500 text-white hover:bg-amber-600",
+              )}
+              title={
+                showNeedsReviewOnly
+                  ? "Showing only blind-uploaded items that need review"
+                  : `Show only the ${needsReviewCount} blind-uploaded item${needsReviewCount === 1 ? "" : "s"} that need review`
+              }
+            >
+              <AlertTriangle className="size-3.5" />
+              Cleanup Pass
+              <span className="ml-1 rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-bold">
+                {needsReviewCount}
+              </span>
+            </Button>
+          )}
+          {(adminGrade || adminType || adminSubjectId || searchQuery || showNeedsReviewOnly) && (
             <Button
               variant="ghost"
               size="icon"
@@ -1153,6 +1228,7 @@ export function AdminContentSection() {
                 setAdminType("");
                 setAdminSubjectId("");
                 setSearchQuery("");
+                setShowNeedsReviewOnly(false);
               }}
               aria-label="Reset filters"
             >
@@ -1160,6 +1236,22 @@ export function AdminContentSection() {
             </Button>
           )}
         </div>
+
+        {/* Cleanup pass banner — only shown when the cleanup filter is on,
+            explains what the admin is looking at and gives a one-click way
+            to exit the filter. */}
+        {showNeedsReviewOnly && (
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2">
+            <p className="text-xs text-amber-300">
+              <AlertTriangle className="mr-1 inline size-3.5" />
+              <span className="font-semibold">Cleanup Pass mode:</span>{" "}
+              Showing only items flagged as needing review (uploaded via Blind
+              Upload with admin-provided defaults). Review each row's
+              subject/grade/type/year — click edit (✎) to fix metadata.
+              Items show an amber flag in the table below.
+            </p>
+          </div>
+        )}
 
         {/* Table */}
         <div className="mt-4 overflow-x-auto">
@@ -1189,13 +1281,21 @@ export function AdminContentSection() {
               </TableHeader>
               <TableBody>
                 {filteredContent?.map((item) => (
-                  <TableRow key={item._id} className="hover:bg-white/5">
+                  <TableRow
+                    key={item._id}
+                    className={cn("hover:bg-white/5", item.needsReview && "bg-amber-500/[0.04]")}
+                  >
                     <TableCell className="max-w-[14rem]">
                       <p className="truncate font-semibold">{item.title}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         {item.isPremium && (
                           <Badge className="gap-1 bg-amber-400/10 text-amber-300">
                             <Sparkles className="size-2.5" /> Premium
+                          </Badge>
+                        )}
+                        {item.needsReview && (
+                          <Badge className="gap-1 bg-amber-500/10 text-amber-300 border-amber-500/30">
+                            <AlertTriangle className="size-2.5" /> Needs Review
                           </Badge>
                         )}
                         <Badge variant="outline" className="bg-white/5 text-[10px] font-normal text-muted-foreground">
@@ -1327,13 +1427,13 @@ export function AdminContentSection() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-xs font-semibold text-muted-foreground">Content type</Label>
-                  <Select value={editContentType} onValueChange={(v) => { setEditContentType(v); if (v !== "past_exam") setEditExamYear(""); }}>
+                  <Select value={editContentType} onValueChange={(v) => { setEditContentType(v); if (!contentTypeHasYear(v)) setEditExamYear(""); }}>
                     <SelectTrigger className="h-9 rounded-xl bg-white/5">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {CONTENT_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>{CONTENT_TYPE_LABELS[type]}</SelectItem>
+                      {contentTypeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1345,7 +1445,7 @@ export function AdminContentSection() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {[9, 10, 11, 12].map((g) => (
+                      {gradeOptions.map((g) => (
                         <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1366,7 +1466,7 @@ export function AdminContentSection() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-xs font-semibold text-muted-foreground">
-                    Exam year {editContentType !== "past_exam" && <span className="font-normal text-muted-foreground/50">(past exams only)</span>}
+                    Exam year {!contentTypeHasYear(editContentType) && <span className="font-normal text-muted-foreground/50">(year-bearing types only)</span>}
                   </Label>
                   <Input
                     type="number"
@@ -1374,7 +1474,7 @@ export function AdminContentSection() {
                     max={new Date().getFullYear()}
                     value={editExamYear}
                     onChange={(e) => setEditExamYear(e.target.value)}
-                    disabled={editContentType !== "past_exam"}
+                    disabled={!contentTypeHasYear(editContentType)}
                     placeholder="e.g. 2023"
                     className="h-9 rounded-xl bg-white/5 disabled:opacity-40"
                   />
@@ -1393,7 +1493,7 @@ export function AdminContentSection() {
                   another content item (typically an answer-key PDF uploaded
                   separately) so the Reader's Exam Mode can offer a
                   "self-grade" button after the student submits. */}
-              {editContentType === "past_exam" && (
+              {contentTypeHasYear(editContentType) && (
                 <div className="flex flex-col gap-1.5">
                   <Label className="text-xs font-semibold text-muted-foreground">
                     Answer key (optional)

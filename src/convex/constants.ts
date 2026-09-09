@@ -26,7 +26,10 @@ export const GRADES = [9, 10, 11, 12] as const;
 
 // R2 key segment per content type (matches the {content-type} part of the
 // human-browsable bucket layout, e.g. natural/11/physics/past-exam/....pdf)
-export const CONTENT_TYPE_SLUGS: Record<ContentType, string> = {
+// Typed as Record<string, string> so admin-added content types can look up
+// a slug without a TypeScript error (the catalog is now dynamic — see
+// convex/categories.ts).
+export const CONTENT_TYPE_SLUGS: Record<string, string> = {
   textbook: "textbook",
   past_exam: "past-exam",
   worksheet: "worksheet",
@@ -34,7 +37,7 @@ export const CONTENT_TYPE_SLUGS: Record<ContentType, string> = {
   teacher_guide: "teacher-guide",
 };
 
-export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
+export const CONTENT_TYPE_LABELS: Record<string, string> = {
   textbook: "Textbook",
   past_exam: "Past Exam",
   worksheet: "Worksheet",

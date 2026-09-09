@@ -45,8 +45,14 @@ function sanitizeFilename(name: string): string {
   return base || "file";
 }
 
-function buildKey(stream: string, grade: number, subjectSlug: string, contentType: ContentType, filename: string): string {
-  return `${stream}/${grade}/${subjectSlug}/${CONTENT_TYPE_SLUGS[contentType]}/${sanitizeFilename(filename)}`;
+function buildKey(stream: string, grade: number, subjectSlug: string, contentType: string, filename: string): string {
+  // Look up the storage slug from the CONTENT_TYPE_SLUGS map (built-in types).
+  // For admin-added content types, fall back to a slugified version of the
+  // type name so the R2 path stays human-browsable.
+  const storageSlug =
+    (CONTENT_TYPE_SLUGS as Record<string, string>)[contentType] ??
+    contentType.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+  return `${stream}/${grade}/${subjectSlug}/${storageSlug}/${sanitizeFilename(filename)}`;
 }
 
 /**
@@ -157,6 +163,7 @@ export const adminUploadContent = action({
     examYear: v.optional(v.number()), isPremium: v.boolean(), storageId: v.string(), filename: v.string(),
     topicCandidates: v.optional(v.array(v.string())),
     sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
+    needsReview: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { user: adminUser } = await requireAdminAction(ctx);
@@ -183,6 +190,7 @@ export const adminUploadContent = action({
         examYear: args.examYear, fileUrl, fileSizeBytes: bytes.byteLength, uploadedBy: adminUser._id, isPremium: args.isPremium,
         sourceName: args.sourceName?.trim() || undefined,
         sourceUrl: args.sourceUrl?.trim() || undefined,
+        needsReview: args.needsReview,
       });
 
       if (args.topicCandidates && args.topicCandidates.length > 0) {

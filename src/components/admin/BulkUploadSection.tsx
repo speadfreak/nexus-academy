@@ -107,6 +107,7 @@ import { Switch } from "@/components/ui/switch";
 import { extractPdfText } from "@/lib/pdf";
 import {
   classifyDocument,
+  detectYear,
   type ClassificationResult,
 } from "@/lib/bulkClassifier";
 import { cn } from "@/lib/utils";
@@ -205,6 +206,38 @@ export function BulkUploadSection() {
   const originalAdminUpload = useAction(api.contentAdmin.adminUploadContent);
   const classifyContentText = useAction(api.contentAI.classifyContentText);
   const subjects = useQuery(api.subjects.getAll);
+  // Dynamic content types + grades — fetched from the categories table so
+  // admin-added categories show up in the dropdowns immediately.
+  const contentTypeRows = useQuery(api.categories.listContentTypes);
+  const gradeRows = useQuery(api.categories.listGrades);
+
+  // Derived dropdown sources — fall back to constants while the queries are
+  // loading so the form is still usable.
+  const contentTypeOptions: { value: string; label: string; hasYear?: boolean }[] =
+    contentTypeRows && contentTypeRows.length > 0
+      ? contentTypeRows.map((ct) => ({ value: ct.slug, label: ct.label, hasYear: ct.hasYear }))
+      : [
+          { value: "textbook", label: "Textbook", hasYear: false },
+          { value: "past_exam", label: "Past Exam", hasYear: true },
+          { value: "worksheet", label: "Worksheet", hasYear: false },
+          { value: "student_guide", label: "Student Guide", hasYear: false },
+          { value: "teacher_guide", label: "Teacher Guide", hasYear: false },
+        ];
+  const gradeOptions: number[] =
+    gradeRows && gradeRows.length > 0
+      ? gradeRows.map((g) => g.grade)
+      : [9, 10, 11, 12];
+
+  // Whether a given content-type slug requires an exam year (dynamic — based
+  // on the hasYear flag set by admin in the Categories tab). Falls back to
+  // the built-in rule (only past_exam needs a year) when the dynamic query
+  // hasn't loaded yet.
+  const typeHasYear = (slug: string): boolean => {
+    if (!slug) return false;
+    const match = contentTypeOptions.find((t) => t.value === slug);
+    if (match) return !!match.hasYear;
+    return slug === "past_exam";
+  };
 
   const [files, setFiles] = useState<BulkFile[]>([]);
   const [batchPremium, setBatchPremium] = useState(false);
@@ -713,8 +746,12 @@ export function BulkUploadSection() {
         if (batchEditType) updates.contentType = batchEditType;
         if (batchEditYear) {
           updates.examYear = batchEditYear;
-          // If we set a year, ensure contentType defaults to past_exam if blank
-          if (!f.contentType && batchEditType === "") updates.contentType = "past_exam";
+          // If we set a year, ensure contentType defaults to a year-bearing
+          // type if blank (use first hasYear=true option in the catalog).
+          if (!f.contentType && batchEditType === "") {
+            const yearType = contentTypeOptions.find((t) => t.hasYear);
+            if (yearType) updates.contentType = yearType.value;
+          }
         }
         if (batchEditPremium !== null) updates.isPremium = batchEditPremium;
         return { ...f, ...updates };
@@ -738,27 +775,36 @@ export function BulkUploadSection() {
   // to proceed and let handleSaveAll apply the defaults at save time.
   const blindCanFillMissing = blindMode && blindSubject && blindGrade && blindType;
 
+  // Compute per-row validation. Returns the list of missing field names so
+  // we can show them in the UI (red border + tooltip) AND a boolean.
+  const getRowMissing = (f: BulkFile): string[] => {
+    const missing: string[] = [];
+    if (f.status === "duplicate" && autoSkipDuplicates) return missing;
+    if (!f.storageId) {
+      missing.push("upload");
+      return missing;
+    }
+    if (!f.title.trim() && !blindMode) missing.push("title");
+    if (!f.contentType && !(blindMode && blindType)) missing.push("type");
+    if (!f.grade && !(blindMode && blindGrade)) missing.push("grade");
+    if (!f.subjectId && !(blindMode && blindSubject)) missing.push("subject");
+    // Year — required for types with hasYear=true (e.g. past_exam), but
+    // blind year can fill it.
+    const needsYear = typeHasYear(f.contentType) || (blindMode && typeHasYear(blindType));
+    if (needsYear && !f.examYear && !(blindMode && blindYear)) missing.push("year");
+    return missing;
+  };
+
   const allValid =
     files.length > 0 &&
-    files.every((f) => {
-      if (f.status === "duplicate" && autoSkipDuplicates) return true;
-      if (!f.storageId) return false; // not uploaded yet
-      // Title — use filename as fallback if blind mode is on
-      if (!f.title.trim()) {
-        if (!blindMode) return false;
-      }
-      // Content type — use blind default if missing
-      if (!f.contentType && !(blindMode && blindType)) return false;
-      // Grade — use blind default if missing
-      if (!f.grade && !(blindMode && blindGrade)) return false;
-      // Subject — use blind default if missing
-      if (!f.subjectId && !(blindMode && blindSubject)) return false;
-      // Year — required for past_exam, but blind year can fill it
-      if (f.contentType === "past_exam" || (blindMode && blindType === "past_exam")) {
-        if (!f.examYear && !(blindMode && blindYear)) return false;
-      }
-      return true;
-    });
+    files.every((f) => getRowMissing(f).length === 0);
+
+  // Count of files that ARE ready to save (non-duplicate, non-pending)
+  const saveCandidateCount = files.filter(
+    (f) => !(f.status === "duplicate" && autoSkipDuplicates) && f.status !== "pending",
+  ).length;
+  // Count of files with validation problems
+  const invalidRowCount = files.filter((f) => getRowMissing(f).length > 0).length;
 
   // ── Retry all failed rows ───────────────────────────────────────────
   // Re-runs the entire upload+classify pipeline for every row currently in
@@ -980,8 +1026,8 @@ export function BulkUploadSection() {
       return;
     }
 
-    // If blind mode is on, apply the admin-provided defaults to every row
-    // missing those fields. This is the "blind upload" path — even totally
+    // STEP 1: If blind mode is on, apply the admin-provided defaults to every
+    // row missing those fields. This is the "blind upload" path — even totally
     // unclassified files get saved with the defaults.
     if (blindMode && blindCanFillMissing) {
       const blindDefaultsApplied: BulkFile[] = [];
@@ -1005,7 +1051,7 @@ export function BulkUploadSection() {
           updates.contentType = blindType;
           filledCount++;
         }
-        if (!f.examYear && blindYear && (f.contentType === "past_exam" || blindType === "past_exam")) {
+        if (!f.examYear && blindYear && (typeHasYear(f.contentType) || typeHasYear(blindType))) {
           updates.examYear = blindYear;
           filledCount++;
         }
@@ -1024,8 +1070,41 @@ export function BulkUploadSection() {
       }
     }
 
+    // STEP 2: Auto-fix any remaining missing years for past_exam rows by
+    // trying to detect the year from the filename one more time. If still
+    // missing, fall back to the current year so save doesn't fail.
+    // (These rows will be tagged blindUploaded so the admin can review later.)
+    const currentYear = new Date().getFullYear();
+    const yearFixedRows: BulkFile[] = [];
+    let yearFixedCount = 0;
+    for (const f of toSave) {
+      if (typeHasYear(f.contentType) && !f.examYear) {
+        // Try filename detection one more time
+        const detectedYear = detectYear(f.file.name);
+        if (detectedYear) {
+          yearFixedRows.push({ ...f, examYear: detectedYear, blindUploaded: true });
+          yearFixedCount++;
+        } else {
+          // Last-resort fallback: current year (admin can fix later)
+          yearFixedRows.push({ ...f, examYear: String(currentYear), blindUploaded: true });
+          yearFixedCount++;
+        }
+      } else {
+        yearFixedRows.push(f);
+      }
+    }
+    if (yearFixedCount > 0) {
+      toSave = yearFixedRows;
+      setFiles(yearFixedRows);
+      toast.info(`Auto-filled ${yearFixedCount} missing year${yearFixedCount === 1 ? "" : "s"} from filename (or current year as fallback). Tagged for review.`);
+    }
+
     if (!allValid) {
-      toast.error("Some files are missing required fields. Please review all rows or enable Blind Upload.");
+      const firstInvalid = files.find((f) => getRowMissing(f).length > 0);
+      const missing = firstInvalid ? getRowMissing(firstInvalid) : [];
+      toast.error(
+        `Cannot save: ${invalidRowCount} row${invalidRowCount === 1 ? "" : "s"} missing fields (${missing.join(", ")}). Fill them in or enable Blind Upload.`,
+      );
       return;
     }
     setSaving(true);
@@ -1044,6 +1123,7 @@ export function BulkUploadSection() {
           storageId: bulkFile.storageId!,
           filename: bulkFile.file.name,
           topicCandidates: bulkFile.topics.length > 0 ? bulkFile.topics : undefined,
+          needsReview: bulkFile.blindUploaded || undefined,
         });
         saved++;
       } catch (err) {
@@ -1243,19 +1323,34 @@ export function BulkUploadSection() {
                   Start Processing
                 </Button>
               )}
-              {!processing && !saving && allValid && (
+              {/* Save All button — ALWAYS visible when there are files to
+                  save and we're not processing/saving. Disabled (with a
+                  tooltip) when validation fails so the admin sees the button
+                  AND knows exactly what's missing. */}
+              {!processing && !saving && saveCandidateCount > 0 && (
                 <Button
                   onClick={handleSaveAll}
-                  className="gap-2 bg-emerald-500 text-white hover:bg-emerald-600"
+                  disabled={!allValid}
+                  className={cn(
+                    "gap-2",
+                    allValid
+                      ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                      : "bg-emerald-500/30 text-emerald-300/60 cursor-not-allowed",
+                  )}
                   size="sm"
+                  title={
+                    allValid
+                      ? `Save all ${saveCandidateCount} file${saveCandidateCount === 1 ? "" : "s"} to the library`
+                      : `${invalidRowCount} row${invalidRowCount === 1 ? "" : "s"} missing required fields — fill them in or enable Blind Upload`
+                  }
                 >
                   <Save className="size-3.5" />
-                  Save All ({files.filter((f) => !(f.status === "duplicate" && autoSkipDuplicates)).length})
+                  Save All ({saveCandidateCount})
                 </Button>
               )}
-              {!processing && !saving && !allValid && !blindMode && files.every((f) => f.status !== "pending") && (
+              {!processing && !saving && !allValid && saveCandidateCount > 0 && (
                 <span className="text-xs text-amber-300">
-                  Fill in missing fields OR enable Blind Upload
+                  {invalidRowCount} row{invalidRowCount === 1 ? "" : "s"} need{invalidRowCount === 1 ? "s" : ""} fields — fix above OR enable Blind Upload
                 </span>
               )}
             </div>
@@ -1304,7 +1399,7 @@ export function BulkUploadSection() {
                       <SelectValue placeholder="—" />
                     </SelectTrigger>
                     <SelectContent>
-                      {GRADES.map((g) => (
+                      {gradeOptions.map((g) => (
                         <SelectItem key={g} value={g.toString()}>{g}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1319,13 +1414,15 @@ export function BulkUploadSection() {
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CONTENT_TYPES.map((t) => (
+                      {contentTypeOptions.map((t) => (
                         <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                {blindType === "past_exam" && (
+                {/* Year only required when the selected type has a year —
+                    for dynamic types, we check the hasYear flag. */}
+                {contentTypeOptions.find((t) => t.value === blindType)?.hasYear && (
                   <div>
                     <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Year *
@@ -1463,6 +1560,17 @@ export function BulkUploadSection() {
                           {f.error && f.status === "failed" && (
                             <p className="mt-1 text-[10px] text-rose-300">{f.error}</p>
                           )}
+                          {/* Inline missing-fields warning — only show for
+                              ready rows that are missing required fields. Lets
+                              the admin see exactly which row is blocking Save
+                              All without scrolling. */}
+                          {f.status === "ready" && getRowMissing(f).length > 0 && (
+                            <div className="mt-1 rounded-md border border-rose-400/30 bg-rose-400/[0.06] px-2 py-1 text-[10px] text-rose-200">
+                              <AlertTriangle className="inline size-2.5 mr-1" />
+                              Missing: {getRowMissing(f).join(", ")}
+                              {blindMode && " — Blind Upload will fill these on Save"}
+                            </div>
+                          )}
                           {f.blindUploaded && (
                             <p className="mt-1 text-[10px] text-violet-300">
                               <Eye className="inline size-2.5 mr-0.5" />
@@ -1522,7 +1630,7 @@ export function BulkUploadSection() {
                           <SelectValue placeholder="—" />
                         </SelectTrigger>
                         <SelectContent>
-                          {GRADES.map((g) => (
+                          {gradeOptions.map((g) => (
                             <SelectItem key={g} value={g.toString()}>{g}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1541,14 +1649,14 @@ export function BulkUploadSection() {
                           <SelectValue placeholder="—" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CONTENT_TYPES.map((t) => (
+                          {contentTypeOptions.map((t) => (
                             <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </TableCell>
                     <TableCell>
-                      {f.contentType === "past_exam" ? (
+                      {typeHasYear(f.contentType) ? (
                         <Select
                           value={f.examYear}
                           onValueChange={(v) => updateFile(f.id, { examYear: v })}
@@ -1750,7 +1858,7 @@ export function BulkUploadSection() {
                       <SelectValue placeholder="Keep" />
                     </SelectTrigger>
                     <SelectContent>
-                      {GRADES.map((g) => (
+                      {gradeOptions.map((g) => (
                         <SelectItem key={g} value={g.toString()}>{g}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1768,7 +1876,7 @@ export function BulkUploadSection() {
                       <SelectValue placeholder="Keep as-is" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CONTENT_TYPES.map((t) => (
+                      {contentTypeOptions.map((t) => (
                         <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>

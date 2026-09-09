@@ -83,7 +83,7 @@ const SUBJECT_GLYPHS: Record<string, typeof Atom> = {
 };
 
 const TYPE_STYLES: Record<
-  ContentType,
+  string,
   { icon: typeof BookOpen; classes: string }
 > = {
   textbook: { icon: BookOpen, classes: "bg-indigo-400/10 text-indigo-300" },
