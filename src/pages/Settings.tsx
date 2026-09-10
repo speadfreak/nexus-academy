@@ -19,15 +19,18 @@ import {
   LogOut,
   MessageSquareText,
   Moon,
+  Music,
   RefreshCw,
   Send,
   Send as TelegramIcon,
+  ShieldCheck,
   Sun,
   Unlink,
   Copy,
   Share2,
   UserRound,
   LifeBuoy,
+  Youtube,
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
@@ -482,6 +485,9 @@ export default function Settings() {
 
         {/* ------- Contact the team ------- */}
         <ContactSection userEmail={profile?.email ?? user?.email ?? ""} displayName={profile?.displayName ?? user?.name ?? ""} />
+
+        {/* ------- Connect your music (Priority 4) ------- */}
+        <ConnectMusicSection />
 
         {/* ------- Link Telegram for weekly updates ------- */}
         <TelegramLinkSection />
@@ -1019,6 +1025,99 @@ function TelegramLinkSection() {
             </Button>
           </div>
         )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Connect your music (Priority 4) ────────────────────────────────────
+// Explains both Spotify + YouTube integration honestly, including their
+// real limitations (Spotify Premium requirement, YouTube requiring a
+// public/embeddable link). CRITICAL: we NEVER store or host user audio —
+// external music streams from the external service's own infrastructure.
+
+function ConnectMusicSection() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      className="glass-panel rounded-2xl p-6"
+    >
+      <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
+        // your music
+      </p>
+      <h2 className="type-h1 mt-1">Connect your music</h2>
+      <p className="type-body mt-2 text-muted-foreground">
+        Bring your own study playlists — without us ever storing your audio.
+        Both options stream from the external service's own infrastructure.
+        We only embed their player.
+      </p>
+
+      {/* YouTube — works for any account */}
+      <div className="mt-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+        <div className="flex items-center gap-2">
+          <Youtube className="size-5 text-rose-400" />
+          <p className="text-sm font-bold">YouTube</p>
+          <span className="ml-auto rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+            Free · No account needed
+          </span>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          Paste any public YouTube video or playlist URL into the music
+          player's YouTube tab (the <Youtube className="inline size-3" /> icon
+          in the player bar). The video plays through YouTube's own embedded
+          player — we never store, host, or proxy the audio. Works with any
+          YouTube account, no premium subscription required.
+        </p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+          Note: some videos block embedding — if a link doesn't play, try
+          a different one. Look for "study music", "lo-fi beats", or
+          "ambient soundscape" playlists on YouTube.
+        </p>
+      </div>
+
+      {/* Spotify — requires Premium + Developer setup */}
+      <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+        <div className="flex items-center gap-2">
+          <Music className="size-5 text-emerald-400" />
+          <p className="text-sm font-bold">Spotify</p>
+          <span className="ml-auto rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+            Requires setup
+          </span>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          Spotify integration uses the official Web Playback SDK. The student
+          connects their own Spotify account (OAuth) and their playlists play
+          through Learnyx's player UI — but the actual audio streams from
+          Spotify's own licensed infrastructure, on the student's own
+          authenticated session.
+        </p>
+        <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.04] px-3 py-2">
+          <p className="text-[11px] font-semibold text-amber-300">
+            Setup needed (admin):
+          </p>
+          <ol className="mt-1 list-inside list-decimal space-y-0.5 text-[11px] text-muted-foreground">
+            <li>Create a Spotify Developer app at developer.spotify.com</li>
+            <li>Add SPOTIFY_CLIENT_ID to the Admin → Keys tab</li>
+            <li>Add this site's URL to the app's redirect URIs</li>
+          </ol>
+          <p className="mt-1.5 text-[11px] text-amber-300/70">
+            Note: full playback control requires Spotify Premium on the
+            student's account — a real limitation of Spotify's SDK, not
+            something we can work around.
+          </p>
+        </div>
+      </div>
+
+      {/* Copyright notice */}
+      <div className="mt-3 flex items-start gap-2 rounded-xl border border-white/[0.04] bg-white/[0.01] px-3 py-2">
+        <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-400/60" />
+        <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+          We never upload, store, or host any user-provided audio files. All
+          external music plays through the original service's own licensed
+          infrastructure. Learnyx takes on zero hosting liability.
+        </p>
       </div>
     </motion.div>
   );

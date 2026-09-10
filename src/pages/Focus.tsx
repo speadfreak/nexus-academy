@@ -113,6 +113,10 @@ type TimerStatus = "idle" | "running" | "paused" | "done" | "celebrating";
 export default function Focus() {
   // i18n — focus namespace holds the timer labels + session text.
   const { t } = useTranslation(["focus", "common"]);
+  // Music player — used for focus-timer sync (auto-shift mood) + the
+  // existing play/pause integration.
+  const music = useMusic();
+  const { setFocusMode } = music;
   // ── Queries ──
   const subjects = useQuery(api.subjects.getAll);
   const history = useQuery(api.studySessions.getHistory);
@@ -120,7 +124,6 @@ export default function Focus() {
   const recentSessions = useQuery(api.studySessions.getRecentSessions, { limit: 50 });
   const logSession = useMutation(api.studySessions.logSession);
   const generateRecap = useAction(api.recap.generateRecap);
-  const music = useMusic();
 
   // ── Week activity (last 7 days) ──
   const weekDays = useMemo(() => {
@@ -159,6 +162,18 @@ export default function Focus() {
   const sessionIdRef = useRef<string>(Date.now().toString(36));
 
   const isLowTime = status === "running" && remaining <= 60 && remaining > 0;
+
+  // ── Focus-timer ↔ music sync ──────────────────────────────────────
+  // When the timer is running or paused, tell the music player we're in
+  // a "work" focus block — it auto-shifts to a concentrated ambient track.
+  // When idle or done, set to "idle" — no auto-shift.
+  useEffect(() => {
+    if (status === "running" || status === "paused") {
+      setFocusMode("work");
+    } else {
+      setFocusMode("idle");
+    }
+  }, [status, setFocusMode]);
 
   // ── Derived: today stats ──
   const todayKey = localDateKey();
