@@ -113,6 +113,12 @@ export const generateDeck = action({
     subjectId: v.id("subjects"),
     contentId: v.optional(v.id("contentItems")),
     conversationId: v.optional(v.id("conversations")),
+    difficulty: v.optional(v.union(
+      v.literal("basic"),
+      v.literal("exam_level"),
+      v.literal("hard"),
+      v.literal("eheee_focus"),
+    )),
   },
   handler: async (ctx, args): Promise<{ deckId: Id<"flashcardDecks">; cardCount: number }> => {
     const userId = await getAuthUserId(ctx);
@@ -192,6 +198,9 @@ export const generateDeck = action({
       title,
       cardCount: cards.length,
       createdAt: Date.now(),
+      difficulty: args.difficulty,
+      deckCategory: args.difficulty,
+      colorTag: args.difficulty === "basic" ? "green" : args.difficulty === "exam_level" ? "amber" : args.difficulty === "hard" ? "red" : "violet",
     });
 
     for (const card of cards) {
@@ -207,6 +216,121 @@ export const generateDeck = action({
 });
 
 // ---------------------------------------------------------------------------
+// Textbook → Flashcards — generate from extracted page text
+// Called from the Reader when a student clicks "✨ Make Flashcards".
+// The `pageText` is the actual text extracted from the PDF pages the
+// student is currently reading — NOT metadata. This produces cards
+// that are specific to the content they're studying right now.
+// ---------------------------------------------------------------------------
+
+export const generateFromContent = action({
+  args: {
+    contentId: v.id("contentItems"),
+    subjectId: v.id("subjects"),
+    pageText: v.string(), // extracted text from the PDF the student is reading
+    pageRange: v.optional(v.string()), // e.g. "pages 12-18" for context
+    difficulty: v.optional(v.union(
+      v.literal("basic"),
+      v.literal("exam_level"),
+      v.literal("hard"),
+      v.literal("eheee_focus"),
+    )),
+  },
+  handler: async (ctx, args): Promise<{ deckId: Id<"flashcardDecks">; cardCount: number }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const premium = await getPremiumAccess(ctx, userId);
+    if (!premium) {
+      throw new ConvexError({
+        message: "Flashcard generation requires a premium account. Start your free trial to try it.",
+        code: "premium_flashcards",
+      });
+    }
+
+    const subject = await ctx.runQuery(internal.flashcards.getSubjectById, {
+      subjectId: args.subjectId,
+    });
+    if (!subject) throw new ConvexError({ message: "Subject not found.", code: "invalid" });
+
+    const contentItem = await ctx.runQuery(internal.flashcards.getContentItemById, {
+      contentId: args.contentId,
+    });
+    if (!contentItem) throw new ConvexError({ message: "Content item not found.", code: "invalid" });
+
+    // Use the actual page text — this is what makes Textbook → Flashcards
+    // powerful: the AI creates cards from the REAL content, not just the
+    // title/metadata. Capped at 6000 chars to stay within AI token limits.
+    const sourceText = args.pageText.slice(0, 6000);
+    const title = `${contentItem.title} — Flashcards${args.pageRange ? ` (${args.pageRange})` : ""}`;
+
+    // Adjust the AI prompt based on difficulty
+    const difficultyInstruction = args.difficulty === "hard"
+      ? "Create challenging, exam-style questions that require deep understanding, not just recall."
+      : args.difficulty === "exam_level"
+        ? "Create exam-level questions matching EHEEE difficulty and style."
+        : args.difficulty === "eheee_focus"
+          ? "Create EHEEE-focused questions targeting the most commonly tested concepts in this material."
+          : "Create clear, basic questions suitable for initial learning.";
+
+    const count = 15;
+    const fullSourceText = `Content: ${contentItem.title}\nSubject: ${subject.name}\nGrade: ${contentItem.grade}\n\n--- EXTRACTED PAGE TEXT ---\n${sourceText}\n--- END ---\n\n${difficultyInstruction}`;
+
+    let cards: FlashcardPair[] = [];
+    let lastError = "Unknown error.";
+
+    for (let attempt = 0; attempt < 2 && cards.length === 0; attempt++) {
+      try {
+        const raw = await requestFlashcards(ctx, subject.name, subject.stream, fullSourceText, count);
+        cards = parseAndValidate(raw, count);
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "AI returned invalid JSON.";
+        if (attempt === 1) {
+          throw new ConvexError({
+            message: `Flashcard generation failed: ${lastError}`,
+            code: "ai_error",
+          });
+        }
+      }
+    }
+
+    if (cards.length === 0) {
+      throw new ConvexError({ message: "No flashcards were generated.", code: "ai_error" });
+    }
+
+    const deckId = await ctx.runMutation(internal.flashcards.insertDeck, {
+      userId,
+      subjectId: args.subjectId,
+      contentId: args.contentId,
+      sourceType: "content" as const,
+      title,
+      cardCount: cards.length,
+      createdAt: Date.now(),
+      difficulty: args.difficulty,
+      deckCategory: args.difficulty,
+      colorTag: args.difficulty === "basic" ? "green" : args.difficulty === "exam_level" ? "amber" : args.difficulty === "hard" ? "red" : "violet",
+    });
+
+    for (const card of cards) {
+      await ctx.runMutation(internal.flashcards.insertCard, {
+        deckId,
+        front: card.front,
+        back: card.back,
+      });
+    }
+
+    // Award XP for generating flashcards
+    await ctx.runMutation(internal.xp.awardXp, {
+      userId,
+      amount: 15,
+      reason: "flashcard_generate",
+    }).catch(() => {});
+
+    return { deckId, cardCount: cards.length };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
 
@@ -215,10 +339,18 @@ export const insertDeck = internalMutation({
     userId: v.id("users"),
     subjectId: v.optional(v.id("subjects")),
     contentId: v.optional(v.id("contentItems")),
-    sourceType: v.union(v.literal("content"), v.literal("conversation"), v.literal("topic"), v.literal("aptitude")),
+    sourceType: v.union(v.literal("content"), v.literal("conversation"), v.literal("topic"), v.literal("aptitude"), v.literal("eheee"), v.literal("weakness")),
     title: v.string(),
     cardCount: v.number(),
     createdAt: v.number(),
+    difficulty: v.optional(v.union(
+      v.literal("basic"),
+      v.literal("exam_level"),
+      v.literal("hard"),
+      v.literal("eheee_focus"),
+    )),
+    deckCategory: v.optional(v.string()),
+    colorTag: v.optional(v.string()),
   },
   handler: async (ctx, args) => await ctx.db.insert("flashcardDecks", args),
 });
@@ -259,7 +391,14 @@ export const submitCardReview = mutation({
     const now = Date.now();
     const currentWeight = card.nextReviewWeight ?? 1;
 
-    // ── FSRS (Free Spaced Repetition Scheduler) simplified ────────────
+    // ── Smart Spaced Repetition (inspired by FSRS principles) ──────────
+    // This is NOT the full FSRS algorithm — it's a lightweight scheduler
+    // that uses the same concepts (memory strength, stability, retrievability)
+    // with simplified fixed multipliers for each rating level. For a full
+    // FSRS implementation, we'd need the actual FSRS library computing
+    // stability/difficulty/retrievability from the full review history with
+    // the FSRS optimizer. This is the honest version — it works well, but
+    // it's "Smart Spaced Repetition" not "FSRS" per se.
     // Rating: easy(5) > good(4) > hard(3) > got_it(4) > review_again(2) > forgot(1)
     // For simplicity we map: easy→5, good→4, got_it→4, hard→3, review_again→2, forgot→1
     const ratingMap: Record<string, number> = {

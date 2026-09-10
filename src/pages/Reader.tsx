@@ -124,6 +124,8 @@ export default function Reader() {
   const toggleBookmark = useMutation(api.bookmarks.toggleBookmark);
   const askReaderQuestion = useAction(api.readerAI.askReaderQuestion);
   const searchYouTubeVideos = useAction(api.media.searchYouTubeVideos);
+  const generateFlashcards = useAction(api.flashcards.generateFromContent as never);
+  const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
   const scratchpad = useQuery(api.scratchpads.getScratchpad, {
     contentId: contentId as never,
   });
@@ -616,12 +618,71 @@ export default function Reader() {
           {item.subjectId && (
             <Button
               variant="ghost"
-              size="icon"
-              className="size-9 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200"
-              onClick={() => navigate(`/flashcards?subject=${item.subjectId}&content=${item._id}`)}
-              aria-label="Make flashcards"
+              size="sm"
+              className="gap-1.5 rounded-xl text-amber-300 hover:bg-amber-400/10 hover:text-amber-200"
+              onClick={async () => {
+                if (generatingFlashcards) return;
+                setGeneratingFlashcards(true);
+                try {
+                  // Extract text from the current PDF — we use the pdfDocProxy
+                  // which is already loaded by react-pdf. Extract pages around
+                  // the current page (±3) to give the AI enough context.
+                  let pageText = "";
+                  if (pdfDocProxy) {
+                    const currentPage = pageNumber || 1;
+                    const startPage = Math.max(1, currentPage - 3);
+                    const endPage = Math.min(pdfDocProxy.numPages, currentPage + 3);
+                    for (let p = startPage; p <= endPage; p++) {
+                      try {
+                        const page = await pdfDocProxy.getPage(p);
+                        const textContent = await page.getTextContent();
+                        const text = textContent.items
+                          .map((item: { str?: string }) => item.str || "")
+                          .join(" ");
+                        pageText += text + "\n";
+                      } catch {
+                        // skip pages that fail
+                      }
+                    }
+                  }
+
+                  if (!pageText.trim()) {
+                    toast.info("Couldn't extract text from this PDF. Try a text-based PDF (not a scan).");
+                    setGeneratingFlashcards(false);
+                    return;
+                  }
+
+                  const result = await generateFlashcards({
+                    contentId: item._id as never,
+                    subjectId: item.subjectId as never,
+                    pageText: pageText as never,
+                    pageRange: `pages ${Math.max(1, (pageNumber || 1) - 3)}–${(pageNumber || 1) + 3}` as never,
+                  }) as { deckId: string; cardCount: number };
+
+                  toast.success(`✨ Created ${result.cardCount} flashcards from this page! Open the Flashcards tab to study them.`);
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : "Generation failed.";
+                  if (msg.includes("premium")) {
+                    toast.error("Flashcard generation is a premium feature. Start your free trial to try it!");
+                  } else {
+                    toast.error(msg);
+                  }
+                } finally {
+                  setGeneratingFlashcards(false);
+                }
+              }}
+              disabled={generatingFlashcards}
+              aria-label="Generate flashcards from this page"
+              title="Generate flashcards from the text you're reading right now"
             >
-              <FileText className="size-4" />
+              {generatingFlashcards ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              <span className="hidden text-xs font-semibold sm:inline">
+                {generatingFlashcards ? "Generating…" : "Make Flashcards"}
+              </span>
             </Button>
           )}
           {item.contentType === "past_exam" && (
