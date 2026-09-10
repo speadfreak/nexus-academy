@@ -331,6 +331,175 @@ export const generateFromContent = action({
 });
 
 // ---------------------------------------------------------------------------
+// "Why?" AI Explanation Engine — gives the student a contextual
+// explanation of WHY the answer is correct, with three levels:
+//   1. Concise "why"
+//   2. Simple version (explain like they're learning it for the first time)
+//   3. Go Deeper (detailed syllabus-level explanation)
+// Plus an EHEEE exam tip + related concepts.
+//
+// Also: "Learn From Your Mistake" — when the student presses "I forgot",
+// generates a mini-learning-loop: simple explanation, why their answer
+// was wrong, correct concept, quick example, and a follow-up question.
+// ---------------------------------------------------------------------------
+
+export const explainCard = action({
+  args: {
+    cardId: v.id("flashcards"),
+    mode: v.union(
+      v.literal("why"),          // concise "why is this the answer"
+      v.literal("simple"),       // explain like I'm learning it for the first time
+      v.literal("deeper"),       // go deeper — detailed syllabus-level
+      v.literal("exam_tip"),     // EHEEE-specific exam tip
+      v.literal("related"),      // related concepts chain
+    ),
+  },
+  handler: async (ctx, args): Promise<{ explanation: string }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    // Get the card + its deck + subject for context
+    const card = await ctx.runQuery(internal.flashcards.getCardById, { cardId: args.cardId });
+    if (!card) throw new ConvexError({ message: "Card not found.", code: "not_found" });
+
+    const deck = await ctx.runQuery(internal.flashcards.getDeckById, { deckId: card.deckId });
+    const subject = deck?.subjectId
+      ? await ctx.runQuery(internal.flashcards.getSubjectById, { subjectId: deck.subjectId })
+      : null;
+
+    const subjectName = subject?.name ?? "General";
+    const subjectStream = subject?.stream ?? "common";
+
+    const modePrompts: Record<string, string> = {
+      why: "Give a concise, 2-3 sentence explanation of WHY the answer is correct. Be direct and clear.",
+      simple: "Explain this concept as if the student is learning it for the very first time. Use simple language, an analogy, and avoid jargon.",
+      deeper: "Give a detailed, syllabus-level explanation. Cover the underlying mechanism, the key relationships, and how it connects to broader topics. This should help a grade 9-12 Ethiopian student deeply understand.",
+      exam_tip: "Give a specific EHEEE exam tip for this concept. What should the student remember for the exam? What commonly connects to this? What traps do students fall into?",
+      related: "List 4-5 related concepts that connect to this one, in a chain format: Concept A → Concept B → Concept C. Explain briefly how each connects.",
+    };
+
+    const prompt = `You are an expert tutor for the Ethiopian national exam (EHEEE).
+Subject: ${subjectName} (${subjectStream} stream)
+
+Flashcard question: ${card.front}
+Flashcard answer: ${card.back}
+
+${modePrompts[args.mode] ?? modePrompts.why}
+
+Keep your response under 150 words. Write in clear, encouraging English.`;
+
+    try {
+      const raw = await callGroq(ctx, {
+        systemPrompt: "You are a precise, encouraging tutor. Explain concepts clearly and concisely for Ethiopian students preparing for the EHEEE. Never use emojis. Always be accurate.",
+        userMessage: prompt,
+        maxTokens: 256,
+        temperature: 0.3,
+      });
+      return { explanation: raw.trim() };
+    } catch (error) {
+      throw new ConvexError({
+        message: `Could not generate explanation: ${error instanceof Error ? error.message : "AI error"}`,
+        code: "ai_error",
+      });
+    }
+  },
+});
+
+// ── "Learn From Your Mistake" — the mini learning loop ─────────────────
+
+export const learnFromMistake = action({
+  args: {
+    cardId: v.id("flashcards"),
+    studentAnswer: v.optional(v.string()), // what the student typed (if type mode)
+  },
+  handler: async (ctx, args): Promise<{
+    simpleExplanation: string;
+    whyWrong: string;
+    correctConcept: string;
+    quickExample: string;
+    followUpQuestion: string;
+    followUpAnswer: string;
+  }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const card = await ctx.runQuery(internal.flashcards.getCardById, { cardId: args.cardId });
+    if (!card) throw new ConvexError({ message: "Card not found.", code: "not_found" });
+
+    const deck = await ctx.runQuery(internal.flashcards.getDeckById, { deckId: card.deckId });
+    const subject = deck?.subjectId
+      ? await ctx.runQuery(internal.flashcards.getSubjectById, { subjectId: deck.subjectId })
+      : null;
+
+    const subjectName = subject?.name ?? "General";
+    const studentPart = args.studentAnswer
+      ? `\nThe student's wrong answer was: "${args.studentAnswer}"\nExplain why this is wrong and what the misconception is.`
+      : `\nThe student forgot the answer. Help them understand and remember it.`;
+
+    const prompt = `You are an expert tutor for the Ethiopian national exam (EHEEE).
+Subject: ${subjectName}
+
+Flashcard question: ${card.front}
+Flashcard answer: ${card.back}
+${studentPart}
+
+Generate a mini-learning-loop to help the student fix this mistake. Return STRICT JSON with this exact shape:
+{
+  "simpleExplanation": "A simple, 1-2 sentence explanation of the concept.",
+  "whyWrong": "Why the student's answer/thinking was wrong, in 1-2 sentences.",
+  "correctConcept": "The correct concept stated clearly, 1-2 sentences.",
+  "quickExample": "A quick, concrete example that makes it memorable.",
+  "followUpQuestion": "A new follow-up question that tests the same concept differently.",
+  "followUpAnswer": "The answer to the follow-up question."
+}
+
+Keep each field concise (1-2 sentences max). Write in clear English.`;
+
+    try {
+      const raw = await callGroq(ctx, {
+        systemPrompt: "You are a precise tutor. You only output valid JSON. Never use emojis. Be accurate and encouraging.",
+        userMessage: prompt,
+        maxTokens: 512,
+        temperature: 0.3,
+      });
+
+      // Parse the JSON response
+      const trimmed = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+      const start = trimmed.indexOf("{");
+      const end = trimmed.lastIndexOf("}");
+      if (start === -1 || end === -1) throw new Error("AI returned invalid JSON");
+      const parsed = JSON.parse(trimmed.slice(start, end + 1)) as {
+        simpleExplanation: string;
+        whyWrong: string;
+        correctConcept: string;
+        quickExample: string;
+        followUpQuestion: string;
+        followUpAnswer: string;
+      };
+
+      return parsed;
+    } catch (error) {
+      throw new ConvexError({
+        message: `Could not generate mistake explanation: ${error instanceof Error ? error.message : "AI error"}`,
+        code: "ai_error",
+      });
+    }
+  },
+});
+
+// ── Internal queries for the explanation engine ─────────────────────────
+
+export const getCardById = internalQuery({
+  args: { cardId: v.id("flashcards") },
+  handler: async (ctx, { cardId }) => (await ctx.db.get(cardId)) ?? null,
+});
+
+export const getDeckById = internalQuery({
+  args: { deckId: v.id("flashcardDecks") },
+  handler: async (ctx, { deckId }) => (await ctx.db.get(deckId)) ?? null,
+});
+
+// ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
 

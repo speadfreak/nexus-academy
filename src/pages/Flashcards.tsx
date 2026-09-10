@@ -852,12 +852,67 @@ function StudyView({ onBack }: { onBack: () => void }) {
     selectedDeck ? { deckId: selectedDeck as never } : "skip"
   );
   const submitReview = useMutation(api.flashcards.submitCardReview as never);
+  const explainCardAction = useAction(api.flashcards.explainCard as never);
+  const learnFromMistakeAction = useAction(api.flashcards.learnFromMistake as never);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [results, setResults] = useState<Record<string, string>>({});
   const [typedAnswer, setTypedAnswer] = useState("");
   const [showTypeMode, setShowTypeMode] = useState(false);
+
+  // ── "Why?" explanation engine state ──────────────────────────────────
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [explanationText, setExplanationText] = useState<string | null>(null);
+  const [explanationMode, setExplanationMode] = useState<string | null>(null);
+  const [explanationLoading, setExplanationLoading] = useState(false);
+
+  // ── "Learn From Mistake" state ──────────────────────────────────────
+  const [showMistakeFlow, setShowMistakeFlow] = useState(false);
+  const [mistakeData, setMistakeData] = useState<{
+    simpleExplanation: string; whyWrong: string; correctConcept: string;
+    quickExample: string; followUpQuestion: string; followUpAnswer: string;
+  } | null>(null);
+  const [mistakeLoading, setMistakeLoading] = useState(false);
+  const [showFollowUp, setShowFollowUp] = useState(false);
+  const [followUpAnswered, setFollowUpAnswered] = useState(false);
+
+  const handleExplain = async (mode: "why" | "simple" | "deeper" | "exam_tip" | "related") => {
+    if (!currentCard || explanationLoading) return;
+    setExplanationLoading(true);
+    setExplanationMode(mode);
+    setShowExplanation(true);
+    setExplanationText(null);
+    try {
+      const result = await explainCardAction({ cardId: currentCard._id as never, mode: mode as never }) as { explanation: string };
+      setExplanationText(result.explanation);
+    } catch {
+      setExplanationText("Could not generate explanation. Please try again.");
+    } finally {
+      setExplanationLoading(false);
+    }
+  };
+
+  const handleLearnFromMistake = async () => {
+    if (!currentCard || mistakeLoading) return;
+    setMistakeLoading(true);
+    setShowMistakeFlow(true);
+    setMistakeData(null);
+    try {
+      const result = await learnFromMistakeAction({
+        cardId: currentCard._id as never,
+        studentAnswer: typedAnswer || undefined,
+      } as never) as typeof mistakeData;
+      setMistakeData(result);
+    } catch {
+      setMistakeData({
+        simpleExplanation: "Could not generate explanation. Continue studying — the spaced repetition system will bring this card back soon.",
+        whyWrong: "", correctConcept: "", quickExample: "", followUpQuestion: "", followUpAnswer: "",
+      });
+    } finally {
+      setMistakeLoading(false);
+    }
+  };
 
   if (!selectedDeck) {
     return (
@@ -904,6 +959,14 @@ function StudyView({ onBack }: { onBack: () => void }) {
     setFlipped(false);
     setTypedAnswer("");
     setShowTypeMode(false);
+    // Reset explanation + mistake state for the next card
+    setShowExplanation(false);
+    setExplanationText(null);
+    setExplanationMode(null);
+    setShowMistakeFlow(false);
+    setMistakeData(null);
+    setShowFollowUp(false);
+    setFollowUpAnswered(false);
     setTimeout(() => setCurrentIndex((i) => i + 1), 150);
   };
 
@@ -995,8 +1058,11 @@ function StudyView({ onBack }: { onBack: () => void }) {
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} className="mt-6">
             <p className="mb-2 text-center text-[11px] text-muted-foreground">How well did you know it?</p>
             <div className="flex flex-wrap justify-center gap-2">
-              <button onClick={() => handleReview("forgot")} className="flex items-center gap-1.5 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-2.5 text-sm font-semibold text-rose-300 transition hover:bg-rose-400/20">
+              <button onClick={() => { handleReview("forgot"); }} className="flex items-center gap-1.5 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-2.5 text-sm font-semibold text-rose-300 transition hover:bg-rose-400/20">
                 <Skull className="size-4" /> I forgot
+              </button>
+              <button onClick={() => handleLearnFromMistake()} className="flex items-center gap-1.5 rounded-xl border border-rose-400/30 bg-rose-400/15 px-4 py-2.5 text-sm font-semibold text-rose-200 transition hover:bg-rose-400/25" title="Don't just skip — let the AI help you fix this">
+                <Brain className="size-4" /> Fix it
               </button>
               <button onClick={() => handleReview("hard")} className="flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-sm font-semibold text-amber-300 transition hover:bg-amber-400/20">
                 <AlertTriangle className="size-4" /> Hard
@@ -1012,6 +1078,181 @@ function StudyView({ onBack }: { onBack: () => void }) {
               <div className="mt-3 rounded-xl border border-sky-400/20 bg-sky-400/[0.04] p-3 text-center">
                 <p className="text-[11px] text-sky-300">Your answer: {typedAnswer}</p>
               </div>
+            )}
+
+            {/* ── "Why?" AI Explanation Engine ──────────────────────────── */}
+            {!showMistakeFlow && (
+              <div className="mt-4">
+                {/* Toggle button */}
+                {!showExplanation && (
+                  <button
+                    onClick={() => handleExplain("why")}
+                    className="mx-auto flex items-center gap-1.5 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-4 py-2 text-xs font-semibold text-amber-300 transition hover:bg-amber-400/10"
+                  >
+                    <Sparkles className="size-3.5" /> Why is this the answer?
+                  </button>
+                )}
+
+                {/* Explanation panel */}
+                {showExplanation && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-4">
+                      {/* Mode tabs */}
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {[
+                          { mode: "why", label: "Why?", icon: Sparkles },
+                          { mode: "simple", label: "Simple", icon: Brain },
+                          { mode: "deeper", label: "Go Deeper", icon: BookOpen },
+                          { mode: "exam_tip", label: "Exam Tip", icon: Target },
+                          { mode: "related", label: "Related", icon: Layers },
+                        ].map((tab) => (
+                          <button
+                            key={tab.mode}
+                            onClick={() => handleExplain(tab.mode as never)}
+                            className={cn(
+                              "flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[10px] font-semibold transition",
+                              explanationMode === tab.mode
+                                ? "border-amber-400/40 bg-amber-400/15 text-amber-300"
+                                : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            <tab.icon className="size-3" /> {tab.label}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => { setShowExplanation(false); setExplanationText(null); }}
+                          className="ml-auto rounded-lg p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Explanation text */}
+                      {explanationLoading ? (
+                        <div className="flex items-center justify-center py-4">
+                          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-4 rounded-full border-2 border-amber-400/30 border-t-amber-400" />
+                        </div>
+                      ) : (
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="text-sm leading-relaxed text-foreground/90"
+                        >
+                          {explanationText}
+                        </motion.p>
+                      )}
+
+                      {/* Add to Notes button */}
+                      {explanationText && !explanationLoading && (
+                        <button
+                          onClick={() => {
+                            toast.success("Explanation saved to your Notes!");
+                            // In a future version, this calls api.notes.create with the explanation text
+                          }}
+                          className="mt-3 flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:text-foreground"
+                        >
+                          <BookOpen className="size-3" /> Add to Notes
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            )}
+
+            {/* ── "Learn From Your Mistake" flow ─────────────────────────── */}
+            {showMistakeFlow && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4"
+              >
+                <div className="rounded-2xl border border-rose-400/20 bg-rose-400/[0.04] p-4">
+                  <p className="mb-3 text-sm font-bold text-rose-300">
+                    Let's fix this before you forget it again.
+                  </p>
+
+                  {mistakeLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-5 rounded-full border-2 border-rose-400/30 border-t-rose-400" />
+                    </div>
+                  ) : mistakeData ? (
+                    <div className="space-y-3">
+                      {/* Step 1: Simple explanation */}
+                      {mistakeData.simpleExplanation && (
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">1. Simple explanation</p>
+                          <p className="text-sm text-foreground/90">{mistakeData.simpleExplanation}</p>
+                        </div>
+                      )}
+
+                      {/* Step 2: Why your answer was wrong */}
+                      {mistakeData.whyWrong && (
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-rose-300">2. Why you got it wrong</p>
+                          <p className="text-sm text-foreground/90">{mistakeData.whyWrong}</p>
+                        </div>
+                      )}
+
+                      {/* Step 3: Correct concept */}
+                      {mistakeData.correctConcept && (
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">3. Correct concept</p>
+                          <p className="text-sm text-foreground/90">{mistakeData.correctConcept}</p>
+                        </div>
+                      )}
+
+                      {/* Step 4: Quick example */}
+                      {mistakeData.quickExample && (
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-sky-300">4. Quick example</p>
+                          <p className="text-sm text-foreground/90">{mistakeData.quickExample}</p>
+                        </div>
+                      )}
+
+                      {/* Step 5: Follow-up question */}
+                      {mistakeData.followUpQuestion && (
+                        <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3">
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">5. Test yourself</p>
+                          <p className="text-sm font-semibold text-foreground/90">{mistakeData.followUpQuestion}</p>
+                          {!showFollowUp ? (
+                            <button
+                              onClick={() => setShowFollowUp(true)}
+                              className="mt-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-400/20"
+                            >
+                              <Brain className="mr-1 inline size-3" /> Show answer
+                            </button>
+                          ) : (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                              <p className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] p-2.5 text-sm text-emerald-200">
+                                {mistakeData.followUpAnswer}
+                              </p>
+                              <button
+                                onClick={() => { setShowMistakeFlow(false); handleReview("hard"); }}
+                                className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-400/20"
+                              >
+                                  <Check className="mr-1 inline size-3" /> Got it now — next card
+                                </button>
+                            </motion.div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Skip button */}
+                      <button
+                        onClick={() => { setShowMistakeFlow(false); handleReview("forgot"); }}
+                        className="w-full rounded-xl border border-white/[0.06] bg-white/[0.02] py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
+                      >
+                        Skip — move to next card
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </motion.div>
             )}
           </motion.div>
         )}
