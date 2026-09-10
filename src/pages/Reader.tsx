@@ -13,6 +13,7 @@ import { evaluate } from "mathjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Document, Page as PdfPage, pdfjs } from "react-pdf";
+import { extractPdfText } from "@/lib/pdf";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -624,10 +625,14 @@ export default function Reader() {
                 if (generatingFlashcards) return;
                 setGeneratingFlashcards(true);
                 try {
-                  // Extract text from the current PDF — we use the pdfDocProxy
-                  // which is already loaded by react-pdf. Extract pages around
-                  // the current page (±3) to give the AI enough context.
+                  // ── Text extraction strategy (3-tier fallback) ────────
+                  // 1. Try react-pdf's pdfDocProxy (already loaded PDF)
+                  // 2. Fallback: fetch the PDF URL + use extractPdfText
+                  //    (standalone pdfjs-dist, same as admin bulk upload)
+                  // 3. Last resort: toast error for truly image-only PDFs
                   let pageText = "";
+
+                  // Strategy 1: react-pdf proxy (fastest — PDF already loaded)
                   if (pdfDocProxy) {
                     const currentPage = pageNumber || 1;
                     const startPage = Math.max(1, currentPage - 3);
@@ -646,8 +651,27 @@ export default function Reader() {
                     }
                   }
 
-                  if (!pageText.trim()) {
-                    toast.info("Couldn't extract text from this PDF. Try a text-based PDF (not a scan).");
+                  // Strategy 2: fetch + standalone pdfjs extraction
+                  // Used when pdfDocProxy is null (iframe fallback mode,
+                  // or react-pdf hasn't loaded yet)
+                  if (!pageText.trim() && (pdfUrl || item.fileUrl)) {
+                    toast.info("Extracting text from PDF…");
+                    try {
+                      const response = await fetch(pdfUrl || item.fileUrl);
+                      if (response.ok) {
+                        const blob = await response.blob();
+                        const file = new File([blob], item.title || "document.pdf", { type: "application/pdf" });
+                        // Extract up to 8 pages (current ± 4) using the
+                        // standalone pdfjs-dist — same engine as admin upload
+                        pageText = await extractPdfText(file, 8, 6000);
+                      }
+                    } catch {
+                      // Network or extraction error — fall through to error toast
+                    }
+                  }
+
+                  if (!pageText.trim() || pageText.trim().length < 20) {
+                    toast.info("This PDF appears to be image-based (scanned). Text extraction needs a text-based PDF. We're working on OCR support for scanned documents.");
                     setGeneratingFlashcards(false);
                     return;
                   }
@@ -659,7 +683,7 @@ export default function Reader() {
                     pageRange: `pages ${Math.max(1, (pageNumber || 1) - 3)}–${(pageNumber || 1) + 3}` as never,
                   }) as { deckId: string; cardCount: number };
 
-                  toast.success(`✨ Created ${result.cardCount} flashcards from this page! Open the Flashcards tab to study them.`);
+                  toast.success(`Created ${result.cardCount} flashcards from this content! Open the Flashcards tab to study them.`);
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : "Generation failed.";
                   if (msg.includes("premium")) {

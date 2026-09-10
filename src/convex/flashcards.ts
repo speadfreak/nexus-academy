@@ -500,6 +500,171 @@ export const getDeckById = internalQuery({
 });
 
 // ---------------------------------------------------------------------------
+// AI Card Quality Control — detect duplicates, vague questions, and
+// poorly-written cards within a deck. Returns a quality report.
+// ---------------------------------------------------------------------------
+
+export const checkDeckQuality = action({
+  args: { deckId: v.id("flashcardDecks") },
+  handler: async (ctx, args): Promise<{
+    totalCards: number;
+    duplicates: Array<{ cardA: string; cardB: string; reason: string }>;
+    vague: Array<{ cardId: string; front: string; issue: string }>;
+    tooEasy: Array<{ cardId: string; front: string; issue: string }>;
+    qualityScore: number; // 0-100
+  }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const cards = await ctx.runQuery(internal.flashcards.getCardsByDeck, { deckId: args.deckId });
+    if (cards.length === 0) {
+      return { totalCards: 0, duplicates: [], vague: [], tooEasy: [], qualityScore: 100 };
+    }
+
+    // Simple duplicate detection: normalize fronts and compare
+    const normalize = (s: string) => s.toLowerCase().trim().replace(/\s+/g, " ").replace(/[^a-z0-9 ]/g, "");
+    const duplicates: Array<{ cardA: string; cardB: string; reason: string }> = [];
+    for (let i = 0; i < cards.length; i++) {
+      for (let j = i + 1; j < cards.length; j++) {
+        const normA = normalize(cards[i]!.front);
+        const normB = normalize(cards[j]!.front);
+        if (normA === normB) {
+          duplicates.push({ cardA: cards[i]!._id, cardB: cards[j]!._id, reason: "Identical questions" });
+        } else if (normA.length > 10 && normB.length > 10) {
+          // Check if 80%+ similar (simple word overlap)
+          const wordsA = new Set(normA.split(" "));
+          const wordsB = new Set(normB.split(" "));
+          const intersection = [...wordsA].filter((w) => wordsB.has(w)).length;
+          const union = new Set([...wordsA, ...wordsB]).size;
+          if (union > 0 && intersection / union >= 0.8) {
+            duplicates.push({ cardA: cards[i]!._id, cardB: cards[j]!._id, reason: "Very similar questions (80%+ word overlap)" });
+          }
+        }
+      }
+    }
+
+    // Vague question detection: questions that are too short, too generic,
+    // or use vague phrasing
+    const vaguePatterns = [
+      /^(what|who|why|how|when|where)\s*\??$/i, // just a question word
+      /^(tell me about|describe|explain)\s*$/i, // no specific topic
+      /^.{0,10}$/i, // too short (<10 chars)
+    ];
+    const vague: Array<{ cardId: string; front: string; issue: string }> = [];
+    for (const card of cards) {
+      if (vaguePatterns.some((p) => p.test(card.front.trim()))) {
+        vague.push({ cardId: card._id, front: card.front, issue: "Question is too vague or too short" });
+      }
+      if (card.back.trim().length < 5) {
+        vague.push({ cardId: card._id, front: card.front, issue: "Answer is too short" });
+      }
+    }
+
+    // Too-easy detection: answers that are just "yes", "no", "true", "false"
+    const easyAnswers = ["yes", "no", "true", "false", "maybe", "ok"];
+    const tooEasy: Array<{ cardId: string; front: string; issue: string }> = [];
+    for (const card of cards) {
+      if (easyAnswers.includes(card.back.trim().toLowerCase())) {
+        tooEasy.push({ cardId: card._id, front: card.front, issue: "Answer is too simple (just yes/no/true/false)" });
+      }
+    }
+
+    // Quality score: start at 100, subtract for each issue
+    const totalIssues = duplicates.length + vague.length + tooEasy.length;
+    const qualityScore = Math.max(0, 100 - (totalIssues / cards.length) * 100);
+
+    return {
+      totalCards: cards.length,
+      duplicates: duplicates.slice(0, 10),
+      vague: vague.slice(0, 10),
+      tooEasy: tooEasy.slice(0, 10),
+      qualityScore: Math.round(qualityScore),
+    };
+  },
+});
+
+export const getCardsByDeck = internalQuery({
+  args: { deckId: v.id("flashcardDecks") },
+  handler: async (ctx, { deckId }) =>
+    await ctx.db.query("flashcards").withIndex("by_deck", (q) => q.eq("deckId", deckId)).collect(),
+});
+
+// ---------------------------------------------------------------------------
+// Speak Your Answer — AI evaluates the student's spoken explanation.
+// The student records their answer verbally (browser-side), the
+// transcript is sent here for AI evaluation against the correct answer.
+// ---------------------------------------------------------------------------
+
+export const evaluateSpokenAnswer = action({
+  args: {
+    cardId: v.id("flashcards"),
+    transcript: v.string(), // the student's spoken answer transcribed to text
+  },
+  handler: async (ctx, args): Promise<{
+    accuracy: number; // 0-100
+    verdict: "correct" | "partially_correct" | "incorrect";
+    feedback: string;
+    missingConcepts: string[];
+  }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const card = await ctx.runQuery(internal.flashcards.getCardById, { cardId: args.cardId });
+    if (!card) throw new ConvexError({ message: "Card not found.", code: "not_found" });
+
+    const deck = await ctx.runQuery(internal.flashcards.getDeckById, { deckId: card.deckId });
+    const subject = deck?.subjectId
+      ? await ctx.runQuery(internal.flashcards.getSubjectById, { subjectId: deck.subjectId })
+      : null;
+
+    const prompt = `You are an expert tutor evaluating a student's spoken answer for the Ethiopian national exam (EHEEE).
+Subject: ${subject?.name ?? "General"}
+
+Question: ${card.front}
+Correct answer: ${card.back}
+
+Student's spoken answer (transcribed): "${args.transcript}"
+
+Evaluate the student's answer. Return STRICT JSON:
+{
+  "accuracy": 0-100,
+  "verdict": "correct" | "partially_correct" | "incorrect",
+  "feedback": "1-2 sentences of encouraging feedback",
+  "missingConcepts": ["concept they missed", "another concept"]
+}
+
+Be fair — if they got the main idea but missed a detail, give partial credit.
+Be encouraging — even if wrong, start with something positive.`;
+
+    try {
+      const raw = await callGroq(ctx, {
+        systemPrompt: "You are a fair, encouraging tutor. You only output valid JSON. Never use emojis. Be accurate.",
+        userMessage: prompt,
+        maxTokens: 256,
+        temperature: 0.3,
+      });
+
+      const trimmed = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+      const start = trimmed.indexOf("{");
+      const end = trimmed.lastIndexOf("}");
+      if (start === -1 || end === -1) throw new Error("Invalid JSON");
+      const parsed = JSON.parse(trimmed.slice(start, end + 1)) as {
+        accuracy: number;
+        verdict: "correct" | "partially_correct" | "incorrect";
+        feedback: string;
+        missingConcepts: string[];
+      };
+      return parsed;
+    } catch (error) {
+      throw new ConvexError({
+        message: `Could not evaluate answer: ${error instanceof Error ? error.message : "AI error"}`,
+        code: "ai_error",
+      });
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
 

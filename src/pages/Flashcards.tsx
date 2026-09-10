@@ -30,6 +30,7 @@ import {
   Mic,
   Plus,
   RotateCcw,
+  Shield,
   Sparkles,
   Target,
   TrendingUp,
@@ -41,8 +42,9 @@ import {
   Send,
   BookOpen,
   Swords,
+  Award,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
@@ -78,7 +80,7 @@ const DIFFICULTIES = [
 
 // ── Main component ────────────────────────────────────────────────────
 
-type View = "decks" | "study" | "memory-lab" | "weakness" | "exam-attack" | "cram" | "daily-mission";
+type View = "decks" | "study" | "memory-lab" | "weakness" | "exam-attack" | "cram" | "daily-mission" | "quality" | "achievements" | "battles";
 
 export default function Flashcards() {
   const { t } = useTranslation(["flashcards", "common"]);
@@ -117,6 +119,9 @@ export default function Flashcards() {
             <QuickTab active={view === "exam-attack"} onClick={() => setView("exam-attack")} icon={Swords} label="Exam Attack" color="amber" />
             <QuickTab active={view === "daily-mission"} onClick={() => setView("daily-mission")} icon={Flame} label="Daily Mission" color="emerald" />
             <QuickTab active={view === "cram"} onClick={() => setView("cram")} icon={Zap} label="Cram Mode" color="rose" />
+            <QuickTab active={view === "quality"} onClick={() => setView("quality")} icon={Shield} label="Quality Check" color="sky" />
+            <QuickTab active={view === "achievements"} onClick={() => setView("achievements")} icon={Award} label="Achievements" color="amber" />
+            <QuickTab active={view === "battles"} onClick={() => setView("battles")} icon={Swords} label="Battles" color="violet" />
           </div>
         </motion.div>
 
@@ -135,6 +140,9 @@ export default function Flashcards() {
             {view === "exam-attack" && <ExamAttackView />}
             {view === "daily-mission" && <DailyMissionView />}
             {view === "cram" && <CramModeView />}
+            {view === "quality" && <QualityCheckView />}
+            {view === "achievements" && <AchievementsView />}
+            {view === "battles" && <BattlesView />}
             {view === "study" && <StudyView onBack={() => setView("decks")} />}
           </motion.div>
         </AnimatePresence>
@@ -152,13 +160,14 @@ function QuickTab({
   onClick: () => void;
   icon: typeof Brain;
   label: string;
-  color: "amber" | "violet" | "rose" | "emerald";
+  color: "amber" | "violet" | "rose" | "emerald" | "sky";
 }) {
   const colorMap = {
     amber: "border-amber-400/40 bg-amber-400/10 text-amber-300",
     violet: "border-violet-400/40 bg-violet-400/10 text-violet-300",
     rose: "border-rose-400/40 bg-rose-400/10 text-rose-300",
     emerald: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
+    sky: "border-sky-400/40 bg-sky-400/10 text-sky-300",
   };
   return (
     <button
@@ -860,6 +869,13 @@ function StudyView({ onBack }: { onBack: () => void }) {
   const [results, setResults] = useState<Record<string, string>>({});
   const [typedAnswer, setTypedAnswer] = useState("");
   const [showTypeMode, setShowTypeMode] = useState(false);
+  const [showSpeakMode, setShowSpeakMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [speakTranscript, setSpeakTranscript] = useState("");
+  const [speakResult, setSpeakResult] = useState<{ accuracy: number; verdict: string; feedback: string; missingConcepts: string[] } | null>(null);
+  const [speakLoading, setSpeakLoading] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const evaluateSpoken = useAction(api.flashcards.evaluateSpokenAnswer as never);
 
   // ── "Why?" explanation engine state ──────────────────────────────────
   const [showExplanation, setShowExplanation] = useState(false);
@@ -911,6 +927,26 @@ function StudyView({ onBack }: { onBack: () => void }) {
       });
     } finally {
       setMistakeLoading(false);
+    }
+  };
+
+  const handleEvaluateSpeech = async (transcript: string) => {
+    if (!currentCard || speakLoading) return;
+    setSpeakLoading(true);
+    setSpeakResult(null);
+    try {
+      const result = await evaluateSpoken({
+        cardId: currentCard._id as never,
+        transcript: transcript as never,
+      }) as { accuracy: number; verdict: string; feedback: string; missingConcepts: string[] };
+      setSpeakResult(result);
+    } catch {
+      setSpeakResult({
+        accuracy: 0, verdict: "incorrect", feedback: "Could not evaluate your answer. Try again.",
+        missingConcepts: [],
+      });
+    } finally {
+      setSpeakLoading(false);
     }
   };
 
@@ -1033,11 +1069,14 @@ function StudyView({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      {/* Type Answer toggle */}
+      {/* Type Answer + Speak Answer toggles */}
       {!flipped && (
-        <div className="mt-4 flex justify-center">
+        <div className="mt-4 flex justify-center gap-2">
           <button onClick={() => setShowTypeMode(!showTypeMode)} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition", showTypeMode ? "border-sky-400/30 bg-sky-400/10 text-sky-300" : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground")}>
             <TypeIcon className="size-3.5" /> Type answer
+          </button>
+          <button onClick={() => setShowSpeakMode(!showSpeakMode)} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition", showSpeakMode ? "border-violet-400/30 bg-violet-400/10 text-violet-300" : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground")}>
+            <Mic className="size-3.5" /> Speak answer
           </button>
         </div>
       )}
@@ -1049,6 +1088,91 @@ function StudyView({ onBack }: { onBack: () => void }) {
           <Button size="sm" onClick={() => { if (typedAnswer.trim()) setFlipped(true); }}>
             <Send className="size-4" />
           </Button>
+        </motion.div>
+      )}
+
+      {/* Speak Answer mode — uses Web Speech API */}
+      {showSpeakMode && !flipped && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-3">
+          {!isRecording && !speakResult && (
+            <div className="flex flex-col items-center gap-3">
+              <button
+                onClick={() => {
+                  // Start recording using Web Speech API
+                  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                  if (!SpeechRecognition) {
+                    toast.error("Voice input not supported in this browser. Try Chrome or Edge.");
+                    return;
+                  }
+                  const recognition = new SpeechRecognition();
+                  recognition.continuous = false;
+                  recognition.interimResults = true;
+                  recognition.lang = "en-US";
+                  recognition.onresult = (event: any) => {
+                    const transcript = Array.from(event.results).map((r: any) => r[0].transcript).join("");
+                    setSpeakTranscript(transcript);
+                  };
+                  recognition.onend = () => {
+                    setIsRecording(false);
+                    if (speakTranscript.trim()) {
+                      // Auto-evaluate after recording ends
+                      void handleEvaluateSpeech(speakTranscript);
+                    }
+                  };
+                  recognition.onerror = () => setIsRecording(false);
+                  recognitionRef.current = recognition;
+                  recognition.start();
+                  setIsRecording(true);
+                  setSpeakTranscript("");
+                  setSpeakResult(null);
+                }}
+                className="flex items-center gap-2 rounded-xl border border-violet-400/30 bg-violet-400/10 px-6 py-3 text-sm font-semibold text-violet-300 transition hover:bg-violet-400/20"
+              >
+                <Mic className="size-5" /> Tap and explain your answer
+              </button>
+              <p className="text-[11px] text-muted-foreground">Speak naturally — the AI evaluates your understanding, not exact wording.</p>
+            </div>
+          )}
+          {isRecording && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-2 rounded-xl border border-rose-400/30 bg-rose-400/10 px-6 py-3">
+                <span className="flex size-3">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex size-3 rounded-full bg-rose-500" />
+                </span>
+                <span className="text-sm font-semibold text-rose-300">Listening…</span>
+                <button onClick={() => recognitionRef.current?.stop()} className="ml-2 rounded-lg border border-rose-400/30 px-2 py-1 text-xs text-rose-300 hover:bg-rose-400/20">Stop</button>
+              </div>
+              {speakTranscript && <p className="text-xs text-muted-foreground italic">"{speakTranscript}"</p>}
+            </div>
+          )}
+          {speakLoading && (
+            <div className="flex items-center justify-center py-4">
+              <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-5 rounded-full border-2 border-violet-400/30 border-t-violet-400" />
+            </div>
+          )}
+          {speakResult && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-violet-400/20 bg-violet-400/[0.04] p-4">
+              <div className="flex items-center justify-between">
+                <p className={cn("text-lg font-bold", speakResult.verdict === "correct" ? "text-emerald-400" : speakResult.verdict === "partially_correct" ? "text-amber-400" : "text-rose-400")}>
+                  {speakResult.verdict === "correct" ? "✓ Correct!" : speakResult.verdict === "partially_correct" ? "◐ Partially correct" : "✗ Incorrect"}
+                </p>
+                <p className="text-2xl font-extrabold text-violet-300">{speakResult.accuracy}%</p>
+              </div>
+              <p className="mt-2 text-sm text-foreground/90">{speakResult.feedback}</p>
+              {speakResult.missingConcepts.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-300">Missing concepts:</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {speakResult.missingConcepts.map((c, i) => (
+                      <span key={i} className="rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-2 py-0.5 text-[11px] text-amber-200">{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="mt-1 text-[11px] text-muted-foreground">Your answer: "{speakTranscript}"</p>
+            </motion.div>
+          )}
         </motion.div>
       )}
 
@@ -1272,6 +1396,201 @@ function EmptyState({ icon: Icon, title, message }: { icon: typeof Brain; title:
       </div>
       <h3 className="type-h3 relative mt-5">{title}</h3>
       <p className="type-body relative mt-2 max-w-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
+// ── Quality Check View ─────────────────────────────────────────────────
+
+function QualityCheckView() {
+  const decks = useQuery(api.flashcards.getMyDecks);
+  const checkQuality = useAction(api.flashcards.checkDeckQuality as never);
+  const [selectedDeck, setSelectedDeck] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [report, setReport] = useState<{
+    totalCards: number;
+    duplicates: Array<{ cardA: string; cardB: string; reason: string }>;
+    vague: Array<{ cardId: string; front: string; issue: string }>;
+    tooEasy: Array<{ cardId: string; front: string; issue: string }>;
+    qualityScore: number;
+  } | null>(null);
+
+  const handleCheck = async (deckId: string) => {
+    setSelectedDeck(deckId);
+    setChecking(true);
+    setReport(null);
+    try {
+      const result = await checkQuality({ deckId: deckId as never }) as typeof report;
+      setReport(result);
+    } catch {
+      toast.error("Could not check deck quality.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="glass-panel rounded-2xl p-6">
+      <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300">// quality check</p>
+      <h2 className="type-h1 mt-1">AI Card Quality Control</h2>
+      <p className="type-body mt-1 text-muted-foreground">Detect duplicates, vague questions, and poorly-written cards.</p>
+
+      {!selectedDeck && (
+        <div className="mt-5 space-y-2">
+          {decks?.map((deck) => (
+            <button key={deck._id} onClick={() => handleCheck(deck._id)} className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition hover:border-sky-400/30 hover:bg-white/[0.04]">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300"><Shield className="size-4" /></div>
+              <div className="flex-1"><p className="text-sm font-semibold">{deck.title}</p><p className="text-[11px] text-muted-foreground">{deck.cardCount} cards</p></div>
+              <ChevronRight className="size-4 text-muted-foreground group-hover:text-sky-300" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {checking && <div className="flex h-40 items-center justify-center"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-5 rounded-full border-2 border-sky-400/30 border-t-sky-400" /></div>}
+
+      {report && !checking && (
+        <div className="mt-5 space-y-4">
+          {/* Quality score */}
+          <div className="flex items-center gap-4">
+            <div className={cn("flex size-16 items-center justify-center rounded-2xl text-2xl font-extrabold", report.qualityScore >= 80 ? "bg-emerald-400/10 text-emerald-400" : report.qualityScore >= 50 ? "bg-amber-400/10 text-amber-400" : "bg-rose-400/10 text-rose-400")}>
+              {report.qualityScore}%
+            </div>
+            <div>
+              <p className="text-sm font-bold">Deck Quality Score</p>
+              <p className="text-xs text-muted-foreground">{report.totalCards} cards analyzed</p>
+            </div>
+          </div>
+
+          {/* Issues */}
+          {report.duplicates.length > 0 && (
+            <div className="rounded-xl border border-rose-400/20 bg-rose-400/[0.04] p-3">
+              <p className="text-xs font-bold text-rose-300">Duplicates: {report.duplicates.length}</p>
+              {report.duplicates.slice(0, 3).map((d, i) => (
+                <p key={i} className="mt-1 text-[11px] text-muted-foreground">{d.reason}</p>
+              ))}
+            </div>
+          )}
+          {report.vague.length > 0 && (
+            <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3">
+              <p className="text-xs font-bold text-amber-300">Vague questions: {report.vague.length}</p>
+              {report.vague.slice(0, 3).map((v, i) => (
+                <p key={i} className="mt-1 text-[11px] text-muted-foreground">"{v.front}" — {v.issue}</p>
+              ))}
+            </div>
+          )}
+          {report.tooEasy.length > 0 && (
+            <div className="rounded-xl border border-sky-400/20 bg-sky-400/[0.04] p-3">
+              <p className="text-xs font-bold text-sky-300">Too easy: {report.tooEasy.length}</p>
+              {report.tooEasy.slice(0, 3).map((t, i) => (
+                <p key={i} className="mt-1 text-[11px] text-muted-foreground">"{t.front}" — {t.issue}</p>
+              ))}
+            </div>
+          )}
+          {report.duplicates.length === 0 && report.vague.length === 0 && report.tooEasy.length === 0 && (
+            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.04] p-3 text-center">
+              <Check className="mx-auto size-5 text-emerald-400" />
+              <p className="mt-1 text-sm font-semibold text-emerald-300">All cards pass quality checks. Excellent deck!</p>
+            </div>
+          )}
+
+          <Button variant="outline" className="rounded-xl bg-white/5" onClick={() => { setSelectedDeck(null); setReport(null); }}>Check another deck</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Achievements View ──────────────────────────────────────────────────
+
+const FLASHCARD_ACHIEVEMENTS = [
+  { id: "first_100", icon: Flame, label: "First 100 Cards", desc: "Study 100 flashcards", color: "text-amber-400", bg: "bg-amber-400/10", threshold: 100 },
+  { id: "memory_machine", icon: Brain, label: "Memory Machine", desc: "Master 1,000 cards", color: "text-violet-400", bg: "bg-violet-400/10", threshold: 1000 },
+  { id: "streak_7", icon: Zap, label: "7-Day Recall Streak", desc: "Study 7 days in a row", color: "text-emerald-400", bg: "bg-emerald-400/10", threshold: 7 },
+  { id: "perfect_deck", icon: Shield, label: "Perfect Deck", desc: "100% mastery on a deck", color: "text-sky-400", bg: "bg-sky-400/10", threshold: 1 },
+  { id: "subject_master", icon: Crown, label: "Subject Master", desc: "500 mastered cards in one subject", color: "text-amber-400", bg: "bg-amber-400/10", threshold: 500 },
+  { id: "cram_champion", icon: Trophy, label: "Cram Champion", desc: "Complete a cram session", color: "text-rose-400", bg: "bg-rose-400/10", threshold: 1 },
+];
+
+function AchievementsView() {
+  const stats = useQuery(api.flashcards.getMemoryStats);
+
+  if (!stats) return <div className="flex h-40 items-center justify-center"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-5 rounded-full border-2 border-primary/30 border-t-primary" /></div>;
+  if (stats.totalCards === 0) return <EmptyState icon={Award} title="Achievements" message="Generate a deck and start studying to unlock achievements." />;
+
+  const totalStudied = stats.studied;
+
+  return (
+    <div className="glass-panel rounded-2xl p-6">
+      <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-amber-300">// achievements</p>
+      <h2 className="type-h1 mt-1">Deck Achievements</h2>
+      <p className="type-body mt-1 text-muted-foreground">Earned through real study — cards studied, mastery, and consistency.</p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {FLASHCARD_ACHIEVEMENTS.map((ach) => {
+          const earned =
+            ach.id === "first_100" ? totalStudied >= 100 :
+            ach.id === "memory_machine" ? stats.mastered >= 1000 :
+            ach.id === "streak_7" ? stats.consistency >= 100 :
+            ach.id === "perfect_deck" ? stats.mastered > 0 && stats.mastered === stats.totalCards :
+            ach.id === "subject_master" ? stats.mastered >= 500 :
+            ach.id === "cram_champion" ? false : false;
+          const progress = ach.id === "first_100" ? Math.min(totalStudied / 100, 1) :
+            ach.id === "memory_machine" ? Math.min(stats.mastered / 1000, 1) :
+            ach.id === "streak_7" ? Math.min(stats.consistency / 100, 1) :
+            earned ? 1 : 0;
+
+          return (
+            <motion.div
+              key={ach.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={cn("rounded-xl border p-4 transition", earned ? cn("border-white/[0.06] bg-white/[0.02]", ach.bg, "opacity-100") : "border-white/[0.04] bg-white/[0.01] opacity-60")}
+            >
+              <div className="flex items-center gap-2">
+                <div className={cn("flex size-10 items-center justify-center rounded-xl", earned ? cn(ach.bg, ach.color) : "bg-white/5 text-muted-foreground")}>
+                  <ach.icon className="size-5" />
+                </div>
+                <div className="flex-1">
+                  <p className={cn("text-sm font-bold", earned ? ach.color : "text-muted-foreground")}>{ach.label}</p>
+                  <p className="text-[10px] text-muted-foreground">{ach.desc}</p>
+                </div>
+                {earned && <Check className="size-4 text-emerald-400" />}
+              </div>
+              {!earned && progress > 0 && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
+                  <div className={cn("h-full rounded-full", ach.color.replace("text-", "bg-"))} style={{ width: `${progress * 100}%` }} />
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Battles View (basic competitive mode UI) ───────────────────────────
+
+function BattlesView() {
+  return (
+    <div className="glass-panel rounded-2xl p-6">
+      <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-violet-300">// flashcard battles</p>
+      <h2 className="type-h1 mt-1">⚔️ Flashcard Duels</h2>
+      <p className="type-body mt-1 text-muted-foreground">Challenge a classmate — same questions, head-to-head. Winner gets +100 XP.</p>
+
+      <div className="mt-6 rounded-2xl border border-violet-400/20 bg-violet-400/[0.04] p-6 text-center">
+        <Swords className="mx-auto size-10 text-violet-400" />
+        <h3 className="type-h3 mt-3">Coming Soon</h3>
+        <p className="type-body mt-1 max-w-sm text-muted-foreground">
+          Flashcard Battles require real-time multiplayer infrastructure. We're working on it — for now, challenge yourself with Exam Attack Mode and Cram Mode!
+        </p>
+        <div className="mt-4 flex justify-center gap-2">
+          <span className="rounded-lg border border-amber-400/20 bg-amber-400/[0.04] px-3 py-1.5 text-xs font-semibold text-amber-300">Same questions</span>
+          <span className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-1.5 text-xs font-semibold text-emerald-300">Real-time scoring</span>
+          <span className="rounded-lg border border-violet-400/20 bg-violet-400/[0.04] px-3 py-1.5 text-xs font-semibold text-violet-300">+100 XP winner</span>
+        </div>
+      </div>
     </div>
   );
 }
