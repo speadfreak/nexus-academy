@@ -724,10 +724,23 @@ const schema = defineSchema(
       userId: v.id("users"),
       subjectId: v.optional(v.id("subjects")),
       contentId: v.optional(v.id("contentItems")),
-      sourceType: v.union(v.literal("content"), v.literal("conversation"), v.literal("topic"), v.literal("aptitude")),
+      sourceType: v.union(v.literal("content"), v.literal("conversation"), v.literal("topic"), v.literal("aptitude"), v.literal("eheee"), v.literal("weakness")),
       title: v.string(),
       cardCount: v.number(),
       createdAt: v.number(),
+      // ── NEXT LEVEL FLASHCARD FEATURES ────────────────────────────────
+      // Difficulty/category: "basic" | "exam_level" | "hard" | "eheee_focus"
+      difficulty: v.optional(v.union(
+        v.literal("basic"),
+        v.literal("exam_level"),
+        v.literal("hard"),
+        v.literal("eheee_focus"),
+      )),
+      // Deck category for the browser: same as difficulty for user-created,
+      // plus "eheee" and "weakness" for auto-generated decks.
+      deckCategory: v.optional(v.string()),
+      // Color tag for the UI (green/amber/red/purple)
+      colorTag: v.optional(v.string()),
     }).index("by_user", ["userId"]),
 
     flashcards: defineTable({
@@ -735,8 +748,31 @@ const schema = defineSchema(
       front: v.string(),
       back: v.string(),
       timesReviewed: v.number(),
-      lastResult: v.optional(v.union(v.literal("got_it"), v.literal("review_again"))),
+      lastResult: v.optional(v.union(v.literal("got_it"), v.literal("review_again"), v.literal("easy"), v.literal("good"), v.literal("hard"), v.literal("forgot"))),
       nextReviewWeight: v.number(),
+      // ── FSRS (Free Spaced Repetition Scheduler) fields ────────────────
+      // Memory strength (0-1) — how well the student knows this card
+      memoryStrength: v.optional(v.number()),
+      // Stability — how long the memory is expected to last (days)
+      stability: v.optional(v.number()),
+      // Retrievability — probability of recalling right now (0-1)
+      retrievability: v.optional(v.number()),
+      // Last review timestamp (epoch ms)
+      lastReviewedAt: v.optional(v.number()),
+      // Next review timestamp (epoch ms) — when to show this card again
+      nextReviewAt: v.optional(v.number()),
+      // Review history — array of { time, rating, elapsedDays }
+      reviewHistory: v.optional(v.array(v.object({
+        time: v.number(),
+        rating: v.string(),
+        elapsedDays: v.number(),
+      }))),
+      // Card type: "flip" (default), "type" (type the answer), "speak" (voice answer)
+      cardType: v.optional(v.union(v.literal("flip"), v.literal("type"), v.literal("speak"))),
+      // For image cards: optional image URL
+      imageUrl: v.optional(v.string()),
+      // Whether this card has been "mastered" (memoryStrength >= 0.9)
+      mastered: v.optional(v.boolean()),
     }).index("by_deck", ["deckId"]),
 
     // ------------------------------------------------------------------
