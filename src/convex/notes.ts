@@ -205,3 +205,144 @@ export const getDifficultyBySubject = internalQuery({
     };
   },
 });
+
+// ---------------------------------------------------------------------------
+// AI Note Enhancer — transforms messy notes into structured, clean notes.
+// Uses the existing Groq AI to reformat + enhance the student's notes.
+// ---------------------------------------------------------------------------
+
+import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { callGroq } from "./groq";
+
+export const enhanceNote = action({
+  args: {
+    content: v.string(),
+    subjectName: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ enhanced: string }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const subjectContext = args.subjectName ? `Subject: ${args.subjectName}\n` : "";
+
+    const prompt = `${subjectContext}Enhance these student notes. Transform them into clean, well-structured notes with:
+- Clear headings (use the main concept as the title)
+- Bullet points for key terms
+- A "Remember:" section with a memorable summary
+
+Keep the student's original content — don't add new information, just organize and clarify what they wrote. Use markdown-style formatting.
+
+Student's raw notes:
+${args.content}
+
+Return ONLY the enhanced notes text, no commentary.`;
+
+    try {
+      const raw = await callGroq(ctx, {
+        systemPrompt: "You are a helpful study assistant. You organize and enhance student notes without adding new information. Use clean formatting with headers and bullets. Never use emojis.",
+        userMessage: prompt,
+        maxTokens: 512,
+        temperature: 0.3,
+      });
+      return { enhanced: raw.trim() };
+    } catch (error) {
+      throw new ConvexError({
+        message: `Could not enhance note: ${error instanceof Error ? error.message : "AI error"}`,
+        code: "ai_error",
+      });
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Ask My Notes — student asks a question, AI searches their notes and
+// answers from them. Uses the existing note list + Groq AI.
+// ---------------------------------------------------------------------------
+
+export const askMyNotes = action({
+  args: {
+    question: v.string(),
+    subjectId: v.optional(v.id("subjects")),
+  },
+  handler: async (ctx, args): Promise<{ answer: string; relevantNotes: number }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    // Fetch the student's notes
+    const notes = await ctx.runQuery(internal.notes.listForAI, {
+      userId,
+      subjectId: args.subjectId ?? undefined,
+    });
+
+    if (notes.length === 0) {
+      return { answer: "You don't have any notes yet. Create some notes first, then I can search through them for you.", relevantNotes: 0 };
+    }
+
+    // Build a context string from all notes (cap at 8000 chars)
+    const noteContext = notes
+      .map((n: { content: string; subjectName?: string; difficulty?: string }) => {
+        const subject = n.subjectName ? `[${n.subjectName}] ` : "";
+        const difficulty = n.difficulty ? ` (${n.difficulty})` : "";
+        return `${subject}${n.content}${difficulty}`;
+      })
+      .join("\n---\n")
+      .slice(0, 8000);
+
+    const prompt = `A student is asking about their own notes. Search through their notes and answer the question based ONLY on what they wrote. If the answer isn't in their notes, say so honestly.
+
+Student's question: "${args.question}"
+
+Student's notes:
+${noteContext}
+
+Answer the question based on the notes above. Be concise (2-3 sentences). If you found relevant notes, mention what they wrote. If the answer isn't in their notes, say "I couldn't find anything about that in your notes."`;
+
+    try {
+      const raw = await callGroq(ctx, {
+        systemPrompt: "You are a helpful study assistant that searches through a student's own notes. You only answer based on what's in the notes — never make up information. Be concise and encouraging. Never use emojis.",
+        userMessage: prompt,
+        maxTokens: 256,
+        temperature: 0.2,
+      });
+      return { answer: raw.trim(), relevantNotes: notes.length };
+    } catch (error) {
+      throw new ConvexError({
+        message: `Could not search notes: ${error instanceof Error ? error.message : "AI error"}`,
+        code: "ai_error",
+      });
+    }
+  },
+});
+
+// Internal query for the AI to fetch all notes (no pagination)
+export const listForAI = internalQuery({
+  args: { userId: v.id("users"), subjectId: v.optional(v.id("subjects")) },
+  handler: async (ctx, args) => {
+    let query = ctx.db
+      .query("notes")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId));
+
+    if (args.subjectId) {
+      const all = await query.collect();
+      const filtered = all.filter((n) => n.subjectId === args.subjectId);
+      // Resolve subject names
+      const subjects = await ctx.db.query("subjects").collect();
+      const subjectMap = new Map(subjects.map((s) => [s._id, s.name]));
+      return filtered.map((n) => ({
+        content: n.content,
+        subjectName: subjectMap.get(n.subjectId ?? ("" as never)),
+        difficulty: n.difficulty,
+      }));
+    }
+
+    const all = await query.collect();
+    const subjects = await ctx.db.query("subjects").collect();
+    const subjectMap = new Map(subjects.map((s) => [s._id, s.name]));
+    return all.map((n) => ({
+      content: n.content,
+      subjectName: n.subjectId ? subjectMap.get(n.subjectId) : undefined,
+      difficulty: n.difficulty,
+    }));
+  },
+});

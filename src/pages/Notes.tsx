@@ -3,12 +3,16 @@
 // tutor's system prompt so it adjusts pacing for subjects marked "hard".
 
 import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Brain,
   Check,
+  Loader2,
   Pencil,
   Plus,
+  Send,
+  Sparkles,
   StickyNote,
   Trash2,
   X,
@@ -85,6 +89,17 @@ export default function Notes() {
   const createNote = useMutation(api.notes.create);
   const updateNote = useMutation(api.notes.update);
   const deleteNote = useMutation(api.notes.remove);
+  const enhanceNoteAction = useAction(api.notes.enhanceNote as never);
+  const askMyNotesAction = useAction(api.notes.askMyNotes as never);
+  const generateFlashcards = useAction(api.flashcards.generateFromContent as never);
+
+  // ── AI Enhancement state ────────────────────────────────────────────
+  const [enhancingId, setEnhancingId] = useState<string | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  const [askQuestion, setAskQuestion] = useState("");
+  const [askAnswer, setAskAnswer] = useState<string | null>(null);
+  const [askLoading, setAskLoading] = useState(false);
+  const [flashcardGenId, setFlashcardGenId] = useState<string | null>(null);
 
   const [draft, setDraft] = useState<NoteDraft>(EMPTY_DRAFT);
   const [creating, setCreating] = useState(false);
@@ -159,6 +174,23 @@ export default function Notes() {
     }
   };
 
+  const handleAsk = async () => {
+    if (!askQuestion.trim() || askLoading) return;
+    setAskLoading(true);
+    setAskAnswer(null);
+    try {
+      const result = await askMyNotesAction({
+        question: askQuestion as never,
+        subjectId: (subjectFilter || undefined) as never,
+      }) as { answer: string; relevantNotes: number };
+      setAskAnswer(result.answer);
+    } catch {
+      setAskAnswer("Could not search your notes. Please try again.");
+    } finally {
+      setAskLoading(false);
+    }
+  };
+
   return (
     <DashboardShell>
       <div className="relative flex flex-col gap-6">
@@ -212,8 +244,56 @@ export default function Notes() {
             >
               <X className="size-3.5" /> Clear
             </Button>
+            {/* Ask My Notes toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-xl bg-violet-400/10 text-violet-300 hover:bg-violet-400/20"
+              onClick={() => setAskOpen(!askOpen)}
+            >
+              <Brain className="size-3.5" /> Ask My Notes
+            </Button>
           </div>
         </motion.div>
+
+        {/* Ask My Notes panel */}
+        <AnimatePresence>
+          {askOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="glass-panel rounded-2xl border border-violet-400/20 p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-violet-300">Ask your notes</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={askQuestion}
+                    onChange={(e) => setAskQuestion(e.target.value)}
+                    placeholder="What did I write about photosynthesis?"
+                    className="flex-1 rounded-xl bg-white/5 px-3 py-2 text-sm"
+                    onKeyDown={(e) => { if (e.key === "Enter" && askQuestion.trim()) void handleAsk(); }}
+                  />
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-violet-500 text-white hover:bg-violet-600"
+                    disabled={!askQuestion.trim() || askLoading}
+                    onClick={handleAsk}
+                  >
+                    {askLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                  </Button>
+                </div>
+                {askAnswer && (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-3 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
+                    <p className="text-sm leading-relaxed text-foreground/90">{askAnswer}</p>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Quick create */}
         <motion.div
@@ -381,6 +461,50 @@ export default function Notes() {
                         >
                           <Pencil className="size-3.5" />
                         </button>
+                        {/* AI Enhance button */}
+                        <button
+                          type="button"
+                          aria-label="Enhance with AI"
+                          disabled={enhancingId === note._id}
+                          onClick={async () => {
+                            setEnhancingId(note._id);
+                            try {
+                              const subjectName = subjects?.find((s) => s._id === (note.subjectId as never))?.name;
+                              const result = await enhanceNoteAction({ content: note.content as never, subjectName: subjectName as never }) as { enhanced: string };
+                              await updateNote({ noteId: note._id as never, content: result.enhanced as never });
+                              toast.success("Note enhanced with AI!");
+                            } catch { toast.error("Could not enhance this note."); }
+                            finally { setEnhancingId(null); }
+                          }}
+                          className="cursor-pointer rounded-md p-1 text-violet-400/70 transition-colors hover:text-violet-300 interactive-press"
+                          title="Enhance with AI"
+                        >
+                          {enhancingId === note._id ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                        </button>
+                        {/* Note to Flashcards button */}
+                        {note.subjectId && (
+                          <button
+                            type="button"
+                            aria-label="Generate flashcards from this note"
+                            disabled={flashcardGenId === note._id}
+                            onClick={async () => {
+                              setFlashcardGenId(note._id);
+                              try {
+                                await generateFlashcards({
+                                  contentId: note._id as never, subjectId: note.subjectId as never,
+                                  pageText: note.content as never, pageRange: "from note" as never,
+                                }) as { cardCount: number };
+                                toast.success("Flashcards created from this note!");
+                              } catch (err) {
+                                toast.error(err instanceof Error && err.message.includes("premium") ? "Premium feature." : "Could not generate flashcards.");
+                              } finally { setFlashcardGenId(null); }
+                            }}
+                            className="cursor-pointer rounded-md p-1 text-amber-400/70 transition-colors hover:text-amber-300 interactive-press"
+                            title="Generate flashcards from this note"
+                          >
+                            {flashcardGenId === note._id ? <Loader2 className="size-3.5 animate-spin" /> : <Brain className="size-3.5" />}
+                          </button>
+                        )}
                         <button
                           type="button"
                           aria-label="Delete note"
