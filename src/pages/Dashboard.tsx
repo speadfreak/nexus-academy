@@ -1847,13 +1847,21 @@ export default function Dashboard() {
                 <p className="type-caption text-muted-foreground">
                 {visibleContent?.length ?? 0} result{(visibleContent?.length ?? 0) !== 1 ? "s" : ""}
               </p>
-              {!hasFilters && (
-                <Link
-                  to="/dashboard"
-                  className="interactive-press flex items-center gap-1 type-caption font-semibold text-amber-300 transition-colors hover:text-amber-300/80"
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContentType("");
+                    setExamYear("");
+                    setSubjectSlug("");
+                    setGrade("");
+                    setSearchQuery("");
+                    setBookmarkedOnly(false);
+                  }}
+                  className="interactive-press flex cursor-pointer items-center gap-1 type-caption font-semibold text-amber-300 transition-colors hover:text-amber-300/80"
                 >
                   View all <ChevronRight className="size-3" />
-                </Link>
+                </button>
               )}
             </div>
 

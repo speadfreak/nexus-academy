@@ -1077,37 +1077,26 @@ function ConnectMusicSection() {
         </p>
       </div>
 
-      {/* Spotify — requires Premium + Developer setup */}
+      {/* Spotify — requires Premium on student's account */}
       <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
         <div className="flex items-center gap-2">
           <Music className="size-5 text-emerald-400" />
           <p className="text-sm font-bold">Spotify</p>
           <span className="ml-auto rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-            Requires setup
+            Coming soon
           </span>
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          Spotify integration uses the official Web Playback SDK. The student
-          connects their own Spotify account (OAuth) and their playlists play
-          through Learnyx's player UI — but the actual audio streams from
-          Spotify's own licensed infrastructure, on the student's own
-          authenticated session.
+          We're working on letting you connect your own Spotify account so
+          your playlists play right here in Learnyx. The actual audio would
+          stream from Spotify's own licensed infrastructure — we'd never
+          store or host any of your music.
         </p>
-        <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.04] px-3 py-2">
-          <p className="text-[11px] font-semibold text-amber-300">
-            Setup needed (admin):
-          </p>
-          <ol className="mt-1 list-inside list-decimal space-y-0.5 text-[11px] text-muted-foreground">
-            <li>Create a Spotify Developer app at developer.spotify.com</li>
-            <li>Add SPOTIFY_CLIENT_ID to the Admin → Keys tab</li>
-            <li>Add this site's URL to the app's redirect URIs</li>
-          </ol>
-          <p className="mt-1.5 text-[11px] text-amber-300/70">
-            Note: full playback control requires Spotify Premium on the
-            student's account — a real limitation of Spotify's SDK, not
-            something we can work around.
-          </p>
-        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+          Note: Spotify integration requires a Spotify Premium account on
+          the student's side — a real limitation of Spotify's Web Playback
+          SDK, not something we can work around.
+        </p>
       </div>
 
       {/* Copyright notice */}

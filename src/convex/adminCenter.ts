@@ -544,10 +544,14 @@ export const getAdminDashboard = query({
     }
 
     // Payment success rate (does not need payingUsers — computed early).
+    // When there are NO payments at all, show 100% (no failures = perfect)
+    // rather than 0% which looks like everything failed. The frontend
+    // shows "—" when total payments is 0 to avoid confusion.
+    const totalPayments = paymentsCompleted + failedCount;
     const paymentSuccessRate =
-      paymentsCompleted + failedCount > 0
-        ? paymentsCompleted / (paymentsCompleted + failedCount)
-        : 0;
+      totalPayments > 0
+        ? paymentsCompleted / totalPayments
+        : 1; // no payments = no failures = perfect rate (displayed as "—" or "N/A" when count is 0)
     const revenueChangePercent30d = revenueChangePercent(
       payments,
       30 * 24 * 60 * 60 * 1000,
