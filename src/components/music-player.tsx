@@ -871,7 +871,12 @@ export function MusicPlayer() {
 
   return (
     <div
-      className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[calc(100vw-1.5rem)] max-w-md"
+      // Mobile: width-constrained to viewport - 1.5rem, capped at 28rem
+      // (max-w-md) so the expanded 2-row layout never overflows. Desktop:
+      // sm:w-auto + sm:max-w-none lets the bar grow to its natural content
+      // width so all controls (prev/play/next/track-name/visualizer/volume/
+      // 3 action buttons/minimize) have proper breathing room on a single row.
+      className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[calc(100vw-1.5rem)] max-w-md sm:w-auto sm:max-w-none"
       data-lenis-prevent-wheel
     >
       {/* Time-of-day suggestion banner */}
@@ -984,10 +989,13 @@ export function MusicPlayer() {
             • Mobile expanded: row 1 = [prev][play][next][track-name][minimize],
                                 row 2 = [volume-slider-flex-1][browse][mixer][youtube]
             • Desktop collapsed: same as mobile
-            • Desktop expanded: single row with everything inline (no wrapping) */}
+            • Desktop expanded: single row with everything inline (no wrapping).
+              gap-3 (desktop) gives comfortable breathing room between the play
+              cluster + track name + volume cluster + action cluster — wider
+              than mobile's gap-2.5 to avoid visual cramping on wide screens. */}
       <div
         className={cn(
-          "glass-panel flex items-center gap-2.5 rounded-2xl px-3 py-2 transition-all duration-300 sm:rounded-full sm:flex-nowrap flex-wrap",
+          "glass-panel flex items-center gap-2.5 rounded-2xl px-3 py-2 transition-all duration-300 sm:gap-3 sm:px-4 sm:rounded-full sm:flex-nowrap flex-wrap",
           !expanded && "cursor-pointer flex-nowrap rounded-full",
         )}
       >
@@ -1020,10 +1028,11 @@ export function MusicPlayer() {
               </p>
             </div>
 
-            {/* Desktop-only inline: visualizer + volume slider + 3 action buttons.
-                Hidden on mobile to save horizontal space — they move to the
-                mobile-only second row below. */}
-            <div className="hidden items-center gap-1.5 pl-1 sm:flex">
+            {/* Desktop-only inline: visualizer + volume slider.
+                Hidden on mobile — moves to mobile-only second row below.
+                pl-2 separates the volume cluster from the truncated track
+                name with visible breathing room (prevents cramping). */}
+            <div className="hidden items-center gap-1.5 pl-2 sm:flex">
               {playing && (
                 <div className="flex items-center gap-0.5 px-1">
                   {[0, 1, 2, 3].map(i => (
@@ -1035,16 +1044,22 @@ export function MusicPlayer() {
               <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => setVolume(Number(e.target.value))} aria-label="Volume" className="h-1 w-20 cursor-pointer accent-[var(--primary)]" />
             </div>
 
-            {/* Action buttons — desktop inline */}
-            <button onClick={() => { setShowBrowser(s => !s); setShowMixer(false); setShowYoutube(false); }} title="Browse tracks" className={cn("hidden size-7 cursor-pointer items-center justify-center rounded-full transition-colors sm:flex", showBrowser ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
-              <AudioLines className="size-3.5" />
-            </button>
-            <button onClick={() => { setShowMixer(s => !s); setShowBrowser(false); setShowYoutube(false); }} title="Mixer mode" className={cn("hidden size-7 cursor-pointer items-center justify-center rounded-full transition-colors sm:flex", showMixer ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
-              <Layers className="size-3.5" />
-            </button>
-            <button onClick={() => { setShowYoutube(s => !s); setShowBrowser(false); setShowMixer(false); }} title="YouTube" className={cn("hidden size-7 cursor-pointer items-center justify-center rounded-full transition-colors sm:flex", showYoutube ? "text-rose-400" : "text-muted-foreground hover:text-foreground")}>
-              <Youtube className="size-3.5" />
-            </button>
+            {/* Action buttons — desktop inline. Grouped in their own flex
+                container with gap-1 so the cluster reads as one unit, with
+                a left border separator to visually distinguish from the
+                volume cluster. The parent's gap-3 still applies between
+                this group and its siblings. */}
+            <div className="hidden items-center gap-1 border-l border-white/10 pl-2 sm:flex">
+              <button onClick={() => { setShowBrowser(s => !s); setShowMixer(false); setShowYoutube(false); }} title="Browse tracks" className={cn("flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors", showBrowser ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+                <AudioLines className="size-3.5" />
+              </button>
+              <button onClick={() => { setShowMixer(s => !s); setShowBrowser(false); setShowYoutube(false); }} title="Mixer mode" className={cn("flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors", showMixer ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+                <Layers className="size-3.5" />
+              </button>
+              <button onClick={() => { setShowYoutube(s => !s); setShowBrowser(false); setShowMixer(false); }} title="YouTube" className={cn("flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors", showYoutube ? "text-rose-400" : "text-muted-foreground hover:text-foreground")}>
+                <Youtube className="size-3.5" />
+              </button>
+            </div>
 
             {/* Minimize — always visible, sits at the end of row 1 on mobile */}
             <button type="button" onClick={() => setExpanded(false)} aria-label="Minimize" className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground sm:ml-0 ml-auto">

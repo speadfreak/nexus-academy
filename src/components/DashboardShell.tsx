@@ -37,6 +37,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MusicPlayer } from "@/components/music-player";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { AnimatePresence, motion } from "framer-motion";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import logo from "@/assets/nexus-logo.svg";
@@ -424,6 +425,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       )}
 
       <MusicPlayer />
+
+      {/* Install prompt — appears ONCE for new users on their first dashboard
+          visit. Captures beforeinstallprompt for native PWA install; falls back
+          to platform-specific manual instructions (Add to Home Screen / Create
+          shortcut). Persists dismissal in localStorage so returning users
+          aren't nagged. Hidden when already running in standalone mode. */}
+      <InstallPrompt />
     </div>
   );
 }
