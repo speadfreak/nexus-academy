@@ -646,7 +646,7 @@ const schema = defineSchema(
       description: v.string(),
       icon: v.string(),
       tier: v.union(v.literal("bronze"), v.literal("silver"), v.literal("gold")),
-    }).index("by_id", ["id"]),
+    }).index("by_achievement_id", ["id"]),
 
     // Earned squad achievements — one row per (group, achievement).
     squadAchievementAwards: defineTable({

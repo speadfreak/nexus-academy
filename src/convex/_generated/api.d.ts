@@ -48,6 +48,7 @@ import type * as notes from "../notes.js";
 import type * as notifications from "../notifications.js";
 import type * as payments from "../payments.js";
 import type * as paymentsDb from "../paymentsDb.js";
+import type * as pdfBranding from "../pdfBranding.js";
 import type * as profile from "../profile.js";
 import type * as providers_mpesa from "../providers/mpesa.js";
 import type * as providers_telebirr from "../providers/telebirr.js";
@@ -125,6 +126,7 @@ declare const fullApi: ApiFromModules<{
   notifications: typeof notifications;
   payments: typeof payments;
   paymentsDb: typeof paymentsDb;
+  pdfBranding: typeof pdfBranding;
   profile: typeof profile;
   "providers/mpesa": typeof providers_mpesa;
   "providers/telebirr": typeof providers_telebirr;
