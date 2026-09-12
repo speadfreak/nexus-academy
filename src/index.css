@@ -1611,6 +1611,7 @@ html.lenis, html.lenis body {
 .student-page-frame[data-page="calendar"] { --page-accent: 205 90% 65%; }
 .student-page-frame[data-page="notes"] { --page-accent: 45 95% 62%; }
 .student-page-frame[data-page="flashcards"] { --page-accent: 320 85% 70%; }
+.student-page-frame[data-page="study-cards"] { --page-accent: 35 92% 60%; }
 .student-page-frame[data-page="groups"] { --page-accent: 175 80% 58%; }
 .student-page-frame[data-page="achievements"] { --page-accent: 42 95% 62%; }
 .student-page-frame[data-page="settings"] { --page-accent: 215 85% 68%; }

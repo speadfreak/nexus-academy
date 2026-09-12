@@ -943,6 +943,62 @@ const schema = defineSchema(
       .index("by_user", ["userId"])
       .index("by_user_content", ["userId", "contentId"]),
 
+    // ── STUDY CARDS — bite-sized quick-reference cards per topic ────────
+    //
+    // A new content format DISTINCT from Flashcards (which test recall via
+    // front/back pairs) and full textbooks (which are comprehensive PDFs).
+    // Study cards are short reference cards for quick concept lookup —
+    // like a well-organized cheat sheet per topic.
+    //
+    // Can be ADMIN-AUTHORED (created via the admin form, reusing existing
+    // admin content patterns) OR AI-GENERATED from real curriculum topics
+    // (Groq call with structured JSON output, retry on malformed, same
+    // discipline as quizzes/flashcards).
+    //
+    // Browsing is FREE for everyone (consistent with the "browsing content
+    // is free" principle). AI GENERATION of new cards is premium-gated,
+    // matching how quizzes/flashcards gate generation.
+    studyCards: defineTable({
+      subjectId: v.id("subjects"),
+      gradeLevel: v.union(
+        v.literal(9),
+        v.literal(10),
+        v.literal(11),
+        v.literal(12),
+      ),
+      topicId: v.optional(v.id("topics")),
+      title: v.string(),
+      // Practical usage explanation — when a student would actually reach
+      // for this card. Original wording, never copied from any reference.
+      whenToUseIt: v.string(),
+      // Warning/pitfall callout — common mistake students make. Original
+      // label "Watch for" (not "Common mistake" verbatim from any source).
+      commonMistake: v.string(),
+      // Core reference content — can include simple formatted math/formula
+      // notation (we render it as plain text with line breaks).
+      bodyContent: v.string(),
+      createdVia: v.union(v.literal("admin"), v.literal("ai")),
+      createdBy: v.id("users"),
+      createdAt: v.number(),
+    })
+      .index("by_subject", ["subjectId"])
+      .index("by_grade", ["gradeLevel"])
+      .index("by_subject_grade", ["subjectId", "gradeLevel"])
+      .index("by_createdAt", ["createdAt"]),
+
+    // Study card bookmarks — parallel to the content bookmarks table but
+    // typed to studyCards. Same UX patterns ("Saved" terminology, toggle
+    // bookmark, count badge) — separate table because the existing
+    // bookmarks table is strictly typed to contentItems (PDFs/files).
+    studyCardBookmarks: defineTable({
+      userId: v.id("users"),
+      studyCardId: v.id("studyCards"),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_card", ["userId", "studyCardId"])
+      .index("by_card", ["studyCardId"]),
+
     // Per (user, content) scratchpad content, persisted so returning to a
     // book keeps the student's working notes.
     scratchpads: defineTable({

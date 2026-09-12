@@ -110,6 +110,7 @@ const Achievements = lazy(() => import("./pages/Achievements.tsx"));
 const Groups = lazy(() => import("./pages/Groups.tsx"));
 const Room = lazy(() => import("./pages/Room.tsx"));
 const Reader = lazy(() => import("./pages/Reader.tsx"));
+const StudyCards = lazy(() => import("./pages/StudyCards.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
 const Notifications = lazy(() => import("./pages/Notifications.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
@@ -651,6 +652,14 @@ if (rootEl) {
                             element={
                               <RequireAuth>
                                 <Flashcards />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/study-cards"
+                            element={
+                              <RequireAuth>
+                                <StudyCards />
                               </RequireAuth>
                             }
                           />

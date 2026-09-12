@@ -65,6 +65,7 @@ import type * as sampleContent from "../sampleContent.js";
 import type * as scratchpads from "../scratchpads.js";
 import type * as smsParser from "../smsParser.js";
 import type * as squads from "../squads.js";
+import type * as studyCards from "../studyCards.js";
 import type * as studyGroups from "../studyGroups.js";
 import type * as studyPlans from "../studyPlans.js";
 import type * as studySessions from "../studySessions.js";
@@ -143,6 +144,7 @@ declare const fullApi: ApiFromModules<{
   scratchpads: typeof scratchpads;
   smsParser: typeof smsParser;
   squads: typeof squads;
+  studyCards: typeof studyCards;
   studyGroups: typeof studyGroups;
   studyPlans: typeof studyPlans;
   studySessions: typeof studySessions;
