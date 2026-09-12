@@ -482,7 +482,7 @@ export interface RoomView {
   groupName: string;
   createdBy: Id<"users">;
   createdByName: string;
-  myRole: "owner" | "member" | null;
+  myRole: "owner" | "admin" | "mentor" | "member" | null;
   isCreator: boolean;
   canEndRoom: boolean;
   iAmIn: boolean;
@@ -548,7 +548,7 @@ export const getRoomById = query({
       createdByName: createdByProfile?.displayName ?? createdBy?.name ?? "A group member",
       myRole: groupRole,
       isCreator: room.createdBy === userId,
-      canEndRoom: room.createdBy === userId || groupRole === "owner",
+      canEndRoom: room.createdBy === userId || groupRole === "owner" || groupRole === "admin",
       iAmIn: activeRows.some((p) => p.userId === userId),
       participants,
     };

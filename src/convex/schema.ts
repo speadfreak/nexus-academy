@@ -467,10 +467,231 @@ const schema = defineSchema(
       groupId: v.id("studyGroups"),
       userId: v.id("users"),
       joinedAt: v.number(),
-      role: v.union(v.literal("owner"), v.literal("member")),
+      // ── SQUAD ROLES ──────────────────────────────────────────────────
+      // Extended from {owner, member} → {owner, admin, mentor, member}.
+      // Backward compatible — legacy rows with role="member" stay valid.
+      //   • owner  → full control: delete, transfer, change roles, manage
+      //   • admin  → moderate: pin board, manage roles up to mentor, end rooms
+      //   • mentor→ help classmates: create challenges, start quiz battles,
+      //             moderate chat. No destructive powers.
+      //   • member→ participate: study, chat, join rooms, contribute to
+      //             challenges. Default on join.
+      role: v.union(
+        v.literal("owner"),
+        v.literal("admin"),
+        v.literal("mentor"),
+        v.literal("member"),
+      ),
     })
       .index("by_group", ["groupId"])
       .index("by_user", ["userId"]),
+
+    // ── LEARNYX SQUADS — collaborative adaptive learning layer ──────────
+    //
+    // SQUADS is the connective tissue that turns groups from "a chat + a
+    // leaderboard" into a shared academic mission. Each table below powers
+    // one specific squad feature; together they implement the killer loop:
+    //
+    //   individual struggles with X
+    //     → weakness detected
+    //     → squad radar shows "N members struggling with X"
+    //     → AI generates a squad challenge on X
+    //     → squad studies together in a live room + quiz battle
+    //     → weakness decreases
+    //     → next radar pull shows improvement
+
+    // Squad missions — daily study-action targets per group. The squad
+    // dashboard surfaces a "Squad Mission" card showing target vs achieved
+    // study actions for today (YYYY-MM-DD). Completed missions award
+    // squad-level XP to every member.
+    squadMissions: defineTable({
+      groupId: v.id("studyGroups"),
+      date: v.string(), // "YYYY-MM-DD" in Africa/Addis_Ababa
+      targetActions: v.number(), // e.g. 150 study actions
+      achievedActions: v.number(), // running total, updated by mutation
+      completedAt: v.optional(v.number()),
+    }).index("by_group_date", ["groupId", "date"]),
+
+    // Squad challenges — group-level goals with end date + reward.
+    // Created by owner/admin/mentor. Tracked via squadChallengeProgress.
+    // When the squad collectively hits `goal` units, every member gets
+    // `rewardXp` and a squad achievement may be awarded.
+    squadChallenges: defineTable({
+      groupId: v.id("studyGroups"),
+      title: v.string(),
+      // What kind of action counts toward this challenge.
+      type: v.union(
+        v.literal("flashcards"),
+        v.literal("quizzes"),
+        v.literal("study_time"),
+        v.literal("chapters_read"),
+        v.literal("streak"),
+      ),
+      goal: v.number(), // target count (e.g. 500 cards reviewed)
+      unit: v.string(), // "cards" | "quizzes" | "hours" | "chapters" | "days"
+      subjectId: v.optional(v.id("subjects")),
+      subjectName: v.string(), // snapshot for display
+      topicName: v.optional(v.string()),
+      rewardXp: v.number(),
+      rewardBadge: v.optional(v.string()), // squad achievement id
+      startedAt: v.number(),
+      endsAt: v.number(),
+      status: v.union(
+        v.literal("active"),
+        v.literal("completed"),
+        v.literal("abandoned"),
+      ),
+      completedAt: v.optional(v.number()),
+      createdBy: v.id("users"),
+    })
+      .index("by_group_status", ["groupId", "status"])
+      .index("by_group", ["groupId"]),
+
+    // Per-member progress on a challenge. Powers the per-person
+    // breakdown ("JJ 180, Kora 224"). count is the running contribution.
+    squadChallengeProgress: defineTable({
+      challengeId: v.id("squadChallenges"),
+      userId: v.id("users"),
+      count: v.number(),
+      lastUpdated: v.number(),
+    })
+      .index("by_challenge", ["challengeId"])
+      .index("by_challenge_user", ["challengeId", "userId"]),
+
+    // Pinned squad board — 4 fixed slots managed by owner/admin.
+    //   current_goal   → "Finish Biology Unit 4"
+    //   next_session   → "Friday · 7:00 PM" (+sessionAt epoch)
+    //   announcement   → "Mock exam Sunday."
+    //   resource       → optional link to a content item (contentId set)
+    // Only one row per (groupId, slot) — patch in place.
+    squadBoardItems: defineTable({
+      groupId: v.id("studyGroups"),
+      slot: v.union(
+        v.literal("current_goal"),
+        v.literal("next_session"),
+        v.literal("announcement"),
+        v.literal("resource"),
+      ),
+      content: v.string(),
+      contentId: v.optional(v.id("contentItems")),
+      sessionAt: v.optional(v.number()),
+      updatedBy: v.id("users"),
+      updatedAt: v.number(),
+    }).index("by_group_slot", ["groupId", "slot"]),
+
+    // Squad quiz battles — quiz competitions within a squad.
+    // Host (owner/admin/mentor) creates a battle on a topic, AI generates
+    // questions, members join the lobby, host starts, everyone answers in
+    // real-time via Convex reactivity, server scores.
+    squadQuizBattles: defineTable({
+      groupId: v.id("studyGroups"),
+      subjectId: v.optional(v.id("subjects")),
+      subjectName: v.string(),
+      topicName: v.string(),
+      hostedBy: v.id("users"),
+      // JSON: { question, options[4], correctIndex, explanation }[]
+      questionsJson: v.string(),
+      status: v.union(
+        v.literal("lobby"),
+        v.literal("active"),
+        v.literal("completed"),
+      ),
+      startedAt: v.number(),
+      endedAt: v.optional(v.number()),
+      // Current question index (advances when timer expires or all answered).
+      questionIndex: v.number(),
+      questionEndsAt: v.optional(v.number()),
+      rewardXp: v.number(),
+    })
+      .index("by_group_status", ["groupId", "status"])
+      .index("by_group", ["groupId"]),
+
+    // Per-battle participant answers + score.
+    // answers[i] = option index for question i, -1 = no answer.
+    // Updated in real-time as participants answer. score + correctCount
+    // computed server-side.
+    squadQuizBattleParticipants: defineTable({
+      battleId: v.id("squadQuizBattles"),
+      userId: v.id("users"),
+      answers: v.array(v.number()),
+      score: v.number(),
+      correctCount: v.number(),
+      joinedAt: v.number(),
+      leftAt: v.optional(v.number()),
+    })
+      .index("by_battle", ["battleId"])
+      .index("by_battle_user", ["battleId", "userId"]),
+
+    // Cached AI tutor outputs for a squad. The squad AI tutor generates an
+    // explanation + 5 practice questions + 5 flashcards + a mini quiz on a
+    // topic. Stored once, shared with the squad — anyone in the squad can
+    // start a quiz battle directly from the cached mini quiz.
+    squadAIThreads: defineTable({
+      groupId: v.id("studyGroups"),
+      topicName: v.string(),
+      explanation: v.string(),
+      practiceQuestions: v.optional(v.string()), // JSON
+      flashcards: v.optional(v.string()), // JSON array of {front, back}
+      miniQuiz: v.optional(v.string()), // JSON — same shape as quiz battle questions
+      spawnedBattleId: v.optional(v.id("squadQuizBattles")),
+      createdBy: v.id("users"),
+      createdAt: v.number(),
+    }).index("by_group_createdAt", ["groupId", "createdAt"]),
+
+    // Squad achievement definitions — seeded once from squads.ts. Separate
+    // from individual achievements because they recognize collective effort.
+    squadAchievements: defineTable({
+      id: v.string(),
+      name: v.string(),
+      description: v.string(),
+      icon: v.string(),
+      tier: v.union(v.literal("bronze"), v.literal("silver"), v.literal("gold")),
+    }).index("by_id", ["id"]),
+
+    // Earned squad achievements — one row per (group, achievement).
+    squadAchievementAwards: defineTable({
+      groupId: v.id("studyGroups"),
+      achievementId: v.string(),
+      earnedAt: v.number(),
+    })
+      .index("by_group", ["groupId"])
+      .index("by_group_achievement", ["groupId", "achievementId"]),
+
+    // Squad exam prep — one active prep per group. The owner/admin chooses
+    // "EHEEE prep mode" for the squad; readiness is computed per subject
+    // from member quiz accuracy + flashcard memory strength (aggregated,
+    // anonymous). AI generates today's prep actions.
+    squadExamPrep: defineTable({
+      groupId: v.id("studyGroups"),
+      examName: v.string(), // "EHEEE"
+      examDate: v.optional(v.number()),
+      // JSON: [{ subjectId, subjectName, readinessScore, status }]
+      readinessJson: v.string(),
+      // JSON: today's AI-generated prep actions (cards to review, quizzes, etc.)
+      todaysActionsJson: v.optional(v.string()),
+      generatedAt: v.number(),
+      createdBy: v.id("users"),
+    }).index("by_group", ["groupId"]),
+
+    // Squad chat widgets — when chat slash commands (/quiz, /poll, /card,
+    // /explain, /challenge) produce a structured widget, store it here so
+    // every member sees the same interactive widget rendered inline in
+    // the chat panel. The widget payload is JSON; the renderer switches
+    // on widgetType.
+    squadChatWidgets: defineTable({
+      groupId: v.id("studyGroups"),
+      userId: v.id("users"),
+      widgetType: v.union(
+        v.literal("poll"),
+        v.literal("quiz_card"),
+        v.literal("flashcard"),
+        v.literal("ai_explanation"),
+        v.literal("challenge_invite"),
+      ),
+      // JSON payload (see widgetType for shape).
+      payloadJson: v.string(),
+      createdAt: v.number(),
+    }).index("by_group_createdAt", ["groupId", "createdAt"]),
 
     // In-app notifications (no push infra — visible when the app is open).
     notifications: defineTable({

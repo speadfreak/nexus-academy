@@ -299,10 +299,14 @@ export const getMyGroups = query({
  * feed. Never exposes quiz answers, weak topics, or anything beyond these
  * aggregates.
  */
+// Squad roles — owner | admin | mentor | member. Legacy rows with
+// role="member" stay valid (backward compatible).
+type SquadRole = "owner" | "admin" | "mentor" | "member";
+
 type LeaderboardMember = {
   userId: Id<"users">;
   name: string;
-  role: "owner" | "member";
+  role: SquadRole;
   joinedAt: number;
   xpThisWeek: number;
   hoursThisWeek: number;
@@ -316,7 +320,7 @@ type GroupLeaderboardView = {
   inviteCode: string;
   subjectFocusName: string | null;
   memberCount: number;
-  myRole: "owner" | "member";
+  myRole: SquadRole;
   members: LeaderboardMember[];
 };
 
@@ -423,7 +427,7 @@ export const getGroupMembers = query({
     const result: {
       userId: Id<"users">;
       name: string;
-      role: "owner" | "member";
+      role: "owner" | "admin" | "mentor" | "member";
       joinedAt: number;
       isMe: boolean;
       isOwner: boolean;
@@ -443,6 +447,6 @@ export const getGroupMembers = query({
         isOwner: member.userId === group.createdBy,
       });
     }
-    return { members: result, myRole: myMembership.role };
+    return { members: result, myRole: myMembership.role as "owner" | "admin" | "mentor" | "member" };
   },
 });

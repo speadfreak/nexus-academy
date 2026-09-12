@@ -95,6 +95,42 @@ export const LEVEL_XP_FACTOR = 50;
 // public arena. Opt-in only — reachable solely via a shared invite code.
 export const GROUP_MAX_SIZE = 20;
 
+// ── LEARNYX SQUADS ────────────────────────────────────────────────────
+// Tuning knobs for the collaborative layer. Each is a per-group default;
+// the squad owner/admin can override via the dashboard (future work).
+
+// Daily squad mission target — the "Complete 150 study actions this week"
+// headline. 20 actions per day is honest: roughly 1 quiz + 10 cards + a
+// focus session. Members see the running total + a progress bar.
+export const SQUAD_MISSION_DAILY_TARGET = 20;
+
+// A new squad mission row is created the first time ANY member opens the
+// squad dashboard on a given day. If achievedActions >= targetActions,
+// completedAt is set and every member is awarded this much XP.
+export const SQUAD_MISSION_COMPLETION_XP = 30;
+
+// Default reward XP per squad challenge — used as the form default when
+// owner/admin/mentor creates a challenge. Override freely.
+export const SQUAD_CHALLENGE_DEFAULT_REWARD_XP = 200;
+
+// Quiz battle reward XP per participant (top-3 split, server-side).
+//   1st: 60, 2nd: 40, 3rd: 25, others (answered ≥50%): 10
+export const SQUAD_BATTLE_REWARD_TOP3 = [60, 40, 25];
+export const SQUAD_BATTLE_REWARD_PARTICIPATION = 10;
+
+// Per-question time limit in a squad quiz battle (ms). Host can extend by
+// advancing manually before timer expires.
+export const SQUAD_BATTLE_QUESTION_MS = 20 * 1000;
+
+// Squad achievement IDs — referenced from squads.ts checkAndAwardSquad.
+export const SQUAD_ACHIEVEMENT_IDS = {
+  firstSquadWeek: "first_squad_week",
+  knowledgeFactory: "knowledge_factory",
+  hundredHourCrew: "hundred_hour_crew",
+  examReady: "exam_ready_squad",
+  eliteSquad: "elite_squad",
+} as const;
+
 // Human labels for XP ledger reasons (shown in the "recent XP" feed).
 export const XP_REASON_LABELS: Record<string, string> = {
   quiz_complete: "Quiz completed",
@@ -104,6 +140,9 @@ export const XP_REASON_LABELS: Record<string, string> = {
   daily_challenge: "Daily challenge",
   mock_exam_complete: "Mock exam completed",
   exam_mode_session: "Exam-mode session",
+  squad_mission: "Squad mission",
+  squad_challenge: "Squad challenge",
+  squad_battle: "Quiz battle",
 };
 
 // The three stream-specific subjects per track (used by the
