@@ -92,7 +92,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { errorMessage } from "@/lib/errors";
@@ -415,19 +415,24 @@ export default function Groups() {
                     className="glass-panel hover-lift relative overflow-hidden rounded-3xl p-5 sm:p-6"
                   >
                     <div className="pointer-events-none absolute -top-12 -right-10 size-40 rounded-full bg-amber-400/10 blur-[60px]" />
+                    <div className="pointer-events-none absolute -bottom-12 -left-10 size-32 rounded-full bg-amber-400/[0.06] blur-[50px]" />
 
                     <div className="relative">
-                      {/* Identity header — icon + name + role */}
+                      {/* Identity header — icon + name + role badge */}
                       <div className="flex items-start gap-3">
-                        <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400/20 to-amber-500/5 text-amber-300 shadow-[0_0_18px_-6px_rgb(251,191,36/0.5)]">
+                        <div className="relative flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400/20 to-amber-500/5 text-amber-300 shadow-[0_0_18px_-6px_rgb(251,191,36/0.5)]">
                           <Users className="size-5" />
+                          {liveCount > 0 && (
+                            <span className="absolute -right-0.5 -top-0.5 flex size-2.5">
+                              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                              <span className="relative inline-flex size-2.5 rounded-full border-2 border-background bg-emerald-400" />
+                            </span>
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <h2 className="truncate type-h2">{selectedGroup.name}</h2>
-                            {selectedGroup.role === "owner" && (
-                              <Crown className="size-4 shrink-0 text-amber-300" />
-                            )}
+                            <RoleBadge role={selectedGroup.role} />
                           </div>
                           <p className="mt-0.5 flex items-center gap-1.5 type-caption text-muted-foreground">
                             <BookOpen className="size-3" />
@@ -438,30 +443,9 @@ export default function Groups() {
 
                       {/* Stats row — member count + live rooms count + active challenges */}
                       <div className="mt-4 grid grid-cols-3 gap-2">
-                        <div className="glass-soft rounded-xl px-3 py-2.5">
-                          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
-                            members
-                          </p>
-                          <p className="mt-0.5 font-mono text-lg font-bold tabular-nums text-foreground">
-                            {selectedGroup.memberCount}
-                          </p>
-                        </div>
-                        <div className="glass-soft rounded-xl px-3 py-2.5">
-                          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
-                            live rooms
-                          </p>
-                          <p className="mt-0.5 font-mono text-lg font-bold tabular-nums text-foreground">
-                            {liveCount}
-                          </p>
-                        </div>
-                        <div className="glass-soft rounded-xl px-3 py-2.5">
-                          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
-                            challenges
-                          </p>
-                          <p className="mt-0.5 font-mono text-lg font-bold tabular-nums text-foreground">
-                            {dashboard?.activeChallengesCount ?? 0}
-                          </p>
-                        </div>
+                        <SquadStat label="members" value={selectedGroup.memberCount} icon={<Users className="size-3" />} />
+                        <SquadStat label="live rooms" value={liveCount} icon={<MonitorPlay className="size-3" />} tone={liveCount > 0 ? "emerald" : "default"} />
+                        <SquadStat label="challenges" value={dashboard?.activeChallengesCount ?? 0} icon={<Target className="size-3" />} tone="amber" />
                       </div>
 
                       {/* Member preview row */}
@@ -551,22 +535,11 @@ export default function Groups() {
                     onValueChange={(v) => setActiveTab(v as TabKey)}
                     className="w-full"
                   >
-                    <TabsList
-                      className="glass-soft flex h-auto w-full flex-wrap gap-1 rounded-2xl p-1.5"
-                      aria-label="Squad tabs"
-                    >
-                      <SquadTabTrigger tab="overview" icon={<LayoutDashboard className="size-3.5" />} label="Overview" />
-                      <SquadTabTrigger tab="leaderboard" icon={<Trophy className="size-3.5" />} label="Leaderboard" />
-                      <SquadTabTrigger tab="challenges" icon={<Target className="size-3.5" />} label="Challenges" />
-                      <SquadTabTrigger tab="radar" icon={<Radio className="size-3.5" />} label="Radar" />
-                      <SquadTabTrigger tab="tutor" icon={<Brain className="size-3.5" />} label="Squad AI" />
-                      <SquadTabTrigger tab="battles" icon={<Sword className="size-3.5" />} label="Battles" />
-                      <SquadTabTrigger tab="board" icon={<Pin className="size-3.5" />} label="Board" />
-                      <SquadTabTrigger tab="exam" icon={<GraduationCap className="size-3.5" />} label="Exam Prep" />
-                      <SquadTabTrigger tab="members" icon={<Users className="size-3.5" />} label="Members" />
-                      <SquadTabTrigger tab="rooms" icon={<MonitorPlay className="size-3.5" />} label="Rooms" />
-                      <SquadTabTrigger tab="chat" icon={<Sparkles className="size-3.5" />} label="Chat" />
-                    </TabsList>
+                    <SquadTabBar
+                      activeTab={activeTab}
+                      onTabChange={(v) => setActiveTab(v)}
+                      hasLiveBattle={!!dashboard?.liveBattleId || !!dashboard?.lobbyBattleId}
+                    />
 
                     <TabsContent value="overview" className="mt-5 focus-visible:outline-none">
                       <SquadOverview groupId={selectedGroup.groupId as Id<"studyGroups">} dashboard={dashboard} />
@@ -750,15 +723,124 @@ export default function Groups() {
 // SHARED COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════
 
-function SquadTabTrigger({ tab, icon, label }: { tab: TabKey; icon: ReactNode; label: string }) {
+/**
+ * SquadTabBar — premium horizontally-scrollable chip rail.
+ *
+ * The 11 squad tabs never wrap (which caused the previous collision issue
+ * — wrapping put Members/Rooms/Chat on a second row that overlapped with
+ * the first row's last items). Instead they live on ONE row that scrolls
+ * horizontally on overflow, with:
+ *   • Always-visible icons + labels (no more icon-only mobile mode that
+ *     made 11 chips indistinguishable)
+ *   • A right-edge fade gradient that hints "scroll →" when there's more
+ *   • Strong active state: filled background + primary glow + bottom edge
+ *   • Subtle hover lift
+ *   • Live-battle pulse on the Battles tab when there's a live or lobby
+ *     quiz battle (calls attention to time-sensitive content)
+ */
+function SquadTabBar({
+  activeTab,
+  onTabChange,
+  hasLiveBattle,
+}: {
+  activeTab: TabKey;
+  onTabChange: (tab: TabKey) => void;
+  hasLiveBattle: boolean;
+}) {
+  // Detect horizontal overflow to show the right-edge fade hint.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+      setCanScrollLeft(el.scrollLeft > 4);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    // Re-check on resize.
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, []);
+
+  const tabs: { tab: TabKey; icon: ReactNode; label: string }[] = [
+    { tab: "overview", icon: <LayoutDashboard className="size-3.5" />, label: "Overview" },
+    { tab: "leaderboard", icon: <Trophy className="size-3.5" />, label: "Leaderboard" },
+    { tab: "challenges", icon: <Target className="size-3.5" />, label: "Challenges" },
+    { tab: "radar", icon: <Radio className="size-3.5" />, label: "Radar" },
+    { tab: "tutor", icon: <Brain className="size-3.5" />, label: "Squad AI" },
+    { tab: "battles", icon: <Sword className="size-3.5" />, label: "Battles" },
+    { tab: "board", icon: <Pin className="size-3.5" />, label: "Board" },
+    { tab: "exam", icon: <GraduationCap className="size-3.5" />, label: "Exam Prep" },
+    { tab: "members", icon: <Users className="size-3.5" />, label: "Members" },
+    { tab: "rooms", icon: <MonitorPlay className="size-3.5" />, label: "Rooms" },
+    { tab: "chat", icon: <Sparkles className="size-3.5" />, label: "Chat" },
+  ];
+
   return (
-    <TabsTrigger
-      value={tab}
-      className="interactive-press flex items-center gap-1.5 rounded-xl px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-[0_0_18px_-6px_var(--primary)]"
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </TabsTrigger>
+    <div className="relative">
+      {/* Left-edge fade hint (only when scrolled) */}
+      <div
+        className={cn(
+          "pointer-events-none absolute left-0 top-0 z-10 h-full w-8 bg-gradient-to-r from-background/90 to-transparent transition-opacity duration-300",
+          canScrollLeft ? "opacity-100" : "opacity-0",
+        )}
+      />
+      {/* Right-edge fade hint (only when there's more to scroll) */}
+      <div
+        className={cn(
+          "pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-background/90 to-transparent transition-opacity duration-300",
+          canScrollRight ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <div
+        ref={scrollRef}
+        className="glass-soft flex h-auto w-full gap-1 overflow-x-auto rounded-2xl p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        aria-label="Squad tabs"
+        style={{ scrollbarWidth: "none" }}
+      >
+        {tabs.map(({ tab, icon, label }) => {
+          const active = activeTab === tab;
+          const showLiveIndicator = tab === "battles" && hasLiveBattle;
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => onTabChange(tab)}
+              className={cn(
+                "interactive-press group relative flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider transition-all duration-200",
+                active
+                  ? "bg-primary/15 text-primary shadow-[0_0_22px_-6px_var(--primary)]"
+                  : "text-muted-foreground hover:bg-white/[0.05] hover:text-foreground",
+              )}
+            >
+              <span className={cn("transition-transform", active ? "scale-110" : "group-hover:scale-110")}>
+                {icon}
+              </span>
+              <span>{label}</span>
+              {/* Active bottom edge indicator */}
+              {active && (
+                <span className="absolute -bottom-px left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-primary" />
+              )}
+              {/* Live-battle pulse on Battles tab */}
+              {showLiveIndicator && (
+                <span className="absolute -right-0.5 -top-0.5 flex size-2">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-rose-400" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -801,6 +883,85 @@ function SectionShell({
         <div className="mt-4">{children}</div>
       </div>
     </motion.section>
+  );
+}
+
+/**
+ * RoleBadge — color-coded role chip used in the identity card + member list.
+ * Color encodes hierarchy at a glance:
+ *   owner  → amber/gold  (crown icon)
+ *   admin  → blue        (shield icon)
+ *   mentor → purple      (graduation icon)
+ *   member → slate       (user icon, default)
+ */
+function RoleBadge({ role, compact = false }: { role: string; compact?: boolean }) {
+  const meta: Record<string, { icon: ReactNode; className: string; label: string }> = {
+    owner: {
+      icon: <Crown className="size-2.5" />,
+      className: "border-amber-400/30 bg-amber-400/10 text-amber-300",
+      label: "Owner",
+    },
+    admin: {
+      icon: <Shield className="size-2.5" />,
+      className: "border-blue-400/30 bg-blue-400/10 text-blue-300",
+      label: "Admin",
+    },
+    mentor: {
+      icon: <GraduationCap className="size-2.5" />,
+      className: "border-purple-400/30 bg-purple-400/10 text-purple-300",
+      label: "Mentor",
+    },
+    member: {
+      icon: <Users className="size-2.5" />,
+      className: "border-white/10 bg-white/5 text-muted-foreground",
+      label: "Member",
+    },
+  };
+  const m = meta[role] ?? meta.member;
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider",
+        m.className,
+      )}
+    >
+      {!compact && m.icon}
+      {m.label}
+    </span>
+  );
+}
+
+/**
+ * SquadStat — a single stat tile used in the identity card. Tighter and
+ * more premium than the original plain divs.
+ */
+function SquadStat({
+  icon,
+  label,
+  value,
+  tone = "default",
+}: {
+  icon?: ReactNode;
+  label: string;
+  value: number | string;
+  tone?: "default" | "emerald" | "amber";
+}) {
+  const toneClass =
+    tone === "emerald"
+      ? "text-emerald-300"
+      : tone === "amber"
+        ? "text-amber-300"
+        : "text-foreground";
+  return (
+    <div className="glass-soft rounded-xl px-3 py-2.5 transition-colors hover:bg-white/[0.05]">
+      <p className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
+        {icon}
+        {label}
+      </p>
+      <p className={cn("mt-0.5 font-mono text-lg font-bold tabular-nums", toneClass)}>
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -1082,24 +1243,29 @@ function StatTile({
   tone: "amber" | "orange" | "purple" | "blue";
 }) {
   const toneClasses: Record<typeof tone, string> = {
-    amber: "bg-amber-400/10 text-amber-300 border-amber-400/20",
-    orange: "bg-orange-400/10 text-orange-300 border-orange-400/20",
-    purple: "bg-purple-400/10 text-purple-300 border-purple-400/20",
-    blue: "bg-blue-400/10 text-blue-300 border-blue-400/20",
+    amber: "bg-amber-400/10 text-amber-300 border-amber-400/20 shadow-[0_0_12px_-4px_rgb(251,191,36/0.4)]",
+    orange: "bg-orange-400/10 text-orange-300 border-orange-400/20 shadow-[0_0_12px_-4px_rgb(251,146,60/0.4)]",
+    purple: "bg-purple-400/10 text-purple-300 border-purple-400/20 shadow-[0_0_12px_-4px_rgb(168,85,247/0.4)]",
+    blue: "bg-blue-400/10 text-blue-300 border-blue-400/20 shadow-[0_0_12px_-4px_rgb(59,130,246/0.4)]",
   };
   return (
-    <div className="glass-soft flex flex-col gap-1 rounded-2xl border border-white/5 p-3.5">
-      <div className={cn("flex size-7 items-center justify-center rounded-lg border", toneClasses[tone])}>
+    <motion.div
+      whileHover={{ y: -2, scale: 1.01 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="glass-soft relative flex flex-col gap-1 overflow-hidden rounded-2xl border border-white/5 p-3.5"
+    >
+      <div className="pointer-events-none absolute -top-8 -right-8 size-16 rounded-full bg-white/[0.02] blur-[20px]" />
+      <div className={cn("relative flex size-7 items-center justify-center rounded-lg border", toneClasses[tone])}>
         {icon}
       </div>
-      <p className="mt-1 font-mono text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
+      <p className="relative mt-1 font-mono text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
         {label}
       </p>
-      <p className="font-mono text-xl font-extrabold tabular-nums text-foreground">
+      <p className="relative font-mono text-xl font-extrabold tabular-nums text-foreground">
         {value}
         {suffix && <span className="ml-0.5 text-xs font-normal text-muted-foreground">{suffix}</span>}
       </p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -2828,9 +2994,7 @@ function SquadMembers({
                   <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-300">you</Badge>
                 )}
                 {m.isOwner && <Crown className="size-3 shrink-0 text-amber-300" />}
-              </p>
-              <p className="type-caption uppercase tracking-wide text-muted-foreground">
-                {m.role}
+                <RoleBadge role={m.role} compact />
               </p>
             </div>
             {/* Role assignment menu — visible to owner/admin */}
