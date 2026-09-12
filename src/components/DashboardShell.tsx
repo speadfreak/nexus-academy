@@ -206,7 +206,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-4 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div
+      className="student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-4 overflow-x-clip px-4 py-4 sm:px-6 sm:py-6 lg:px-8"
+    >
 
       {/* Desktop sidebar wrapper — toggle button lives here so it's not clipped */}
       <div className="relative hidden shrink-0 xl:block sticky top-4 lg:top-6 h-[calc(100dvh-2rem)] lg:h-[calc(100dvh-3rem)]">

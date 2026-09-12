@@ -870,7 +870,10 @@ export function MusicPlayer() {
   const ytParsed = youtubeUrl ? parseYoutubeUrl(youtubeUrl) : null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2">
+    <div
+      className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[calc(100vw-1.5rem)] max-w-md"
+      data-lenis-prevent-wheel
+    >
       {/* Time-of-day suggestion banner */}
       {timeSuggestion && !playing && (
         <div className="mb-2 flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/[0.06] px-3 py-1 text-[11px] text-amber-200">
@@ -894,7 +897,7 @@ export function MusicPlayer() {
 
       {/* Mixer panel */}
       {showMixer && (
-        <div className="mb-2 w-80 rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl">
+        <div className="mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-lenis-prevent-wheel>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Mixer — Layer your sounds</p>
             <button onClick={() => setShowMixer(false)} className="cursor-pointer text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>
@@ -931,7 +934,7 @@ export function MusicPlayer() {
 
       {/* Track browser */}
       {showBrowser && (
-        <div className="mb-2 max-h-64 w-80 overflow-y-auto rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl">
+        <div className="mb-2 max-h-64 w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-lenis-prevent-wheel>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Browse tracks</p>
             <button onClick={() => setShowBrowser(false)} className="cursor-pointer text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>
@@ -964,7 +967,7 @@ export function MusicPlayer() {
 
       {/* YouTube panel */}
       {showYoutube && (
-        <div className="mb-2 w-80 rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl">
+        <div className="mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-lenis-prevent-wheel>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-300">YouTube study music</p>
             <button onClick={() => setShowYoutube(false)} className="cursor-pointer text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>
@@ -975,31 +978,41 @@ export function MusicPlayer() {
         </div>
       )}
 
-      {/* Main player bar */}
+      {/* Main player bar — responsive: wraps to 2 rows on mobile, single row on desktop.
+          Layout breakdown:
+            • Mobile collapsed: [icon + "vibe"/track-label] pill — fits viewport
+            • Mobile expanded: row 1 = [prev][play][next][track-name][minimize],
+                                row 2 = [volume-slider-flex-1][browse][mixer][youtube]
+            • Desktop collapsed: same as mobile
+            • Desktop expanded: single row with everything inline (no wrapping) */}
       <div
         className={cn(
-          "glass-panel flex items-center gap-2.5 rounded-full px-3 py-2 transition-all duration-300",
-          !expanded && "cursor-pointer",
+          "glass-panel flex items-center gap-2.5 rounded-2xl px-3 py-2 transition-all duration-300 sm:rounded-full sm:flex-nowrap flex-wrap",
+          !expanded && "cursor-pointer flex-nowrap rounded-full",
         )}
       >
         {expanded ? (
           <>
-            <button type="button" onClick={() => cycleTrack(-1)} aria-label="Previous track" className="flex size-10 min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground">
+            {/* Essential controls — always visible, never wrap apart */}
+            <button type="button" onClick={() => cycleTrack(-1)} aria-label="Previous track" className="flex size-10 min-h-10 min-w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground">
               <ChevronDown className="size-4 rotate-90" />
             </button>
-            <button type="button" onClick={toggle} aria-label={playing ? "Pause" : "Play"} className="flex size-10 min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_-4px_var(--primary)] transition-transform hover:scale-105 active:scale-95">
+            <button type="button" onClick={toggle} aria-label={playing ? "Pause" : "Play"} className="flex size-10 min-h-10 min-w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_-4px_var(--primary)] transition-transform hover:scale-105 active:scale-95">
               {playing ? <Pause className="size-4" /> : <Play className="size-4 translate-x-px" />}
             </button>
-            <button type="button" onClick={() => cycleTrack(1)} aria-label="Next track" className="flex size-10 min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground">
+            <button type="button" onClick={() => cycleTrack(1)} aria-label="Next track" className="flex size-10 min-h-10 min-w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground">
               <ChevronUp className="size-4 rotate-90" />
             </button>
 
-            <div className="min-w-28 select-none px-1">
+            {/* Track name — flex-1 so it takes available space and truncates */}
+            <div className="min-w-0 flex-1 select-none px-1">
               <p className="flex items-center gap-1.5 text-xs font-bold tracking-tight">
-                <AudioLines className={cn("size-3.5 text-primary", playing && "animate-pulse")} />
-                {audioSource === "youtube" ? "YouTube" : track.label}
+                <AudioLines className={cn("size-3.5 shrink-0 text-primary", playing && "animate-pulse")} />
+                <span className="truncate">
+                  {audioSource === "youtube" ? "YouTube" : track.label}
+                </span>
                 {track.category !== "Classical" && (
-                  <span className="rounded-md border border-white/10 bg-white/5 px-1 py-px font-mono text-[8px] font-semibold uppercase tracking-wider text-muted-foreground">{track.category}</span>
+                  <span className="hidden shrink-0 rounded-md border border-white/10 bg-white/5 px-1 py-px font-mono text-[8px] font-semibold uppercase tracking-wider text-muted-foreground sm:inline">{track.category}</span>
                 )}
               </p>
               <p className="truncate font-mono text-[9px] text-muted-foreground">
@@ -1007,41 +1020,60 @@ export function MusicPlayer() {
               </p>
             </div>
 
-            {/* Visualizer — subtle pulse when playing */}
-            {playing && (
-              <div className="flex items-center gap-0.5 px-1">
-                {[0, 1, 2, 3].map(i => (
-                  <span key={i} className="w-0.5 rounded-full bg-primary/60" style={{ animation: `pulse ${0.4 + i * 0.15}s ease-in-out ${i * 0.1}s infinite alternate`, height: `${4 + (i % 2) * 4}px` }} />
-                ))}
-              </div>
-            )}
-
-            <div className="flex items-center gap-1.5 pl-1">
+            {/* Desktop-only inline: visualizer + volume slider + 3 action buttons.
+                Hidden on mobile to save horizontal space — they move to the
+                mobile-only second row below. */}
+            <div className="hidden items-center gap-1.5 pl-1 sm:flex">
+              {playing && (
+                <div className="flex items-center gap-0.5 px-1">
+                  {[0, 1, 2, 3].map(i => (
+                    <span key={i} className="w-0.5 rounded-full bg-primary/60" style={{ animation: `pulse ${0.4 + i * 0.15}s ease-in-out ${i * 0.1}s infinite alternate`, height: `${4 + (i % 2) * 4}px` }} />
+                  ))}
+                </div>
+              )}
               <Volume2 className="size-3.5 text-muted-foreground" />
               <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => setVolume(Number(e.target.value))} aria-label="Volume" className="h-1 w-20 cursor-pointer accent-[var(--primary)]" />
             </div>
 
-            {/* Action buttons */}
-            <button onClick={() => { setShowBrowser(s => !s); setShowMixer(false); setShowYoutube(false); }} title="Browse tracks" className={cn("flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors", showBrowser ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+            {/* Action buttons — desktop inline */}
+            <button onClick={() => { setShowBrowser(s => !s); setShowMixer(false); setShowYoutube(false); }} title="Browse tracks" className={cn("hidden size-7 cursor-pointer items-center justify-center rounded-full transition-colors sm:flex", showBrowser ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
               <AudioLines className="size-3.5" />
             </button>
-            <button onClick={() => { setShowMixer(s => !s); setShowBrowser(false); setShowYoutube(false); }} title="Mixer mode" className={cn("flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors", showMixer ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+            <button onClick={() => { setShowMixer(s => !s); setShowBrowser(false); setShowYoutube(false); }} title="Mixer mode" className={cn("hidden size-7 cursor-pointer items-center justify-center rounded-full transition-colors sm:flex", showMixer ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
               <Layers className="size-3.5" />
             </button>
-            <button onClick={() => { setShowYoutube(s => !s); setShowBrowser(false); setShowMixer(false); }} title="YouTube" className={cn("flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors", showYoutube ? "text-rose-400" : "text-muted-foreground hover:text-foreground")}>
+            <button onClick={() => { setShowYoutube(s => !s); setShowBrowser(false); setShowMixer(false); }} title="YouTube" className={cn("hidden size-7 cursor-pointer items-center justify-center rounded-full transition-colors sm:flex", showYoutube ? "text-rose-400" : "text-muted-foreground hover:text-foreground")}>
               <Youtube className="size-3.5" />
             </button>
 
-            <button type="button" onClick={() => setExpanded(false)} aria-label="Minimize" className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground">
+            {/* Minimize — always visible, sits at the end of row 1 on mobile */}
+            <button type="button" onClick={() => setExpanded(false)} aria-label="Minimize" className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground sm:ml-0 ml-auto">
               <ChevronDown className="size-4" />
             </button>
+
+            {/* Mobile-only second row — volume slider takes available width,
+                action buttons sit at the right. Replaces the desktop inline
+                controls that don't fit on a narrow screen. */}
+            <div className="flex w-full items-center gap-2 border-t border-white/10 pt-2 sm:hidden">
+              <Volume2 className="size-3.5 shrink-0 text-muted-foreground" />
+              <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => setVolume(Number(e.target.value))} aria-label="Volume" className="h-1 min-w-0 flex-1 cursor-pointer accent-[var(--primary)]" />
+              <button onClick={() => { setShowBrowser(s => !s); setShowMixer(false); setShowYoutube(false); }} title="Browse tracks" className={cn("flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors", showBrowser ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+                <AudioLines className="size-3.5" />
+              </button>
+              <button onClick={() => { setShowMixer(s => !s); setShowBrowser(false); setShowYoutube(false); }} title="Mixer mode" className={cn("flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors", showMixer ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+                <Layers className="size-3.5" />
+              </button>
+              <button onClick={() => { setShowYoutube(s => !s); setShowBrowser(false); setShowMixer(false); }} title="YouTube" className={cn("flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors", showYoutube ? "text-rose-400" : "text-muted-foreground hover:text-foreground")}>
+                <Youtube className="size-3.5" />
+              </button>
+            </div>
           </>
         ) : (
           <button type="button" onClick={() => setExpanded(true)} aria-label="Open music player" className="flex cursor-pointer items-center gap-2 px-1">
-            <span className="flex size-8 items-center justify-center rounded-full bg-primary/15 text-primary">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
               <AudioLines className="size-4" />
             </span>
-            <span className="font-mono text-[10px] font-semibold text-muted-foreground">
+            <span className="truncate font-mono text-[10px] font-semibold text-muted-foreground">
               {audioSource === "youtube" ? "YouTube" : playing ? track.label : "vibe"}
             </span>
           </button>

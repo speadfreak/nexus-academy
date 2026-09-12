@@ -162,6 +162,13 @@ body {
   background-size: auto, auto, auto;
   background-attachment: fixed;
   color: var(--foreground);
+  /* Mobile horizontal-overflow safety net. The root causes (music player
+     fixed-width panels, fixed-width decorative elements) are fixed at the
+     source, but this catches any remaining edge case on narrow viewports
+     so a student never sees a horizontal-scroll page. `clip` (not
+     `hidden`) because we don't want to create a scroll container —
+     vertical scroll stays with Lenis / the document. */
+  overflow-x: clip;
 }
 
 /* Light-mode background: soft warm amber washes instead of cool blue glows. */
