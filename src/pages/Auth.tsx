@@ -308,22 +308,135 @@ function ShimmerButton({ children, ...props }: React.ComponentProps<typeof Butto
 function Onboarding({
   onComplete,
 }: {
-  onComplete: (stream: "natural" | "social") => Promise<void>;
+  onComplete: (stream: "natural" | "social", gradeLevel: 9 | 10 | 11 | 12) => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<"natural" | "social" | null>(null);
+  // Grade step — appears AFTER stream selection. Two-step flow keeps each
+  // screen focused and avoidable for users who already know what they want.
+  // The grade drives the Library's smart-default filter on first load.
+  const [grade, setGrade] = useState<9 | 10 | 11 | 12 | null>(null);
+  const [step, setStep] = useState<"stream" | "grade">("stream");
 
   const handleSubmit = async () => {
-    if (!selected || saving) return;
+    if (!selected || !grade || saving) return;
     setSaving(true);
     try {
-      await onComplete(selected);
+      await onComplete(selected, grade);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save your stream.");
+      toast.error(error instanceof Error ? error.message : "Could not save your selection.");
       setSaving(false);
     }
   };
 
+  // ── STREAM STEP ───────────────────────────────────────────────────────
+  if (step === "stream") {
+    return (
+      <AnimatedBorderCard className="w-[min(92vw,460px)]">
+        <div className="px-8 pb-8 pt-6">
+          <CardHeader className="text-center">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 20 }}
+              className="flex justify-center"
+            >
+              <img
+                src={logo}
+                alt="Learnyx Academy ET 🇪🇹 logo"
+                width={64}
+                height={64}
+                className="mb-4 mt-2 rounded-xl"
+              />
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.5 }}
+            >
+              <CardTitle className="text-xl">Choose Your Path</CardTitle>
+              <CardDescription className="mt-2">
+                Your dashboard and AI tutor are organized around the subjects you
+                actually sit. English, Mathematics and the SAT are part of every
+                stream.
+              </CardDescription>
+            </motion.div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {STREAM_OPTIONS.map((option, i) => {
+              const active = selected === option.id;
+              return (
+                <motion.button
+                  key={option.id}
+                  type="button"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.25 + i * 0.1, duration: 0.4 }}
+                  onClick={() => setSelected(option.id)}
+                  className={`group flex w-full cursor-pointer items-center gap-4 rounded-xl border p-4 text-left transition-all duration-300 ${
+                    active
+                      ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_-8px_rgba(99,102,241,0.3)]"
+                      : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.05]"
+                  }`}
+                >
+                  <div
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                      active
+                        ? "bg-primary/20 text-primary shadow-[0_0_20px_-4px_rgba(99,102,241,0.4)]"
+                        : "bg-white/[0.04] text-white/40 group-hover:bg-white/[0.08] group-hover:text-white/60"
+                    }`}
+                  >
+                    <option.icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold tracking-tight text-white/90">
+                      {STREAM_LABELS[option.id]}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] text-white/40">
+                      {option.subjects}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[9px] leading-4 text-white/25">
+                      + {SHARED_SUBJECTS}{" "}
+                      <span className="text-primary/50">(both streams)</span>
+                    </p>
+                  </div>
+                  {active && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    >
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                        <Check className="h-3.5 w-3.5" />
+                      </div>
+                    </motion.div>
+                  )}
+                </motion.button>
+              );
+            })}
+          </CardContent>
+          <CardFooter className="flex-col gap-3 pt-2">
+            <ShimmerButton
+              type="button"
+              className="w-full rounded-xl py-5 text-sm font-semibold"
+              onClick={() => selected && setStep("grade")}
+              disabled={!selected}
+            >
+              Continue <ArrowRight className="h-4 w-4" />
+            </ShimmerButton>
+          </CardFooter>
+        </div>
+      </AnimatedBorderCard>
+    );
+  }
+
+  // ── GRADE STEP ────────────────────────────────────────────────────────
+  const GRADE_OPTIONS: { id: 9 | 10 | 11 | 12; label: string; desc: string }[] = [
+    { id: 9, label: "Grade 9", desc: "Freshman year" },
+    { id: 10, label: "Grade 10", desc: "Sophomore year" },
+    { id: 11, label: "Grade 11", desc: "Junior year" },
+    { id: 12, label: "Grade 12", desc: "Exam year — EHEEE prep" },
+  ];
   return (
     <AnimatedBorderCard className="w-[min(92vw,460px)]">
       <div className="px-8 pb-8 pt-6">
@@ -347,17 +460,17 @@ function Onboarding({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.5 }}
           >
-            <CardTitle className="text-xl">Choose Your Path</CardTitle>
+            <CardTitle className="text-xl">What Grade Are You In?</CardTitle>
             <CardDescription className="mt-2">
-              Your dashboard and AI tutor are organized around the subjects you
-              actually sit. English, Mathematics and the SAT are part of every
-              stream.
+              We&apos;ll show you the right resources first thing when you open the
+              Library. You can browse any grade later — this is just a smart
+              starting point.
             </CardDescription>
           </motion.div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {STREAM_OPTIONS.map((option, i) => {
-            const active = selected === option.id;
+        <CardContent className="grid grid-cols-2 gap-3">
+          {GRADE_OPTIONS.map((option, i) => {
+            const active = grade === option.id;
             return (
               <motion.button
                 key={option.id}
@@ -365,64 +478,71 @@ function Onboarding({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.25 + i * 0.1, duration: 0.4 }}
-                onClick={() => setSelected(option.id)}
-                className={`group flex w-full cursor-pointer items-center gap-4 rounded-xl border p-4 text-left transition-all duration-300 ${
+                onClick={() => setGrade(option.id)}
+                className={`group flex cursor-pointer flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all duration-300 ${
                   active
                     ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_-8px_rgba(99,102,241,0.3)]"
                     : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.05]"
                 }`}
               >
-                <div
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
-                    active
-                      ? "bg-primary/20 text-primary shadow-[0_0_20px_-4px_rgba(99,102,241,0.4)]"
-                      : "bg-white/[0.04] text-white/40 group-hover:bg-white/[0.08] group-hover:text-white/60"
-                  }`}
-                >
-                  <option.icon className="h-5 w-5" />
+                <div className="flex w-full items-center justify-between">
+                  <span className="text-2xl font-extrabold tracking-tight text-white/90">
+                    {option.id}
+                  </span>
+                  {active && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    >
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                        <Check className="h-3.5 w-3.5" />
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold tracking-tight text-white/90">
-                    {STREAM_LABELS[option.id]}
+                <p className="text-xs font-bold tracking-tight text-white/90">
+                  {option.label}
+                </p>
+                <p className="font-mono text-[10px] text-white/40">{option.desc}</p>
+                {option.id === 12 && (
+                  <p className="mt-0.5 font-mono text-[9px] leading-4 text-primary/60">
+                    shows all 4 years
                   </p>
-                  <p className="mt-0.5 font-mono text-[10px] text-white/40">
-                    {option.subjects}
-                  </p>
-                  <p className="mt-0.5 font-mono text-[9px] leading-4 text-white/25">
-                    + {SHARED_SUBJECTS}{" "}
-                    <span className="text-primary/50">(both streams)</span>
-                  </p>
-                </div>
-                {active && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  >
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </div>
-                  </motion.div>
                 )}
               </motion.button>
             );
           })}
         </CardContent>
         <CardFooter className="flex-col gap-3 pt-2">
-          <ShimmerButton
-            type="button"
-            className="w-full rounded-xl py-5 text-sm font-semibold"
-            onClick={handleSubmit}
-            disabled={!selected || saving}
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                Begin Your Journey <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </ShimmerButton>
+          <div className="flex w-full gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              className="flex-1 rounded-xl py-5 text-sm font-semibold text-white/50 hover:text-white/80"
+              onClick={() => setStep("stream")}
+              disabled={saving}
+            >
+              Back
+            </Button>
+            <ShimmerButton
+              type="button"
+              className="flex-[2] rounded-xl py-5 text-sm font-semibold"
+              onClick={handleSubmit}
+              disabled={!grade || saving}
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Begin Your Journey <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </ShimmerButton>
+          </div>
+          <p className="text-center font-mono text-[9px] text-white/30">
+            Grade 12 sees all 4 years — your exam covers the full curriculum.
+          </p>
         </CardFooter>
       </div>
     </AnimatedBorderCard>
@@ -523,7 +643,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
       if (profile === undefined) return;
-      if (!profile || !profile.stream) {
+      // Onboarding requires BOTH stream AND gradeLevel. Either missing →
+      // show onboarding (existing users without gradeLevel will get
+      // prompted to pick a grade, which is one quick tap from done).
+      if (!profile || !profile.stream || profile.gradeLevel === null || profile.gradeLevel === undefined) {
         setStep("onboarding");
         return;
       }
@@ -658,8 +781,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     }
   };
 
-  const handleOnboardingComplete = async (stream: "natural" | "social") => {
-    await saveStream({ stream });
+  const handleOnboardingComplete = async (
+    stream: "natural" | "social",
+    gradeLevel: 9 | 10 | 11 | 12,
+  ) => {
+    await saveStream({ stream, gradeLevel });
     navigate(redirect);
   };
 

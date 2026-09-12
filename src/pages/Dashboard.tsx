@@ -681,9 +681,75 @@ export default function Dashboard() {
   const bookmarkIds = useQuery(api.bookmarks.getMyBookmarkIds);
   const toggleBookmark = useMutation(api.bookmarks.toggleBookmark);
   const profile = useQuery(api.profile.getProfile);
+  const updateProfile = useMutation(api.profile.updateProfile);
   const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const [premiumPrompt, setPremiumPrompt] = useState<{ reason: "premium_content"; open: boolean } | null>(null);
+
+  // ── SMART DEFAULT GRADE FILTER ────────────────────────────────────────
+  // On first load, if the student has a gradeLevel set on their profile AND
+  // hasn't touched the grade filter yet, apply a smart default:
+  //   • Grades 9, 10, 11 → filter to ONLY their grade
+  //   • Grade 12         → leave filter empty (shows grades 9–12 combined,
+  //                         because the EHEEE/ESSLCE exam covers the cumulative
+  //                         curriculum — this is real academic logic, not an
+  //                         arbitrary choice)
+  // This is a ONE-SHOT effect — applied only when `appliedDefaultRef.current`
+  // is false. Once applied (or once the user manually changes the grade
+  // filter), the ref is set and we never re-apply the default. The user is
+  // always free to browse any grade via the existing filter UI.
+  const appliedDefaultRef = useRef(false);
+  // Track whether the banner asking "Tell us your grade" was dismissed this
+  // session — persists across re-mounts within the same browser session via
+  // localStorage, so the user isn't nagged every visit until they pick one.
+  const [gradeBannerDismissed, setGradeBannerDismissed] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        setGradeBannerDismissed(localStorage.getItem("learnyx.gradeBanner.dismissed") === "true");
+      } catch {
+        // localStorage access can fail in private mode — default to undismissed.
+      }
+    }
+  }, []);
+  useEffect(() => {
+    if (appliedDefaultRef.current) return;
+    if (profile === undefined) return; // still loading
+    if (!profile) {
+      appliedDefaultRef.current = true; // signed out — nothing to apply
+      return;
+    }
+    appliedDefaultRef.current = true;
+    if (profile.gradeLevel === null || profile.gradeLevel === undefined) return; // legacy user — banner will prompt
+    if (profile.gradeLevel === 12) return; // grade 12 → leave filter empty (shows 9–12)
+    // Grades 9, 10, 11 → set filter to their grade
+    setGrade(String(profile.gradeLevel));
+  }, [profile]);
+
+  const dismissGradeBanner = () => {
+    setGradeBannerDismissed(true);
+    try {
+      localStorage.setItem("learnyx.gradeBanner.dismissed", "true");
+    } catch {
+      // localStorage may be unavailable — already in-memory state.
+    }
+  };
+
+  const pickGradeFromBanner = async (g: 9 | 10 | 11 | 12) => {
+    try {
+      await updateProfile({ gradeLevel: g });
+      toast.success(`Got it — we'll show you Grade ${g} resources first.`);
+      // Apply the smart default immediately so the user sees the change
+      if (g === 12) {
+        setGrade(""); // grade 12 sees all 4 years
+      } else {
+        setGrade(String(g));
+      }
+      dismissGradeBanner();
+    } catch (error) {
+      toast.error(friendlyError(error, "Could not save your grade."));
+    }
+  };
 
   // Daily quote
   const quote = useQuery(api.quotes.getTodaysQuote);
@@ -886,6 +952,55 @@ export default function Dashboard() {
   return (
     <DashboardShell>
       <div className="student-dashboard flex w-full flex-col gap-4 sm:gap-6">
+        {/* ═══ DISMISSIBLE GRADE BANNER (legacy users without gradeLevel) ═══
+            Polite one-time prompt — "Tell us your grade so we can show you
+            the right resources first." Dismiss persists in localStorage so
+            we don't nag every visit. The user can pick a grade right here,
+            which calls updateProfile and applies the smart default. */}
+        {profile && (profile.gradeLevel === null || profile.gradeLevel === undefined) && !gradeBannerDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            className="glass-soft flex flex-col gap-3 rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300">
+                <GraduationCap className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="type-body font-bold text-foreground">
+                  What grade are you in?
+                </p>
+                <p className="mt-0.5 type-caption text-muted-foreground">
+                  Tell us your grade and we&apos;ll show you the right resources first.
+                  You can browse any grade later — this is just a smart starting point.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
+              {[9, 10, 11, 12].map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => void pickGradeFromBanner(g as 9 | 10 | 11 | 12)}
+                  className="interactive-press shrink-0 cursor-pointer rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-bold text-amber-300 transition hover:bg-amber-400/20"
+                >
+                  {g}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={dismissGradeBanner}
+                className="interactive-press shrink-0 cursor-pointer rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-muted-foreground transition hover:text-foreground"
+                title="Dismiss — you can pick a grade anytime in Settings"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {/* ═══ CINEMATIC HERO / GREETING ═══ */}
         <motion.div
           className="student-hero glass-panel relative overflow-hidden rounded-3xl p-4 sm:p-6 lg:p-8"
@@ -1692,6 +1807,15 @@ export default function Dashboard() {
                   ))}
                 </SelectContent>
               </Select>
+              {/* Grade 12 explanatory note — only shown when the smart default
+                  has loaded (grade filter is empty AND profile.gradeLevel is 12).
+                  Prevents the "wider than expected" default from feeling like a
+                  bug. Real academic logic: EHEEE covers the cumulative curriculum. */}
+              {profile?.gradeLevel === 12 && grade === "" && (
+                <p className="mt-0.5 font-mono text-[9px] leading-3 text-amber-300/70">
+                  Showing all 4 years — your exam covers the full curriculum.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">

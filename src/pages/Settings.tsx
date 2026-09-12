@@ -13,6 +13,7 @@ import {
   Clock,
   Compass,
   Crown,
+  GraduationCap,
   Landmark,
   Link2,
   Loader2,
@@ -156,6 +157,18 @@ export default function Settings() {
       toast.success(`Stream set to ${STREAM_LABELS[stream]}.`);
     } catch (error) {
       toast.error(friendlyError(error, "Could not save your stream."));
+    }
+  };
+
+  const handleGrade = async (gradeLevel: 9 | 10 | 11 | 12) => {
+    try {
+      await updateProfile({ gradeLevel });
+      const note = gradeLevel === 12
+        ? "Grade 12 set — Library will show all 4 years since your exam covers the full curriculum."
+        : `Grade ${gradeLevel} set — Library will default to your grade's resources.`;
+      toast.success(note);
+    } catch (error) {
+      toast.error(friendlyError(error, "Could not save your grade."));
     }
   };
 
@@ -410,6 +423,56 @@ export default function Settings() {
                     + {SHARED_SUBJECTS}{" "}
                     <span className="text-amber-300/70">(both streams)</span>
                   </p>
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
+
+        {/* ------- Grade ------- */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel hover-lift rounded-2xl p-6"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.35)]">
+              <GraduationCap className="size-4" />
+            </div>
+            <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold">
+              // grade level
+            </p>
+          </div>
+          <p className="mt-1 type-caption text-muted-foreground">
+            We use this to default the Library to your grade&apos;s resources. Grade 12
+            sees all 4 years since the EHEEE/ESSLCE covers the cumulative curriculum.
+            You can always browse any grade from the Library filter.
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {([9, 10, 11, 12] as const).map((g) => {
+              const active = profile?.gradeLevel === g;
+              return (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => void handleGrade(g)}
+                  className={cn(
+                    "interactive-press flex cursor-pointer flex-col items-center gap-1 rounded-xl border p-3 text-center",
+                    active
+                      ? "border-primary/50 bg-primary/10 shadow-[inset_0_0_0_1px_rgb(251,191,36/0.14),0_8px_24px_-18px_rgb(251,191,36/0.9)]"
+                      : "border-white/10 bg-white/4 hover:border-white/25",
+                  )}
+                >
+                  <span className={cn("text-2xl font-extrabold", active ? "text-primary" : "text-foreground/90")}>
+                    {g}
+                  </span>
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                    {g === 12 ? "exam year" : "grade"}
+                  </span>
+                  {g === 12 && (
+                    <span className="font-mono text-[8px] text-amber-300/60">all 4 years</span>
+                  )}
                 </button>
               );
             })}

@@ -357,6 +357,21 @@ const schema = defineSchema(
       // Persisted per-user so signed-in users keep their language across
       // devices/sessions. Guests use localStorage (see src/i18n/index.ts).
       preferredLanguage: v.optional(v.string()),
+      // ── GRADE LEVEL ───────────────────────────────────────────────────
+      // The student's current grade (9, 10, 11, or 12). Set during signup
+      // onboarding alongside stream. Used by the Library to apply a smart
+      // default grade filter — grades 9/10/11 see only their own grade's
+      // resources on load; grade 12 sees grades 9-12 combined because the
+      // EHEEE/ESSLCE exam covers the cumulative curriculum. This is a
+      // DEFAULT, not a lock — the existing grade filter UI remains available.
+      // Null for legacy users (predating this field); they get a dismissible
+      // "Tell us your grade" banner until they pick one.
+      gradeLevel: v.optional(v.union(
+        v.literal(9),
+        v.literal(10),
+        v.literal(11),
+        v.literal(12),
+      )),
     })
       .index("by_user", ["userId"])
       .index("by_username", ["username"]),

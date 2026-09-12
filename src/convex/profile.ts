@@ -103,6 +103,11 @@ export const getProfile = query({
       avatarUrl,
       themePreference: profile?.themePreference ?? "dark",
       stream: profile?.stream ?? null,
+      // ── GRADE LEVEL ────────────────────────────────────────────────
+      // The student's current grade (9, 10, 11, 12) or null for legacy
+      // users predating this field. Used by the Library to apply a
+      // smart default grade filter on first load.
+      gradeLevel: profile?.gradeLevel ?? null,
       email: user?.email ?? null,
       name: user?.name ?? null,
       // Guest users (signed in via "Continue as Guest") have isAnonymous=true.
@@ -132,6 +137,15 @@ export const updateProfile = mutation({
       v.literal("om"),
       v.literal("ti"),
     )),
+    // Grade level (9, 10, 11, or 12). Set during onboarding OR from the
+    // Library's dismissible "Tell us your grade" banner for legacy users.
+    // Once set, the Library applies a smart default filter on first load.
+    gradeLevel: v.optional(v.union(
+      v.literal(9),
+      v.literal(10),
+      v.literal(11),
+      v.literal(12),
+    )),
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
@@ -155,6 +169,7 @@ export const updateProfile = mutation({
     if (args.themePreference !== undefined) patch.themePreference = args.themePreference;
     if (args.stream !== undefined) patch.stream = args.stream;
     if (args.preferredLanguage !== undefined) patch.preferredLanguage = args.preferredLanguage;
+    if (args.gradeLevel !== undefined) patch.gradeLevel = args.gradeLevel;
     await ctx.db.patch(row._id, patch);
     return { ok: true };
   },
