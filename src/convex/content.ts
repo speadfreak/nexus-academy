@@ -186,6 +186,69 @@ export const countContentItems = internalQuery({
   },
 });
 
+/**
+ * Library browse stats — real, honest numbers for the Library's stats row
+ * and per-subject count chips. Returns:
+ *   • total                — total content items in the library
+ *   • byContentType       — { textbook: N, past_exam: N, ... } using the
+ *                            ACTUAL content type slugs found in the data
+ *                            (no fabrication — only types that exist get
+ *                            counted)
+ *   • bySubject           — [{ subjectId, slug, name, count }] sorted by
+ *                            count desc — powers the subject chips with
+ *                            real per-subject counts
+ *   • byGrade             — { 9: N, 10: N, 11: N, 12: N } — powers the
+ *                            grade selector with honest per-grade counts
+ *
+ * This is a SINGLE query that scans contentItems ONCE and joins subjects.
+ * Catalog scale (~hundreds to low thousands) makes this fast without
+ * dedicated aggregation indexes.
+ *
+ * Public — no auth required. Library browsing is free for everyone
+ * (consistent with the project's "browsing content is free" principle).
+ */
+export const getLibraryStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.db.query("contentItems").collect();
+    // byContentType — count by the actual contentType field
+    const byContentType: Record<string, number> = {};
+    // byGrade — 9..12
+    const byGrade: Record<number, number> = { 9: 0, 10: 0, 11: 0, 12: 0 };
+    // bySubject — accumulate by subjectId, then join subject name
+    const subjectCounts = new Map<Id<"subjects">, number>();
+    for (const item of items) {
+      byContentType[item.contentType] = (byContentType[item.contentType] ?? 0) + 1;
+      if (item.grade >= 9 && item.grade <= 12) {
+        byGrade[item.grade] = (byGrade[item.grade] ?? 0) + 1;
+      }
+      if (item.subjectId) {
+        subjectCounts.set(item.subjectId, (subjectCounts.get(item.subjectId) ?? 0) + 1);
+      }
+    }
+    // Resolve subject names
+    const bySubject: { subjectId: Id<"subjects">; slug: string; name: string; count: number }[] = [];
+    for (const [subjectId, count] of subjectCounts) {
+      const subj = await ctx.db.get(subjectId);
+      if (subj) {
+        bySubject.push({
+          subjectId,
+          slug: subj.slug,
+          name: subj.name,
+          count,
+        });
+      }
+    }
+    bySubject.sort((a, b) => b.count - a.count);
+    return {
+      total: items.length,
+      byContentType,
+      bySubject,
+      byGrade,
+    };
+  },
+});
+
 export const getContentItemById = internalQuery({
   args: { contentId: v.id("contentItems") },
   handler: async (ctx, { contentId }) =>

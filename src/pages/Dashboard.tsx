@@ -808,6 +808,13 @@ export default function Dashboard() {
     searchQuery: searchQuery.trim() || undefined,
   });
 
+  // Library stats — real per-subject counts + per-content-type counts +
+  // per-grade counts. Used by the subject chips (real counts next to each
+  // chip) and the content-type tab row (real counts per type). Single query
+  // that scans contentItems once — fast at catalog scale (~hundreds to low
+  // thousands). Public — no auth required (browsing is free for everyone).
+  const libraryStats = useQuery(api.content.getLibraryStats);
+
   const streak = useQuery(api.studySessions.getStreak);
   const todos = useQuery(api.todos.list);
   const todayKey = localDateKey();
@@ -1147,25 +1154,57 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {[
-                  ["All resources", ""],
-                  ["Textbooks", "textbook"],
-                  ["Past exams", "past_exam"],
-                ].map(([label, value]) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => { setContentType(value); setExamYear(""); }}
-                    className={cn(
-                      "rounded-lg border px-2.5 py-1.5 type-caption font-semibold transition",
-                      contentType === value
-                        ? "border-primary/40 bg-primary/15 text-primary"
-                        : "border-white/10 bg-white/[0.04] text-muted-foreground hover:border-primary/30 hover:text-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
+                {/* Content-type filter tabs — uses REAL per-type counts from
+                    getLibraryStats. Only types with >0 items show up so the
+                    row stays honest (no "Worksheet" tab when there are 0
+                    worksheets — would feel like a dead end). */}
+                <button
+                  type="button"
+                  onClick={() => { setContentType(""); setExamYear(""); }}
+                  className={cn(
+                    "interactive-press rounded-lg border px-2.5 py-1.5 type-caption font-semibold transition",
+                    contentType === ""
+                      ? "border-primary/40 bg-primary/15 text-primary"
+                      : "border-white/10 bg-white/[0.04] text-muted-foreground hover:border-primary/30 hover:text-foreground",
+                  )}
+                >
+                  All resources
+                  {libraryStats && (
+                    <span className={cn(
+                      "ml-1.5 rounded px-1 font-mono text-[9px]",
+                      contentType === "" ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground/70",
+                    )}>
+                      {libraryStats.total}
+                    </span>
+                  )}
+                </button>
+                {CONTENT_TYPES.map((typeSlug) => {
+                  const count = libraryStats?.byContentType[typeSlug] ?? 0;
+                  if (count === 0) return null; // honest — no empty tabs
+                  const label = CONTENT_TYPE_LABELS[typeSlug] ?? typeSlug;
+                  const value = typeSlug;
+                  return (
+                    <button
+                      key={typeSlug}
+                      type="button"
+                      onClick={() => { setContentType(value); setExamYear(""); }}
+                      className={cn(
+                        "interactive-press rounded-lg border px-2.5 py-1.5 type-caption font-semibold transition",
+                        contentType === value
+                          ? "border-primary/40 bg-primary/15 text-primary"
+                          : "border-white/10 bg-white/[0.04] text-muted-foreground hover:border-primary/30 hover:text-foreground",
+                      )}
+                    >
+                      {label}
+                      <span className={cn(
+                        "ml-1.5 rounded px-1 font-mono text-[9px]",
+                        contentType === value ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground/70",
+                      )}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
                 {/* Admin-only: Manage link to /admin. Previously rendered for
                     ALL users because `isAdmin` is the raw query result
                     ({ isAdmin: boolean, role: string | null }) which is always
@@ -1497,7 +1536,7 @@ export default function Dashboard() {
               type="button"
               onClick={() => setSubjectSlug("")}
               className={cn(
-                "interactive-press shrink-0 rounded-xl px-4 py-2.5 type-caption font-bold transition-all duration-200",
+                "interactive-press flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2.5 type-caption font-bold transition-all duration-200",
                 subjectSlug === ""
                   ? "bg-amber-400/15 text-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.15)] ring-1 ring-amber-400/25"
                   : "bg-white/5 text-muted-foreground hover:bg-white/8 hover:text-foreground",
@@ -1505,11 +1544,21 @@ export default function Dashboard() {
               whileTap={{ scale: 0.96 }}
             >
               All
+              {libraryStats && (
+                <span className={cn(
+                  "rounded px-1 font-mono text-[9px]",
+                  subjectSlug === "" ? "bg-amber-400/20 text-amber-200" : "bg-white/5 text-muted-foreground/70",
+                )}>
+                  {libraryStats.total}
+                </span>
+              )}
             </motion.button>
             {subjects?.map((subject, i) => {
               const cover = coverFor(subject.slug);
               const GlyphIcon = SUBJECT_GLYPHS[subject.slug] ?? BookOpen;
               const isActive = subjectSlug === subject.slug;
+              // Real per-subject count from the stats query — honest, no fabrication.
+              const subjectCount = libraryStats?.bySubject.find(s => s.slug === subject.slug)?.count ?? 0;
               return (
                 <motion.button
                   key={subject._id}
@@ -1534,6 +1583,20 @@ export default function Dashboard() {
                 >
                   {GlyphIcon && <GlyphIcon className="size-3" style={isActive ? { color: cover.accent } : undefined} />}
                   {subject.name}
+                  {subjectCount > 0 && (
+                    <span
+                      className="rounded px-1 font-mono text-[9px]"
+                      style={isActive ? {
+                        backgroundColor: `${cover.accent}20`,
+                        color: cover.accent,
+                      } : {
+                        backgroundColor: "rgba(255,255,255,0.05)",
+                        color: "rgba(255,255,255,0.45)",
+                      }}
+                    >
+                      {subjectCount}
+                    </span>
+                  )}
                 </motion.button>
               );
             })}
