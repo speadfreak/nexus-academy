@@ -43,7 +43,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { clockTime, relativeTime } from "@/lib/dates";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { FREE_INCLUDED_IDS, PREMIUM_COMPARISON } from "@/lib/premium";
 import { SUBSCRIPTION_DAYS } from "@/convex/constants";
 import { cn } from "@/lib/utils";
@@ -262,6 +262,7 @@ function ManualPaymentSection({
   currentPeriodEnd: number | null;
   isPremium: boolean;
 }) {
+  const friendlyError = useFriendlyError();
   const submitPaymentProof = useAction(api.manualPayments.submitPaymentProof);
   const generateUploadUrl = useAction(api.manualPayments.generateUploadUrl);
 
@@ -401,7 +402,7 @@ function ManualPaymentSection({
       setDiscountInput("");
       setUploadProgress(0);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not submit your payment proof."));
+      toast.error(friendlyError(error, "Could not submit your payment proof."));
     } finally {
       setSubmitting(false);
     }

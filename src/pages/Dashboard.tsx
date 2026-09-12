@@ -45,7 +45,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { DashboardShell } from "@/components/DashboardShell";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { QuizFlow } from "@/components/QuizFlow";
@@ -665,6 +665,7 @@ function XPProgressBar({ currentLevel, totalXp, xpToNext }: { currentLevel: numb
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function Dashboard() {
+  const friendlyError = useFriendlyError();
   const [searchQuery, setSearchQuery] = useState("");
   const [grade, setGrade] = useState("");
   const [subjectSlug, setSubjectSlug] = useState("");
@@ -832,7 +833,7 @@ export default function Dashboard() {
         toast.success(`Achievement unlocked: ${achievement.name}`);
       }
     } catch (error) {
-      toast.error(errorMessage(error, "Could not submit the challenge."));
+      toast.error(friendlyError(error, "Could not submit the challenge."));
     } finally {
       setChallengeSubmitting(false);
       setChallengeAnswer(null);

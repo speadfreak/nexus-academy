@@ -95,7 +95,7 @@ import {
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 // Tab keys
@@ -113,6 +113,7 @@ type TabKey =
   | "chat";
 
 export default function Groups() {
+  const friendlyError = useFriendlyError();
   const { t } = useTranslation(["groups", "common"]);
   const navigate = useNavigate();
   const myGroups = useQuery(api.studyGroups.getMyGroups);
@@ -176,7 +177,7 @@ export default function Groups() {
       setRoomName("");
       navigate(`/rooms/${result.roomId}`);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not start the room."));
+      toast.error(friendlyError(error, "Could not start the room."));
     } finally {
       setStartingRoom(false);
     }
@@ -199,7 +200,7 @@ export default function Groups() {
       setSubjectFocus("");
       setSelectedId(result.groupId as string);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not create the squad."));
+      toast.error(friendlyError(error, "Could not create the squad."));
     }
   };
 
@@ -216,7 +217,7 @@ export default function Groups() {
       setInviteCode("");
       setSelectedId(result.groupId as string);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not join that squad."));
+      toast.error(friendlyError(error, "Could not join that squad."));
     }
   };
 
@@ -237,7 +238,7 @@ export default function Groups() {
       toast.success(`You left “${name}”.`);
       setSelectedId(null);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not leave the squad."));
+      toast.error(friendlyError(error, "Could not leave the squad."));
     }
   };
 
@@ -1459,6 +1460,7 @@ function SquadChallenges({
   subjects: { _id: Id<"subjects">; name: string }[];
   myRole: string;
 }) {
+  const friendlyError = useFriendlyError();
   const challenges = useQuery(api.squads.listSquadChallenges, { groupId });
   const createChallenge = useMutation(api.squads.createSquadChallenge);
   const bumpChallenge = useMutation(api.squads.bumpChallengeProgress);
@@ -1520,7 +1522,7 @@ function SquadChallenges({
       setSubjectId("");
       setSubjectName("");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not start the challenge."));
+      toast.error(friendlyError(error, "Could not start the challenge."));
     } finally {
       setCreating(false);
     }
@@ -1654,7 +1656,7 @@ function SquadChallenges({
                             if (window.confirm("Abandon this challenge? Progress will be lost.")) {
                               void abandonChallenge({ challengeId: c.challengeId })
                                 .then(() => toast.success("Challenge abandoned."))
-                                .catch((e) => toast.error(errorMessage(e, "Could not abandon.")));
+                                .catch((e) => toast.error(friendlyError(e, "Could not abandon.")));
                             }
                           }}
                         >
@@ -1902,6 +1904,7 @@ function SquadTutor({
   subjects: { _id: Id<"subjects">; name: string }[];
   myRole: string;
 }) {
+  const friendlyError = useFriendlyError();
   const threads = useQuery(api.squads.listSquadAIThreads, { groupId });
   const askSquadAI = useAction(api.squads.askSquadAI);
 
@@ -1931,7 +1934,7 @@ function SquadTutor({
       setSelectedThreadId(result.threadId);
       setTopic("");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not generate. Try again."));
+      toast.error(friendlyError(error, "Could not generate. Try again."));
     } finally {
       setGenerating(false);
     }
@@ -2098,6 +2101,7 @@ function SquadBattles({
   subjects: { _id: Id<"subjects">; name: string }[];
   myRole: string;
 }) {
+  const friendlyError = useFriendlyError();
   const battle = useQuery(api.squads.getActiveSquadBattle, { groupId });
   const completed = useQuery(api.squads.getLatestCompletedBattle, { groupId });
   const createBattle = useAction(api.squads.createSquadQuizBattle);
@@ -2136,7 +2140,7 @@ function SquadBattles({
       setCreateOpen(false);
       setTopic("");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not create the battle."));
+      toast.error(friendlyError(error, "Could not create the battle."));
     } finally {
       setCreating(false);
     }
@@ -2151,7 +2155,7 @@ function SquadBattles({
         optionIndex,
       });
     } catch (error) {
-      toast.error(errorMessage(error, "Could not submit your answer."));
+      toast.error(friendlyError(error, "Could not submit your answer."));
     }
   };
 
@@ -2161,7 +2165,7 @@ function SquadBattles({
       await joinBattle({ battleId: battle.battleId });
       toast.success("Joined the battle.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not join."));
+      toast.error(friendlyError(error, "Could not join."));
     }
   };
 
@@ -2170,7 +2174,7 @@ function SquadBattles({
     try {
       await startBattle({ battleId: battle.battleId });
     } catch (error) {
-      toast.error(errorMessage(error, "Could not start."));
+      toast.error(friendlyError(error, "Could not start."));
     }
   };
 
@@ -2182,7 +2186,7 @@ function SquadBattles({
         toast.success("Battle complete! 🎉");
       }
     } catch (error) {
-      toast.error(errorMessage(error, "Could not advance."));
+      toast.error(friendlyError(error, "Could not advance."));
     }
   };
 
@@ -2581,6 +2585,7 @@ function SquadBoard({
   groupId: Id<"studyGroups">;
   myRole: string;
 }) {
+  const friendlyError = useFriendlyError();
   const board = useQuery(api.squads.getSquadBoard, { groupId });
   const upsert = useMutation(api.squads.upsertBoardSlot);
 
@@ -2612,7 +2617,7 @@ function SquadBoard({
               await upsert({ groupId, slot: "current_goal", content });
               toast.success("Goal updated.");
             } catch (e) {
-              toast.error(errorMessage(e, "Could not save."));
+              toast.error(friendlyError(e, "Could not save."));
             }
           }}
         />
@@ -2632,7 +2637,7 @@ function SquadBoard({
               });
               toast.success("Next session updated.");
             } catch (e) {
-              toast.error(errorMessage(e, "Could not save."));
+              toast.error(friendlyError(e, "Could not save."));
             }
           }}
         />
@@ -2647,7 +2652,7 @@ function SquadBoard({
               await upsert({ groupId, slot: "announcement", content });
               toast.success("Announcement posted.");
             } catch (e) {
-              toast.error(errorMessage(e, "Could not save."));
+              toast.error(friendlyError(e, "Could not save."));
             }
           }}
         />
@@ -2662,7 +2667,7 @@ function SquadBoard({
               await upsert({ groupId, slot: "resource", content });
               toast.success("Resource linked.");
             } catch (e) {
-              toast.error(errorMessage(e, "Could not save."));
+              toast.error(friendlyError(e, "Could not save."));
             }
           }}
         />
@@ -2759,6 +2764,7 @@ function SquadExamPrep({
   groupId: Id<"studyGroups">;
   myRole: string;
 }) {
+  const friendlyError = useFriendlyError();
   const prep = useQuery(api.squads.getSquadExamPrep, { groupId });
   const generate = useAction(api.squads.generateSquadExamPrep);
 
@@ -2778,7 +2784,7 @@ function SquadExamPrep({
       });
       toast.success("Squad exam prep generated!");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not generate."));
+      toast.error(friendlyError(error, "Could not generate."));
     } finally {
       setGenerating(false);
     }
@@ -2950,6 +2956,7 @@ function SquadMembers({
     | null;
   myRole: string;
 }) {
+  const friendlyError = useFriendlyError();
   const setRole = useMutation(api.squads.setMemberRole);
   const transferOwnership = useMutation(api.squads.transferOwnership);
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
@@ -3017,7 +3024,7 @@ function SquadMembers({
                       toast.success(`Role updated to ${v}.`);
                     }
                   } catch (e) {
-                    toast.error(errorMessage(e, "Could not update role."));
+                    toast.error(friendlyError(e, "Could not update role."));
                   }
                 }}
               >

@@ -54,7 +54,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type EventType = "study_block" | "exam" | "reminder" | "custom";
@@ -107,6 +107,7 @@ interface EventDraft {
 }
 
 export default function CalendarPage() {
+  const friendlyError = useFriendlyError();
   const { t } = useTranslation(["calendar", "common"]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -222,7 +223,7 @@ export default function CalendarPage() {
       setCreating(false);
       setDraft(null);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not create the event."));
+      toast.error(friendlyError(error, "Could not create the event."));
     } finally {
       setSaving(false);
     }
@@ -235,7 +236,7 @@ export default function CalendarPage() {
       toast.success("Event removed.");
       setSelectedEvent(null);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not delete the event."));
+      toast.error(friendlyError(error, "Could not delete the event."));
     } finally {
       setDeletingId(null);
     }

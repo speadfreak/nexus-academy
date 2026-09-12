@@ -46,10 +46,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { errorMessage, errorCode } from "@/lib/errors";
+import { useFriendlyError, errorCode } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 export default function Plans() {
+  const friendlyError = useFriendlyError();
   const { t } = useTranslation(["plans", "common"]);
   const subjects = useQuery(api.subjects.getAll);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
@@ -118,7 +119,7 @@ export default function Plans() {
       if (errorCode(error) === "premium_plans") {
         setPlanPromptOpen(true);
       } else {
-        toast.error(errorMessage(error, "Could not generate the plan."));
+        toast.error(friendlyError(error, "Could not generate the plan."));
       }
     } finally {
       setGenerating(false);
@@ -130,7 +131,7 @@ export default function Plans() {
     try {
       await markWeekComplete({ planId: plan._id as never, week });
     } catch (error) {
-      toast.error(errorMessage(error, "Could not update the week."));
+      toast.error(friendlyError(error, "Could not update the week."));
     }
   }, [plan, markWeekComplete]);
 

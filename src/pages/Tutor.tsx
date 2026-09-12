@@ -37,7 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { clockTime, relativeTime } from "@/lib/dates";
-import { errorCode, errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorCode, errorMessage } from "@/lib/errors";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { cn } from "@/lib/utils";
@@ -188,6 +188,7 @@ function Bubble({ message, index }: { message: MessageDoc; index: number }) {
 }
 
 export default function Tutor() {
+  const friendlyError = useFriendlyError();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   // i18n — the tutor namespace holds the empty-state, input placeholder,
@@ -367,7 +368,7 @@ export default function Tutor() {
       if (errorCode(error) === "daily_limit_reached") {
         setCapPromptOpen(true);
       } else {
-        toast.error(errorMessage(error, "The tutor couldn't reply. Try again."));
+        toast.error(friendlyError(error, "The tutor couldn't reply. Try again."));
       }
     } finally {
       setSending(null);

@@ -39,7 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type Difficulty = "easy" | "medium" | "hard";
@@ -77,6 +77,7 @@ const EMPTY_DRAFT: NoteDraft = {
 };
 
 export default function Notes() {
+  const friendlyError = useFriendlyError();
   const { t } = useTranslation(["notes", "common"]);
   const [searchParams, setSearchParams] = useSearchParams();
   const subjectParam = searchParams.get("subject") ?? "";
@@ -137,7 +138,7 @@ export default function Notes() {
       setDraft(EMPTY_DRAFT);
       toast.success("Note pinned.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not create the note."));
+      toast.error(friendlyError(error, "Could not create the note."));
     } finally {
       setCreating(false);
     }
@@ -156,7 +157,7 @@ export default function Notes() {
       setEditing(null);
       toast.success("Note updated.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not update the note."));
+      toast.error(friendlyError(error, "Could not update the note."));
     } finally {
       setSavingEdit(false);
     }
@@ -168,7 +169,7 @@ export default function Notes() {
       await deleteNote({ noteId: id as never });
       toast.success("Note deleted.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not delete the note."));
+      toast.error(friendlyError(error, "Could not delete the note."));
     } finally {
       setDeletingId(null);
     }

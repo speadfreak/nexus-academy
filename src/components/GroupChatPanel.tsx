@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { ReportBlockMenu } from "@/components/ReportBlockMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { motion, AnimatePresence } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
@@ -478,6 +478,7 @@ function RecordingTimer({ startedAt }: { startedAt: number }) {
 /* ------------------------------------------------------------------ */
 
 export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
+  const friendlyError = useFriendlyError();
   const messages = useQuery(api.groupChat.getMessages, {
     groupId,
     limit: 60,
@@ -564,7 +565,7 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
         file.type.startsWith("image/") ? "image" : "file",
       );
     } catch (e) {
-      toast.error(errorMessage(e, "Could not send attachment."));
+      toast.error(friendlyError(e, "Could not send attachment."));
     } finally {
       setBusy(false);
     }
@@ -616,7 +617,7 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
             ),
           });
         } catch (e) {
-          toast.error(errorMessage(e, "Could not send voice note."));
+          toast.error(friendlyError(e, "Could not send voice note."));
         } finally {
           setBusy(false);
         }
@@ -637,7 +638,7 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
       await sendMessage({ groupId, content: value });
       setText("");
     } catch (e) {
-      toast.error(errorMessage(e, "Could not send message."));
+      toast.error(friendlyError(e, "Could not send message."));
     } finally {
       setBusy(false);
     }

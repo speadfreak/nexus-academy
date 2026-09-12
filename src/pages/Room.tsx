@@ -53,7 +53,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 function initialsOf(name: string): string {
@@ -76,6 +76,7 @@ function timeAgo(ms: number): string {
 }
 
 export default function Room() {
+  const friendlyError = useFriendlyError();
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const roomIdRef = useRef(roomId ?? null);
@@ -143,7 +144,7 @@ export default function Room() {
         await joinPresence({ roomId: room.roomId });
       } catch (error) {
         if (!cancelled) {
-          setJoinError(errorMessage(error, "Could not join the room."));
+          setJoinError(friendlyError(error, "Could not join the room."));
         }
       } finally {
         // The room query remains the source of truth for join readiness.
@@ -184,7 +185,7 @@ export default function Room() {
       await sendMessage({ roomId: roomId as Id<"studyRooms">, content: text });
       setChatText("");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not send the message."));
+      toast.error(friendlyError(error, "Could not send the message."));
     } finally {
       setSending(false);
     }
@@ -203,7 +204,7 @@ export default function Room() {
       setShareTarget(null);
       setWorkspaceOpen(true);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not share that item."));
+      toast.error(friendlyError(error, "Could not share that item."));
     }
   };
 
@@ -230,7 +231,7 @@ export default function Room() {
       toast.success("Room ended — everyone's video was disconnected.");
       navigate("/groups");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not end the room."));
+      toast.error(friendlyError(error, "Could not end the room."));
     } finally {
       setEnding(false);
     }

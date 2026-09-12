@@ -43,7 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatClock, localDateKey } from "@/lib/dates";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useMusic } from "@/components/music-player";
 
@@ -111,6 +111,7 @@ function saveGoal(m: number) {
 type TimerStatus = "idle" | "running" | "paused" | "done" | "celebrating";
 
 export default function Focus() {
+  const friendlyError = useFriendlyError();
   // i18n — focus namespace holds the timer labels + session text.
   const { t } = useTranslation(["focus", "common"]);
   // Music player — used for focus-timer sync (auto-shift mood) + the
@@ -275,7 +276,7 @@ export default function Focus() {
         }, 4000);
       })
       .catch((error) => {
-        toast.error(errorMessage(error, "Could not log the session."));
+        toast.error(friendlyError(error, "Could not log the session."));
         setStatus("idle");
       })
       .finally(() => {

@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type Priority = "low" | "medium" | "high";
@@ -68,6 +68,7 @@ function CompletionBurst({ show }: { show: boolean }) {
 }
 
 export default function Todos() {
+  const friendlyError = useFriendlyError();
   const { t } = useTranslation(["todos", "common"]);
   const todos = useQuery(api.todos.list);
   const create = useMutation(api.todos.create);
@@ -97,7 +98,7 @@ export default function Todos() {
       setText("");
       setDueDate("");
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(friendlyError(error));
     }
   }, [text, subjectId, dueDate, create]);
 
@@ -112,7 +113,7 @@ export default function Todos() {
         setTimeout(() => setJustCompleted(null), 700);
       }
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(friendlyError(error));
     } finally {
       setBusyId(null);
     }
@@ -123,7 +124,7 @@ export default function Todos() {
     try {
       await update({ todoId: id as never, priority: next });
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(friendlyError(error));
     }
   }, [update]);
 
@@ -132,7 +133,7 @@ export default function Todos() {
     try {
       await remove({ todoId: id as never });
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(friendlyError(error));
     } finally {
       setBusyId(null);
     }

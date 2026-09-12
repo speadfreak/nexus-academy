@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 const REPORT_REASONS: { value: string; label: string }[] = [
@@ -65,6 +65,7 @@ export function ReportBlockMenu({
   compact = false,
   disabled = false,
 }: ReportBlockMenuProps) {
+  const friendlyError = useFriendlyError();
   const reportUser = useMutation(api.safety.reportUser);
   const blockUser = useMutation(api.safety.blockUser);
   const unblockUser = useMutation(api.safety.unblockUser);
@@ -92,7 +93,7 @@ export function ReportBlockMenu({
       setDetails("");
       setReason("harassment");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not submit the report."));
+      toast.error(friendlyError(error, "Could not submit the report."));
     } finally {
       setSubmitting(false);
     }
@@ -115,7 +116,7 @@ export function ReportBlockMenu({
         );
       }
     } catch (error) {
-      toast.error(errorMessage(error, "Could not update the block."));
+      toast.error(friendlyError(error, "Could not update the block."));
     } finally {
       setBlocking(false);
     }

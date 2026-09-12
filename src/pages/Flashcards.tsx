@@ -66,7 +66,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 // ── Difficulty levels ─────────────────────────────────────────────────
@@ -189,6 +189,7 @@ function QuickTab({
 // ── Decks View (main deck browser with difficulty levels) ──────────────
 
 function DecksView({ onStudy }: { onStudy: (deckId: string) => void }) {
+  const friendlyError = useFriendlyError();
   const decks = useQuery(api.flashcards.getMyDecks);
   const subjects = useQuery(api.subjects.getAll);
   const generateDeck = useAction(api.flashcards.generateDeck as never);
@@ -208,7 +209,7 @@ function DecksView({ onStudy }: { onStudy: (deckId: string) => void }) {
       setShowGenerate(false);
       setGenSubjectId("");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not generate flashcards."));
+      toast.error(friendlyError(error, "Could not generate flashcards."));
     } finally {
       setGenerating(false);
     }

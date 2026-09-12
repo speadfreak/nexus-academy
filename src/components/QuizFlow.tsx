@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { errorCode, errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorCode, errorMessage } from "@/lib/errors";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -69,6 +69,7 @@ export function QuizFlow({
   initialSubjectId,
   title = "Quick check",
 }: QuizFlowProps) {
+  const friendlyError = useFriendlyError();
   const subjects = useQuery(api.subjects.getAll);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const generateQuiz = useAction(api.quizzes.generateQuiz);
@@ -120,7 +121,7 @@ export function QuizFlow({
         return;
       }
       toast.error(
-        errorMessage(
+        friendlyError(
           error,
           "Could not generate the quiz. Your free trial may have ended — upgrade to continue.",
         ),
@@ -178,7 +179,7 @@ export function QuizFlow({
         .then((r) => { if (r.text) setRecapText(r.text); })
         .catch(() => {});
     } catch (error) {
-      toast.error(errorMessage(error, "Could not submit your answers."));
+      toast.error(friendlyError(error, "Could not submit your answers."));
     } finally {
       setSubmitting(false);
     }

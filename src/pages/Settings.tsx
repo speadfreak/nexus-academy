@@ -52,7 +52,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
-import { errorMessage } from "@/lib/errors";
+import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useTour } from "@/components/tour";
 
@@ -66,6 +66,7 @@ const STREAM_OPTIONS = [
 ] as const;
 
 export default function Settings() {
+  const friendlyError = useFriendlyError();
   const { t } = useTranslation(["settings", "common"]);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -95,7 +96,7 @@ export default function Settings() {
       setNameDirty(false);
       toast.success("Display name updated.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not save your display name."));
+      toast.error(friendlyError(error, "Could not save your display name."));
     } finally {
       setSavingName(false);
     }
@@ -122,7 +123,7 @@ export default function Settings() {
       await setAvatar({ storageId });
       toast.success("Avatar updated.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not upload the avatar."));
+      toast.error(friendlyError(error, "Could not upload the avatar."));
     } finally {
       setUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -143,7 +144,7 @@ export default function Settings() {
       setUsernameValue(result.username);
       toast.success(`Username set — you can now sign in with "${result.username}".`);
     } catch (error) {
-      setUsernameError(errorMessage(error, "Could not save your username."));
+      setUsernameError(friendlyError(error, "Could not save your username."));
     } finally {
       setSavingUsername(false);
     }
@@ -154,7 +155,7 @@ export default function Settings() {
       await updateProfile({ stream });
       toast.success(`Stream set to ${STREAM_LABELS[stream]}.`);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not save your stream."));
+      toast.error(friendlyError(error, "Could not save your stream."));
     }
   };
 
@@ -642,6 +643,7 @@ function ContactSection({
   userEmail: string;
   displayName: string;
 }) {
+  const friendlyError = useFriendlyError();
   const sendContactMessage = useAction(api.telegramActions.sendContactMessage);
   const [name, setName] = useState(displayName ?? "");
   const [email, setEmail] = useState(userEmail ?? "");
@@ -673,7 +675,7 @@ function ContactSection({
       }
       setMessage("");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not send your message. Please try again."));
+      toast.error(friendlyError(error, "Could not send your message. Please try again."));
     } finally {
       setSending(false);
     }
@@ -808,6 +810,7 @@ function ContactSection({
 // confirmation reply in Telegram. The Settings UI polls `getMyTelegramLink`
 // so the "linked" state appears within a few seconds of the bot reply.
 function TelegramLinkSection() {
+  const friendlyError = useFriendlyError();
   const link = useQuery(api.telegram.getMyTelegramLink);
   const startLink = useMutation(api.telegram.startTelegramLink);
   const unlink = useMutation(api.telegram.unlinkMyTelegram);
@@ -832,7 +835,7 @@ function TelegramLinkSection() {
       setCopied(false);
       toast.success("Linking code generated — send it to the bot within 10 minutes.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not generate a linking code."));
+      toast.error(friendlyError(error, "Could not generate a linking code."));
     } finally {
       setGenerating(false);
     }
@@ -856,7 +859,7 @@ function TelegramLinkSection() {
       await unlink({});
       toast.success("Telegram unlinked. You won't receive weekly digests anymore.");
     } catch (error) {
-      toast.error(errorMessage(error, "Could not unlink Telegram."));
+      toast.error(friendlyError(error, "Could not unlink Telegram."));
     } finally {
       setUnLinking(false);
     }
