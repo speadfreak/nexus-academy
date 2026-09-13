@@ -4,8 +4,21 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+  <!-- iOS — apple-touch-icon is required for "Add to Home Screen" on iPhone/iPad.
+       iOS ignores the manifest icons array for the home screen icon. -->
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- PWA — theme-color drives the browser UI chrome color on mobile -->
+  <meta name="theme-color" content="#0B0F17" />
+  <!-- iOS — supports standalone mode (no Safari chrome) when launched from home screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Learnyx ET" />
   <!-- Prevent browser/CDN from caching index.html so stale chunk hashes never load -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />

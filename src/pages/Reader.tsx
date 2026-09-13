@@ -8,7 +8,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { evaluate } from "mathjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -157,11 +157,22 @@ export default function Reader() {
   const readerItemId = reader?.item?._id;
 
   // ── Render timeout safety net ─────────────────────────────────────────
-  // If pdf.js hasn't fired onLoadSuccess within 8 seconds of mounting,
-  // automatically fall back to the iframe viewer. The iframe uses the
-  // browser's native PDF viewer (no JS worker, no cmaps) and always
-  // works — it's our last-resort fallback that should never leave the
-  // user staring at a "Rendering page…" skeleton forever.
+  // If pdf.js hasn't fired onLoadSuccess within the timeout window, fall
+  // back to the iframe viewer. The iframe uses the browser's native PDF
+  // viewer (no JS worker, no cmaps) and always works — it's our last-
+  // resort fallback that should never leave the user staring at a
+  // "Rendering page…" skeleton forever.
+  //
+  // TIMEOUT IS VIEWPORT-AWARE:
+  //   • Mobile (default): 15 seconds — mobile devices are slower, mobile
+  //     networks are slower, and pdfjs workers can be flaky on mobile
+  //     Safari. 15s gives react-pdf enough time to spin up the worker,
+  //     fetch the first page via range request, and render. Without this
+  //     margin, mobile users were hitting the 8s timeout and falling
+  //     back to the iframe (browser's native PDF viewer) which looks
+  //     "external" and unattractive.
+  //   • Desktop: 8 seconds — fast devices + fast networks, the original
+  //     behavior. 8s is enough for the worker to spin up on a desktop.
   //
   // The timeout resets every time the document URL changes. If
   // onLoadSuccess fires first, the cleanup function clears the timer.
@@ -178,12 +189,16 @@ export default function Reader() {
     // Clear any existing timer (e.g. from a previous document).
     if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
 
+    // Viewport-aware timeout — mobile gets more headroom.
+    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
+    const timeoutMs = isMobile ? 15000 : 8000;
+
     renderTimeoutRef.current = setTimeout(() => {
       console.warn(
-        "[Reader] PDF.js render timed out after 8s — falling back to iframe.",
+        `[Reader] PDF.js render timed out after ${timeoutMs / 1000}s — falling back to iframe.`,
       );
       setUseIframeFallback(true);
-    }, 8000);
+    }, timeoutMs);
 
     return () => {
       if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
@@ -320,7 +335,15 @@ export default function Reader() {
   }, [readerItemId, item, getDownloadUrl]);
 
   // --- Panel -------------------------------------------------------------
-  const [panelOpen, setPanelOpen] = useState(true);
+  // Default CLOSED on mobile so the PDF viewer is visible immediately on
+  // open (the panel covers the entire viewer on mobile when open). Default
+  // OPEN on desktop where it sits beside the viewer as a 380px sidebar.
+  // The user can always toggle via the PanelRightOpen/Close button in the
+  // header — this is just the sensible initial state per viewport.
+  const [panelOpen, setPanelOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 640px)").matches;
+  });
   const [panelTab, setPanelTab] = useState<PanelTab>("companion");
 
   // --- Exam Mode (Feature 1) --------------------------------------------
@@ -1197,20 +1220,39 @@ export default function Reader() {
         )}
 
         {/* ═══ SIDE PANEL ═══ */}
+        <AnimatePresence>
         {panelOpen && (
           <>
-            {/* Mobile backdrop */}
-            <button
+            {/* Mobile backdrop — covers the PDF viewer when the panel is
+                open on mobile. Tapping the backdrop closes the panel. */}
+            <motion.button
               type="button"
               aria-label="Close reader panel"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm sm:hidden"
               onClick={() => setPanelOpen(false)}
             />
-            <aside
+            <motion.aside
+              key="reader-panel"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", stiffness: 350, damping: 35 }}
               role="dialog"
               aria-modal="true"
               aria-labelledby="reader-panel-title"
-              className="relative z-20 flex w-full flex-col border-l border-white/[0.06] bg-[#0a0e17]/95 backdrop-blur-2xl shadow-[-20px_0_60px_-20px_rgba(0,0,0,0.5)] sm:static sm:z-auto sm:w-[380px] sm:shadow-none"
+              // Mobile: absolute-positioned slide-over from the right, 85%
+              // width (max 380px), so the PDF viewer is still partially
+              // visible behind the backdrop. Prevents the panel from
+              // completely covering the viewer (which was the collision
+              // bug — panel + tabs covered the entire PDF on mobile).
+              // Desktop: static, 380px sidebar beside the PDF (no slide
+              // animation on desktop — sm:transform-none resets the
+              // spring animation's transform on desktop widths).
+              className="absolute right-0 top-0 bottom-0 z-20 flex w-[85%] max-w-[380px] flex-col border-l border-white/[0.06] bg-[#0a0e17]/95 backdrop-blur-2xl shadow-[-20px_0_60px_-20px_rgba(0,0,0,0.5)] sm:static sm:z-auto sm:w-[380px] sm:shadow-none sm:max-w-none [&]:sm:transform-none"
             >
               {/* Panel glow line */}
               <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent sm:hidden" />
@@ -1570,9 +1612,10 @@ export default function Reader() {
                   </div>
                 )}
               </div>
-            </aside>
+            </motion.aside>
           </>
         )}
+        </AnimatePresence>
       </div>
 
       {/* ═══ RELATED RESOURCES STRIP ═══ */}

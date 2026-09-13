@@ -7,6 +7,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Brain,
+  Camera,
   Check,
   Loader2,
   Pencil,
@@ -17,7 +18,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -112,6 +113,89 @@ export default function Notes() {
   } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // ── OCR for handwritten notes ────────────────────────────────────────
+  // Snap a photo → Tesseract.js recognizes text → student reviews → saves
+  // as a note → optional "generate flashcards" bridges into the existing
+  // flashcards system.
+  const [ocrOpen, setOcrOpen] = useState(false);
+  const [ocrImage, setOcrImage] = useState<string | null>(null); // data URL preview
+  const [ocrText, setOcrText] = useState("");
+  const [ocrRecognizing, setOcrRecognizing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const ocrFileRef = useRef<HTMLInputElement | null>(null);
+
+  const handleOcrImagePick = async (file: File | null) => {
+    if (!file) return;
+    // Read as data URL for preview
+    const reader = new FileReader();
+    reader.onload = () => setOcrImage(reader.result as string);
+    reader.readAsDataURL(file);
+    setOcrText("");
+    setOcrProgress(0);
+    // Run Tesseract.js OCR
+    setOcrRecognizing(true);
+    try {
+      // Dynamic import so tesseract.js (large) only loads when the user
+      // actually wants to OCR an image — keeps the initial page bundle small.
+      const { default: Tesseract } = await import("tesseract.js");
+      // Recognize — 'eng' is the only language we ship by default. The
+      // worker + language data are fetched from CDN on first use, then
+      // cached by the browser for subsequent runs.
+      const result = await Tesseract.recognize(file, "eng", {
+        logger: (m: { status: string; progress: number }) => {
+          if (m.status === "recognizing text") {
+            setOcrProgress(Math.round(m.progress * 100));
+          }
+        },
+      });
+      const text = (result?.data?.text ?? "").trim();
+      setOcrText(text);
+      if (!text) {
+        toast.info("Couldn't recognize any text — try a clearer photo or better lighting.");
+      } else {
+        toast.success(`Recognized ${text.length} characters — review and edit below.`);
+      }
+    } catch (error) {
+      console.error("[Notes] OCR failed:", error);
+      toast.error("OCR failed — check your connection (the recognition engine loads from CDN on first use).");
+    } finally {
+      setOcrRecognizing(false);
+    }
+  };
+
+  const handleOcrSave = () => {
+    if (!ocrText.trim()) {
+      toast.error("No recognized text to save.");
+      return;
+    }
+    // Pre-fill the draft with the recognized text + open the create panel
+    setDraft({ ...EMPTY_DRAFT, content: ocrText });
+    setOcrOpen(false);
+    setOcrImage(null);
+    setOcrText("");
+    setOcrProgress(0);
+    toast.success("Recognized text loaded into a new note — pick a subject and save.");
+  };
+
+  const handleOcrToFlashcards = async () => {
+    if (!ocrText.trim() || ocrText.length < 20) {
+      toast.error("Need at least 20 characters of recognized text to generate flashcards.");
+      return;
+    }
+    // Load the recognized text into a new note draft first, then guide the
+    // user to the Flashcards page where they can generate from the note's
+    // content via the existing "Textbook → Flashcards" or topic-based
+    // generation flows. The direct generateFromContent action requires a
+    // contentItems ID (library PDF), which we don't have for a note — so
+    // we bridge through the note save flow instead.
+    setDraft({ ...EMPTY_DRAFT, content: ocrText });
+    setOcrOpen(false);
+    setOcrImage(null);
+    setOcrText("");
+    setOcrProgress(0);
+    toast.success("Recognized text loaded into a new note — save it, then use the Flashcards tab to generate cards from it.");
+  };
 
   const subjectName = useMemo(
     () => subjects?.find((s) => s._id === (subjectFilter as never))?.name,
@@ -253,6 +337,17 @@ export default function Notes() {
               onClick={() => setAskOpen(!askOpen)}
             >
               <Brain className="size-3.5" /> Ask My Notes
+            </Button>
+            {/* Snap a photo — OCR for handwritten notes. Tesseract.js
+                recognizes text from the photo; the student reviews and
+                saves as a note OR generates flashcards from it. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-xl bg-amber-400/10 text-amber-300 hover:bg-amber-400/20"
+              onClick={() => setOcrOpen(true)}
+            >
+              <Camera className="size-3.5" /> Snap a photo
             </Button>
           </div>
         </motion.div>
@@ -598,6 +693,145 @@ export default function Notes() {
               ) : <Check className="size-4" />}
               Save
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ OCR Dialog — snap a photo of handwritten notes ═══ */}
+      <Dialog open={ocrOpen} onOpenChange={setOcrOpen}>
+        <DialogContent className="glass-panel max-w-lg rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="size-4 text-amber-300" /> Snap handwritten notes
+            </DialogTitle>
+            <DialogDescription>
+              Take a photo of your handwritten notes (or upload one). The OCR engine
+              recognizes the text — review and edit it below, then save as a note or
+              generate flashcards from it.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3">
+            {/* Photo capture / upload — capture=environment opens the back
+                camera on mobile. On desktop, opens the file picker. */}
+            <input
+              ref={ocrFileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                void handleOcrImagePick(file);
+                // Reset the input so the same file can be picked again
+                e.target.value = "";
+              }}
+              className="hidden"
+            />
+            {!ocrImage ? (
+              <button
+                type="button"
+                onClick={() => ocrFileRef.current?.click()}
+                className="group flex cursor-pointer flex-col items-center gap-3 rounded-2xl border border-dashed border-amber-400/30 bg-amber-400/[0.04] px-6 py-10 text-center transition hover:border-amber-400/50 hover:bg-amber-400/[0.08]"
+              >
+                <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-400/15 text-amber-300 shadow-[0_0_24px_-6px_rgb(251,191,36/0.5)]">
+                  <Camera className="size-6" />
+                </div>
+                <div>
+                  <p className="type-body font-bold">Take or upload a photo</p>
+                  <p className="mt-1 type-caption text-muted-foreground">
+                    Best results: good lighting, focused, fill the frame with your handwriting.
+                  </p>
+                </div>
+              </button>
+            ) : (
+              <>
+                {/* Image preview + retake */}
+                <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={ocrImage} alt="Handwritten notes preview" className="max-h-60 w-full object-contain" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOcrImage(null);
+                      setOcrText("");
+                      setOcrProgress(0);
+                      ocrFileRef.current?.click();
+                    }}
+                    className="absolute right-2 top-2 flex items-center gap-1 rounded-lg border border-white/15 bg-black/70 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-md transition hover:bg-black/90"
+                  >
+                    <Camera className="size-3" /> Retake
+                  </button>
+                </div>
+
+                {/* Recognizing progress */}
+                {ocrRecognizing && (
+                  <div className="flex flex-col gap-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3">
+                    <p className="flex items-center gap-2 type-caption font-semibold text-amber-300">
+                      <Loader2 className="size-3.5 animate-spin" /> Recognizing text…
+                    </p>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-amber-400 transition-all duration-200"
+                        style={{ width: `${ocrProgress}%` }}
+                      />
+                    </div>
+                    <p className="font-mono text-[10px] text-muted-foreground">{ocrProgress}%</p>
+                  </div>
+                )}
+
+                {/* Recognized text — student reviews and edits */}
+                {!ocrRecognizing && ocrText && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] font-semibold text-muted-foreground">
+                      Recognized text ({ocrText.length} chars) — review and edit
+                    </span>
+                    <Textarea
+                      value={ocrText}
+                      onChange={(e) => setOcrText(e.target.value)}
+                      rows={6}
+                      className="rounded-xl bg-white/5"
+                      placeholder="Recognized text will appear here once OCR completes."
+                    />
+                    <p className="font-mono text-[10px] text-muted-foreground/70">
+                      Tip: OCR isn&apos;t perfect — fix any garbled words before saving.
+                    </p>
+                  </div>
+                )}
+
+                {/* No text recognized state */}
+                {!ocrRecognizing && ocrImage && !ocrText && (
+                  <div className="rounded-xl border border-rose-400/20 bg-rose-400/[0.04] p-3">
+                    <p className="type-caption text-rose-300">
+                      Couldn&apos;t recognize any text from that photo. Try a clearer
+                      photo with better lighting, or type your note manually.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="cursor-pointer rounded-xl bg-white/5" onClick={() => setOcrOpen(false)}>
+              Cancel
+            </Button>
+            {ocrText && !ocrRecognizing && (
+              <>
+                <Button
+                  variant="outline"
+                  className="cursor-pointer rounded-xl bg-violet-400/10 text-violet-300 hover:bg-violet-400/20"
+                  onClick={() => void handleOcrToFlashcards()}
+                >
+                  <Sparkles className="size-3.5" /> Make flashcards
+                </Button>
+                <Button
+                  className="cursor-pointer rounded-xl"
+                  onClick={handleOcrSave}
+                >
+                  <Plus className="size-3.5" /> Load into note
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

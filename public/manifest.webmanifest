@@ -1,17 +1,44 @@
 {
   "name": "Learnyx Academy ET 🇪🇹 — Ethiopian National Exam Prep Library",
-  "short_name": "Learnyx Academy ET 🇪🇹",
+  "short_name": "Learnyx ET",
   "description": "Textbooks, past exams, worksheets, guides and an AI study companion for Ethiopian grades 9-12 national exam prep.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#0B0F17",
   "theme_color": "#0B0F17",
+  "categories": ["education", "productivity", "books"],
   "icons": [
     {
       "src": "/logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
