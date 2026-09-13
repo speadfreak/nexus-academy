@@ -127,5 +127,10 @@
     "whoItsFor": "Who it's for",
     "company": "Company",
     "stayConnected": "Stay connected"
+  },
+  "testimonials": {
+    "eyebrow": "real students · real words",
+    "title": "What students say",
+    "subtitle": "Every quote here is from a real Learnyx student — never invented, never paid for."
   }
 }

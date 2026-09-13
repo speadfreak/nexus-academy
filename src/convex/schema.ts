@@ -901,6 +901,68 @@ const schema = defineSchema(
       .index("by_createdAt", ["createdAt"])
       .index("by_user", ["userId"]),
 
+    // ── TESTIMONIALS — real student testimonials, curated from the admin ──
+    //
+    // Honesty discipline (consistent with the rest of the platform — the
+    // honest landing copy, the real-numbers coverage map, the no-fabricated-
+    // stats principle): EVERY testimonial here must reflect a REAL person's
+    // REAL words. Two creation paths:
+    //   1. In-app submission — a real user submits via the "Share your
+    //      experience" flow (Settings or post-result prompt). userId is set.
+    //   2. Manual admin add — for genuine testimonials collected outside
+    //      the app (WhatsApp message, in-person conversation). userId is
+    //      null but submitterName is the real person's name, with their
+    //      actual words. The admin is the conduit, NOT the author.
+    //
+    // Submissions start as "pending" — they NEVER go live automatically.
+    // Admin reviews → approves → optionally features. Only featured + approved
+    // testimonials appear on the public landing page (in displayOrder).
+    //
+    // The admin may lightly edit for length/clarity/grammar (normal editorial
+    // practice) but the underlying story/sentiment must stay genuinely
+    // reflective of what the real person said.
+    testimonials: defineTable({
+      // null for manual admin-added testimonials (collected outside the app);
+      // set to the real user's ID for in-app submissions.
+      userId: v.optional(v.id("users")),
+      // Snapshot of the user's display name at submission time (for both paths).
+      submitterName: v.string(),
+      // Optional Convex storage ID of the submitter's photo (uploaded by
+      // the user, or the admin uploads a real photo they have permission
+      // to use). Null = render initials avatar instead.
+      submitterPhotoStorageId: v.optional(v.string()),
+      // Self-description or admin-provided context, e.g.
+      // "Grade 12 student, Addis Ababa" / "Parent of two Learnyx students"
+      roleLabel: v.string(),
+      // The testimonial text itself. Character limit enforced in the mutation
+      // (max 600 chars) to keep quotes punchy, not essays.
+      messageText: v.string(),
+      // Optional star rating 1-5. Null = no rating shown.
+      starRating: v.optional(v.number()),
+      // Workflow state — pending → approved/rejected. Only approved + featured
+      // testimonials appear on the public landing page.
+      status: v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("rejected"),
+      ),
+      // Admin-controlled visibility on the public landing page. Lets the admin
+      // approve more than they feature (curate a strong subset).
+      featured: v.boolean(),
+      // Admin-controlled ordering on the public landing page. Lower = earlier.
+      // Default 0 — admin reorders via the admin UI.
+      displayOrder: v.number(),
+      submittedAt: v.number(),
+      reviewedAt: v.optional(v.number()),
+      reviewedBy: v.optional(v.id("users")),
+    })
+      .index("by_status", ["status"])
+      .index("by_featured", ["featured"])
+      .index("by_status_submittedAt", ["status", "submittedAt"])
+      .index("by_displayOrder", ["displayOrder"]),
+
+
+
     // ── Personal Telegram weekly digest ─────────────────────────────
     // Each student can link their OWN Telegram account (separate from the
     // admin-only broadcast bot usage) to receive a weekly progress digest.

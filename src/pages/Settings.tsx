@@ -18,6 +18,7 @@ import {
   Link2,
   Loader2,
   LogOut,
+  MessageSquareQuote,
   MessageSquareText,
   Moon,
   Music,
@@ -25,6 +26,7 @@ import {
   Send,
   Send as TelegramIcon,
   ShieldCheck,
+  Sparkles,
   Sun,
   Unlink,
   Copy,
@@ -38,6 +40,7 @@ import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
+import { ShareExperienceDialog } from "@/components/ShareExperienceDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,6 +90,7 @@ export default function Settings() {
   const [usernameDirty, setUsernameDirty] = useState(false);
   const [savingUsername, setSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { startTour } = useTour();
 
@@ -380,6 +384,42 @@ export default function Settings() {
           </div>
         </motion.div>
 
+        {/* ------- Share your experience ------- */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          className="glass-panel hover-lift relative overflow-hidden rounded-2xl p-6"
+        >
+          <div className="pointer-events-none absolute -top-12 -right-12 size-40 rounded-full bg-amber-400/10 blur-[60px]" />
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300 shadow-[0_0_16px_-4px_rgb(251,191,36/0.4)]">
+                <MessageSquareQuote className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="uppercase tracking-[0.22em] text-amber-300 font-semibold type-caption">
+                  // share your story
+                </p>
+                <p className="mt-1 type-body font-bold text-foreground">
+                  Tell other students what Learnyx has done for you
+                </p>
+                <p className="mt-1 max-w-lg type-caption text-muted-foreground">
+                  Real words from real students only — your submission goes to our team for
+                  review. If featured, it&apos;ll appear on the public landing page to help
+                  other students discover Learnyx.
+                </p>
+              </div>
+            </div>
+            <Button
+              className="interactive-press shrink-0 cursor-pointer rounded-xl"
+              onClick={() => setShareOpen(true)}
+            >
+              <Sparkles className="size-4" /> Share your experience
+            </Button>
+          </div>
+        </motion.div>
+
         {/* ------- Stream ------- */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -581,6 +621,14 @@ export default function Settings() {
         {/* ═══ REFER FRIENDS ═══ */}
         <ReferralSection />
       </div>
+
+      {/* In-app testimonial submission — mounted at the end so it overlays
+          when the "Share your experience" button is clicked. */}
+      <ShareExperienceDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        defaultName={profile?.displayName ?? profile?.name ?? ""}
+      />
     </DashboardShell>
   );
 }

@@ -25,6 +25,7 @@ import {
   Loader2,
   Lock,
   Megaphone,
+  MessageSquareQuote,
   Plug,
   Plus,
   PanelLeftClose,
@@ -69,6 +70,7 @@ import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { AdminMarketingSection } from "@/components/admin/AdminMarketingSection";
 import { AdminSubscriptionsSection } from "@/components/admin/AdminSubscriptionsSection";
+import { AdminTestimonialsSection } from "@/components/admin/AdminTestimonialsSection";
 import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
 import { PaymentReviewsSection } from "@/components/admin/PaymentReviewsSection";
 import { StatCard2 } from "@/components/admin/StatCard2";
@@ -163,6 +165,7 @@ const ADMIN_TABS = [
   { id: "payments", label: "Payment Reviews", index: "08", icon: Receipt },
   { id: "fraud", label: "Fraud Patterns", index: "09", icon: ShieldAlert },
   { id: "marketing", label: "Marketing", index: "10", icon: Megaphone },
+  { id: "testimonials", label: "Testimonials", index: "10.5", icon: MessageSquareQuote },
   { id: "subscriptions", label: "Subscriptions", index: "11", icon: CalendarClock },
   { id: "reports", label: "Reports", index: "12", icon: Flag },
   { id: "terminal", label: "Terminal", index: "13", icon: Terminal },
@@ -2153,6 +2156,11 @@ export default function Admin() {
             {/* ══════ MARKETING — referral + discounts + announcements ══════ */}
             {tab === "marketing" && (
               <AdminMarketingSection />
+            )}
+
+            {/* ══════ TESTIMONIALS — review queue + feature/reorder + manual add ══════ */}
+            {tab === "testimonials" && (
+              <AdminTestimonialsSection />
             )}
 
             {/* ══════ SUBSCRIPTIONS — trial program control ══════ */}

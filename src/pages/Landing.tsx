@@ -10,6 +10,8 @@ import {
   Brain,
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Grid3x3,
   ClipboardList,
@@ -24,6 +26,7 @@ import {
   Layers,
   Lock,
   Map,
+  MessageSquareQuote,
   NotebookPen,
   Plus,
   Presentation,
@@ -31,6 +34,7 @@ import {
   Sigma,
   Sparkles,
   Moon,
+  Star,
   Sun,
   Terminal,
   Timer,
@@ -43,6 +47,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect as useEff } from "react";
 import { Link, useNavigate } from "react-router";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
@@ -1047,6 +1052,13 @@ export default function Landing() {
       {/* ------- Telegram Community ------- */}
       <TelegramCommunitySection />
 
+      {/* ------- Testimonials (cinematic, real students) -------
+          Renders NOTHING when there are zero featured testimonials
+          (honest empty state — same principle as the honest live-stats
+          coverage map: no awkward placeholder, the section just doesn't
+          appear until there's real content to feature). */}
+      <TestimonialsSection />
+
       {/* ------- CTA ------- */}
       <section className="mx-auto max-w-6xl px-4 pb-24">
         <motion.div
@@ -1680,6 +1692,335 @@ function AnnouncementBanner() {
           )}
         </motion.div>
       </AnimatePresence>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TESTIMONIALS SECTION — real student testimonials, curated from the admin.
+   Renders NOTHING when there are zero featured testimonials (honest empty
+   state — same principle as the honest live-stats coverage map: no
+   awkward placeholder, the section just doesn't appear until there's real
+   content to feature).
+   ═══════════════════════════════════════════════════════════════════════ */
+function TestimonialsSection() {
+  const { t } = useTranslation(["landing", "common"]);
+  const testimonials = useQuery(api.testimonials.listFeaturedPublic);
+
+  // Honest empty state — don't render anything until there are real
+  // featured testimonials. Returning null means the section is completely
+  // absent from the page, no awkward empty/placeholder card.
+  if (testimonials === undefined) return null; // still loading — render nothing
+  if (testimonials.length === 0) return null; // no featured testimonials — render nothing
+
+  // Layout decision:
+  //   • 1-3 testimonials → grid (clean, no need for a carousel)
+  //   • 4+ testimonials → auto-advancing carousel with manual controls
+  // We pick whichever reads better — don't force a carousel with only 2-3.
+  const useCarousel = testimonials.length >= 4;
+
+  return (
+    <section id="testimonials" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-20">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="flex flex-col items-center text-center"
+      >
+        <Badge variant="outline" className="glass-chip mb-4 rounded-full px-3 py-1 type-caption font-semibold text-primary">
+          <span className="relative flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
+          </span>
+          // {t("landing:testimonials.eyebrow", { defaultValue: "real students · real words" })}
+        </Badge>
+        <h2 className="type-display text-gradient">
+          {t("landing:testimonials.title", { defaultValue: "What students say" })}
+        </h2>
+        <p className="mt-3 max-w-xl type-body text-muted-foreground">
+          {t("landing:testimonials.subtitle", {
+            defaultValue:
+              "Every quote here is from a real Learnyx student — never invented, never paid for.",
+          })}
+        </p>
+      </motion.div>
+
+      {useCarousel ? (
+        <TestimonialCarousel testimonials={testimonials} />
+      ) : (
+        <motion.div
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-60px" }}
+          variants={{
+            hidden: {},
+            show: { transition: { staggerChildren: 0.12, delayChildren: 0.15 } },
+          }}
+          className={cn(
+            "mt-12 grid gap-5",
+            testimonials.length === 1 ? "max-w-2xl mx-auto" : "sm:grid-cols-2 lg:grid-cols-3",
+          )}
+        >
+          {testimonials.map((tCard) => (
+            <TestimonialCard key={tCard._id} t={tCard} variants={cardVariants} />
+          ))}
+        </motion.div>
+      )}
+    </section>
+  );
+}
+
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } },
+};
+
+/**
+ * Auto-advancing carousel — 4+ testimonials. Manual prev/next + dots.
+ * Auto-advances every 7 seconds; pauses on hover so users don't lose
+ * their place while reading.
+ */
+function TestimonialCarousel({
+  testimonials,
+}: {
+  testimonials: {
+    _id: string;
+    submitterName: string;
+    roleLabel: string;
+    messageText: string;
+    starRating: number | null;
+    photoUrl: string | null;
+    displayOrder: number;
+  }[];
+}) {
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const count = testimonials.length;
+
+  // Cycle through testimonials every 7s (pauses on hover).
+  useEff(() => {
+    if (paused || count <= 1) return;
+    const id = window.setInterval(() => {
+      setIndex((i) => (i + 1) % count);
+    }, 7000);
+    return () => window.clearInterval(id);
+  }, [paused, count]);
+
+  const go = (delta: number) => setIndex((i) => (i + delta + count) % count);
+
+  const current = testimonials[index]!;
+
+  return (
+    <div
+      className="mt-12 flex flex-col items-center gap-6"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div className="relative w-full max-w-3xl">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={current._id}
+            initial={{ opacity: 0, y: 24, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.98 }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <TestimonialCardLarge t={current} />
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Prev/Next arrows — outside the animated card so they don't move */}
+        <div className="mt-5 flex items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            aria-label="Previous testimonial"
+            className="flex size-10 cursor-pointer items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-muted-foreground transition hover:border-amber-400/30 hover:text-foreground"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          {/* Dots */}
+          <div className="flex items-center gap-1.5">
+            {testimonials.map((tst, i) => (
+              <button
+                key={tst._id}
+                type="button"
+                onClick={() => setIndex(i)}
+                aria-label={`Go to testimonial ${i + 1}`}
+                className={cn(
+                  "h-1.5 rounded-full transition-all",
+                  i === index ? "w-6 bg-amber-400" : "w-1.5 bg-white/15 hover:bg-white/30",
+                )}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            aria-label="Next testimonial"
+            className="flex size-10 cursor-pointer items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-muted-foreground transition hover:border-amber-400/30 hover:text-foreground"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Standard testimonial card — used in the grid layout (1-3 testimonials).
+ * Photo (or initials avatar if no photo), name, role, quote (large, elegant
+ * typography), optional star rating shown subtly.
+ */
+function TestimonialCard({
+  t,
+  variants,
+}: {
+  t: {
+    _id: string;
+    submitterName: string;
+    roleLabel: string;
+    messageText: string;
+    starRating: number | null;
+    photoUrl: string | null;
+  };
+  variants: Variants;
+}) {
+  return (
+    <motion.div variants={variants} className="glass-panel relative overflow-hidden rounded-3xl p-6">
+      <div className="pointer-events-none absolute -top-12 -right-10 size-32 rounded-full bg-amber-400/[0.06] blur-[50px]" />
+      {/* Quote mark */}
+      <div className="pointer-events-none absolute -top-2 -left-1 font-serif text-7xl text-amber-400/10 select-none">
+        &ldquo;
+      </div>
+      <div className="relative flex flex-col gap-4">
+        {/* Star rating — subtle, top */}
+        {t.starRating !== null && t.starRating > 0 && (
+          <div className="flex items-center gap-0.5">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                className={cn(
+                  "size-3",
+                  s <= t.starRating! ? "fill-amber-400 text-amber-400" : "text-white/15",
+                )}
+              />
+            ))}
+          </div>
+        )}
+        {/* The quote itself — given real visual weight */}
+        <p className="type-body-lg leading-relaxed text-foreground/90">
+          {t.messageText}
+        </p>
+        {/* Submitter — photo + name + role */}
+        <div className="flex items-center gap-3 border-t border-white/5 pt-4">
+          <TestimonialAvatar name={t.submitterName} photoUrl={t.photoUrl} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate type-body font-bold">{t.submitterName}</p>
+            <p className="truncate type-caption text-muted-foreground">{t.roleLabel}</p>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * Large testimonial card — used in the carousel (4+ testimonials).
+ * Same visual treatment as TestimonialCard but bigger, with more space
+ * for the quote to breathe.
+ */
+function TestimonialCardLarge({
+  t,
+}: {
+  t: {
+    _id: string;
+    submitterName: string;
+    roleLabel: string;
+    messageText: string;
+    starRating: number | null;
+    photoUrl: string | null;
+  };
+}) {
+  return (
+    <div className="glass-panel relative overflow-hidden rounded-3xl p-8 sm:p-10">
+      <div className="pointer-events-none absolute -top-16 -right-12 size-48 rounded-full bg-amber-400/[0.08] blur-[60px]" />
+      <div className="pointer-events-none absolute -bottom-16 -left-12 size-40 rounded-full bg-amber-400/[0.04] blur-[50px]" />
+      {/* Large quote mark */}
+      <div className="pointer-events-none absolute -top-4 -left-2 font-serif text-8xl text-amber-400/15 select-none">
+        &ldquo;
+      </div>
+      <div className="relative flex flex-col items-center gap-5 text-center">
+        {t.starRating !== null && t.starRating > 0 && (
+          <div className="flex items-center gap-0.5">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                className={cn(
+                  "size-4",
+                  s <= t.starRating! ? "fill-amber-400 text-amber-400" : "text-white/15",
+                )}
+              />
+            ))}
+          </div>
+        )}
+        {/* The quote — given the most visual weight on the card */}
+        <p className="max-w-2xl type-h3 leading-relaxed text-foreground/95">
+          {t.messageText}
+        </p>
+        <div className="flex flex-col items-center gap-2">
+          <TestimonialAvatar name={t.submitterName} photoUrl={t.photoUrl} size="lg" />
+          <div>
+            <p className="type-body font-bold">{t.submitterName}</p>
+            <p className="mt-0.5 type-caption text-muted-foreground">{t.roleLabel}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Avatar — submitter photo if provided, else tasteful initials avatar
+ * with amber gradient background. Matches the app's premium dark/gold system.
+ */
+function TestimonialAvatar({
+  name,
+  photoUrl,
+  size = "md",
+}: {
+  name: string;
+  photoUrl: string | null;
+  size?: "md" | "lg";
+}) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+  const sizeCls = size === "lg" ? "size-14" : "size-10";
+  if (photoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={photoUrl}
+        alt={name}
+        className={cn(sizeCls, "shrink-0 rounded-full border-2 border-amber-400/30 object-cover shadow-[0_0_18px_-4px_rgb(251,191,36/0.4)]")}
+      />
+    );
+  }
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full border-2 border-amber-400/30 bg-gradient-to-br from-amber-400/20 to-amber-500/5 font-mono text-sm font-extrabold text-amber-300 shadow-[0_0_18px_-4px_rgb(251,191,36/0.4)]",
+        sizeCls,
+        size === "lg" && "text-base",
+      )}
+    >
+      {initials || "✦"}
     </div>
   );
 }
