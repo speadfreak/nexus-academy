@@ -165,13 +165,13 @@ const ADMIN_TABS = [
   { id: "payments", label: "Payment Reviews", index: "08", icon: Receipt },
   { id: "fraud", label: "Fraud Patterns", index: "09", icon: ShieldAlert },
   { id: "marketing", label: "Marketing", index: "10", icon: Megaphone },
-  { id: "testimonials", label: "Testimonials", index: "10.5", icon: MessageSquareQuote },
-  { id: "subscriptions", label: "Subscriptions", index: "11", icon: CalendarClock },
-  { id: "reports", label: "Reports", index: "12", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "13", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "14", icon: Send },
-  { id: "system", label: "System", index: "15", icon: Plug },
-  { id: "audit", label: "Audit Log", index: "16", icon: ScrollText },
+  { id: "testimonials", label: "Testimonials", index: "11", icon: MessageSquareQuote },
+  { id: "subscriptions", label: "Subscriptions", index: "12", icon: CalendarClock },
+  { id: "reports", label: "Reports", index: "13", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "14", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "15", icon: Send },
+  { id: "system", label: "System", index: "16", icon: Plug },
+  { id: "audit", label: "Audit Log", index: "17", icon: ScrollText },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -179,7 +179,7 @@ type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const ADMIN_TAB_GROUPS = [
   { label: "OVERVIEW", ids: ["dashboard"] as const },
   { label: "CONTENT", ids: ["content", "coverage"] as const },
-  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "fraud", "marketing", "subscriptions"] as const },
+  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "fraud", "marketing", "testimonials", "subscriptions"] as const },
   { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
 ] as const;
 
