@@ -89,11 +89,13 @@ export function AdminTestimonialsSection() {
   const unfeatureMut = useMutation(api.testimonials.unfeature);
   const setDisplayOrderMut = useMutation(api.testimonials.setDisplayOrder);
   const removeMut = useMutation(api.testimonials.remove);
+  const bulkFeatureApprovedMut = useMutation(api.testimonials.bulkFeatureApproved);
+  const [bulkFixing, setBulkFixing] = useState(false);
 
   const handleApprove = async (id: Id<"testimonials">) => {
     try {
       await approveMut({ testimonialId: id });
-      toast.success("Testimonial approved — feature it to show on the landing page.");
+      toast.success("Testimonial approved + featured — it's now on the landing page. 🎉");
     } catch (e) {
       toast.error(friendlyError(e, "Could not approve."));
     }
@@ -159,6 +161,26 @@ export function AdminTestimonialsSection() {
 
   // Pending count for the queue header
   const pendingCount = list?.filter((t) => t.status === "pending").length ?? 0;
+  // Detect approved-but-not-featured testimonials — surfaces the "Feature all
+  // approved" bulk-fix button (for testimonials approved BEFORE the auto-
+  // feature-on-approve change).
+  const hasUnfeaturedApproved = (list?.filter((t) => t.status === "approved" && !t.featured).length ?? 0) > 0;
+
+  const handleBulkFeatureApproved = async () => {
+    setBulkFixing(true);
+    try {
+      const result = await bulkFeatureApprovedMut({});
+      if (result.flipped > 0) {
+        toast.success(`Featured ${result.flipped} approved testimonial${result.flipped === 1 ? "" : "s"} — they're now on the landing page. 🎉`);
+      } else {
+        toast.success("All approved testimonials are already featured.");
+      }
+    } catch (e) {
+      toast.error(friendlyError(e, "Could not bulk-feature."));
+    } finally {
+      setBulkFixing(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -175,12 +197,34 @@ export function AdminTestimonialsSection() {
             real words — never invented.
           </p>
         </div>
-        <Button
-          className="interactive-press cursor-pointer rounded-xl"
-          onClick={() => setManualAddOpen(true)}
-        >
-          <Plus className="size-4" /> Add manually
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {/* Bulk-fix button — surfaces when there are approved-but-not-featured
+              testimonials (i.e. approved BEFORE the auto-feature change). One
+              click flips them all to featured=true so they appear on the
+              landing page. */}
+          {hasUnfeaturedApproved && (
+            <Button
+              variant="outline"
+              className="interactive-press cursor-pointer rounded-xl border-amber-400/30 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20"
+              onClick={() => void handleBulkFeatureApproved()}
+              disabled={bulkFixing}
+              title="One-click fix — brings existing approved testimonials in line with the new auto-feature-on-approve behavior"
+            >
+              {bulkFixing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Star className="size-4" />
+              )}
+              Feature all approved
+            </Button>
+          )}
+          <Button
+            className="interactive-press cursor-pointer rounded-xl"
+            onClick={() => setManualAddOpen(true)}
+          >
+            <Plus className="size-4" /> Add manually
+          </Button>
+        </div>
       </div>
 
       {/* Filter tabs */}

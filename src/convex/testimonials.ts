@@ -288,8 +288,16 @@ export const listAllAdmin = query({
 
 /**
  * Admin: approve a pending testimonial. Sets status=approved, reviewedAt,
- * reviewedBy. Does NOT auto-feature — the admin curates featured separately
- * (this lets them approve more than they feature).
+ * reviewedBy, AND featured=true (auto-feature). The admin's intent when
+ * approving is "yes, show this" — so we surface it on the landing page
+ * immediately. If the admin wants to curate down later, they can click
+ * Unfeature on the row (the featured flag is still independently
+ * controllable after approval).
+ *
+ * The previous two-step flow (approve → then feature) was confusing —
+ * admins approved but saw nothing on the landing page because they
+ * didn't realize they also needed to click Feature. Auto-featuring on
+ * approve is the natural workflow.
  */
 export const approve = mutation({
   args: { testimonialId: v.id("testimonials") },
@@ -301,6 +309,7 @@ export const approve = mutation({
     }
     await ctx.db.patch(testimonialId, {
       status: "approved",
+      featured: true, // Auto-feature — the admin's intent when approving is "show this"
       reviewedAt: Date.now(),
       reviewedBy: user._id,
     });
@@ -309,7 +318,7 @@ export const approve = mutation({
       action: "testimonial.approve",
       targetType: "testimonial",
       targetId: testimonialId,
-      details: JSON.stringify({ submitterName: row.submitterName }),
+      details: JSON.stringify({ submitterName: row.submitterName, autoFeatured: true }),
     });
     return { ok: true };
   },
@@ -506,13 +515,51 @@ export const bulkReorder = mutation({
 });
 
 /**
+ * Admin: bulk-fix for testimonials that were approved BEFORE the
+ * auto-feature-on-approve change. Sets featured=true on every approved
+ * testimonial that's currently not featured. One-shot migration — the
+ * admin runs this once to bring existing approved testimonials in line
+ * with the new "approve = show on landing page" workflow.
+ *
+ * Returns the count of testimonials that were flipped.
+ */
+export const bulkFeatureApproved = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const { user } = await requireAdminMutation(ctx);
+    const approved = await ctx.db
+      .query("testimonials")
+      .withIndex("by_status", (q) => q.eq("status", "approved"))
+      .collect();
+    let flipped = 0;
+    for (const t of approved) {
+      if (!t.featured) {
+        await ctx.db.patch(t._id, { featured: true });
+        flipped++;
+      }
+    }
+    if (flipped > 0) {
+      await ctx.runMutation(internal.adminManagement.internalInsertAuditLog, {
+        actorUserId: user._id,
+        action: "testimonial.bulkFeatureApproved",
+        targetType: "testimonials",
+        details: JSON.stringify({ flipped }),
+      });
+    }
+    return { flipped };
+  },
+});
+
+/**
  * Admin: manually add a testimonial collected outside the app (WhatsApp
  * message, in-person conversation, etc.). userId is null — the admin is
  * the conduit, NOT the author. The submitterName + messageText must
  * reflect a real person's real words.
  *
- * Created directly as approved + featured=false by default (admin curates
- * featured separately). The admin can flip featured on after adding.
+ * Created as approved + featured=true by default (matches the new auto-
+ * feature-on-approve behavior — admin's intent when adding manually is
+ * "show this on the landing page"). The admin can unfeature after if
+ * they want to curate down.
  */
 export const createManual = mutation({
   args: {
@@ -548,7 +595,7 @@ export const createManual = mutation({
       messageText: message,
       starRating: args.starRating,
       status: "approved", // Auto-approved — admin added it directly.
-      featured: args.featured ?? false,
+      featured: args.featured ?? true, // Auto-featured by default (matches new approve behavior)
       displayOrder: 0,
       submittedAt: Date.now(),
       reviewedAt: Date.now(),
