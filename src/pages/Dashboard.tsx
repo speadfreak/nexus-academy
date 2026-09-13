@@ -864,32 +864,33 @@ export default function Dashboard() {
     () => [...(content ?? [])].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
     [content],
   );
-  const textbookCount = useMemo(
-    () => (content ?? []).filter((item) => item.contentType === "textbook").length,
-    [content],
-  );
-  const pastExamCount = useMemo(
-    () => (content ?? []).filter((item) => item.contentType === "past_exam").length,
-    [content],
-  );
+  // These counts use libraryStats (which counts ALL items) instead of
+  // the capped content list. When libraryStats is loading, fall back to
+  // the capped count so the UI doesn't flash 0.
+  const textbookCount = libraryStats?.byContentType["textbook"] ?? (content ?? []).filter((item) => item.contentType === "textbook").length;
+  const pastExamCount = libraryStats?.byContentType["past_exam"] ?? (content ?? []).filter((item) => item.contentType === "past_exam").length;
 
-  // Stream breakdown for the header
+  // Stream breakdown for the header — uses libraryStats.bySubject (which
+  // counts ALL items) instead of the capped content list. Each subject's
+  // stream is determined from the slug, then summed.
   const streamBreakdown = useMemo(() => {
-    if (!content) return null;
+    if (!libraryStats) return null;
     const counts = { natural: 0, social: 0, common: 0 };
-    for (const item of content) {
-      const slug = item.subjectSlug;
-      if (SUBJECT_COVERS[slug]) {
-        // determine stream from slug
-        if (["physics", "chemistry", "biology"].includes(slug)) counts.natural++;
-        else if (["history", "geography", "economics"].includes(slug)) counts.social++;
-        else counts.common++;
-      }
+    const NATURAL_SLUGS = ["physics", "chemistry", "biology"];
+    const SOCIAL_SLUGS = ["history", "geography", "economics"];
+    for (const s of libraryStats.bySubject) {
+      if (NATURAL_SLUGS.includes(s.slug)) counts.natural += s.count;
+      else if (SOCIAL_SLUGS.includes(s.slug)) counts.social += s.count;
+      else counts.common += s.count;
     }
     return counts;
-  }, [content]);
+  }, [libraryStats]);
 
-  const totalContent = content?.length ?? 0;
+  // Real total content count — from libraryStats (which scans ALL items),
+  // NOT from content?.length (which is capped at 200 via .take(200) in the
+  // getContent query). When libraryStats is still loading, fall back to
+  // the capped count so the UI doesn't flash 0.
+  const totalContent = libraryStats?.total ?? content?.length ?? 0;
 
   const handleChallengePick = async (optionIndex: number) => {
     if (!activeChallenge || activeChallenge.answered || challengeSubmitting) return;
