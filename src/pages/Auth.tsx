@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/input-otp";
 
 import { useAuth } from "@/hooks/use-auth";
-import logo from "@/assets/nexus-logo.svg";
+import logo from "@/assets/learnyx-logo.svg";
 import {
   ArrowLeft,
   ArrowRight,

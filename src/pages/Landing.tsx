@@ -54,7 +54,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import logo from "@/assets/nexus-logo.svg";
+import logo from "@/assets/learnyx-logo.svg";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 24 },

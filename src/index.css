@@ -836,10 +836,10 @@ body {
   100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
 }
 
-/* ── N logo glow pulse ── */
+/* ── L logo glow pulse (was v2-n-glow — renamed for Learnyx brand) ── */
 @keyframes v2-n-glow {
-  0%, 100% { filter: drop-shadow(0 0 12px rgba(34,211,238,0.3)); }
-  50%      { filter: drop-shadow(0 0 25px rgba(34,211,238,0.5)) drop-shadow(0 0 50px rgba(34,211,238,0.15)); }
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(251,191,36,0.3)); }
+  50%      { filter: drop-shadow(0 0 25px rgba(251,191,36,0.5)) drop-shadow(0 0 50px rgba(251,191,36,0.15)); }
 }
 
 /* ── Floating particles ── */

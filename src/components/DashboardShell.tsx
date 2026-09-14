@@ -40,7 +40,7 @@ import { MusicPlayer } from "@/components/music-player";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { AnimatePresence, motion } from "framer-motion";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import logo from "@/assets/nexus-logo.svg";
+import logo from "@/assets/learnyx-logo.svg";
 
 const SIDEBAR_KEY = "nexus-sidebar-collapsed";
 const COLLAPSED_W = "4.5rem";
