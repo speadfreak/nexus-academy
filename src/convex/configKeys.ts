@@ -73,6 +73,21 @@ export const INTEGRATION_KEYS = [
   // generated/reviewed — the platform owner can flip the switch the moment
   // they're happy with the Amharic/Afaan Oromo/Tigrigna translations.
   { key: "MULTI_LANGUAGE_ENABLED", label: "Multi-Language Enabled", category: "system", description: "Master switch for the 4-language UI (English / አማርኛ / Afaan Oromoo / ትግርኛ). When 'true', language switchers appear on the landing page and dashboard. When unset/false, the entire UI forces English and no language UI is visible. Default: false (English-only)." },
+  // ── Schools feature ───────────────────────────────────────────────
+  // Master toggle for the entire schools feature. When OFF, every public
+  // surface (Landing section, footer link, /for-schools route, /school-admin
+  // route) is entirely absent from the DOM. The admin's /admin → Schools
+  // management tab stays visible regardless (so the admin can prepare a
+  // school's setup before going live).
+  { key: "SCHOOL_FEATURE_ENABLED", label: "Schools Feature Enabled", category: "system", description: "Master switch for the entire schools feature (bulk class onboarding, tiered seat pricing, director dashboard). When 'true', the Landing Schools section, footer link, /for-schools page, and /school-admin dashboard are all live. When unset/false, every public surface is entirely absent from the DOM (not just hidden) — but the admin's /admin → Schools management tab stays visible so you can prepare a school's setup before going live. Default: false." },
+  // Tiered bulk-seat pricing — 4 independently admin-editable per-seat/month
+  // rates (ETB). Same "admin sets explicit price per tier" pattern as the
+  // personal 1/3/6/12-month plans. The director's purchase flow + the
+  // /for-schools pricing calculator pull from these values.
+  { key: "SCHOOL_SEAT_PRICE_TIER_1", label: "School Seat Price — Tier 1 (1-19 seats)", category: "payments", description: "Per-seat/month rate in ETB for 1-19 seats. Highest per-seat rate (smallest bulk discount). Default: 0 (admin must set before the pricing calculator shows real numbers)." },
+  { key: "SCHOOL_SEAT_PRICE_TIER_2", label: "School Seat Price — Tier 2 (20-49 seats)", category: "payments", description: "Per-seat/month rate in ETB for 20-49 seats. Should be lower than Tier 1." },
+  { key: "SCHOOL_SEAT_PRICE_TIER_3", label: "School Seat Price — Tier 3 (50-99 seats)", category: "payments", description: "Per-seat/month rate in ETB for 50-99 seats. Should be lower than Tier 2." },
+  { key: "SCHOOL_SEAT_PRICE_TIER_4", label: "School Seat Price — Tier 4 (100+ seats)", category: "payments", description: "Per-seat/month rate in ETB for 100+ seats. Lowest per-seat rate (largest bulk discount)." },
 ] as const;
 
 /**
