@@ -50,6 +50,7 @@ import { Link, useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
+import { useSchoolFeatureEnabled } from "@/hooks/useSchoolFeature";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -180,6 +181,8 @@ const STEPS_ICONS = [Terminal, Search, TrendingUp];
 
 export default function Landing() {
   const { isAuthenticated, isLoading, user, signOut } = useAuth();
+  // School feature gate — controls the Landing Schools section + footer link
+  const { enabled: schoolFeatureEnabled } = useSchoolFeatureEnabled();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   // i18n — `t` is the translation function. Namespaced under "landing"
@@ -1052,6 +1055,12 @@ export default function Landing() {
       {/* ------- Telegram Community ------- */}
       <TelegramCommunitySection />
 
+      {/* ------- Schools section (gated on SCHOOL_FEATURE_ENABLED) -------
+          When the feature is off, this section is entirely absent from
+          the DOM — not just visually hidden. Honest copy, no fabricated
+          adoption numbers or fake school counts. */}
+      {schoolFeatureEnabled && <SchoolsLandingSection />}
+
       {/* ------- Testimonials (cinematic, real students) -------
           Renders NOTHING when there are zero featured testimonials
           (honest empty state — same principle as the honest live-stats
@@ -1191,11 +1200,16 @@ export default function Landing() {
                     For Parents
                   </Link>
                 </li>
-                <li>
-                  <Link to="/for-schools" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
-                    For Schools
-                  </Link>
-                </li>
+                {/* For Schools link — gated on SCHOOL_FEATURE_ENABLED.
+                    When off, the link is entirely absent from the DOM
+                    (not just hidden) so there's no broken link. */}
+                {schoolFeatureEnabled && (
+                  <li>
+                    <Link to="/for-schools" className="type-caption text-muted-foreground transition-colors hover:text-foreground">
+                      For Schools
+                    </Link>
+                  </li>
+                )}
               </ul>
             </div>
             {/* Company column */}
@@ -2022,6 +2036,101 @@ function TestimonialAvatar({
     >
       {initials || "✦"}
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCHOOLS LANDING SECTION — honest, compelling marketing for the schools
+   feature. Only renders when SCHOOL_FEATURE_ENABLED is on (the parent
+   Landing component gates this). No fabricated adoption numbers or fake
+   school counts — sells the real mechanism and real value.
+   ═══════════════════════════════════════════════════════════════════════ */
+function SchoolsLandingSection() {
+  return (
+    <section id="schools" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-20">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="flex flex-col items-center text-center"
+      >
+        <Badge variant="outline" className="glass-chip mb-4 rounded-full px-3 py-1 type-caption font-semibold text-violet-300">
+          <span className="relative flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-violet-400 opacity-60" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-violet-400" />
+          </span>
+          // for schools
+        </Badge>
+        <h2 className="type-display text-gradient">
+          Bring your entire class onto Learnyx in minutes
+        </h2>
+        <p className="mt-3 max-w-2xl type-body-lg text-muted-foreground">
+          Not one signup at a time. Set up your school, create classes, share a
+          code — your students join instantly, pre-configured with the right
+          grade and stream.
+        </p>
+      </motion.div>
+
+      {/* 3-step mechanism */}
+      <div className="mt-12 grid gap-5 sm:grid-cols-3">
+        {[
+          {
+            step: "1",
+            title: "Set up your school",
+            body: "We create your school + designate you as director. You get a dedicated dashboard for managing classes.",
+          },
+          {
+            step: "2",
+            title: "Share class codes",
+            body: "Each class gets a 6-character code. Students enter it during signup — pre-configured with the right grade + stream automatically.",
+          },
+          {
+            step: "3",
+            title: "Optional bulk premium",
+            body: "Purchase premium seats in bulk at tiered discounts. Students get full premium — no individual payment friction.",
+          },
+        ].map((s, i) => (
+          <motion.div
+            key={s.step}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.5, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
+            className="glass-panel rounded-2xl p-6"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-violet-400/15 font-mono text-lg font-extrabold text-violet-300">
+              {s.step}
+            </div>
+            <h3 className="mt-4 type-h3">{s.title}</h3>
+            <p className="mt-2 type-body text-muted-foreground">{s.body}</p>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Privacy callout */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-60px" }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="glass-panel mt-8 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.03] p-6"
+      >
+        <p className="type-body-lg text-foreground/90">
+          <span className="font-bold text-emerald-200">Privacy:</span> Teachers
+          see class-wide progress, never individual student data — unless a
+          student chooses to share it. Because privacy matters, especially for
+          students.
+        </p>
+      </motion.div>
+
+      {/* CTA */}
+      <div className="mt-8 text-center">
+        <Button asChild size="lg" className="rounded-xl">
+          <Link to="/for-schools">Learn more about schools</Link>
+        </Button>
+      </div>
+    </section>
   );
 }
 

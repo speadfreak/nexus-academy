@@ -961,7 +961,114 @@ const schema = defineSchema(
       .index("by_status_submittedAt", ["status", "submittedAt"])
       .index("by_displayOrder", ["displayOrder"]),
 
+    // ── SCHOOLS — bulk class/school onboarding + tiered seat pricing ────
+    //
+    // Schools let a director bring an entire class onto Learnyx in minutes:
+    //   1. Platform admin creates a school + designates a director (user)
+    //   2. Director creates classes (grade + stream + subject focus)
+    //   3. Each class gets a shareable code
+    //   4. Students join with the code during onboarding — pre-configured
+    //      with the right grade + stream, no individual signup friction
+    //   5. Director purchases bulk premium seats (tiered pricing) —
+    //      students on a school seat get premium without individual payment
+    //
+    // PRIVACY: directors see CLASS-WIDE aggregate progress only, never
+    // individual student data unless a student explicitly opts in via the
+    // "share detailed progress with school" toggle in Settings.
+    //
+    // GATING: the entire public-facing feature is gated on the
+    // SCHOOL_FEATURE_ENABLED configKey. When OFF, every public surface
+    // is absent from the DOM. The platform admin's /admin → Schools tab
+    // stays visible regardless (so the admin can prepare a school's
+    // setup before going live).
 
+    schools: defineTable({
+      name: v.string(),
+      directorId: v.id("users"), // the designated school director
+      createdBy: v.id("users"), // platform admin who created it
+      // Bulk seat license state — incremented on purchase approval,
+      // decremented never (we track expiry separately). When seatsExpireAt
+      // passes, students on a school seat gracefully revert to the
+      // standard expired-subscription messaging (never abrupt lockout).
+      seatsPurchased: v.number(), // total seats ever granted
+      seatsExpireAt: v.optional(v.number()), // epoch ms — when the current license lapses
+      // Contact info for the school (for admin reference + renewal reminders)
+      contactEmail: v.optional(v.string()),
+      contactPhone: v.optional(v.string()),
+      location: v.optional(v.string()), // e.g. "Addis Ababa"
+      createdAt: v.number(),
+    })
+      .index("by_director", ["directorId"])
+      .index("by_createdAt", ["createdAt"]),
+
+    schoolClasses: defineTable({
+      schoolId: v.id("schools"),
+      name: v.string(), // e.g. "Grade 12 Natural — Section A"
+      gradeLevel: v.union(v.literal(9), v.literal(10), v.literal(11), v.literal(12)),
+      stream: streamValidator, // natural | social | common
+      subjectFocus: v.optional(v.id("subjects")),
+      // Shareable code — students enter this during onboarding to join
+      // the class pre-configured with the right grade + stream.
+      classCode: v.string(),
+      createdBy: v.id("users"), // the director who created it
+      createdAt: v.number(),
+    })
+      .index("by_school", ["schoolId"])
+      .index("by_classCode", ["classCode"]),
+
+    // Junction — which students are in which class. A student can be in
+    // multiple classes (e.g. different subject-focus classes).
+    schoolClassMembers: defineTable({
+      classId: v.id("schoolClasses"),
+      studentId: v.id("users"),
+      joinedAt: v.number(),
+      // Whether the student has opted to share detailed individual progress
+      // with the school director. Default false — directors see class-wide
+      // aggregates only. Student can flip this in Settings.
+      shareProgressWithSchool: v.boolean(),
+    })
+      .index("by_class", ["classId"])
+      .index("by_student", ["studentId"])
+      .index("by_class_student", ["classId", "studentId"]),
+
+    // School bulk seat purchase submissions — director selects seat count +
+    // duration, total is calculated live from the tier pricing, snapshot
+    // on submit. Admin reviews in the Payment Reviews queue with a clear
+    // "School Bulk" badge. On approval: seatsPurchased += count,
+    // seatsExpireAt = now + duration months.
+    schoolSeatSubmissions: defineTable({
+      schoolId: v.id("schools"),
+      directorId: v.id("users"),
+      // Snapshot of the calculated values at submit time — a later price
+      // change never affects an already-submitted request.
+      seatCount: v.number(),
+      durationMonths: v.number(),
+      tierRate: v.number(), // per-seat/month rate at submit time
+      totalAmount: v.number(), // seatCount × durationMonths × tierRate
+      tierUsed: v.union(
+        v.literal(1),
+        v.literal(2),
+        v.literal(3),
+        v.literal(4),
+      ),
+      // Payment method — telebirr_personal is the only one wired, but the
+      // shape matches manualPaymentSubmissions for consistency.
+      method: v.literal("telebirr_personal"),
+      transactionRef: v.string(),
+      proofStorageId: v.string(),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("rejected"),
+      ),
+      submittedAt: v.number(),
+      reviewedAt: v.optional(v.number()),
+      reviewedBy: v.optional(v.id("users")),
+      rejectionReason: v.optional(v.string()),
+    })
+      .index("by_school", ["schoolId"])
+      .index("by_status", ["status"])
+      .index("by_status_submittedAt", ["status", "submittedAt"]),
 
     // ── Personal Telegram weekly digest ─────────────────────────────
     // Each student can link their OWN Telegram account (separate from the

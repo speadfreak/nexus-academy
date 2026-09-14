@@ -16,6 +16,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
 import { useLenis } from "@/hooks/useLenis";
+import { useSchoolFeatureEnabled } from "@/hooks/useSchoolFeature";
 // i18n — MUST be imported before any component that uses useTranslation.
 // The import has a side effect: it initializes i18next + registers the
 // language detector. English namespaces are bundled synchronously;
@@ -27,7 +28,7 @@ import { ConvexReactClient } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { StrictMode, useEffect, useRef, lazy, Suspense, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import "./index.css";
 
@@ -111,6 +112,7 @@ const Groups = lazy(() => import("./pages/Groups.tsx"));
 const Room = lazy(() => import("./pages/Room.tsx"));
 const Reader = lazy(() => import("./pages/Reader.tsx"));
 const StudyCards = lazy(() => import("./pages/StudyCards.tsx"));
+const SchoolAdmin = lazy(() => import("./pages/SchoolAdmin.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
 const Notifications = lazy(() => import("./pages/Notifications.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
@@ -524,6 +526,36 @@ function RouteSyncer() {
   return null;
 }
 
+/**
+ * SchoolFeatureGate — wraps a route element. When SCHOOL_FEATURE_ENABLED
+ * is OFF, redirects to `redirectTo` (default "/"). When ON or loading,
+ * renders the children. Mirrors the useLanguage gate hook pattern.
+ *
+ * Used by:
+ *   • /for-schools → redirects to / when off
+ *   • /school-admin → redirects to /dashboard when off
+ *
+ * The admin's /admin → Schools management tab is NOT gated (the admin
+ * can prepare a school's setup before going live).
+ */
+function SchoolFeatureGate({
+  children,
+  redirectTo = "/",
+}: {
+  children: React.ReactNode;
+  redirectTo?: string;
+}) {
+  const { enabled, loading } = useSchoolFeatureEnabled();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!loading && !enabled) {
+      navigate(redirectTo, { replace: true });
+    }
+  }, [loading, enabled, navigate, redirectTo]);
+  if (!loading && !enabled) return null;
+  return <>{children}</>;
+}
+
 // ─── Mount ────────────────────────────────────────────────────────────
 const rootEl = document.getElementById("root");
 if (rootEl) {
@@ -570,7 +602,28 @@ if (rootEl) {
                           <Route path="/for-students" element={<ForStudentsPage />} />
                           <Route path="/for-teachers" element={<ForTeachersPage />} />
                           <Route path="/for-parents" element={<ForParentsPage />} />
-                          <Route path="/for-schools" element={<ForSchoolsPage />} />
+                          {/* /for-schools — gated on SCHOOL_FEATURE_ENABLED.
+                              When off, redirects to / (no broken/error state,
+                              never exposes that the feature exists but is "off"). */}
+                          <Route
+                            path="/for-schools"
+                            element={
+                              <SchoolFeatureGate>
+                                <ForSchoolsPage />
+                              </SchoolFeatureGate>
+                            }
+                          />
+                          {/* /school-admin — director dashboard. Gated on
+                              SCHOOL_FEATURE_ENABLED. When off, redirects to
+                              /dashboard even for an already-designated director. */}
+                          <Route
+                            path="/school-admin"
+                            element={
+                              <SchoolFeatureGate redirectTo="/dashboard">
+                                <SchoolAdmin />
+                              </SchoolFeatureGate>
+                            }
+                          />
                           {/* /library — alias for the dashboard (the library
                               page is the dashboard's main view). Public
                               visitors get redirected to auth if they try

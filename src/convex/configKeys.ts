@@ -315,3 +315,129 @@ export const getMultiLanguageEnabled = query({
     return row?.value === "true";
   },
 });
+
+/**
+ * SCHOOL_FEATURE_ENABLED — master toggle for the entire schools feature.
+ *
+ * When OFF (default), every public surface of the schools feature is
+ * entirely absent from the DOM (not just hidden via CSS):
+ *   • Landing page Schools section — not rendered
+ *   • Footer /for-schools link — not rendered
+ *   • /for-schools route — redirects to /
+ *   • Onboarding "Have a class code?" field — not rendered
+ *   • Settings class-code redemption + "share progress with school" — not rendered
+ *   • /school-admin route — redirects to /dashboard
+ *
+ * EXCEPTION: the platform admin's /admin → Schools management tab stays
+ * visible regardless of the toggle. The admin can prepare a school's
+ * setup (create schools, assign directors, configure classes) in the
+ * background before flipping the switch to go live.
+ *
+ * Same pattern as getMultiLanguageEnabled — admin edits via the Keys tab.
+ */
+export const getSchoolFeatureEnabled = query({
+  args: {},
+  handler: async (ctx): Promise<boolean> => {
+    const row = await ctx.db
+      .query("configKeys")
+      .withIndex("by_key", (q) => q.eq("key", "SCHOOL_FEATURE_ENABLED"))
+      .first();
+    return row?.value === "true";
+  },
+});
+
+/**
+ * School bulk-seat pricing tiers — 4 independently admin-editable per-
+ * seat/month rates. Same "admin sets explicit price per tier" pattern as
+ * the personal 1/3/6/12-month plans (independent configurable values,
+ * not auto-calculated percentages).
+ *
+ *   TIER 1: 1-19 seats    → SCHOOL_SEAT_PRICE_TIER_1 (highest per-seat rate)
+ *   TIER 2: 20-49 seats   → SCHOOL_SEAT_PRICE_TIER_2
+ *   TIER 3: 50-99 seats   → SCHOOL_SEAT_PRICE_TIER_3
+ *   TIER 4: 100+ seats    → SCHOOL_SEAT_PRICE_TIER_4 (lowest per-seat rate)
+ *
+ * Returns all 4 values as numbers (ETB). Unset keys default to 0 — the
+ * admin must set them before the pricing calculator / purchase flow
+ * shows real numbers.
+ */
+export const getSchoolSeatPricing = query({
+  args: {},
+  handler: async (ctx): Promise<{
+    tier1: number; // 1-19 seats
+    tier2: number; // 20-49 seats
+    tier3: number; // 50-99 seats
+    tier4: number; // 100+ seats
+  }> => {
+    const keys = [
+      "SCHOOL_SEAT_PRICE_TIER_1",
+      "SCHOOL_SEAT_PRICE_TIER_2",
+      "SCHOOL_SEAT_PRICE_TIER_3",
+      "SCHOOL_SEAT_PRICE_TIER_4",
+    ];
+    const vals: number[] = [];
+    for (const k of keys) {
+      const row = await ctx.db
+        .query("configKeys")
+        .withIndex("by_key", (q) => q.eq("key", k))
+        .first();
+      vals.push(row ? parseInt(row.value, 10) || 0 : 0);
+    }
+    return {
+      tier1: vals[0]!,
+      tier2: vals[1]!,
+      tier3: vals[2]!,
+      tier4: vals[3]!,
+    };
+  },
+});
+
+/**
+ * Resolve the correct per-seat/month rate for a given seat count.
+ * Used by the school bulk purchase flow + the pricing calculator.
+ */
+export function getTierRateForSeatCount(
+  seatCount: number,
+  pricing: { tier1: number; tier2: number; tier3: number; tier4: number },
+): number {
+  if (seatCount >= 100) return pricing.tier4;
+  if (seatCount >= 50) return pricing.tier3;
+  if (seatCount >= 20) return pricing.tier2;
+  return pricing.tier1;
+}
+
+/**
+ * Internal version of getSchoolSeatPricing — callable from mutations
+ * (e.g. schools.ts directorSubmitSeatPurchase snapshots the tier rate
+ * at submit time so a later price change doesn't affect the submission).
+ */
+export const getSchoolSeatPricingInternal = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<{
+    tier1: number;
+    tier2: number;
+    tier3: number;
+    tier4: number;
+  }> => {
+    const keys = [
+      "SCHOOL_SEAT_PRICE_TIER_1",
+      "SCHOOL_SEAT_PRICE_TIER_2",
+      "SCHOOL_SEAT_PRICE_TIER_3",
+      "SCHOOL_SEAT_PRICE_TIER_4",
+    ];
+    const vals: number[] = [];
+    for (const k of keys) {
+      const row = await ctx.db
+        .query("configKeys")
+        .withIndex("by_key", (q) => q.eq("key", k))
+        .first();
+      vals.push(row ? parseInt(row.value, 10) || 0 : 0);
+    }
+    return {
+      tier1: vals[0]!,
+      tier2: vals[1]!,
+      tier3: vals[2]!,
+      tier4: vals[3]!,
+    };
+  },
+});
