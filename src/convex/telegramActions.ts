@@ -280,7 +280,7 @@ export const sendContactMessage = action({
       });
     }
     const category = (args.category ?? "other").trim().toLowerCase();
-    const validCategories = ["question", "advice", "complaint", "bug", "other"];
+    const validCategories = ["question", "advice", "complaint", "bug", "other", "school_setup"];
     if (!validCategories.includes(category)) {
       throw new ConvexError({ message: "Invalid category.", code: "invalid" });
     }

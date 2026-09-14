@@ -114,6 +114,15 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   REFERRER_REWARD_DAYS: "7",
   REFEREE_REWARD_DAYS: "3",
   FREE_TRIAL_DAYS: "14",
+  // School seat pricing defaults — sensible bulk-discount tiers the admin
+  // can override anytime from the Keys tab. These are starting points, not
+  // hard requirements: the admin can set any value (including 0 for a
+  // free pilot). The defaults give a real discount curve: 50 → 40 → 30 → 20
+  // ETB/seat/month across the 4 tiers.
+  SCHOOL_SEAT_PRICE_TIER_1: "50",
+  SCHOOL_SEAT_PRICE_TIER_2: "40",
+  SCHOOL_SEAT_PRICE_TIER_3: "30",
+  SCHOOL_SEAT_PRICE_TIER_4: "20",
 };
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
@@ -396,7 +405,15 @@ export const getSchoolSeatPricing = query({
         .query("configKeys")
         .withIndex("by_key", (q) => q.eq("key", k))
         .first();
-      vals.push(row ? parseInt(row.value, 10) || 0 : 0);
+      // Fall back to CONFIG_DEFAULTS when no DB row exists — so the
+      // pricing calculator shows real numbers even before the admin
+      // configures the Keys tab. The admin can override anytime.
+      if (row?.value) {
+        vals.push(parseInt(row.value, 10) || 0);
+      } else {
+        const def = CONFIG_DEFAULTS[k];
+        vals.push(def ? parseInt(def, 10) || 0 : 0);
+      }
     }
     return {
       tier1: vals[0]!,
@@ -446,7 +463,12 @@ export const getSchoolSeatPricingInternal = internalQuery({
         .query("configKeys")
         .withIndex("by_key", (q) => q.eq("key", k))
         .first();
-      vals.push(row ? parseInt(row.value, 10) || 0 : 0);
+      if (row?.value) {
+        vals.push(parseInt(row.value, 10) || 0);
+      } else {
+        const def = CONFIG_DEFAULTS[k];
+        vals.push(def ? parseInt(def, 10) || 0 : 0);
+      }
     }
     return {
       tier1: vals[0]!,
