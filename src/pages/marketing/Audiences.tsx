@@ -165,7 +165,7 @@ function SchoolsDeepPage() {
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button asChild size="lg" className="rounded-xl">
-              <Link to="/contact?subject=School%20partnership%20inquiry">
+              <Link to="/school-setup">
                 Get your school set up
               </Link>
             </Button>
@@ -258,7 +258,7 @@ function SchoolsDeepPage() {
             premium process.
           </p>
           <Button asChild size="lg" className="mt-6 rounded-xl">
-            <Link to="/contact?subject=School%20partnership%20inquiry">
+            <Link to="/school-setup">
               Get your school set up
             </Link>
           </Button>

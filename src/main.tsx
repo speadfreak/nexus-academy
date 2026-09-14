@@ -113,6 +113,7 @@ const Room = lazy(() => import("./pages/Room.tsx"));
 const Reader = lazy(() => import("./pages/Reader.tsx"));
 const StudyCards = lazy(() => import("./pages/StudyCards.tsx"));
 const SchoolAdmin = lazy(() => import("./pages/SchoolAdmin.tsx"));
+const SchoolSetup = lazy(() => import("./pages/marketing/SchoolSetup.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
 const Notifications = lazy(() => import("./pages/Notifications.tsx"));
 const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
@@ -621,6 +622,16 @@ if (rootEl) {
                             element={
                               <SchoolFeatureGate redirectTo="/dashboard">
                                 <SchoolAdmin />
+                              </SchoolFeatureGate>
+                            }
+                          />
+                          {/* /school-setup — guided wizard for school directors
+                              to request setup. Gated on SCHOOL_FEATURE_ENABLED. */}
+                          <Route
+                            path="/school-setup"
+                            element={
+                              <SchoolFeatureGate>
+                                <SchoolSetup />
                               </SchoolFeatureGate>
                             }
                           />
