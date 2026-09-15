@@ -15,11 +15,13 @@
 // the pending count or latest submission ID changes, the notification fires.
 
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
   Bell,
   BellRing,
+  Building2,
   CheckCircle2,
   Clock,
   ExternalLink,
@@ -27,6 +29,7 @@ import {
   Receipt,
   Smartphone,
   Sparkles,
+  Users,
   Volume2,
   VolumeX,
   Wallet,
@@ -114,12 +117,27 @@ export function PaymentReviewsSection() {
   const pendingCount = useQuery(api.manualPayments.getPendingCount, {});
   const paymentConfig = useQuery(api.manualPayments.getPaymentConfig, {});
   const unmatched = useQuery(api.manualPayments.getUnmatchedIncomingPayments, {});
+  // School bulk purchases — the tiered seat-license queue. Kept in the same
+  // review surface so the admin never has to hunt for them, but rendered as
+  // a visually distinct panel with a "SCHOOL BULK" badge (vs student rows).
+  const schoolSubs = useQuery(api.schools.adminListSeatSubmissions, {});
+  const pendingSchoolSubs = useQuery(api.schools.adminListSeatSubmissions, {
+    status: "pending",
+  });
 
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [loadingProofId, setLoadingProofId] = useState<string | null>(null);
+
+  // School bulk review state — separate handlers/mutations, same UX.
+  const schoolApproveMut = useMutation(api.schools.adminApproveSeatSubmission);
+  const schoolRejectMut = useMutation(api.schools.adminRejectSeatSubmission);
+  const [schoolApprovingId, setSchoolApprovingId] = useState<string | null>(null);
+  const [schoolRejectingId, setSchoolRejectingId] = useState<string | null>(null);
+  const [schoolRejectReason, setSchoolRejectReason] = useState("");
+  const [schoolRejecting, setSchoolRejecting] = useState(false);
 
   // Notification settings
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -299,6 +317,41 @@ export function PaymentReviewsSection() {
     setTimeout(() => setLoadingProofId(null), 2000);
   };
 
+  // --- School bulk purchase review ---
+  const handleSchoolApprove = async (submissionId: string) => {
+    setSchoolApprovingId(submissionId);
+    try {
+      await schoolApproveMut({ submissionId: submissionId as Id<"schoolSeatSubmissions"> });
+      toast.success("School bulk purchase approved — seats + expiry granted! 🎉");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Approval failed.");
+    } finally {
+      setSchoolApprovingId(null);
+    }
+  };
+
+  const handleSchoolReject = async () => {
+    if (!schoolRejectingId) return;
+    if (schoolRejectReason.trim().length < 3) {
+      toast.error("A rejection reason is required (min 3 chars).");
+      return;
+    }
+    setSchoolRejecting(true);
+    try {
+      await schoolRejectMut({
+        submissionId: schoolRejectingId as Id<"schoolSeatSubmissions">,
+        rejectionReason: schoolRejectReason.trim(),
+      });
+      toast.success("School submission rejected — the director has been notified.");
+      setSchoolRejectingId(null);
+      setSchoolRejectReason("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Rejection failed.");
+    } finally {
+      setSchoolRejecting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4" data-payment-reviews>
       {/* Real-time notification banner */}
@@ -397,6 +450,134 @@ export function PaymentReviewsSection() {
           </div>
         </div>
       )}
+
+      {/* ══════ SCHOOL BULK PURCHASES — distinct violet panel, badge-first ══════ */}
+      <div className="glass-panel rounded-2xl border-violet-400/20 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+              <Building2 className="size-4 text-violet-300" />
+              School bulk purchases
+              {pendingSchoolSubs && pendingSchoolSubs.length > 0 && (
+                <Badge className="border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-sky-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
+                  {pendingSchoolSubs.length} pending
+                </Badge>
+              )}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Tiered seat-license requests from school directors — approve to grant
+              seats + set expiry. Full console in{" "}
+              <code className="rounded bg-white/5 px-1 font-mono text-[11px] text-violet-300">/admin → Schools</code>.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3">
+          {schoolSubs === undefined ? (
+            <div className="flex h-24 items-center justify-center">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : schoolSubs.length === 0 ? (
+            <div className="flex h-20 items-center justify-center">
+              <p className="text-sm text-muted-foreground">No school bulk purchases yet.</p>
+            </div>
+          ) : (
+            schoolSubs.map((sub) => (
+              <div
+                key={sub._id}
+                className={cn(
+                  "rounded-xl border p-4",
+                  sub.status === "pending"
+                    ? "border-violet-400/25 bg-violet-400/[0.04]"
+                    : "border-white/[0.06] bg-white/[0.02]",
+                )}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Clear, distinct school-bulk badge — school name · seats · months · total */}
+                      <Badge className="gap-1 border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-sky-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
+                        <Building2 className="size-3" /> School bulk
+                      </Badge>
+                      <span className="text-sm font-bold">
+                        {sub.schoolName} · {sub.seatCount} seats · {sub.durationMonths} month{sub.durationMonths === 1 ? "" : "s"} · {sub.totalAmount.toLocaleString("en-US")} ETB
+                      </span>
+                      <Badge
+                        className={cn(
+                          "font-mono text-[9px]",
+                          sub.status === "pending" && "border-amber-400/30 bg-amber-400/10 text-amber-300",
+                          sub.status === "approved" && "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+                          sub.status === "rejected" && "border-rose-400/30 bg-rose-400/10 text-rose-300",
+                        )}
+                      >
+                        {sub.status}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                      <span className="flex items-center gap-1.5 rounded-md border border-violet-400/20 bg-violet-400/[0.06] px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-300">
+                        Tier {sub.tierUsed} · {sub.tierRate} ETB/seat/mo
+                      </span>
+                      <span className="flex items-center gap-1.5 font-mono text-muted-foreground">
+                        ref: <code className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-violet-200">{sub.transactionRef}</code>
+                      </span>
+                      <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+                        <Clock className="size-3" /> {relativeTime(sub.submittedAt)} · {sub.directorName}
+                      </span>
+                    </div>
+                    {sub.rejectionReason && (
+                      <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-rose-300/80">
+                        <AlertTriangle className="mt-0.5 size-3 shrink-0" /> {sub.rejectionReason}
+                      </p>
+                    )}
+                  </div>
+                  {sub.status === "pending" && (
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer gap-1.5 rounded-lg"
+                        onClick={() => handleViewProof(sub.proofStorageId, sub._id)}
+                        disabled={loadingProofId === sub._id}
+                      >
+                        {loadingProofId === sub._id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <ExternalLink className="size-3.5" />
+                        )}
+                        View proof
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="cursor-pointer gap-1.5 rounded-lg bg-emerald-500 text-emerald-950 hover:bg-emerald-400"
+                        onClick={() => handleSchoolApprove(sub._id)}
+                        disabled={schoolApprovingId === sub._id}
+                      >
+                        {schoolApprovingId === sub._id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="size-3.5" />
+                        )}
+                        Approve
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer gap-1.5 rounded-lg border-rose-400/30 text-rose-300 hover:bg-rose-400/10"
+                        onClick={() => {
+                          setSchoolRejectingId(sub._id);
+                          setSchoolRejectReason("");
+                        }}
+                      >
+                        <XCircle className="size-3.5" />
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       {/* Pending submissions queue */}
       <div className="glass-panel rounded-2xl p-5">
@@ -634,6 +815,63 @@ export function PaymentReviewsSection() {
               disabled={rejecting || rejectReason.trim().length < 3}
             >
               {rejecting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <XCircle className="size-3.5" />
+              )}
+              Reject submission
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* School bulk reject dialog */}
+      <Dialog
+        open={schoolRejectingId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSchoolRejectingId(null);
+            setSchoolRejectReason("");
+          }
+        }}
+      >
+        <DialogContent className="glass-panel">
+          <DialogHeader>
+            <DialogTitle>Reject school bulk purchase</DialogTitle>
+            <DialogDescription>
+              The school director will be notified with this reason. Be specific —
+              e.g. &quot;Transaction reference doesn&apos;t match our SMS records&quot; or
+              &quot;Amount received was less than the tier total&quot;.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="school-bulk-reject-reason" className="text-xs font-semibold text-muted-foreground">
+              Rejection reason (min 3 chars)
+            </Label>
+            <Textarea
+              id="school-bulk-reject-reason"
+              value={schoolRejectReason}
+              onChange={(e) => setSchoolRejectReason(e.target.value)}
+              placeholder="e.g. The transaction reference doesn't match any received payment."
+              className="min-h-[80px] rounded-xl bg-white/5 text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSchoolRejectingId(null);
+                setSchoolRejectReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleSchoolReject}
+              disabled={schoolRejecting || schoolRejectReason.trim().length < 3}
+            >
+              {schoolRejecting ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
                 <XCircle className="size-3.5" />

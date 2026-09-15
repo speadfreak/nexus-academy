@@ -10,6 +10,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   AlertTriangle,
+  Building2,
   CalendarClock,
   CheckCircle2,
   ChevronRight,
@@ -67,6 +68,7 @@ import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { AdminAdminsSection } from "@/components/admin/AdminAdminsSection";
 import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
+import { AdminSchoolsSection } from "@/components/admin/AdminSchoolsSection";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { AdminMarketingSection } from "@/components/admin/AdminMarketingSection";
 import { AdminSubscriptionsSection } from "@/components/admin/AdminSubscriptionsSection";
@@ -163,15 +165,16 @@ const ADMIN_TABS = [
   { id: "keys", label: "Keys", index: "06", icon: KeyRound },
   { id: "finance", label: "Finance", index: "07", icon: Wallet },
   { id: "payments", label: "Payment Reviews", index: "08", icon: Receipt },
-  { id: "fraud", label: "Fraud Patterns", index: "09", icon: ShieldAlert },
-  { id: "marketing", label: "Marketing", index: "10", icon: Megaphone },
-  { id: "testimonials", label: "Testimonials", index: "11", icon: MessageSquareQuote },
-  { id: "subscriptions", label: "Subscriptions", index: "12", icon: CalendarClock },
-  { id: "reports", label: "Reports", index: "13", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "14", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "15", icon: Send },
-  { id: "system", label: "System", index: "16", icon: Plug },
-  { id: "audit", label: "Audit Log", index: "17", icon: ScrollText },
+  { id: "schools", label: "Schools", index: "09", icon: Building2 },
+  { id: "fraud", label: "Fraud Patterns", index: "10", icon: ShieldAlert },
+  { id: "marketing", label: "Marketing", index: "11", icon: Megaphone },
+  { id: "testimonials", label: "Testimonials", index: "12", icon: MessageSquareQuote },
+  { id: "subscriptions", label: "Subscriptions", index: "13", icon: CalendarClock },
+  { id: "reports", label: "Reports", index: "14", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "15", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "16", icon: Send },
+  { id: "system", label: "System", index: "17", icon: Plug },
+  { id: "audit", label: "Audit Log", index: "18", icon: ScrollText },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -179,7 +182,7 @@ type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const ADMIN_TAB_GROUPS = [
   { label: "OVERVIEW", ids: ["dashboard"] as const },
   { label: "CONTENT", ids: ["content", "coverage"] as const },
-  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "fraud", "marketing", "testimonials", "subscriptions"] as const },
+  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "schools", "fraud", "marketing", "testimonials", "subscriptions"] as const },
   { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
 ] as const;
 
@@ -934,6 +937,19 @@ export default function Admin() {
   const tab = (searchParams.get("tab") ?? "dashboard") as AdminTabId;
   const setTab = (id: AdminTabId) =>
     setSearchParams(id === "dashboard" ? {} : { tab: id });
+
+  // Cross-section jump links (e.g. the Schools console's feature-toggle chip
+  // deep-links to the Keys tab) speak this tiny custom event protocol.
+  useEffect(() => {
+    const onNavigate = (e: Event) => {
+      const target = (e as CustomEvent<string>).detail;
+      if (typeof target === "string" && ADMIN_TABS.some((t) => t.id === target)) {
+        setTab(target as AdminTabId);
+      }
+    };
+    window.addEventListener("admin:navigate-tab", onNavigate);
+    return () => window.removeEventListener("admin:navigate-tab", onNavigate);
+  }, [setTab]);
 
   const adminAccess = isAdmin?.isAdmin ?? false;
 
@@ -2149,6 +2165,9 @@ export default function Admin() {
             {tab === "payments" && (
               <PaymentReviewsSection />
             )}
+
+            {/* ══════ SCHOOLS — school system management console ══════ */}
+            {tab === "schools" && <AdminSchoolsSection />}
 
             {/* ══════ FRAUD PATTERNS — review-only suspicious-pattern detection ══════ */}
             {tab === "fraud" && <AdminFraudSection />}

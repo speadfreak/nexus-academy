@@ -19,7 +19,7 @@
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalAction, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireAdminMutation, isAdmin } from "./admin";
@@ -311,6 +311,7 @@ export const adminListSeatSubmissions = query({
         tierUsed: r.tierUsed,
         method: r.method,
         transactionRef: r.transactionRef,
+        proofStorageId: r.proofStorageId,
         status: r.status,
         submittedAt: r.submittedAt,
         reviewedAt: r.reviewedAt ?? null,
@@ -471,6 +472,17 @@ export const directorSubmitSeatPurchase = mutation({
       proofStorageId: args.proofStorageId,
       status: "pending",
       submittedAt: Date.now(),
+    });
+    // Fire-and-forget Telegram alert to the platform admin — the faster
+    // they review, the faster the school's students get premium. Scheduled
+    // because mutations can't run actions directly.
+    await ctx.scheduler.runAfter(0, internal.schools.notifySchoolPurchaseTelegram, {
+      submissionId,
+      schoolName: school.name,
+      seatCount: args.seatCount,
+      durationMonths: args.durationMonths,
+      totalAmount,
+      txRef: args.transactionRef.trim(),
     });
     return { submissionId, totalAmount, tierRate, tierUsed };
   },
@@ -644,5 +656,343 @@ export const studentGetSchoolSeatStatus = query({
       }
     }
     return { hasSchoolSeat: false, seatsExpireAt: null, schoolName: null };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Admin: schools overview stats + per-school drilldown
+// ---------------------------------------------------------------------------
+
+const EXPIRING_SOON_MS = 14 * 24 * 60 * 60 * 1000; // amber warning window
+
+/**
+ * Admin: one-glance aggregates for the Schools tab stat cards. Computes
+ * everything in one pass so the console opens with the full picture
+ * (schools, classes, students, licensed seats, license health, pending
+ * bulk-purchase queue value).
+ */
+export const adminSchoolsStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    const user = await ctx.db.get(userId);
+    if (!user || !(await isAdmin(ctx, user))) {
+      throw new ConvexError({ message: "Admin access required.", code: "forbidden" });
+    }
+    const now = Date.now();
+    const schools = await ctx.db.query("schools").collect();
+    const classes = await ctx.db.query("schoolClasses").collect();
+    const members = await ctx.db.query("schoolClassMembers").collect();
+    const submissions = await ctx.db.query("schoolSeatSubmissions").collect();
+
+    let totalSeatsLicensed = 0;
+    let activeLicenses = 0;
+    let expiringSoon = 0;
+    let expiredLicenses = 0;
+    for (const s of schools) {
+      totalSeatsLicensed += s.seatsPurchased;
+      if (s.seatsExpireAt) {
+        if (s.seatsExpireAt > now) {
+          activeLicenses++;
+          if (s.seatsExpireAt - now <= EXPIRING_SOON_MS) expiringSoon++;
+        } else {
+          expiredLicenses++;
+        }
+      }
+    }
+    const pending = submissions.filter((s) => s.status === "pending");
+    const pendingValueEtb = pending.reduce((sum, s) => sum + s.totalAmount, 0);
+    const approvedValueEtb = submissions
+      .filter((s) => s.status === "approved")
+      .reduce((sum, s) => sum + s.totalAmount, 0);
+
+    return {
+      totalSchools: schools.length,
+      totalClasses: classes.length,
+      totalMembers: members.length,
+      totalSeatsLicensed,
+      activeLicenses,
+      expiringSoon,
+      expiredLicenses,
+      licensesWithoutExpiry: schools.filter((s) => !s.seatsExpireAt).length,
+      pendingSubmissions: pending.length,
+      pendingValueEtb,
+      approvedValueEtb,
+    };
+  },
+});
+
+/**
+ * Admin: list one school's classes with member counts — the drilldown
+ * view behind the school detail dialog.
+ */
+export const adminListSchoolClasses = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, { schoolId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    const user = await ctx.db.get(userId);
+    if (!user || !(await isAdmin(ctx, user))) {
+      throw new ConvexError({ message: "Admin access required.", code: "forbidden" });
+    }
+    const classes = await ctx.db
+      .query("schoolClasses")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .collect();
+    const result = [];
+    for (const c of classes) {
+      const memberCount = (await ctx.db
+        .query("schoolClassMembers")
+        .withIndex("by_class", (q) => q.eq("classId", c._id))
+        .collect()).length;
+      result.push({
+        _id: c._id,
+        name: c.name,
+        gradeLevel: c.gradeLevel,
+        stream: c.stream,
+        classCode: c.classCode,
+        memberCount,
+        createdAt: c.createdAt,
+      });
+    }
+    result.sort((a, b) => a.createdAt - b.createdAt);
+    return result;
+  },
+});
+
+/**
+ * Admin: full roster of one class (name, email, share-progress opt-in,
+ * joined date). Admin oversight only — DIRECTORS get a privacy-preserving
+ * version (directorListClassMembers) that never exposes non-opted-in
+ * students, per the privacy commitment.
+ */
+export const adminListClassMembers = query({
+  args: { classId: v.id("schoolClasses") },
+  handler: async (ctx, { classId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    const user = await ctx.db.get(userId);
+    if (!user || !(await isAdmin(ctx, user))) {
+      throw new ConvexError({ message: "Admin access required.", code: "forbidden" });
+    }
+    const members = await ctx.db
+      .query("schoolClassMembers")
+      .withIndex("by_class", (q) => q.eq("classId", classId))
+      .collect();
+    const result = [];
+    for (const m of members) {
+      const student = await ctx.db.get(m.studentId);
+      result.push({
+        _id: m._id,
+        studentId: m.studentId,
+        studentName: student?.name ?? student?.email ?? "Unknown",
+        studentEmail: student?.email ?? null,
+        shareProgressWithSchool: m.shareProgressWithSchool,
+        joinedAt: m.joinedAt,
+      });
+    }
+    result.sort((a, b) => a.joinedAt - b.joinedAt);
+    return result;
+  },
+});
+
+/**
+ * Admin: delete a school entirely — cascades memberships → classes → the
+ * school row. Seat submissions are KEPT as historical payment records
+ * (they snapshot amounts; the UI resolves missing schools to "Unknown
+ * school"). The director is notified so they're not left guessing.
+ */
+export const adminDeleteSchool = mutation({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, { schoolId }) => {
+    const { user } = await requireAdminMutation(ctx);
+    const school = await ctx.db.get(schoolId);
+    if (!school) throw new ConvexError({ message: "School not found.", code: "not_found" });
+    const classes = await ctx.db
+      .query("schoolClasses")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .collect();
+    let removedMembers = 0;
+    for (const c of classes) {
+      const members = await ctx.db
+        .query("schoolClassMembers")
+        .withIndex("by_class", (q) => q.eq("classId", c._id))
+        .collect();
+      for (const m of members) {
+        await ctx.db.delete(m._id);
+        removedMembers++;
+      }
+      await ctx.db.delete(c._id);
+    }
+    await ctx.db.delete(schoolId);
+    // Tell the director so the change isn't silent.
+    await ctx.runMutation(internal.notifications.createNotification, {
+      userId: school.directorId,
+      type: "school_removed",
+      title: `${school.name} has been removed from Learnyx`,
+      body: "The platform admin removed this school's setup. If you believe this was a mistake, contact support.",
+    });
+    await ctx.runMutation(internal.adminManagement.internalInsertAuditLog, {
+      actorUserId: user._id,
+      action: "school.delete",
+      targetType: "school",
+      targetId: schoolId,
+      details: JSON.stringify({ name: school.name, removedClasses: classes.length, removedMembers }),
+    });
+    return { ok: true, removedClasses: classes.length, removedMembers };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Director: class roster (privacy-preserving) + purchase history
+// ---------------------------------------------------------------------------
+
+/**
+ * Director: roster of one of their school's classes. PRIVACY MODEL:
+ * returns the TOTAL member count (aggregate — always fine) plus the
+ * names/emails ONLY of students who explicitly opted in via the
+ * "share detailed progress with school" toggle. Non-opted-in students
+ * are counted, never listed.
+ */
+export const directorListClassMembers = query({
+  args: { classId: v.id("schoolClasses") },
+  handler: async (ctx, { classId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    const school = await ctx.db
+      .query("schools")
+      .withIndex("by_director", (q) => q.eq("directorId", userId))
+      .first();
+    if (!school) throw new ConvexError({ message: "You're not a school director.", code: "forbidden" });
+    const classRow = await ctx.db.get(classId);
+    if (!classRow || classRow.schoolId !== school._id) {
+      throw new ConvexError({ message: "Class not found in your school.", code: "not_found" });
+    }
+    const members = await ctx.db
+      .query("schoolClassMembers")
+      .withIndex("by_class", (q) => q.eq("classId", classId))
+      .collect();
+    const optedIn = [];
+    for (const m of members) {
+      if (!m.shareProgressWithSchool) continue;
+      const student = await ctx.db.get(m.studentId);
+      optedIn.push({
+        _id: m._id,
+        studentName: student?.name ?? student?.email ?? "Unknown",
+        studentEmail: student?.email ?? null,
+        joinedAt: m.joinedAt,
+      });
+    }
+    optedIn.sort((a, b) => a.joinedAt - b.joinedAt);
+    return {
+      totalMembers: members.length,
+      optedInCount: optedIn.length,
+      optedIn,
+    };
+  },
+});
+
+/**
+ * Director: this school's seat purchase history — newest first. Shows
+ * status, snapshot amounts, and rejection reasons in the dashboard.
+ */
+export const directorListMySubmissions = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const school = await ctx.db
+      .query("schools")
+      .withIndex("by_director", (q) => q.eq("directorId", userId))
+      .first();
+    if (!school) return [];
+    const rows = await ctx.db
+      .query("schoolSeatSubmissions")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .collect();
+    rows.sort((a, b) => b.submittedAt - a.submittedAt);
+    return rows.map((r) => ({
+      _id: r._id,
+      seatCount: r.seatCount,
+      durationMonths: r.durationMonths,
+      tierRate: r.tierRate,
+      totalAmount: r.totalAmount,
+      tierUsed: r.tierUsed,
+      method: r.method,
+      transactionRef: r.transactionRef,
+      status: r.status,
+      submittedAt: r.submittedAt,
+      reviewedAt: r.reviewedAt ?? null,
+      rejectionReason: r.rejectionReason ?? null,
+    }));
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Telegram alert for school bulk purchases
+// ---------------------------------------------------------------------------
+
+/**
+ * Internal action: Telegram alert when a director submits a bulk seat
+ * purchase. Mirrors manualPayments.notifyAdminTelegram — fire-and-forget,
+ * never blocks the submission. Scheduled from directorSubmitSeatPurchase.
+ */
+export const notifySchoolPurchaseTelegram = internalAction({
+  args: {
+    submissionId: v.id("schoolSeatSubmissions"),
+    schoolName: v.string(),
+    seatCount: v.number(),
+    durationMonths: v.number(),
+    totalAmount: v.number(),
+    txRef: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ ok: boolean; reason?: string }> => {
+    try {
+      const token = await ctx.runQuery(internal.configKeys.resolveConfigValue, {
+        key: "TELEGRAM_BOT_TOKEN",
+      });
+      if (!token) return { ok: false, reason: "not_configured" };
+      const chatId = await ctx.runQuery(internal.configKeys.resolveConfigValue, {
+        key: "TELEGRAM_ADMIN_CHAT_ID",
+      });
+      if (!chatId) return { ok: false, reason: "no_admin_chat_id" };
+      const siteUrl =
+        (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: "SITE_URL" })) ||
+        "https://learnyx.app";
+
+      const esc = (s: string) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      const text = [
+        "🏫 <b>New School Bulk Purchase</b>",
+        "",
+        `🏫 School: <b>${esc(args.schoolName)}</b>`,
+        `🪑 Seats: <b>${args.seatCount}</b> · ⏳ ${args.durationMonths} month${args.durationMonths === 1 ? "" : "s"}`,
+        `💰 Total: <b>${args.totalAmount} ETB</b>`,
+        `🔑 Tx Ref: <code>${esc(args.txRef)}</code>`,
+        "",
+        `Review: ${esc(siteUrl)}/admin`,
+      ].join("\n");
+
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as { ok?: boolean } | null;
+      if (!response.ok || !data?.ok) {
+        return { ok: false, reason: "telegram_api_error" };
+      }
+      void args.submissionId;
+      return { ok: true };
+    } catch {
+      return { ok: false, reason: "exception" };
+    }
   },
 });
