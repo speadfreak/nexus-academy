@@ -49,6 +49,7 @@ import { useFriendlyError, errorMessage } from "@/lib/errors";
 import { DashboardShell } from "@/components/DashboardShell";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { QuizFlow } from "@/components/QuizFlow";
+import { StudentSchoolCard } from "@/components/StudentSchoolCard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1235,6 +1236,12 @@ export default function Dashboard() {
             </div>
           </div>
         </motion.div>
+
+        {/* ═══ MY SCHOOL — feature-gated student school experience ═══
+            Rendered ONLY while SCHOOL_FEATURE_ENABLED is true in the
+            admin Keys tab. When off, the component returns null and the
+            section is entirely absent from the student's dashboard. */}
+        <StudentSchoolCard />
 
         {/* ═══ RESOURCE LAUNCHPAD — THE HUB STARTS ABOVE THE DASHBOARD ═══ */}
         <motion.section
