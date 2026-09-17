@@ -65,8 +65,15 @@ export function assemblePageText(items: TextItemLike[]): string {
   return out.join("\n");
 }
 
-/** Minimum average chars/page before we call the PDF a pure image scan. */
-export const TEXT_LAYER_THRESHOLD_AVG = 40;
+/**
+ * Minimum average chars/page before we treat the PDF as having a usable
+ * text layer. CALIBRATED AGAINST REAL PAPERS: a genuine exam page carries
+ * 1000+ chars; scanned papers with a thin/garbled embedded OCR strip run
+ * 40–150 chars/page and MUST take the page-OCR path instead — transcribing
+ * that dribble of text produces "no questions found" failures. 250 sits
+ * safely below real papers and well above image-only scans.
+ */
+export const TEXT_LAYER_THRESHOLD_AVG = 250;
 
 // ─── Chunking ────────────────────────────────────────────────────────────
 
