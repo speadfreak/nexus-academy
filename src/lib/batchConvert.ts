@@ -1,14 +1,17 @@
 // batchConvert — the shared client-side conversion runner.
 //
 // One function that converts a single past paper end-to-end from ANY
-// browser: the DigitalExam page (student opens a paper) and the admin
-// batch worker (Exam Engine console → "Start worker here") both call
-// this. Same claim → extract → AI → complete pipeline, so a batch
-// conversion produces exactly what a student conversion would.
+// browser: the DigitalExam page (student opens a paper), the admin
+// batch worker (Exam Engine console → "Start worker here") and the
+// app-wide crowd autopilot all call this. Same claim → extract → AI →
+// complete pipeline, so every conversion produces exactly what a student
+// conversion would.
 //
-// AI pacing: the caller (batch worker) is expected to pace BETWEEN jobs;
-// this module paces between chunks/pages inside one paper. Batch runs use
-// gentler pacing than student runs (no human is waiting).
+// AI pacing: the real rate guard is the server-side global orchestrator
+// (aiRateLimit.acquireAiPermit inside every AI action) — this module only
+// adds a small breather between chunks of the same paper. Because pacing
+// is enforced globally, MANY pipelines can now run in parallel at the
+// same safe requests-per-minute.
 
 import { api } from "@/convex/_generated/api";
 import {
@@ -19,10 +22,10 @@ import {
   withPageMarkers,
 } from "./pdfText";
 
-const CHUNK_PACING_MS_STUDENT = 4_000;
-const CHUNK_PACING_MS_BATCH = 8_000;
-const PAGE_PACING_MS_VISION = 5_000;
-const QUEUE_POLL_MS = 6_000;
+const CHUNK_PACING_MS_STUDENT = 1_200;
+const CHUNK_PACING_MS_BATCH = 2_000;
+const PAGE_PACING_MS_VISION = 3_000;
+const QUEUE_POLL_MS = 2_500;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -42,6 +45,12 @@ interface MinimalConvexClient {
 /**
  * Convert one paper. Resolves with the final digitalPapers status
  * ("ready" / "failed"), or "ready"/"processing" short-circuits.
+ *
+ * Crash-safe: ANY failure after the claim (premium wall on the PDF url,
+ * network drop, pdf.js error, AI failure) is reported to
+ * reportClientConversionFailure so the concurrency slot frees instantly —
+ * a dead run must never sit "running" until the freshness window expires
+ * and stall the whole crowd autopilot.
  */
 export async function runPaperConversion(
   convex: MinimalConvexClient,
@@ -50,6 +59,28 @@ export async function runPaperConversion(
 ): Promise<string> {
   const { batch = false, onProgress } = opts ?? {};
 
+  try {
+    return await runPipeline(convex, contentId, batch, onProgress);
+  } catch (err) {
+    try {
+      await convex.mutation(api.examPrepDigital.reportClientConversionFailure, {
+        contentId,
+        error:
+          (err as Error)?.message?.slice(0, 480) || "Client pipeline crashed.",
+      });
+    } catch {
+      // Best effort — the autopilot tick still heals the row eventually.
+    }
+    throw err;
+  }
+}
+
+async function runPipeline(
+  convex: MinimalConvexClient,
+  contentId: string,
+  batch: boolean,
+  onProgress?: (p: ConversionProgress) => void,
+): Promise<string> {
   // ── Claim (with polite queue waiting) ──
   onProgress?.({ stage: "fetching" });
   let claim = (await convex.mutation(api.examPrepDigital.beginDigitization, {

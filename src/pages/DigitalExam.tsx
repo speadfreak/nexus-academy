@@ -70,9 +70,12 @@ type PipelineStage =
 
 // Polite pacing between AI calls (mirrors the backend constants — the
 // client keeps its own copy so the UI stays honest about what it does).
-const CHUNK_PACING_MS = 4_000;
-const PAGE_PACING_MS_VISION = 5_000;
-const QUEUE_POLL_MS = 6_000;
+// The REAL rate guard is the server-side global AI orchestrator: many
+// pipelines can run in parallel and every AI call is still spaced safely
+// platform-wide, so these breathers are short.
+const CHUNK_PACING_MS = 1_200;
+const PAGE_PACING_MS_VISION = 3_000;
+const QUEUE_POLL_MS = 2_500;
 
 export default function DigitalExam() {
   const { contentId } = useParams<{ contentId: string }>();
@@ -84,6 +87,7 @@ export default function DigitalExam() {
 
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const beginDigitization = useMutation(api.examPrepDigital.beginDigitization);
+  const reportClientFailure = useMutation(api.examPrepDigital.reportClientConversionFailure);
   const parsePaperChunk = useAction(api.examPrepDigital.parsePaperChunk);
   const parsePaperPageImage = useAction(api.examPrepDigital.parsePaperPageImage);
 
@@ -102,6 +106,10 @@ export default function DigitalExam() {
   const [chunkProgress, setChunkProgress] = useState({ chunk: 0, chunkCount: 0, questions: 0 });
   const [convertError, setConvertError] = useState<string | null>(null);
   const [premiumWall, setPremiumWall] = useState(false);
+  // Live queue position while waiting for a conversion slot (null = not
+  // waiting). Claim polls re-check every QUEUE_POLL_MS and slots open
+  // every few seconds now that many pipelines run in parallel.
+  const [aheadOfMe, setAheadOfMe] = useState<number | null>(null);
   // Resolved PDF url for the session — powers the player's original-page
   // viewer (and is reused by the OCR path without a second fetch).
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -153,6 +161,7 @@ export default function DigitalExam() {
       while (!claimed) {
         if (claim.kind === "queued") {
           setStage("queued");
+          setAheadOfMe(claim.ahead);
           await new Promise((r) => setTimeout(r, QUEUE_POLL_MS));
           claim = await beginDigitization({ contentId: contentId as never });
           if (claim.kind === "ready" || claim.kind === "processing") {
@@ -165,6 +174,7 @@ export default function DigitalExam() {
         }
       }
       if (!claimed?.digitalPaperId) throw new Error("Conversion claim failed.");
+      setAheadOfMe(null);
       const digitalPaperId = claimed.digitalPaperId;
 
       const url = await resolveUrl();
@@ -241,10 +251,23 @@ export default function DigitalExam() {
       const message = (err as Error).message || "Something went wrong while converting this paper.";
       setConvertError(message);
       setStage("done");
+      // Free the concurrency slot immediately — a crashed student run must
+      // never sit "running" until the freshness window expires (the same
+      // self-heal the crowd worker does via runPaperConversion).
+      if (contentId) {
+        try {
+          await reportClientFailure({
+            contentId: contentId as never,
+            error: message.slice(0, 480),
+          });
+        } catch {
+          // Best effort — the autopilot tick still heals the row.
+        }
+      }
     } finally {
       runningRef.current = false;
     }
-  }, [beginDigitization, content, contentId, parsePaperChunk, parsePaperPageImage, resolveUrl]);
+  }, [beginDigitization, content, contentId, parsePaperChunk, parsePaperPageImage, reportClientFailure, resolveUrl]);
 
   const playerQuestions = useMemo<DigitalQuestion[] | null>(() => {
     if (!digital || digital.status !== "ready" || !digital.questions) return null;
@@ -386,11 +409,10 @@ export default function DigitalExam() {
           ) : (
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center">
               <Loader2 className="mx-auto size-8 animate-spin text-amber-300" />
-              <h2 className="mt-4 type-h2">Converting this paper right now</h2>
+              <h2 className="mt-4 type-h2">Seconds away — digitizing it right now</h2>
               <p className="mx-auto mt-2 max-w-md type-body text-muted-foreground">
-                Learnyx's exam autopilot is digitizing it this second — you'll jump
-                straight into the digital paper the moment it's ready. This screen
-                updates by itself.
+                The autopilot is finishing this exact paper. The moment it lands
+                you're in — no reload, no click. This screen updates by itself.
               </p>
               <Button variant="outline" asChild className="interactive-press mt-5 gap-2">
                 <Link to="/exam-prep?tab=papers">
@@ -416,6 +438,7 @@ export default function DigitalExam() {
           error={convertError}
           onStart={() => void runConversion()}
           mode={mode}
+          aheadOfMe={aheadOfMe}
         />
       </div>
     </PipelineShell>
@@ -432,6 +455,7 @@ function PipelineCard({
   error,
   onStart,
   mode,
+  aheadOfMe,
 }: {
   item: { title: string; subjectName: string; grade: number; examYear?: number; pageCount?: number; durationMinutes?: number };
   stage: PipelineStage;
@@ -440,6 +464,7 @@ function PipelineCard({
   error: string | null;
   onStart?: () => void;
   mode?: ExamMode;
+  aheadOfMe?: number | null;
 }) {
   const steps = [
     { key: "fetching", label: "Fetching the PDF", icon: FileText },
@@ -486,7 +511,8 @@ function PipelineCard({
         </div>
       )}
 
-      {/* Queue wait — the platform is protecting the shared AI budget */}
+      {/* Queue wait — slots open every few seconds now that many papers
+          convert in parallel; the position updates live. */}
       {stage === "queued" && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -496,11 +522,15 @@ function PipelineCard({
           <div className="flex items-center gap-3">
             <Clock3 className="size-5 shrink-0 animate-pulse text-sky-300" />
             <div>
-              <p className="type-body font-bold">Waiting for a free conversion slot</p>
+              <p className="type-body font-bold">
+                {!aheadOfMe
+                  ? "You're first in line — starting in seconds"
+                  : `You're #${aheadOfMe + 1} in line — starting automatically`}
+              </p>
               <p className="mt-0.5 type-caption leading-relaxed text-muted-foreground">
-                A few papers are being digitized right now, and Learnyx keeps AI usage
-                at a healthy pace so every conversion succeeds. You start automatically
-                — keep this page open.
+                Several papers are converting in parallel and a slot just needs
+                to free up. Your paper jumps ahead of all background work the
+                moment it does — no click needed, keep this page open.
               </p>
             </div>
           </div>

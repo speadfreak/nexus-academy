@@ -1595,6 +1595,29 @@ const schema = defineSchema(
       .index("by_status", ["status"]),
 
     // ------------------------------------------------------------------
+    // Global AI rate orchestrator — one row per "lane" ("groq-text",
+    // "groq-vision"). The platform's true conversion rate guard: every AI
+    // call reserves a staggered time slot here, so ANY number of parallel
+    // conversion pipelines still spaces their calls exactly <interval> ms
+    // apart platform-wide (≈20 requests/min — safely under the free tier's
+    // 30/min cap). cooldownUntil is the shared 429 circuit breaker: when
+    // Groq ever answers 429, EVERY pipeline on that lane pauses together
+    // for the exact cooldown Groq asks for instead of each crashing its
+    // own paper. See aiRateLimit.ts.
+    // ------------------------------------------------------------------
+    aiRateLimit: defineTable({
+      key: v.string(),
+      // Timestamp of the most recently reserved slot (may be in the future —
+      // it IS the reservation queue).
+      lastPermitAt: v.number(),
+      // Optional global pause: all callers on this lane wait until this
+      // timestamp before their next call (set on a 429).
+      cooldownUntil: v.optional(v.number()),
+      // Lifetime 429 count on this lane — admin visibility only.
+      hits: v.optional(v.number()),
+    }).index("by_key", ["key"]),
+
+    // ------------------------------------------------------------------
     // Manual payment system — TeleBirr personal transfers + admin review
     // ------------------------------------------------------------------
     //

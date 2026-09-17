@@ -19,7 +19,6 @@
 // anywhere in this hub — only in-app sharing of a resource link.
 
 import { api } from "@/convex/_generated/api";
-import { useExamAutopilotWorker } from "@/hooks/useExamAutopilotWorker";
 import { useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
@@ -1176,10 +1175,10 @@ function statusLabel(row: PrepResultRow): string | null {
 // ─── Main page ──────────────────────────────────────────────────────────
 
 export default function ExamPrep() {
-  // Library autopilot: while this hub is open, queued past papers convert
-  // themselves using idle capacity (silent, safe, student-first). This is
-  // why paper cards keep flipping to "Digital · N Qs" on their own.
-  useExamAutopilotWorker();
+  // Library autopilot note: the crowd conversion worker is mounted at the
+  // app ROOT (AutopilotEngine) — every open Learnyx tab pre-converts queued
+  // papers, this hub included. That is why paper cards keep flipping to
+  // "Digital · N Qs" on their own.
 
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = (["overview", "papers", "practice", "results"] as const).includes(

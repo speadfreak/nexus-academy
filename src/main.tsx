@@ -12,6 +12,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TourProvider } from "@/components/tour";
 import AppPreloader from "@/components/AppPreloader";
+import { AutopilotEngine } from "@/components/AutopilotEngine";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
@@ -582,6 +583,7 @@ if (rootEl) {
                   <TourProvider>
                   <RouteSyncer />
                   <ContentSafetyNet />
+                  <AutopilotEngine />
                   <GlobalErrorCaptor />
                   <Suspense fallback={<RouteLoading />}>
                     <LazyErrorBoundary>

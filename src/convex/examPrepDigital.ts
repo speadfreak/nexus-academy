@@ -56,7 +56,11 @@ import {
 import type { Doc, Id } from "./_generated/dataModel";
 import { isPremiumStatus } from "./subscriptions";
 import { callGroq, getVisionModelName } from "./groq";
-import { MAX_CONCURRENT_CONVERSIONS, PROCESSING_MS_HINT } from "./examPrepDigitalConstants";
+import {
+  CROWD_MAX_CONCURRENT,
+  MAX_CONCURRENT_CONVERSIONS,
+  PROCESSING_MS_HINT,
+} from "./examPrepDigitalConstants";
 
 // Platform-wide conversion concurrency + claim freshness live in
 // examPrepDigitalConstants.ts (shared with the admin console).
@@ -381,6 +385,47 @@ export const failDigitization = internalMutation({
   },
 });
 
+/**
+ * Client-side pipeline crash reporting. AI-step failures already mark the
+ * job failed from inside the actions (failDigitization) — but a run can
+ * also die in the browser BEFORE any AI call: premium-wall on the PDF url,
+ * a network drop mid-extraction, pdf.js blowing up on a corrupt file.
+ * Without this mutation those crashes left the job row "running" (fresh)
+ * for the whole PROCESSING_MS_HINT window, silently eating a concurrency
+ * slot — with several dead claims the entire crowd autopilot stalled and
+ * students saw avoidable wait screens. Now the converting client reports
+ * the crash the moment it happens: the slot frees instantly, the autopilot
+ * tick requeues (bounded retries), and another worker picks the paper up.
+ */
+export const reportClientConversionFailure = mutation({
+  args: { contentId: v.id("contentItems"), error: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return;
+
+    const job = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    // Only the fresh claim owner's crash is relevant — never clobber a
+    // live run by another tab, and never touch queued/done rows.
+    if (!job || job.status !== "running") return;
+
+    const paper = await ctx.db
+      .query("digitalPapers")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    if (paper && paper.status === "processing") {
+      await ctx.db.patch(paper._id, {
+        status: "failed",
+        error: args.error.slice(0, 500),
+        updatedAt: Date.now(),
+      });
+    }
+    await markJobByContent(ctx, args.contentId, "failed", args.error);
+  },
+});
+
 /** Keep the queue job row in step with the digitalPapers row. */
 async function markJobByContent(
   ctx: { db: any },
@@ -555,18 +600,40 @@ function extractJsonArray(text: string): unknown[] | null {
 }
 
 /**
- * Groq call with 429-aware backoff. Free-tier TPM limits (e.g. 8k TPM on
- * gpt-oss-120b) make chunk-3-of-N failures routine without this. Groq's
- * error message includes the exact cooldown ("Please try again in 16.62s")
- * — we honor it, capped so the action never approaches its timeout budget.
+ * Groq call with GLOBAL pacing + 429-aware backoff.
+ *
+ * Every attempt reserves a slot on the lane's global rate orchestrator
+ * (aiRateLimit.acquireAiPermit) — that spacing, not the old 2-slot cap, is
+ * what keeps the free tier alive no matter how many pipelines run in
+ * parallel. On a 429 the wrapper trips the shared circuit breaker
+ * (aiRateLimit.reportAiRateLimitHit) so EVERY pipeline on the lane pauses
+ * for the exact cooldown Groq requested — the platform absorbs the spike
+ * together instead of each paper failing on its own. Groq's error message
+ * includes that cooldown ("Please try again in 16.62s") — we honor it,
+ * capped so the action never approaches its timeout budget.
  */
 async function callGroqWithRetry(
   ctx: GenericActionCtx<any>,
   opts: Parameters<typeof callGroq>[1],
   maxRetries = 2,
+  lane?: "groq-text" | "groq-vision",
 ): Promise<string> {
   let attempt = 0;
   for (;;) {
+    if (lane) {
+      // Global AI pacing — the wait here IS the rate guard. Fail open to
+      // plain pacing if the limiter itself ever errors.
+      try {
+        const permit = await ctx.runMutation(internal.aiRateLimit.acquireAiPermit, {
+          lane,
+        });
+        if (permit.waitMs > 0) {
+          await new Promise((r) => setTimeout(r, Math.min(permit.waitMs, 45_000)));
+        }
+      } catch {
+        // Limiter unavailable — proceed; the retry below still protects us.
+      }
+    }
     try {
       return await callGroq(ctx, opts);
     } catch (err) {
@@ -575,6 +642,12 @@ async function callGroqWithRetry(
       if (!is429 || attempt >= maxRetries) throw err;
       const match = message.match(/try again in\s*([\d.]+)\s*s/i);
       const cooldownS = match ? parseFloat(match[1]!) : 20;
+      if (lane) {
+        await ctx.runMutation(internal.aiRateLimit.reportAiRateLimitHit, {
+          lane,
+          backoffMs: Math.min(60_000, Math.ceil(cooldownS * 1000) + 5_000),
+        }).catch(() => {});
+      }
       const waitMs = Math.min(28_000, Math.max(3_000, Math.ceil(cooldownS * 1000) + 2_500));
       await new Promise((r) => setTimeout(r, waitMs));
       attempt += 1;
@@ -662,12 +735,17 @@ export const parsePaperChunk = action({
     let raw: string;
     let parsed: unknown[] | null;
     try {
-      raw = await callGroqWithRetry(ctx, {
-        systemPrompt: SYSTEM_PROMPT,
-        userMessage,
-        maxTokens: 12288,
-        temperature: 0.1,
-      });
+      raw = await callGroqWithRetry(
+        ctx,
+        {
+          systemPrompt: SYSTEM_PROMPT,
+          userMessage,
+          maxTokens: 12288,
+          temperature: 0.1,
+        },
+        2,
+        "groq-text",
+      );
     } catch (err) {
       await ctx.runMutation(internal.examPrepDigital.failDigitization, {
         digitalPaperId: args.digitalPaperId,
@@ -680,12 +758,17 @@ export const parsePaperChunk = action({
     if (parsed === null) {
       // One honest retry — models occasionally wrap the array in prose.
       try {
-        raw = await callGroqWithRetry(ctx, {
-          systemPrompt: SYSTEM_PROMPT,
-          userMessage: `${userMessage}\n\nYour previous reply was not a parseable JSON array. Return ONLY the JSON array.`,
-          maxTokens: 12288,
-          temperature: 0,
-        });
+        raw = await callGroqWithRetry(
+          ctx,
+          {
+            systemPrompt: SYSTEM_PROMPT,
+            userMessage: `${userMessage}\n\nYour previous reply was not a parseable JSON array. Return ONLY the JSON array.`,
+            maxTokens: 12288,
+            temperature: 0,
+          },
+          2,
+          "groq-text",
+        );
         parsed = extractJsonArray(raw);
       } catch (err) {
         await ctx.runMutation(internal.examPrepDigital.failDigitization, {
@@ -789,6 +872,7 @@ export const parsePaperPageImage = action({
           temperature: 0.1,
         },
         3, // vision free-tier RPM is tight — one extra retry is worth it
+        "groq-vision",
       );
     } catch (err) {
       await ctx.runMutation(internal.examPrepDigital.failDigitization, {
@@ -947,17 +1031,20 @@ export const getDigitalPaperStatuses = query({
 // ─── Autopilot crowd-worker peek ─────────────────────────────────────────
 
 /**
- * IDLE-CAPACITY PEEK for the crowd autopilot. Every signed-in Learnyx tab
- * (Exam Prep hub, admin console) polls this: when the platform's conversion
- * capacity is COMPLETELY idle — zero fresh running jobs, student-demanded
- * or otherwise — the oldest queued BATCH job is offered to this tab.
+ * CROWD-WORKER PEEK for the autopilot. Every signed-in Learnyx tab (all
+ * pages — the worker is mounted app-wide) polls this: while FEWER than
+ * CROWD_MAX_CONCURRENT conversions are running platform-wide, the oldest
+ * queued BATCH job is offered to this tab, which runs the standard
+ * conversion pipeline (runPaperConversion with asBatch) in the background.
  *
- * The tab then runs the standard conversion pipeline (runPaperConversion
- * with asBatch) in the background. The moment ANY student-demanded
- * conversion is running, the peek returns null and every crowd worker
- * stands down — students who are actively waiting always own the free
- * tier. This is what makes "every paper already digital before a student
- * arrives" happen without a server-side browser.
+ * The old version only spoke when the platform was 100% idle — with a
+ * backlog that meant one paper every few minutes and students kept
+ * hitting the wait screen. Now the crowd drains the library at full speed
+ * whenever headroom exists, while CROWD_MAX_CONCURRENT keeps a permanent
+ * reserve of conversion slots for student-demanded papers (peek stops
+ * before the hard MAX_CONCURRENT_CONVERSIONS cap that students claim
+ * under). Student priority in the queue still outranks everything, and
+ * every paper converted here is cached in the database forever.
  */
 export const peekCrowdJob = query({
   args: {},
@@ -972,10 +1059,11 @@ export const peekCrowdJob = query({
       .query("examConversionJobs")
       .withIndex("by_status", (q) => q.eq("status", "running"))
       .collect();
-    // Idle means idle: any fresh claim (student OR batch) silences the
-    // whole crowd. Stale running rows older than the freshness window are
-    // treated as dead and ignored.
-    if (running.some((j) => (j.claimedAt ?? 0) >= freshCutoff)) return null;
+    // Headroom check: crowd work fills the platform up to the crowd cap
+    // only. Stale running rows older than the freshness window are dead
+    // (crashed tab) and don't count.
+    const liveRunning = running.filter((j) => (j.claimedAt ?? 0) >= freshCutoff).length;
+    if (liveRunning >= CROWD_MAX_CONCURRENT) return null;
 
     const queued = await ctx.db
       .query("examConversionJobs")

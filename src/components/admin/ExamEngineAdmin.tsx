@@ -784,8 +784,9 @@ function QueueSection() {
             </h3>
             <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
               Every past exam is queued for automatic digitization (new uploads
-              included), any open Learnyx tab converts queued papers when the
-              platform is idle, and transient failures auto-retry. Students open
+              included), every open Learnyx tab converts queued papers in
+              parallel while slots are free (up to 6 background pipelines, AI
+              paced globally), and transient failures auto-retry. Students open
               ready papers — zero wait.
             </p>
           </div>

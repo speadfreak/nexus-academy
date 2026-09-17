@@ -16,6 +16,7 @@ import type * as adminDigestData from "../adminDigestData.js";
 import type * as adminManagement from "../adminManagement.js";
 import type * as adminTopics from "../adminTopics.js";
 import type * as ai from "../ai.js";
+import type * as aiRateLimit from "../aiRateLimit.js";
 import type * as aptitude from "../aptitude.js";
 import type * as aptitudeActions from "../aptitudeActions.js";
 import type * as auth from "../auth.js";
@@ -102,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   adminManagement: typeof adminManagement;
   adminTopics: typeof adminTopics;
   ai: typeof ai;
+  aiRateLimit: typeof aiRateLimit;
   aptitude: typeof aptitude;
   aptitudeActions: typeof aptitudeActions;
   auth: typeof auth;

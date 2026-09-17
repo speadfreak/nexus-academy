@@ -1,16 +1,21 @@
-// useExamAutopilotWorker — the idle-capacity conversion engine.
+// useExamAutopilotWorker — the always-on crowd conversion engine.
 //
-// Mounted ONCE on the Exam Prep hub. While any student simply has Learnyx
-// open, this hook quietly converts queued past-exam papers in the
-// background — so the library is digital BEFORE anyone opens a paper.
+// Mounted ONCE at the app root: EVERY signed-in Learnyx tab (hub, reader,
+// dashboard, admin console — anywhere) quietly converts queued past-exam
+// papers in the background while the student simply uses the app. The
+// library becomes digital before anyone opens a paper.
 //
 // Safety rails (the free AI tier stays alive no matter how many tabs):
-//   • IDLE ONLY — the backend peek returns null the moment ANY conversion
-//     is running platform-wide (student-demanded included). Crowd workers
-//     never take a slot a waiting student could use.
+//   • HEADROOM ONLY — the backend peek offers batch work while fewer than
+//     CROWD_MAX_CONCURRENT conversions run platform-wide, keeping a
+//     permanent slot reserve for student-demanded papers. Students never
+//     wait behind pre-conversion work.
+//   • GLOBAL AI PACING — every AI call inside every pipeline reserves a
+//     slot on the server-side rate orchestrator (aiRateLimit), so any
+//     number of parallel tabs still fire requests at a safe, fixed pace.
 //   • BATCH PRIORITY — converted papers keep batch priority in the queue;
 //     a student who opens an unconverted paper always outranks autopilot.
-//   • ONE AT A TIME per tab, with a cooldown between papers.
+//   • ONE AT A TIME per tab, with a short cooldown between papers.
 //   • VISIBLE TAB ONLY — a backgrounded phone browser does nothing.
 //   • Fully silent — no UI, no toasts; it's infrastructure, not a feature.
 //
@@ -22,7 +27,7 @@ import { useConvex, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 
-const COOLDOWN_MS = 15_000;
+const COOLDOWN_MS = 2_500;
 
 export function useExamAutopilotWorker(): void {
   const convex = useConvex();
