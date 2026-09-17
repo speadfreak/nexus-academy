@@ -33,6 +33,7 @@ import { Document, Page as PdfPage } from "react-pdf";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { localDateKey } from "@/lib/dates";
 import { XP_VALUES } from "@/convex/constants";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -80,6 +81,14 @@ export function ReaderExamMode(props: ExamModeProps) {
   const [submitting, setSubmitting] = useState(false);
 
   const logSession = useMutation(api.studySessions.logSession);
+  // Exam Prep Hub attempt log — records THAT a timed session happened on
+  // this specific paper so My Results can aggregate it. Streak/XP credit
+  // still flows through logSession above; this is purely per-paper history.
+  const logExamPrepAttempt = useMutation(api.examPrep.logExamPrepAttempt);
+  const rateExamPrepAttempt = useMutation(api.examPrep.rateExamPrepAttempt);
+  const [loggedAttemptId, setLoggedAttemptId] = useState<Id<"examPrepAttempts"> | null>(null);
+  const [selfScore, setSelfScore] = useState("");
+  const [savingScore, setSavingScore] = useState(false);
 
   // Countdown ticker — fires every second while running.
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -125,6 +134,20 @@ export function ReaderExamMode(props: ExamModeProps) {
         endedAt,
         localDate: localDateKey(new Date(startedAt)),
       });
+      // Record the per-paper attempt for the Exam Prep Hub (best-effort —
+      // a failure here must never block the student from self-grading).
+      try {
+        const result = await logExamPrepAttempt({
+          contentId: props.contentId,
+          startedAt,
+          endedAt,
+          durationSeconds: duration,
+          completed: !autoSubmitted,
+        });
+        setLoggedAttemptId(result.attemptId);
+      } catch {
+        // Non-fatal — the hub simply won't show this session.
+      }
       if (autoSubmitted) {
         toast.info("Time's up — exam session submitted.", {
           description: "Your focused study time has been logged. You can now self-grade.",
@@ -141,6 +164,30 @@ export function ReaderExamMode(props: ExamModeProps) {
     } finally {
       setSubmitting(false);
       setPhase("submitted");
+    }
+  };
+
+  // Self-grade: record the optional 0-100 score after checking the answer
+  // key. One-shot — the backend rejects a second rating for the same attempt.
+  const handleSaveScore = async () => {
+    if (!loggedAttemptId || savingScore) return;
+    const pct = Number(selfScore);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      toast.error("Enter a score between 0 and 100.");
+      return;
+    }
+    setSavingScore(true);
+    try {
+      const result = await rateExamPrepAttempt({ attemptId: loggedAttemptId, selfScorePct: pct });
+      if (result.alreadyRated) {
+        toast.info("This attempt already has a score recorded.");
+      } else {
+        toast.success(`Score saved — ${Math.round(pct)}%. It now shows in your Exam Prep results.`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the score.");
+    } finally {
+      setSavingScore(false);
     }
   };
 
@@ -411,6 +458,38 @@ export function ReaderExamMode(props: ExamModeProps) {
                           )}
                         </a>
                       </div>
+                      {/* Self-score entry — one-shot, feeds the Exam Prep
+                          Hub's My Results readiness picture. */}
+                      {loggedAttemptId && (
+                        <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-left">
+                          <p className="text-xs font-semibold text-foreground">
+                            How did you score? <span className="font-normal text-muted-foreground">(optional)</span>
+                          </p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <Input
+                              value={selfScore}
+                              onChange={(e) => setSelfScore(e.target.value.replace(/[^0-9]/g, ""))}
+                              placeholder="0–100"
+                              inputMode="numeric"
+                              maxLength={3}
+                              disabled={savingScore}
+                              className="h-9 w-24 rounded-lg bg-white/5 text-center font-mono text-sm"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => void handleSaveScore()}
+                              disabled={savingScore || selfScore === ""}
+                              className="cursor-pointer gap-1.5"
+                            >
+                              {savingScore ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                              Save score
+                            </Button>
+                          </div>
+                          <p className="mt-1.5 text-[10px] text-muted-foreground">
+                            Adds your result to the Exam Prep readiness picture — visible only to you.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <p className="mx-auto mt-4 max-w-sm text-xs text-muted-foreground">

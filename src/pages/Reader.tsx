@@ -11,7 +11,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { evaluate } from "mathjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { Document, Page as PdfPage, pdfjs } from "react-pdf";
 import { extractPdfText } from "@/lib/pdf";
 import { toast } from "sonner";
@@ -350,8 +350,28 @@ export default function Reader() {
   // Only relevant when item.contentType === "past_exam". When active, hides
   // the sidebar/nav and shows a fullscreen focused timed view over the
   // same PDF. See src/components/reader/ReaderExamMode.tsx for the overlay.
+  // The Exam Prep hub deep-links here with ?exam=1 to launch straight into
+  // the strict-timed flow (still showing the ready-check first — the timer
+  // only starts once the student clicks Begin).
   const [examMode, setExamMode] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const answerKey: AnswerKeyInfo | null = reader?.answerKey ?? null;
+
+  // Deep-link auto-launch: /read/:id?exam=1 opens the exam-mode warning
+  // immediately for past exams. The query param is consumed on launch so a
+  // manual exit doesn't re-trigger it on re-render.
+  const examParamConsumedRef = useRef(false);
+  useEffect(() => {
+    if (examParamConsumedRef.current) return;
+    if (!reader?.item) return;
+    if (searchParams.get("exam") !== "1") return;
+    examParamConsumedRef.current = true;
+    if (reader.item.contentType === "past_exam") {
+      setExamMode(true);
+      searchParams.delete("exam");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [reader?.item, searchParams, setSearchParams]);
 
   // --- AI companion ------------------------------------------------------
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1666,6 +1686,10 @@ export default function Reader() {
           contentTitle={item.title}
           subjectName={item.subjectName}
           answerKey={answerKey}
+          // Per-paper duration set by the admin (default 120 for past
+          // exams); falls back to the overlay's own 50-minute default for
+          // legacy rows without a duration.
+          durationSeconds={item.durationMinutes ? item.durationMinutes * 60 : undefined}
           onClose={() => setExamMode(false)}
         />
       )}

@@ -30,6 +30,11 @@ import {
 
 type ActionErrorData = { message: string; code: string };
 
+// Default estimated working time (minutes) applied to past_exam uploads
+// when the admin doesn't set an explicit duration — a standard full-paper
+// estimate, editable per item afterwards in the edit dialog.
+const DEFAULT_PAPER_DURATION_MINUTES = 120;
+
 async function getR2Overrides(ctx: any): Promise<R2ConfigOverrides> {
   const stored = await ctx.runQuery(internal.configKeys.getR2KeyValues);
   return {
@@ -113,6 +118,8 @@ export const finalizeUpload = action({
   args: {
     title: v.string(), contentType: contentTypeValidator, grade: v.number(), subjectId: v.id("subjects"),
     examYear: v.optional(v.number()), isPremium: v.boolean(), fileUrl: v.string(),
+    examPrepSubtype: v.optional(v.union(v.literal("national_past_paper"), v.literal("practice_set"))),
+    durationMinutes: v.optional(v.number()),
     sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
     fileSizeBytes: v.number(), filename: v.string(), topicCandidates: v.optional(v.array(v.string())),
   },
@@ -125,6 +132,12 @@ export const finalizeUpload = action({
       title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
       examYear: args.examYear, fileUrl: args.fileUrl, fileSizeBytes: args.fileSizeBytes,
       uploadedBy: adminUser._id, isPremium: args.isPremium,
+      // Exam-prep classification: only stored for past_exam rows; the
+      // 120-minute default applies to past exams without an explicit value.
+      examPrepSubtype: args.contentType === "past_exam" ? args.examPrepSubtype : undefined,
+      durationMinutes: args.contentType === "past_exam"
+        ? (args.durationMinutes && args.durationMinutes > 0 ? Math.min(600, Math.round(args.durationMinutes)) : DEFAULT_PAPER_DURATION_MINUTES)
+        : undefined,
       sourceName: args.sourceName?.trim() || undefined,
       sourceUrl: args.sourceUrl?.trim() || undefined,
     });
@@ -162,6 +175,8 @@ export const adminUploadContent = action({
   args: {
     title: v.string(), contentType: contentTypeValidator, grade: v.number(), subjectId: v.id("subjects"),
     examYear: v.optional(v.number()), isPremium: v.boolean(), storageId: v.string(), filename: v.string(),
+    examPrepSubtype: v.optional(v.union(v.literal("national_past_paper"), v.literal("practice_set"))),
+    durationMinutes: v.optional(v.number()),
     topicCandidates: v.optional(v.array(v.string())),
     sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
     needsReview: v.optional(v.boolean()),
@@ -243,6 +258,12 @@ export const adminUploadContent = action({
       const createdId = await ctx.runMutation(internal.content.insertContentItem, {
         title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
         examYear: args.examYear, fileUrl, fileSizeBytes: bytes.byteLength, uploadedBy: adminUser._id, isPremium: args.isPremium,
+        // Exam-prep classification: only stored for past_exam rows; the
+        // 120-minute default applies to past exams without an explicit value.
+        examPrepSubtype: args.contentType === "past_exam" ? args.examPrepSubtype : undefined,
+        durationMinutes: args.contentType === "past_exam"
+          ? (args.durationMinutes && args.durationMinutes > 0 ? Math.min(600, Math.round(args.durationMinutes)) : DEFAULT_PAPER_DURATION_MINUTES)
+          : undefined,
         sourceName: args.sourceName?.trim() || undefined,
         sourceUrl: args.sourceUrl?.trim() || undefined,
         needsReview: args.needsReview,
@@ -538,6 +559,15 @@ export const updateContentItem = action({
     isPremium: v.optional(v.boolean()),
     sourceName: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
+    // Exam-prep classification — pass null to clear (e.g. the item was
+    // re-typed away from past_exam). Only valid for past_exam items.
+    examPrepSubtype: v.optional(v.union(
+      v.literal("national_past_paper"),
+      v.literal("practice_set"),
+      v.null(),
+    )),
+    // Estimated paper duration in minutes (1-600). Pass null to clear.
+    durationMinutes: v.optional(v.union(v.number(), v.null())),
     // Optional link from a past_exam to its answer-key content item.
     // Pass null to clear. Only valid when contentType = "past_exam".
     answerKeyContentId: v.optional(v.id("contentItems")),
@@ -559,6 +589,22 @@ export const updateContentItem = action({
     if (updates.sourceName !== undefined) patch.sourceName = updates.sourceName?.trim() || undefined;
     if (updates.sourceUrl !== undefined) patch.sourceUrl = updates.sourceUrl?.trim() || undefined;
     if (updates.examYear !== undefined) patch.examYear = updates.examYear;
+    // Exam-prep classification: clear via null, store only for past_exams.
+    if (updates.examPrepSubtype !== undefined) {
+      const effectiveType = updates.contentType ?? item.contentType;
+      if (updates.examPrepSubtype === null || effectiveType !== "past_exam") {
+        patch.examPrepSubtype = undefined;
+      } else {
+        patch.examPrepSubtype = updates.examPrepSubtype;
+      }
+    }
+    if (updates.durationMinutes !== undefined) {
+      if (updates.durationMinutes === null) {
+        patch.durationMinutes = undefined;
+      } else if (updates.durationMinutes > 0) {
+        patch.durationMinutes = Math.min(600, Math.round(updates.durationMinutes));
+      }
+    }
     // Allow setting/clearing the answer-key link. Validation: only past_exams
     // should have an answer key, and the linked item must exist + not be a
     // self-reference (would create a circular link).

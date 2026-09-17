@@ -118,6 +118,23 @@ const schema = defineSchema(
       grade: v.number(), // 9-12 (or any grade the admin has added)
       subjectId: v.id("subjects"),
       examYear: v.optional(v.number()), // only populated when contentType = "past_exam"
+      // Exam-prep classification — only meaningful for past_exam items.
+      // "national_past_paper" = a real official MoE past paper (verified).
+      // "practice_set" = an admin-curated practice paper (not an official
+      // sitting). Undefined for other content types (or legacy rows that
+      // haven't been classified yet — the hub treats those as unclassified
+      // and shows them under "All").
+      examPrepSubtype: v.optional(
+        v.union(
+          v.literal("national_past_paper"),
+          v.literal("practice_set"),
+        ),
+      ),
+      // Estimated working time in minutes for exam-style papers. The admin
+      // sets this per item; when an upload omits it, the backend defaults
+      // to 120 for past_exam rows (a standard full-paper estimate). The
+      // Exam Prep hub and Exam Mode use it to size the countdown.
+      durationMinutes: v.optional(v.number()),
       // Optional link from a past_exam item to its answer-key PDF (another
       // contentItems row). Set by the admin when uploading/curating the
       // library. Surfaced in the Reader's Exam Mode for self-grading after
@@ -1368,6 +1385,33 @@ const schema = defineSchema(
       .index("by_mockExam", ["mockExamId"])
       .index("by_mockExam_sectionIndex", ["mockExamId", "sectionIndex"])
       .index("by_mockExam_status", ["mockExamId", "status"]),
+
+    // ------------------------------------------------------------------
+    // Exam Prep Hub — real past-paper / practice-set attempt log
+    // ------------------------------------------------------------------
+    //
+    // One row per Exam Mode session on an uploaded paper (contentItems
+    // contentType = "past_exam"), written by ReaderExamMode when the
+    // student submits or time expires. This is DISTINCT from mockExams
+    // (the AI-generated simulation engine) — the hub's My Results tab
+    // merges both sources plus quiz attempts into one readiness picture.
+    // Streak/XP credit continues to flow through studySessions.logSession;
+    // this table exists purely so results can be attributed per paper.
+    examPrepAttempts: defineTable({
+      userId: v.id("users"),
+      contentId: v.id("contentItems"),
+      startedAt: v.number(),
+      endedAt: v.number(),
+      durationSeconds: v.number(), // capped at the paper's duration server-side trust: client passes actual elapsed; sanity-clamped
+      completed: v.boolean(), // true = student submitted; false = time expired (auto-submit)
+      // Optional self-graded score 0-100, entered by the student after
+      // checking the answer key. Null when no answer key is linked or the
+      // student chose not to self-grade.
+      selfScorePct: v.optional(v.number()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_content", ["userId", "contentId"])
+      .index("by_user_endedAt", ["userId", "endedAt"]),
 
     // ------------------------------------------------------------------
     // Manual payment system — TeleBirr personal transfers + admin review
