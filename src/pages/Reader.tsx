@@ -43,6 +43,7 @@ import {
   Maximize2,
   Play,
   Scan,
+  Highlighter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,8 @@ import {
 import type { ContentItemWithSubject } from "@/convex/content";
 import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
+import { PracticeSessionPanel } from "@/components/reader/PracticePanel";
+import type { SessionHighlights } from "@/components/reader/QuestionNavigator";
 import { GuestLockOverlay } from "@/components/GuestLockOverlay";
 
 // ─── PDF.js worker setup ───────────────────────────────────────────────
@@ -364,14 +367,52 @@ export default function Reader() {
   useEffect(() => {
     if (examParamConsumedRef.current) return;
     if (!reader?.item) return;
+    if (profile === undefined) return; // wait — the guest check needs the loaded profile
     if (searchParams.get("exam") !== "1") return;
     examParamConsumedRef.current = true;
-    if (reader.item.contentType === "past_exam") {
+    // Guest policy: guests can browse but not open resources (the
+    // GuestLockOverlay is the response) — never auto-launch exam mode for
+    // them. It would render the paper above the lock and bypass the gate.
+    if (reader.item.contentType === "past_exam" && !profile?.isAnonymous) {
       setExamMode(true);
       searchParams.delete("exam");
       setSearchParams(searchParams, { replace: true });
     }
-  }, [reader?.item, searchParams, setSearchParams]);
+  }, [reader?.item, searchParams, setSearchParams, profile]);
+
+  // --- Practice session (Exam Prep hub deep-link) -----------------------
+  // /read/:id?practice=1 mounts the UNTIMED practice layer on top of the
+  // normal Reader for past exams: question tracker, session highlights,
+  // answer-key checking and Finish-and-log. Mutually exclusive with exam
+  // mode by construction (the hub links one or the other).
+  const [practiceActive, setPracticeActive] = useState(false);
+  const [practiceHighlights, setPracticeHighlights] = useState<SessionHighlights[]>([]);
+  const practiceParamConsumedRef = useRef(false);
+  useEffect(() => {
+    if (practiceParamConsumedRef.current) return;
+    if (!reader?.item) return;
+    if (profile === undefined) return; // wait — the guest check needs the loaded profile
+    if (searchParams.get("practice") !== "1") return;
+    practiceParamConsumedRef.current = true;
+    // Guest policy — same as exam mode above: the lock is the response.
+    if (reader.item.contentType === "past_exam" && !profile?.isAnonymous) {
+      setPracticeActive(true);
+      searchParams.delete("practice");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [reader?.item, searchParams, setSearchParams, profile]);
+
+  const addPracticeHighlight = (text: string) => {
+    setPracticeHighlights((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text, page: pageNumber },
+    ]);
+    setHighlightedText(null);
+    window.getSelection()?.removeAllRanges();
+    toast.success("Highlighted for this practice session.", {
+      description: `Page ${pageNumber} — see Highlights in the practice panel.`,
+    });
+  };
 
   // --- AI companion ------------------------------------------------------
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -403,9 +444,15 @@ export default function Reader() {
         setHighlightedText(null);
         return;
       }
-      // Check if the selection is inside the PDF viewer area
+      // Check if the selection is inside the PDF viewer area. The scroll
+      // wrapper is the stable anchor across every render mode (data, URL,
+      // iframe fallback); the older page/document selectors stay as
+      // fallbacks for first-paint ordering races.
       const range = sel.getRangeAt(0);
-      const container = document.querySelector("[data-page='read']") ?? document.querySelector(".react-pdf__Page");
+      const container =
+        document.querySelector("#pdf-scroll-area") ??
+        document.querySelector("[data-page='read']") ??
+        document.querySelector(".react-pdf__Page");
       if (container && container.contains(range.commonAncestorContainer)) {
         setHighlightedText(text);
       } else {
@@ -752,7 +799,7 @@ export default function Reader() {
               </span>
             </Button>
           )}
-          {item.contentType === "past_exam" && (
+          {item.contentType === "past_exam" && !profile?.isAnonymous && (
             <Button
               variant="ghost"
               size="icon"
@@ -1231,11 +1278,31 @@ export default function Reader() {
               setHighlightedText(null);
               window.getSelection()?.removeAllRanges();
             }}
-            className="fixed bottom-24 right-8 z-[60] flex items-center gap-2 rounded-full border border-primary/30 bg-primary/15 px-4 py-2.5 text-sm font-medium text-primary shadow-lg backdrop-blur-md transition-all hover:bg-primary/25 interactive-press"
+            className={cn(
+              "fixed bottom-24 right-8 z-[60] flex items-center gap-2 rounded-full border border-primary/30 bg-primary/15 px-4 py-2.5 text-sm font-medium text-primary shadow-lg backdrop-blur-md transition-all hover:bg-primary/25 interactive-press",
+              practiceActive && item?.contentType === "past_exam" && "bottom-40",
+            )}
             title="Ask the AI companion about the selected text"
           >
             <Sparkles className="size-4" />
             Ask about this
+          </motion.button>
+        )}
+
+        {/* Practice-session highlight capture — keeps the selection as a
+            session highlight (page-referenced) instead of asking the AI. */}
+        {practiceActive && !examMode && item?.contentType === "past_exam" && highlightedText && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            type="button"
+            onClick={() => addPracticeHighlight(highlightedText)}
+            className="fixed bottom-24 right-8 z-[60] flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-300/15 px-4 py-2.5 text-sm font-medium text-amber-200 shadow-lg backdrop-blur-md transition-all hover:bg-amber-300/25 interactive-press"
+            title="Keep this selection as a session highlight"
+          >
+            <Highlighter className="size-4" />
+            Highlight
           </motion.button>
         )}
 
@@ -1673,6 +1740,27 @@ export default function Reader() {
             </div>
           </div>
         </footer>
+      )}
+
+      {/* ══════ Practice session layer (Exam Prep hub deep-link) ══════ */}
+      {practiceActive && !examMode && item?.contentType === "past_exam" && (
+        <PracticeSessionPanel
+          contentId={item._id}
+          contentTitle={item.title}
+          subjectId={item.subjectId}
+          answerKey={answerKey}
+          numPages={numPages ?? 0}
+          currentPage={pageNumber}
+          onPageJump={setPageNumber}
+          onAskCompanion={(q) => {
+            if (!panelOpen) setPanelOpen(true);
+            if (panelTab !== "companion") setPanelTab("companion");
+            setQuestion(q);
+          }}
+          highlights={practiceHighlights}
+          onAddHighlight={addPracticeHighlight}
+          onExit={() => setPracticeActive(false)}
+        />
       )}
 
       {/* ══════ Exam Mode overlay (Feature 1) ══════ */}

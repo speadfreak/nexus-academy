@@ -428,12 +428,15 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
       <MusicPlayer />
 
-      {/* Install prompt — appears ONCE for new users on their first dashboard
-          visit. Captures beforeinstallprompt for native PWA install; falls back
-          to platform-specific manual instructions (Add to Home Screen / Create
-          shortcut). Persists dismissal in localStorage so returning users
-          aren't nagged. Hidden when already running in standalone mode. */}
-      <InstallPrompt />
+      {/* Install prompt — appears ONCE for new users, and ONLY on the
+          dashboard itself (the component's documented scope: "first
+          dashboard visit"). Mounting it on every shell page put a fullscreen
+          z-100 modal over the Exam Prep hub's Practice / Exam mode buttons
+          4s after load — the backdrop swallowed every click and the CTAs
+          felt dead. Captures beforeinstallprompt for native PWA install;
+          falls back to platform-specific manual instructions. Persists
+          dismissal in localStorage. Hidden in standalone mode. */}
+      {location.pathname === "/dashboard" && <InstallPrompt />}
     </div>
   );
 }

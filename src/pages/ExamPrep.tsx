@@ -355,7 +355,7 @@ function OverviewTab({
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
-                onClick={() => navigate(`/read/${recommended.paper._id}`)}
+                onClick={() => navigate(`/read/${recommended.paper._id}?practice=1`)}
                 className="interactive-press gap-2"
               >
                 <BookOpen className="size-4" /> Practice
@@ -515,7 +515,7 @@ function PaperCard({ paper, index }: { paper: PrepPaper; index: number }) {
       <div className="mt-4 flex items-center gap-2 border-t border-white/5 pt-3">
         <Button
           size="sm"
-          onClick={() => navigate(`/read/${paper._id}`)}
+          onClick={() => navigate(`/read/${paper._id}?practice=1`)}
           className="interactive-press flex-1 gap-1.5"
           title="Opens the normal Reader — untimed, with AI companion and videos"
         >
@@ -804,7 +804,7 @@ function YearOverYearCompare({
                       <button
                         key={p._id}
                         type="button"
-                        onClick={() => navigate(`/read/${p._id}`)}
+                        onClick={() => navigate(`/read/${p._id}?practice=1`)}
                         className="group flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left transition hover:border-primary/40"
                       >
                         <span className="min-w-0">
@@ -1149,7 +1149,20 @@ export default function ExamPrep() {
   const journey = useQuery(api.journey.getJourney);
   const profile = useQuery(api.profile.getProfile);
   // Upcoming calendar events — the next type="exam" event drives the countdown.
-  const upcomingEvents = useQuery(api.calendar.listEvents, { startAt: Date.now() });
+  //
+  // ⚠️ Args stability is a hard Convex useQuery requirement: the args object
+  // must NOT change identity/value on every render, or the query re-subscribes
+  // every render → re-render → re-subscribe… → React #185 "Maximum update
+  // depth exceeded" (this exact bug took down the whole hub whenever it
+  // remounted — e.g. on back-navigation from the Reader — and desynced the
+  // URL from the view during forward navigation).
+  //
+  // FIX: capture the timestamp ONCE per mount, floored to the minute so
+  // quick remounts (hub ↔ reader round-trips) hit the same query cache
+  // entry instead of re-fetching. Flooring rounds DOWN, which only widens
+  // the "upcoming" window by <60s — semantically safe for a countdown.
+  const [upcomingFrom] = useState(() => Math.floor(Date.now() / 60_000) * 60_000);
+  const upcomingEvents = useQuery(api.calendar.listEvents, { startAt: upcomingFrom });
 
   const loading = papers === undefined || results === undefined;
 

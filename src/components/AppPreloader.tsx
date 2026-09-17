@@ -74,7 +74,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
             filter: "blur(30px) brightness(1.6)",
           }}
           transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-          className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden"
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden pointer-events-none"
           style={{ background: "#030308" }}
           role="status"
           aria-label="Loading Learnyx Academy ET 🇪🇹"

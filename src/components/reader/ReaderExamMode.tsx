@@ -23,6 +23,10 @@ import {
   Clock,
   ExternalLink,
   FileText,
+  Flag,
+  Highlighter,
+  LayoutGrid,
+  ListChecks,
   Loader2,
   Play,
   Timer,
@@ -38,6 +42,20 @@ import { localDateKey } from "@/lib/dates";
 import { XP_VALUES } from "@/convex/constants";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import {
+  HighlightsList,
+  NavigatorSectionLabel,
+  PagePalette,
+  QuestionPalette,
+  SlimProgress,
+  TrackerModeToggle,
+  emptyQuestionMap,
+  entryOf,
+  trackerStats,
+  type QuestionMap,
+  type SessionHighlights,
+  type TrackerMode,
+} from "@/components/reader/QuestionNavigator";
 
 // "pdfjs" is configured by the parent Reader.tsx (worker URL etc.). We don't
 // re-configure it here — we just reuse the Document/Page components.
@@ -71,6 +89,11 @@ export type ExamModeProps = {
 
 type ExamPhase = "warning" | "running" | "submitted";
 
+// Question-count presets shown on the exam start screen. Ethiopian national
+// papers vary (~65–110 per subject), so the student declares the count for
+// their own tracker — we never invent question data for a scanned PDF.
+const QUESTION_PRESETS = [25, 50, 75, 100];
+
 export function ReaderExamMode(props: ExamModeProps) {
   const durationSeconds = props.durationSeconds ?? 50 * 60;
   const [phase, setPhase] = useState<ExamPhase>("warning");
@@ -79,6 +102,19 @@ export function ReaderExamMode(props: ExamModeProps) {
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
   const [submitting, setSubmitting] = useState(false);
+
+  // ── Session tracker (question palette + review flags + highlights) ──
+  // Session-scoped by design: cross-session history lives in
+  // examPrepAttempts, not here. Declaring the count is OPTIONAL — a student
+  // can skip it and still get the page navigator + highlights.
+  const [questionCount, setQuestionCount] = useState<number | null>(null);
+  const [countInput, setCountInput] = useState("");
+  const [tracker, setTracker] = useState<QuestionMap>(emptyQuestionMap);
+  const [trackerMode, setTrackerMode] = useState<TrackerMode>("answers");
+  const [activeQuestion, setActiveQuestion] = useState<number | null>(null);
+  const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const [highlights, setHighlights] = useState<SessionHighlights[]>([]);
+  const [selectedInPdf, setSelectedInPdf] = useState<string | null>(null);
 
   const logSession = useMutation(api.studySessions.logSession);
   // Exam Prep Hub attempt log — records THAT a timed session happened on
@@ -114,6 +150,76 @@ export function ReaderExamMode(props: ExamModeProps) {
     setRemainingSeconds(durationSeconds);
     setPhase("running");
   };
+
+  const stats = trackerStats(tracker, questionCount ?? 0);
+
+  // Progress semantics: question progress when a tracker exists (the real
+  // exam metric), otherwise page position through the paper.
+  const progressPct =
+    questionCount !== null
+      ? (stats.answered / questionCount) * 100
+      : props.numPages > 0
+        ? (pageNumber / props.numPages) * 100
+        : 0;
+
+  const toggleQuestion = (n: number) => {
+    setActiveQuestion(n);
+    setTracker((prev) => {
+      const cur = entryOf(prev, n);
+      const next =
+        trackerMode === "flags"
+          ? { ...cur, flagged: !cur.flagged }
+          : { ...cur, answered: !cur.answered };
+      return { ...prev, [n]: next };
+    });
+  };
+
+  const addHighlight = (text: string) => {
+    const entry: SessionHighlights = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      text,
+      page: pageNumber,
+    };
+    setHighlights((prev) => [...prev, entry]);
+    setSelectedInPdf(null);
+    window.getSelection()?.removeAllRanges();
+    toast.success("Highlighted for this session.", {
+      description: `Saved with page ${pageNumber} — find it in Navigate → Highlights.`,
+    });
+  };
+
+  // Capture text selection inside the PDF while the exam is running —
+  // the paper's text layer is enabled so students can highlight dense
+  // word problems the way they would with a pencil on the real paper.
+  useEffect(() => {
+    if (phase !== "running") {
+      setSelectedInPdf(null);
+      return;
+    }
+    const capture = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        setSelectedInPdf(null);
+        return;
+      }
+      const text = sel.toString().trim();
+      if (text.length < 5 || text.length > 2000) {
+        setSelectedInPdf(null);
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      const container =
+        document.querySelector("[data-exam-pdf-view]") ??
+        document.querySelector(".react-pdf__Page");
+      if (container && container.contains(range.commonAncestorContainer)) {
+        setSelectedInPdf(text);
+      } else {
+        setSelectedInPdf(null);
+      }
+    };
+    document.addEventListener("selectionchange", capture);
+    return () => document.removeEventListener("selectionchange", capture);
+  }, [phase]);
 
   const handleSubmit = async (autoSubmitted: boolean = false) => {
     if (phase !== "running" || startedAt === null) return;
@@ -207,12 +313,13 @@ export function ReaderExamMode(props: ExamModeProps) {
       {/* ─── Top bar: exam-conditions chrome (clinical, not warm) ─── */}
       <div
         className={cn(
-          "flex shrink-0 items-center justify-between border-b px-4 py-3 transition-colors",
+          "shrink-0 border-b px-4 py-3 transition-colors",
           isLowTime
             ? "border-rose-500/40 bg-rose-500/[0.08]"
             : "border-white/10 bg-white/[0.02]",
         )}
       >
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-xl bg-white/5">
             <FileText className="size-4 text-foreground/80" />
@@ -262,6 +369,11 @@ export function ReaderExamMode(props: ExamModeProps) {
           )}
         </div>
       </div>
+      {/* Slim progress — how far through the paper this session is. */}
+      <div className="px-4 pb-2">
+        <SlimProgress value={progressPct} tone="amber" />
+      </div>
+      </div>
 
       {/* ─── Body ─── */}
       <div className="relative flex min-h-0 flex-1">
@@ -309,6 +421,71 @@ export function ReaderExamMode(props: ExamModeProps) {
                   </p>
                 </div>
               )}
+
+              {/* Question tracker setup (optional) — declares the count for
+                  the in-session question palette + review flags. */}
+              <div className="mx-auto mt-4 max-w-sm rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-left">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <ListChecks className="size-3.5 text-amber-300" />
+                  Track your questions? <span className="font-normal text-muted-foreground">(optional)</span>
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  You get a question palette with review flags and a progress
+                  bar. No feedback until you submit — real exam rules.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {QUESTION_PRESETS.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        setQuestionCount(p);
+                        setCountInput("");
+                      }}
+                      aria-pressed={questionCount === p}
+                      className={cn(
+                        "cursor-pointer rounded-lg border px-2.5 py-1 type-mono text-xs font-semibold transition-colors",
+                        questionCount === p
+                          ? "border-amber-300/60 bg-amber-300/15 text-amber-200"
+                          : "border-white/10 bg-white/[0.04] text-muted-foreground hover:bg-white/10",
+                      )}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <Input
+                    value={countInput}
+                    onChange={(e) => setCountInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+                    placeholder="Other"
+                    inputMode="numeric"
+                    className="h-7 w-16 rounded-lg bg-white/5 text-center type-mono text-xs"
+                  />
+                  {countInput !== "" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setQuestionCount(Number(countInput))}
+                      className="h-7 cursor-pointer rounded-lg px-2 text-xs"
+                    >
+                      Set
+                    </Button>
+                  )}
+                  {questionCount !== null && (
+                    <button
+                      type="button"
+                      onClick={() => setQuestionCount(null)}
+                      className="cursor-pointer text-[11px] font-semibold text-muted-foreground/70 hover:text-muted-foreground"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {questionCount !== null && (
+                  <p className="mt-1.5 text-[11px] text-emerald-300/90">
+                    Tracking {questionCount} questions.
+                  </p>
+                )}
+              </div>
               <div className="mt-6 flex items-center justify-center gap-3">
                 <Button
                   variant="ghost"
@@ -355,6 +532,21 @@ export function ReaderExamMode(props: ExamModeProps) {
                 >
                   Next
                 </Button>
+                {/* Navigator — pages / question palette / session highlights */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNavigatorOpen((o) => !o)}
+                  disabled={phase === "submitted"}
+                  className="relative ml-1 cursor-pointer gap-1.5 rounded-lg border-amber-300/30 bg-amber-300/[0.07] text-amber-200 hover:bg-amber-300/20 hover:text-amber-100"
+                >
+                  <LayoutGrid className="size-3.5" /> Navigate
+                  {stats.flagged > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-amber-400 type-mono text-[9px] font-bold text-black">
+                      {stats.flagged}
+                    </span>
+                  )}
+                </Button>
               </div>
               <div className="flex items-center gap-1.5">
                 <Button
@@ -384,6 +576,7 @@ export function ReaderExamMode(props: ExamModeProps) {
             {/* PDF */}
             <div
               data-lenis-prevent-wheel
+              data-exam-pdf-view
               className={cn(
                 "relative flex-1 overflow-auto bg-[#0b0f17] py-6 pb-20",
                 phase === "submitted" && "pointer-events-none opacity-60",
@@ -407,7 +600,6 @@ export function ReaderExamMode(props: ExamModeProps) {
                     <PdfPage
                       pageNumber={pageNumber}
                       scale={scale}
-                      renderTextLayer={false}
                       renderAnnotationLayer={false}
                       className="rounded-sm"
                     />
@@ -425,6 +617,81 @@ export function ReaderExamMode(props: ExamModeProps) {
                 )}
               </div>
             </div>
+
+            {/* ─── Navigator sheet: pages · question palette · highlights ─── */}
+            {navigatorOpen && phase === "running" && (
+              <div className="absolute inset-y-0 right-0 z-20 flex w-[min(420px,100vw)] flex-col border-l border-white/10 bg-[#0b0f17]/97 backdrop-blur">
+                <div className="flex shrink-0 items-center justify-between border-b border-white/[0.08] px-4 py-3">
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                    session navigator
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setNavigatorOpen(false)}
+                    aria-label="Close navigator"
+                    className="size-8 rounded-lg text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+                  <section className="flex flex-col gap-2">
+                    <NavigatorSectionLabel icon={LayoutGrid}>Jump to page</NavigatorSectionLabel>
+                    <PagePalette numPages={props.numPages} currentPage={pageNumber} onJump={setPageNumber} />
+                  </section>
+
+                  {questionCount !== null && (
+                    <section className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <NavigatorSectionLabel icon={ListChecks}>
+                          Questions · {stats.answered}/{questionCount}
+                        </NavigatorSectionLabel>
+                      </div>
+                      <TrackerModeToggle mode={trackerMode} onModeChange={setTrackerMode} />
+                      <QuestionPalette
+                        questionCount={questionCount}
+                        tracker={tracker}
+                        mode={trackerMode}
+                        activeQuestion={activeQuestion}
+                        showChecks={false}
+                        onToggle={toggleQuestion}
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        {trackerMode === "flags"
+                          ? "Tap a number to flag it for review — the palette ring + Navigate badge count your flags."
+                          : "Tap a number when you've answered it. Switch to “Review flags” to mark uncertain ones."}
+                      </p>
+                    </section>
+                  )}
+
+                  <section className="flex flex-col gap-2">
+                    <NavigatorSectionLabel icon={Highlighter}>
+                      Highlights · {highlights.length}
+                    </NavigatorSectionLabel>
+                    <HighlightsList highlights={highlights} onJump={setPageNumber} />
+                  </section>
+                </div>
+              </div>
+            )}
+
+            {/* Floating highlight capture — selection in the paper while running */}
+            {phase === "running" && selectedInPdf && !navigatorOpen && (
+              <div className="absolute inset-x-0 bottom-16 z-30 flex justify-center px-4">
+                <button
+                  type="button"
+                  onClick={() => addHighlight(selectedInPdf)}
+                  className="flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-amber-300/40 bg-[#0b0f17]/95 px-3.5 py-2 shadow-[0_10px_36px_-10px_rgba(251,191,36,0.5)] backdrop-blur transition-colors hover:bg-[#131a26]"
+                >
+                  <Highlighter className="size-3.5 shrink-0 text-amber-300" />
+                  <span className="truncate text-xs text-foreground/90">
+                    Highlight “{selectedInPdf.slice(0, 60)}
+                    {selectedInPdf.length > 60 ? "…" : ""}”
+                  </span>
+                  <span className="type-mono shrink-0 text-[10px] font-bold text-amber-300">p.{pageNumber}</span>
+                </button>
+              </div>
+            )}
 
             {/* Submitted overlay — reveals completion + answer key */}
             {phase === "submitted" && (
