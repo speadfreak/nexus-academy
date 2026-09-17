@@ -8,6 +8,7 @@
 //   AI_MODEL         optional — defaults to openai/gpt-oss-120b
 
 import { ConvexError } from "convex/values";
+import { action } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
@@ -52,7 +53,7 @@ export interface GroqCallOptions {
   /**
    * Vision input — base64 data URLs ("data:image/jpeg;base64,…") sent as
    * image_url content parts BEFORE the text part. Only vision models
-   * (e.g. meta-llama/llama-4-scout-17b-16e-instruct) accept these.
+   * (e.g. qwen/qwen3.8-27b — see getVisionModelName) accept these.
    */
   images?: string[];
 }
@@ -122,7 +123,11 @@ export function getModelName(): string {
 /**
  * Vision model used for scanned-paper OCR (page images → questions).
  * Overridable via the GROQ_VISION_MODEL env var / config key.
+ *
+ * NOTE: probed against the live Groq account — llama-4 scout/maverick are
+ * NOT available on it, but qwen/qwen3.8-27b accepts image_url content parts
+ * and read a rendered exam page verbatim, so it is the default.
  */
 export function getVisionModelName(): string {
-  return process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+  return process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b";
 }

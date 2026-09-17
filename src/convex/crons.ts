@@ -72,16 +72,19 @@ crons.weekly(
   internal.adminDigest.sendWeeklyBusinessDigest,
 );
 
-// Every 10 minutes: the exam-library autopilot. Ensures EVERY past-exam
-// paper has a digital conversion queued/done — new uploads included — and
-// auto-retries transient conversion failures (bounded). Together with the
-// crowd worker (any open Learnyx tab converts idle-capacity jobs) and the
-// student auto-start, this is what makes every paper digital before a
-// student opens it. See src/convex/examAutopilot.ts.
+// Every 1 minute: the ALWAYS-READY conversion engine. This is the heart of
+// "students never wait": the tick enqueues any past exam without a job
+// (new uploads included), requeues dead claims / cooled-down failures
+// (bounded fast retries + a daily self-heal so no paper is ever stuck),
+// then CLAIMS the next papers and runs the full conversion SERVER-SIDE
+// (unpdf text extraction + Groq transcription chains + Gemini OCR for
+// scans) — no browser, no student-visible queue, no wait screens, ever.
+// Replaces the old 10-minute enqueue-only autopilot entirely.
+// See src/convex/examConversionEngine.ts + examConversionEngineDispatch.ts.
 crons.interval(
-  "exam-library-autopilot",
-  { minutes: 10 },
-  internal.examAutopilot.autoEnqueueTick,
+  "exam-conversion-engine-dispatch",
+  { minutes: 1 },
+  internal.examConversionEngineDispatch.dispatchTick,
 );
 
 export default crons;

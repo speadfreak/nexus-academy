@@ -1,81 +1,43 @@
 // DigitalExam — /exam-prep/digital/:contentId?mode=practice|exam
 //
-// The auto-conversion system, inside the ALWAYS-READY autopilot:
-//   • The library autopilot (cron tick + any open Learnyx tab + admin
-//     worker) pre-converts every paper ahead of demand, so students
-//     normally land here on an ALREADY-ready paper — the player mounts
-//     instantly, zero wait.
-//   • If a paper somehow isn't ready yet (brand-new upload, nobody online),
-//     opening it AUTO-STARTS the conversion immediately at student
-//     priority — no button, no click. The page:
-//       1. Claims a conversion slot through the platform rate guard. When
-//          the free-tier AI budget is saturated, the student sees an honest
-//          live queue position and auto-starts the moment a slot frees.
-//       2. Extracts the PDF text in the student's browser (pdf.js) and
-//          streams page-attributed chunks to the AI transcription action.
-//       3. SCANNED PAPERS: when the PDF has no text layer, the pipeline
-//          switches automatically to page-image OCR — every page is
-//          rendered to a JPEG and read by a vision model. No dead end.
-//       4. Auto-lands on the fully digital player the moment the paper
-//          flips ready. Every future visit is instant (cached conversion).
+// THE ZERO-CONVERSION STUDENT SURFACE.
 //
-// Honesty everywhere: the pipeline explains that questions are transcribed
-// — never invented — and that answers/explanations are AI-suggested. No
-// trust badges are shown to students; QC is silent (admin console +
-// in-player reports).
+// Papers are kept digital by the server-side ALWAYS-READY ENGINE
+// (convex/examConversionEngine.ts): a 1-minute dispatch tick converts the
+// whole library ahead of demand, every new upload auto-enqueues the moment
+// it lands, and scanned papers OCR server-side via Gemini. Conversion no
+// longer runs in students' browsers and there is NO student-visible queue.
+//
+// What a student experiences here:
+//   • Ready paper (the norm) → the fully digital player mounts instantly.
+//   • Not ready yet (a brand-new upload, mid-second) → one calm line —
+//     "Ready in a moment — you'll jump in automatically" — while the
+//     server engine digitizes at student priority. The reactive query
+//     lands them in the player the second it's done. No stages, no slot
+//     lines, no waiting walls, nothing to click.
+//
+// Honesty rules unchanged: questions are transcribed — never invented;
+// answers the paper itself provides are attached, the rest are labelled
+// AI-suggested in the player. No trust badges are shown to students; QC
+// is silent (admin console + in-player reports).
 
 import { useAction, useMutation, useQuery } from "convex/react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
-  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BookOpen,
-  Check,
-  Clock3,
-  FileText,
+  Crown,
   FileWarning,
   Loader2,
-  ScanLine,
-  Sparkles,
-  Volume2,
-  Wand2,
+  RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { toast } from "sonner";
 import { DigitalExamPlayer, type ExamMode } from "@/components/exam/DigitalExamPlayer";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Crown } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { DigitalQuestion } from "@/components/exam/DigitalExamPlayer";
-import {
-  chunkPages,
-  extractPdfTextPages,
-  loadPdfDoc,
-  renderPdfPageImage,
-  withPageMarkers,
-} from "@/lib/pdfText";
-import { cn } from "@/lib/utils";
-
-type PipelineStage =
-  | "idle"
-  | "fetching"
-  | "extracting"
-  | "transcribing"
-  | "transcribing-vision"
-  | "queued"
-  | "done";
-
-// Polite pacing between AI calls (mirrors the backend constants — the
-// client keeps its own copy so the UI stays honest about what it does).
-// The REAL rate guard is the server-side global AI orchestrator: many
-// pipelines can run in parallel and every AI call is still spaced safely
-// platform-wide, so these breathers are short.
-const CHUNK_PACING_MS = 1_200;
-const PAGE_PACING_MS_VISION = 3_000;
-const QUEUE_POLL_MS = 2_500;
 
 export default function DigitalExam() {
   const { contentId } = useParams<{ contentId: string }>();
@@ -86,12 +48,10 @@ export default function DigitalExam() {
   const [mode] = useState<ExamMode>(modeParam);
 
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
-  const beginDigitization = useMutation(api.examPrepDigital.beginDigitization);
-  const reportClientFailure = useMutation(api.examPrepDigital.reportClientConversionFailure);
-  const parsePaperChunk = useAction(api.examPrepDigital.parsePaperChunk);
-  const parsePaperPageImage = useAction(api.examPrepDigital.parsePaperPageImage);
+  const requestDigitization = useMutation(api.examPrepDigital.requestDigitization);
 
-  // The paper row — reactive: flips to ready even while we stream chunks.
+  // The paper row — reactive: flips to ready the moment the server engine
+  // completes, which auto-lands the student in the player.
   const digital = useQuery(
     api.examPrepDigital.getDigitalPaper,
     contentId ? { contentId: contentId as never } : "skip",
@@ -101,20 +61,13 @@ export default function DigitalExam() {
     contentId ? { contentId: contentId as never } : "skip",
   );
 
-  const [stage, setStage] = useState<PipelineStage>("idle");
-  const [pageProgress, setPageProgress] = useState({ page: 0, pageCount: 0 });
-  const [chunkProgress, setChunkProgress] = useState({ chunk: 0, chunkCount: 0, questions: 0 });
-  const [convertError, setConvertError] = useState<string | null>(null);
   const [premiumWall, setPremiumWall] = useState(false);
-  // Live queue position while waiting for a conversion slot (null = not
-  // waiting). Claim polls re-check every QUEUE_POLL_MS and slots open
-  // every few seconds now that many pipelines run in parallel.
-  const [aheadOfMe, setAheadOfMe] = useState<number | null>(null);
+  // Manual retry counter ("Try again" on a failed paper) — the engine
+  // re-runs at student priority; scans fall through to the OCR chain.
+  const [retryTick, setRetryTick] = useState(0);
   // Resolved PDF url for the session — powers the player's original-page
-  // viewer (and is reused by the OCR path without a second fetch).
+  // viewer.
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const runningRef = useRef(false);
-  const autoStartRef = useRef(false);
 
   // ── Resolve the PDF URL (premium papers go through the server gate) ──
   const resolveUrl = useCallback(async (): Promise<string | null> => {
@@ -134,164 +87,51 @@ export default function DigitalExam() {
     return content.item.fileUrl;
   }, [content, contentId, getDownloadUrl, pdfUrl]);
 
-  // Ready papers never ran the pipeline — still resolve the URL so the
+  // Ready papers never ran a pipeline — still resolve the URL so the
   // player's original-page viewer works.
   const readyNeedsUrl = digital?.status === "ready" && !premiumWall;
   useEffect(() => {
     if (readyNeedsUrl && !pdfUrl) void resolveUrl();
   }, [readyNeedsUrl, pdfUrl, resolveUrl]);
 
-  // ── The conversion pipeline (text path + vision path + queue wait) ──
-  const runConversion = useCallback(async () => {
-    if (!contentId || !content?.item || runningRef.current) return;
-    runningRef.current = true;
-    setConvertError(null);
-
+  // ── STUDENT KICK: a paper that isn't ready yet asks the server engine
+  // to digitize it NOW, at student priority. Never renders a pipeline,
+  // never polls a queue — the reactive query does all the work.
+  const autoKickRef = useRef(false);
+  const kick = useCallback(async () => {
+    if (!contentId) return;
     try {
-      setStage("fetching");
-
-      // ── Claim loop: waits in the platform queue when at capacity ──
-      let claim = await beginDigitization({ contentId: contentId as never });
-      let claimed = claim.kind === "claimed" ? claim : null;
-      const claimedPaperId = claim.kind === "claimed" ? claim.digitalPaperId : null;
-      if (claim.kind === "ready" || claim.kind === "processing") {
-        setStage("done");
-        return; // reactive query takes over
-      }
-      while (!claimed) {
-        if (claim.kind === "queued") {
-          setStage("queued");
-          setAheadOfMe(claim.ahead);
-          await new Promise((r) => setTimeout(r, QUEUE_POLL_MS));
-          claim = await beginDigitization({ contentId: contentId as never });
-          if (claim.kind === "ready" || claim.kind === "processing") {
-            setStage("done");
-            return;
-          }
-          claimed = claim.kind === "claimed" ? claim : null;
-        } else {
-          break;
-        }
-      }
-      if (!claimed?.digitalPaperId) throw new Error("Conversion claim failed.");
-      setAheadOfMe(null);
-      const digitalPaperId = claimed.digitalPaperId;
-
-      const url = await resolveUrl();
-      if (!url) return; // premium wall shown by resolveUrl
-
-      setStage("extracting");
-      const extraction = await extractPdfTextPages(url, (page, pageCount) =>
-        setPageProgress({ page, pageCount }),
-      );
-
-      if (!extraction.hasTextLayer) {
-        // ── VISION PATH: scanned paper → read every page as an image ──
-        setStage("transcribing-vision");
-        const doc = await loadPdfDoc(url);
-        const pageCount = doc.numPages || extraction.pageCount;
-        let totalQuestions = 0;
-        for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
-          setPageProgress({ page: pageNumber, pageCount });
-          const dataUrl = await renderPdfPageImage(doc, pageNumber);
-          try {
-            const res = await parsePaperPageImage({
-              contentId: contentId as never,
-              digitalPaperId: digitalPaperId as never,
-              pageNumber,
-              pageCount,
-              imageBase64: dataUrl,
-            });
-            totalQuestions += res.questionsFound;
-          } catch (err) {
-            // A failed page fails the paper honestly — the retry replaces
-            // the whole row, keeping the sequence guard consistent.
-            if (pageNumber === pageCount) throw err;
-            throw err;
-          }
-          setChunkProgress({ chunk: pageNumber, chunkCount: pageCount, questions: totalQuestions });
-          if (pageNumber < pageCount) {
-            await new Promise((r) => setTimeout(r, PAGE_PACING_MS_VISION));
-          }
-        }
-        setStage("done");
-        return;
-      }
-
-      // ── TEXT PATH: page-attributed chunks through the text model ──
-      const chunks = chunkPages(extraction.pages);
-      setStage("transcribing");
-      let totalQuestions = 0;
-      for (const chunk of chunks) {
-        setChunkProgress((prev) => ({ ...prev, chunk: chunk.index, chunkCount: chunks.length }));
-        const res = await parsePaperChunk({
-          contentId: contentId as never,
-          digitalPaperId: digitalPaperId as never,
-          chunkIndex: chunk.index,
-          chunkCount: chunks.length,
-          pageCount: extraction.pageCount,
-          fallbackPage: chunk.startPage,
-          text: withPageMarkers(
-            extraction.pages.slice(chunk.startPage - 1, chunk.endPage),
-          ),
-        });
-        totalQuestions += res.questionsFound;
-        setChunkProgress((prev) => ({ ...prev, questions: totalQuestions }));
-        // Gentle pacing between chunks — AI providers meter tokens per
-        // minute; the action itself backs off on 429s, this keeps us from
-        // getting there in the first place.
-        if (chunk.index < chunks.length - 1) {
-          await new Promise((r) => setTimeout(r, CHUNK_PACING_MS));
-        }
-      }
-      setStage("done");
-      // No manual hand-off: the reactive getDigitalPaper query flips to
-      // ready and renders the player automatically.
-    } catch (err) {
-      const message = (err as Error).message || "Something went wrong while converting this paper.";
-      setConvertError(message);
-      setStage("done");
-      // Free the concurrency slot immediately — a crashed student run must
-      // never sit "running" until the freshness window expires (the same
-      // self-heal the crowd worker does via runPaperConversion).
-      if (contentId) {
-        try {
-          await reportClientFailure({
-            contentId: contentId as never,
-            error: message.slice(0, 480),
-          });
-        } catch {
-          // Best effort — the autopilot tick still heals the row.
-        }
-      }
-    } finally {
-      runningRef.current = false;
+      await requestDigitization({ contentId: contentId as never });
+    } catch {
+      // Premium wall / signed-out — the shells below already handle both.
     }
-  }, [beginDigitization, content, contentId, parsePaperChunk, parsePaperPageImage, reportClientFailure, resolveUrl]);
+  }, [contentId, requestDigitization]);
+
+  useEffect(() => {
+    if (digital === null && content?.item && !autoKickRef.current && !premiumWall) {
+      autoKickRef.current = true;
+      void kick();
+    }
+  }, [digital, content, premiumWall, kick]);
+
+  const retriedRef = useRef(-1);
+  useEffect(() => {
+    if (retryTick === 0 || retriedRef.current === retryTick) return;
+    retriedRef.current = retryTick;
+    void kick();
+  }, [retryTick, kick]);
 
   const playerQuestions = useMemo<DigitalQuestion[] | null>(() => {
     if (!digital || digital.status !== "ready" || !digital.questions) return null;
     return digital.questions as DigitalQuestion[];
   }, [digital]);
 
-  // ── AUTO-START: an unconverted paper starts converting the moment this
-  // page opens — student priority, no button, no click. The library
-  // autopilot (cron tick + crowd workers + admin console) normally has
-  // every paper ready long before anyone arrives; this is the last line
-  // of defense for a brand-new upload on a quiet day.
-  useEffect(() => {
-    if (digital === null && content?.item && !autoStartRef.current && !premiumWall) {
-      autoStartRef.current = true;
-      void runConversion();
-    }
-  }, [digital, content, premiumWall, runConversion]);
-
   // ── Render states ──
   if (!contentId) {
     return <NotFoundShell message="No paper specified." />;
   }
   if (content === undefined || digital === undefined) {
-    return <PipelineShell><LoadingBlock label="Loading the paper…" /></PipelineShell>;
+    return <Shell><LoadingBlock label="Loading the paper…" /></Shell>;
   }
   if (content === null || !content.item) {
     return <NotFoundShell message="This paper doesn't exist (or was removed)." />;
@@ -302,7 +142,7 @@ export default function DigitalExam() {
   // Premium wall — the same gate the Reader enforces, shown honestly here.
   if (premiumWall) {
     return (
-      <PipelineShell>
+      <Shell>
         <div className="mx-auto max-w-xl rounded-3xl border border-premium/25 bg-premium/[0.05] p-8 text-center">
           <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-premium/15 text-premium">
             <Crown className="size-6" />
@@ -322,11 +162,11 @@ export default function DigitalExam() {
             </Button>
           </div>
         </div>
-      </PipelineShell>
+      </Shell>
     );
   }
 
-  // ── Ready → the player itself ──
+  // ── Ready → the player itself (the normal path — instant) ──
   if (playerQuestions && playerQuestions.length > 0) {
     return (
       <DigitalExamPlayer
@@ -346,307 +186,93 @@ export default function DigitalExam() {
     );
   }
 
-  // ── Failed → honest failure + the OCR escape hatch ──
+  // ── Failed → one honest line + a server-side retry ──
   if (digital?.status === "failed") {
-    const canTryOcr = digital.sourceMode !== "vision";
+    const isScanQueue = (digital.error ?? "").includes("NEEDS_OCR");
     return (
-      <PipelineShell>
-        <div className="mx-auto max-w-xl rounded-3xl border border-rose-400/25 bg-rose-400/[0.04] p-8 text-center">
-          <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-rose-400/15 text-rose-300">
+      <Shell>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center"
+        >
+          <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground">
             <FileWarning className="size-6" />
           </span>
-          <h2 className="mt-4 type-h2">Conversion didn't make it</h2>
+          <h2 className="mt-4 type-h2">
+            {isScanQueue ? "Deep-reading this scan" : "This paper hit a snag"}
+          </h2>
           <p className="mt-2 type-body text-muted-foreground">
-            {digital.error ?? convertError ?? "The transcription hit an unexpected error. Retrying usually fixes it."}
+            {isScanQueue
+              ? "It's a scanned paper — the deeper OCR pass is queued. It usually clears within minutes."
+              : digital.error ?? "The server engine will retry it automatically. You can also nudge it now."}
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Button
-              onClick={() => void runConversion()}
+              onClick={() => setRetryTick((t) => t + 1)}
               className="interactive-press gap-2"
             >
-              <Wand2 className="size-4" /> Try again
+              <RefreshCw className="size-4" /> Try again now
             </Button>
-            {canTryOcr && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  void runConversion();
-                  toast.info("Reading every page as an image — this is slower but handles scans.");
-                }}
-                className="interactive-press gap-2"
-              >
-                <ScanLine className="size-4" /> Try page-image OCR
-              </Button>
-            )}
             <Button variant="outline" asChild className="interactive-press gap-2">
               <Link to={`/read/${contentId}`}>
                 <BookOpen className="size-4" /> Open the original PDF
               </Link>
             </Button>
-          </div>
-        </div>
-      </PipelineShell>
-    );
-  }
-
-  // ── Processing → pipeline UI (own run) or live wait (someone else's) ──
-  if (digital?.status === "processing") {
-    const mine =
-      stage !== "idle" &&
-      stage !== "done" &&
-      digital.startedByMe;
-    return (
-      <PipelineShell>
-        <div className="mx-auto flex max-w-2xl flex-col gap-4">
-          {mine ? (
-            <PipelineCard
-              item={item}
-              stage={stage}
-              pageProgress={pageProgress}
-              chunkProgress={chunkProgress}
-              error={convertError}
-            />
-          ) : (
-            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center">
-              <Loader2 className="mx-auto size-8 animate-spin text-amber-300" />
-              <h2 className="mt-4 type-h2">Seconds away — digitizing it right now</h2>
-              <p className="mx-auto mt-2 max-w-md type-body text-muted-foreground">
-                The autopilot is finishing this exact paper. The moment it lands
-                you're in — no reload, no click. This screen updates by itself.
-              </p>
-              <Button variant="outline" asChild className="interactive-press mt-5 gap-2">
-                <Link to="/exam-prep?tab=papers">
-                  <ArrowLeft className="size-4" /> Back to papers
-                </Link>
-              </Button>
-            </div>
-          )}
-        </div>
-      </PipelineShell>
-    );
-  }
-
-  // ── No conversion yet → the launch / start-conversion screen ──
-  return (
-    <PipelineShell>
-      <div className="mx-auto flex max-w-2xl flex-col gap-4">
-        <PipelineCard
-          item={item}
-          stage={stage}
-          pageProgress={pageProgress}
-          chunkProgress={chunkProgress}
-          error={convertError}
-          onStart={() => void runConversion()}
-          mode={mode}
-          aheadOfMe={aheadOfMe}
-        />
-      </div>
-    </PipelineShell>
-  );
-}
-
-// ─── Pipeline card — the honest "what's happening" UI ────────────────────
-
-function PipelineCard({
-  item,
-  stage,
-  pageProgress,
-  chunkProgress,
-  error,
-  onStart,
-  mode,
-  aheadOfMe,
-}: {
-  item: { title: string; subjectName: string; grade: number; examYear?: number; pageCount?: number; durationMinutes?: number };
-  stage: PipelineStage;
-  pageProgress: { page: number; pageCount: number };
-  chunkProgress: { chunk: number; chunkCount: number; questions: number };
-  error: string | null;
-  onStart?: () => void;
-  mode?: ExamMode;
-  aheadOfMe?: number | null;
-}) {
-  const steps = [
-    { key: "fetching", label: "Fetching the PDF", icon: FileText },
-    { key: "extracting", label: "Reading the text layer", icon: ScanLine },
-    { key: "transcribing", label: "Transcribing questions", icon: Sparkles },
-    { key: "done", label: "Digital paper ready", icon: Check },
-  ] as const;
-  const activeStepIdx = steps.findIndex((s) => s.key === stage);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8"
-    >
-      <div className="pointer-events-none absolute -right-24 -top-24 size-64 rounded-full bg-amber-400/10 blur-3xl" />
-      <p className="type-caption font-bold uppercase tracking-wider text-amber-300">
-        <span className="inline-flex items-center gap-1.5">
-          <Wand2 className="size-3.5" /> Digital conversion
-        </span>
-      </p>
-      <h2 className="mt-2 type-h1">{item.title}</h2>
-      <p className="mt-1 type-body text-muted-foreground">
-        {item.subjectName} · Grade {item.grade}
-        {item.examYear !== undefined ? ` · ${item.examYear}` : ""}
-        {item.pageCount ? ` · ${item.pageCount} pages` : ""}
-      </p>
-
-      {/* Start CTA (before conversion begins) */}
-      {stage === "idle" && onStart && (
-        <div className="mt-5 rounded-2xl border border-amber-400/25 bg-amber-400/[0.05] p-4">
-          <p className="type-body font-bold">
-            {mode === "exam" ? "Exam mode" : "Practice mode"} · fully digital
-          </p>
-          <p className="mt-1 type-caption leading-relaxed text-muted-foreground">
-            Most papers are already digital before you arrive — Learnyx converts the
-            whole library in the background. This one isn't ready yet, so it's
-            converting right now (you're first in line) and every student after you
-            gets it instantly.
-          </p>
-          <Button onClick={onStart} size="lg" className="interactive-press mt-4 w-full gap-2 sm:w-auto">
-            <Wand2 className="size-4" /> Convert now
-          </Button>
-        </div>
-      )}
-
-      {/* Queue wait — slots open every few seconds now that many papers
-          convert in parallel; the position updates live. */}
-      {stage === "queued" && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-5 rounded-2xl border border-sky-400/25 bg-sky-400/[0.05] p-4"
-        >
-          <div className="flex items-center gap-3">
-            <Clock3 className="size-5 shrink-0 animate-pulse text-sky-300" />
-            <div>
-              <p className="type-body font-bold">
-                {!aheadOfMe
-                  ? "You're first in line — starting in seconds"
-                  : `You're #${aheadOfMe + 1} in line — starting automatically`}
-              </p>
-              <p className="mt-0.5 type-caption leading-relaxed text-muted-foreground">
-                Several papers are converting in parallel and a slot just needs
-                to free up. Your paper jumps ahead of all background work the
-                moment it does — no click needed, keep this page open.
-              </p>
-            </div>
+            <Button variant="ghost" asChild className="interactive-press gap-2">
+              <Link to="/exam-prep?tab=papers">
+                <ArrowLeft className="size-4" /> Back to papers
+              </Link>
+            </Button>
           </div>
         </motion.div>
-      )}
+      </Shell>
+    );
+  }
 
-      {/* Live steps */}
-      <AnimatePresence>
-        {(stage === "fetching" || stage === "extracting" || stage === "transcribing" || stage === "transcribing-vision") && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className="mt-5 grid gap-2"
-          >
-            {steps.slice(0, 3).map((s, i) => {
-              const Icon = s.icon;
-              const isActive =
-                i === activeStepIdx ||
-                (s.key === "transcribing" && stage === "transcribing-vision");
-              const isDone =
-                (s.key === "fetching" && stage !== "fetching") ||
-                (s.key === "extracting" &&
-                  (stage === "transcribing" || stage === "transcribing-vision"));
-              return (
-                <motion.div
-                  key={s.key}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className={cn(
-                    "flex items-center gap-3 rounded-2xl border p-3.5 transition",
-                    isActive
-                      ? "border-amber-400/40 bg-amber-400/[0.07]"
-                      : isDone
-                        ? "border-emerald-400/25 bg-emerald-400/[0.04]"
-                        : "border-white/10 bg-white/[0.02] opacity-60",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex size-9 shrink-0 items-center justify-center rounded-xl",
-                      isActive
-                        ? "bg-amber-400/15 text-amber-300"
-                        : isDone
-                          ? "bg-emerald-400/15 text-emerald-300"
-                          : "bg-white/5 text-muted-foreground",
-                    )}
-                  >
-                    {isActive ? <Loader2 className="size-4 animate-spin" /> : isDone ? <Check className="size-4" /> : <Icon className="size-4" />}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="type-body font-bold">
-                      {s.key === "transcribing" && stage === "transcribing-vision"
-                        ? "Reading pages as images (OCR)"
-                        : s.label}
-                    </p>
-                    <p className="type-caption text-muted-foreground">
-                      {s.key === "extracting" && isActive && pageProgress.pageCount > 0
-                        ? `Page ${pageProgress.page} of ${pageProgress.pageCount}`
-                        : s.key === "transcribing" && isActive && chunkProgress.chunkCount > 0
-                          ? `${stage === "transcribing-vision" ? "Page" : "Section"} ${chunkProgress.chunk} of ${chunkProgress.chunkCount} · ${chunkProgress.questions} question${chunkProgress.questions === 1 ? "" : "s"} so far`
-                          : s.key === "done" && isDone
-                            ? "Opening your digital paper…"
-                            : "…"}
-                    </p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Error line (chunk-level) */}
-      {error && (
-        <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-rose-400/30 bg-rose-400/[0.07] p-3.5">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-rose-300" />
-          <p className="type-caption leading-relaxed text-rose-200">{error}</p>
-        </div>
-      )}
-
-      {/* Honesty explainer */}
-      <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-        <p className="inline-flex items-center gap-1.5 type-caption font-bold text-foreground/80">
-          <Sparkles className="size-3.5 text-amber-300" /> How this works — honestly
+  // ── Not ready (never converted or converting server-side right now) →
+  //    ONE calm auto-jump line. This screen is a rare guest: the engine
+  //    pre-converts the library ahead of demand, so almost every student
+  //    lands straight in the player above.
+  return (
+    <Shell>
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center"
+      >
+        <Loader2 className="mx-auto size-7 animate-spin text-amber-300" />
+        <h2 className="mt-4 type-h2">{item.title}</h2>
+        <p className="mt-1 type-caption text-muted-foreground">
+          {item.subjectName} · Grade {item.grade}
+          {item.examYear !== undefined && item.examYear !== null ? ` · ${item.examYear}` : ""}
         </p>
-        <p className="mt-1.5 type-caption leading-relaxed text-muted-foreground">
-          The questions are transcribed from your paper — nothing is invented and nothing is
-          added. Where the PDF states an answer key, it's attached; where it doesn't, the
-          suggested answer is AI-provided and every screen tells you so. Cross-check with the
-          official key when it matters.
+        <p className="mt-3 type-body font-semibold text-foreground/90">
+          Ready in a moment — you'll jump in automatically.
         </p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <Badge variant="outline" className="border-white/15 text-muted-foreground">
-            <Volume2 className="mr-1 size-3" /> Read-aloud
-          </Badge>
-          <Badge variant="outline" className="border-white/15 text-muted-foreground">
-            <Check className="mr-1 size-3" /> Navigator & flags
-          </Badge>
-          <Badge variant="outline" className="border-white/15 text-muted-foreground">
-            <Sparkles className="mr-1 size-3" /> Instant scoring
-          </Badge>
+        <p className="mt-1 type-caption text-muted-foreground">
+          The digital version is being finalized on our servers. No need to do anything.
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <Button variant="outline" asChild className="interactive-press gap-2">
+            <Link to={`/read/${contentId}`}>
+              <BookOpen className="size-4" /> Original PDF
+            </Link>
+          </Button>
+          <Button variant="ghost" asChild className="interactive-press gap-2">
+            <Link to="/exam-prep?tab=papers">
+              <ArrowLeft className="size-4" /> Exam Prep
+            </Link>
+          </Button>
         </div>
-      </div>
-
-      <p className="mt-4 text-center type-caption text-muted-foreground/50">
-        <Link to="/exam-prep?tab=papers" className="inline-flex items-center gap-1 hover:text-foreground">
-          <ArrowLeft className="size-3" /> Back to Exam Prep
-        </Link>
-      </p>
-    </motion.div>
+      </motion.div>
+    </Shell>
   );
 }
 
 // ─── Shared shells ───────────────────────────────────────────────────────
 
-function PipelineShell({ children }: { children: React.ReactNode }) {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen bg-background">
       <div className="pointer-events-none fixed -top-32 left-1/2 z-0 h-72 w-[36rem] -translate-x-1/2 rounded-full bg-amber-400/[0.05] blur-3xl" />
@@ -666,7 +292,7 @@ function LoadingBlock({ label }: { label: string }) {
 
 function NotFoundShell({ message }: { message: string }) {
   return (
-    <PipelineShell>
+    <Shell>
       <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center">
         <FileWarning className="mx-auto size-8 text-muted-foreground/40" />
         <h2 className="mt-3 type-h2">Paper not found</h2>
@@ -677,6 +303,6 @@ function NotFoundShell({ message }: { message: string }) {
           </Link>
         </Button>
       </div>
-    </PipelineShell>
+    </Shell>
   );
 }

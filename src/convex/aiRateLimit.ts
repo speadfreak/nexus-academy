@@ -26,19 +26,29 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 
 /**
- * Minimum spacing between AI calls per lane, platform-wide. Free-tier
- * documented ceilings are ~30 req/min per model — these intervals hold the
- * platform at roughly half of that (≈20/min text, ≈15/min vision), which
- * leaves headroom for the reader AI, quizzes and every other Groq consumer
- * sharing the same key.
+ * Minimum spacing between AI calls per lane, platform-wide. Lanes are
+ * PER MODEL because Groq meters each model's rate independently on the
+ * same key — three models = three independent token budgets, used in
+ * parallel with automatic failover (see callGroqWithRetry).
+ *
+ * Probed live against this account: gpt-oss-120b is metered at 8,000
+ * TOKENS per minute (not just requests) — one chunk call can cost 4-10k
+ * tokens, so request spacing alone can't guarantee compliance. The
+ * intervals below start reasonable and the shared 429 circuit breaker
+ * self-tunes: whenever the provider answers 429, every pipeline on that
+ * model's lane pauses for the exact cooldown the provider requests.
  */
 const PERMIT_INTERVAL_MS: Record<string, number> = {
-  "groq-text": 3_000,
-  "groq-vision": 4_000,
+  "groq:openai/gpt-oss-120b": 20_000,
+  "groq:openai/gpt-oss-20b": 15_000,
+  "groq:qwen/qwen3.8-27b": 12_000,
+  // Legacy generic lanes (still honored if referenced anywhere).
+  "groq-text": 20_000,
+  "groq-vision": 12_000,
 };
 
-/** Fallback interval for unknown lanes — same safety as groq-text. */
-const DEFAULT_INTERVAL_MS = 3_000;
+/** Fallback interval for unknown lanes. */
+const DEFAULT_INTERVAL_MS = 15_000;
 
 /**
  * Reserve the next time slot on a lane. Returns how long the caller must

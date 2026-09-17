@@ -76,6 +76,10 @@ const rawQuestionValidator = v.object({
   explanation: v.optional(v.string()),
   topic: v.optional(v.string()),
   sourcePage: v.optional(v.number()),
+  // Deterministic figure/diagram detection (FIGURE_RE over the transcribed
+  // text) — sanitizeQuestion ALWAYS sets it on its output, so the validator
+  // must accept it or every appendParsedChunk rejects its own questions.
+  figureHint: v.optional(v.boolean()),
 });
 
 // ─── Queue helpers (internal) ────────────────────────────────────────────
@@ -253,6 +257,102 @@ export const beginDigitization = mutation({
       updatedAt: now,
     });
     return { kind: "claimed", digitalPaperId: id };
+  },
+});
+
+/**
+ * STUDENT KICK for the server-side always-ready engine.
+ *
+ * The engine (examConversionEngine.ts) converts every paper server-side —
+ * the student's browser NEVER extracts, transcribes or waits in any visible
+ * queue anymore. When a student somehow lands on a paper that is not ready
+ * yet (a brand-new upload mid-second), this mutation:
+ *   1. claims the job at STUDENT priority (dequeues ahead of all batch work),
+ *   2. creates the processing row, and
+ *   3. schedules the server engine worker IMMEDIATELY — no cron wait.
+ *
+ * Server workers are cheap and the global AI lanes pace every call, so this
+ * bypasses the old browser-pipeline concurrency cap entirely. The page
+ * shows a calm "ready in a moment" auto-jump and the reactive query lands
+ * the student in the player the second the engine finishes.
+ */
+export const requestDigitization = mutation({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, args): Promise<{ kind: "ready" | "processing" | "claimed" }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const item = await ctx.db.get(args.contentId);
+    if (!item) throw new ConvexError({ message: "Paper not found.", code: "not_found" });
+
+    const existing = await ctx.db
+      .query("digitalPapers")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+
+    const now = Date.now();
+
+    if (existing) {
+      if (existing.status === "ready" && existing.verification !== "rejected") {
+        return { kind: "ready" };
+      }
+      if (existing.status === "processing" && now - existing.updatedAt < PROCESSING_MS_HINT) {
+        return { kind: "processing" }; // already converting server-side
+      }
+      // Failed / rejected / stale — replace wholesale (sequence guard stays honest).
+      await ctx.db.delete(existing._id);
+    }
+
+    const jobId = await ensureJobQueued(ctx, args.contentId, userId, "student");
+    await ctx.db.patch(jobId, {
+      status: "running",
+      claimedBy: "server-engine",
+      claimedAt: now,
+      updatedAt: now,
+      attempts: ((await ctx.db.get(jobId))?.attempts ?? 0) + 1,
+    });
+
+    const digitalPaperId = await ctx.db.insert("digitalPapers", {
+      contentId: args.contentId,
+      status: "processing",
+      questions: [],
+      questionCount: 0,
+      chunksParsed: 0,
+      sourceMode: "text",
+      startedBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // The engine worker starts THIS second — student priority end to end.
+    await ctx.scheduler.runAfter(0, internal.examConversionEngine.engineExtract, {
+      contentId: args.contentId,
+      digitalPaperId,
+    });
+
+    return { kind: "claimed" };
+  },
+});
+
+/**
+ * Engine progress stamp — the server-side conversion engine records the
+ * page/chunk counts right after extraction so the pipeline UI (and the
+ * admin console) can see a paper's shape while the chain runs.
+ */
+export const patchPaperProgress = internalMutation({
+  args: {
+    digitalPaperId: v.id("digitalPapers"),
+    pageCount: v.number(),
+    chunkCount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.digitalPaperId);
+    if (!row || row.status !== "processing") return;
+    await ctx.db.patch(args.digitalPaperId, {
+      pageCount: args.pageCount,
+      chunkCount: args.chunkCount,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -448,7 +548,7 @@ async function markJobByContent(
 
 // ─── AI transcription — TEXT path (text-layer PDFs) ──────────────────────
 
-const SYSTEM_PROMPT = `You are an exam-paper transcription engine for Learnyx Academy ET. You receive plain text extracted from an Ethiopian national exam past paper (may include headers, instructions, formatting noise, and possibly an answer-key section). Page boundaries are marked with lines like "=== PAGE 3 ===".
+export const SYSTEM_PROMPT = `You are an exam-paper transcription engine for Learnyx Academy ET. You receive plain text extracted from an Ethiopian national exam past paper (may include headers, instructions, formatting noise, and possibly an answer-key section). Page boundaries are marked with lines like "=== PAGE 3 ===".
 
 TASK: transcribe the questions that literally appear in the text. Two kinds exist:
 
@@ -471,7 +571,7 @@ structured questions use the same shape with "kind":"structured", "options":[] a
 
 If the chunk contains no complete questions, output []`;
 
-interface RawQuestion {
+export interface RawQuestion {
   number?: unknown;
   kind?: unknown;
   text?: unknown;
@@ -484,6 +584,20 @@ interface RawQuestion {
   sourcePage?: unknown;
 }
 
+export interface SanitizedQuestion {
+  number: number;
+  kind: "mcq" | "structured";
+  text: string;
+  passage?: string;
+  options: { label: string; text: string }[];
+  answer?: string;
+  suggestedAnswer?: string;
+  explanation?: string;
+  topic?: string;
+  sourcePage?: number;
+  figureHint?: boolean;
+}
+
 const LABELS = "ABCDEFGH";
 
 /** Deterministic figure/diagram/table reference detection (never the AI). */
@@ -491,7 +605,7 @@ const FIGURE_RE =
   /\b(figure|fig\.|diagram|graph|map|chart|table|illustration|circuit|picture|image|drawing|plot)\b/i;
 
 /** Validate + normalize one AI-returned question. Returns null to drop. */
-function sanitizeQuestion(raw: RawQuestion): SanitizedQuestion | null {
+export function sanitizeQuestion(raw: RawQuestion): SanitizedQuestion | null {
   const text = typeof raw.text === "string" ? raw.text.trim() : "";
   if (text.length < 3 || text.length > 2000) return null;
 
@@ -572,22 +686,8 @@ function sanitizeQuestion(raw: RawQuestion): SanitizedQuestion | null {
   };
 }
 
-type SanitizedQuestion = {
-  number: number;
-  kind: "mcq" | "structured";
-  text: string;
-  passage?: string;
-  options: { label: string; text: string }[];
-  answer?: string;
-  suggestedAnswer?: string;
-  explanation?: string;
-  topic?: string;
-  sourcePage?: number;
-  figureHint?: boolean;
-};
-
 /** Pull the JSON array out of a model response (tolerates fences/prose). */
-function extractJsonArray(text: string): unknown[] | null {
+export function extractJsonArray(text: string): unknown[] | null {
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
   if (start === -1 || end === -1 || end <= start) return null;
@@ -600,56 +700,76 @@ function extractJsonArray(text: string): unknown[] | null {
 }
 
 /**
- * Groq call with GLOBAL pacing + 429-aware backoff.
- *
- * Every attempt reserves a slot on the lane's global rate orchestrator
- * (aiRateLimit.acquireAiPermit) — that spacing, not the old 2-slot cap, is
- * what keeps the free tier alive no matter how many pipelines run in
- * parallel. On a 429 the wrapper trips the shared circuit breaker
- * (aiRateLimit.reportAiRateLimitHit) so EVERY pipeline on the lane pauses
- * for the exact cooldown Groq requested — the platform absorbs the spike
- * together instead of each paper failing on its own. Groq's error message
- * includes that cooldown ("Please try again in 16.62s") — we honor it,
- * capped so the action never approaches its timeout budget.
+ * One entry in the failover chain: a model + the rate lane that meters it.
+ * Groq meters each model's budget independently on the same key, so each
+ * model gets its own lane and its own 429 circuit breaker.
  */
-async function callGroqWithRetry(
+interface AiModelSlot {
+  model?: string; // undefined = provider default (AI_MODEL env)
+  lane: string;
+}
+
+export const TEXT_MODEL_CHAIN: AiModelSlot[] = [
+  { lane: "groq:openai/gpt-oss-120b" },
+  { model: "openai/gpt-oss-20b", lane: "groq:openai/gpt-oss-20b" },
+  { model: "qwen/qwen3.8-27b", lane: "groq:qwen/qwen3.8-27b" },
+];
+
+/**
+ * Groq call with GLOBAL per-model pacing + automatic model failover.
+ *
+ * Every attempt reserves a slot on its model's lane (aiRateLimit
+ * .acquireAiPermit) — that spacing, not the old 2-slot cap, keeps the free
+ * tier alive with many pipelines in parallel. On a 429 the wrapper trips
+ * the shared circuit breaker for that model's lane (EVERY pipeline pauses
+ * for the exact cooldown Groq requested) and — crucially — FAILS OVER to
+ * the next model in the chain, whose budget is untouched. A rate-limit
+ * spike on one model no longer stalls conversions at all: another model
+ * keeps transcribing. Model 404s (account loses access) fail over too.
+ */
+export async function callGroqWithRetry(
   ctx: GenericActionCtx<any>,
   opts: Parameters<typeof callGroq>[1],
+  chain: AiModelSlot[],
   maxRetries = 2,
-  lane?: "groq-text" | "groq-vision",
 ): Promise<string> {
   let attempt = 0;
+  let slotIdx = 0;
+  const maxAttempts = maxRetries * chain.length + chain.length;
+  let lastError: Error | null = null;
   for (;;) {
-    if (lane) {
-      // Global AI pacing — the wait here IS the rate guard. Fail open to
-      // plain pacing if the limiter itself ever errors.
-      try {
-        const permit = await ctx.runMutation(internal.aiRateLimit.acquireAiPermit, {
-          lane,
-        });
-        if (permit.waitMs > 0) {
-          await new Promise((r) => setTimeout(r, Math.min(permit.waitMs, 45_000)));
-        }
-      } catch {
-        // Limiter unavailable — proceed; the retry below still protects us.
+    const slot = chain[slotIdx % chain.length]!;
+    // Global AI pacing — the wait here IS the rate guard. Fail open to
+    // plain pacing if the limiter itself ever errors.
+    try {
+      const permit = await ctx.runMutation(internal.aiRateLimit.acquireAiPermit, {
+        lane: slot.lane,
+      });
+      if (permit.waitMs > 0) {
+        await new Promise((r) => setTimeout(r, Math.min(permit.waitMs, 45_000)));
       }
+    } catch {
+      // Limiter unavailable — proceed; the failover below still protects us.
     }
     try {
-      return await callGroq(ctx, opts);
+      return await callGroq(ctx, { ...opts, model: slot.model });
     } catch (err) {
-      const message = (err as Error).message ?? "";
+      lastError = err as Error;
+      const message = lastError.message ?? "";
       const is429 = message.includes("429") || message.toLowerCase().includes("rate limit");
-      if (!is429 || attempt >= maxRetries) throw err;
+      const isModelGone = message.includes("404") || message.includes("model_not_found");
+      if ((!is429 && !isModelGone) || attempt >= maxAttempts) throw lastError;
       const match = message.match(/try again in\s*([\d.]+)\s*s/i);
       const cooldownS = match ? parseFloat(match[1]!) : 20;
-      if (lane) {
+      if (is429) {
         await ctx.runMutation(internal.aiRateLimit.reportAiRateLimitHit, {
-          lane,
+          lane: slot.lane,
           backoffMs: Math.min(60_000, Math.ceil(cooldownS * 1000) + 5_000),
         }).catch(() => {});
       }
-      const waitMs = Math.min(28_000, Math.max(3_000, Math.ceil(cooldownS * 1000) + 2_500));
-      await new Promise((r) => setTimeout(r, waitMs));
+      // Next attempt continues on the model that failed — but first try a
+      // DIFFERENT model: its token budget is completely separate.
+      slotIdx += 1;
       attempt += 1;
     }
   }
@@ -743,8 +863,8 @@ export const parsePaperChunk = action({
           maxTokens: 12288,
           temperature: 0.1,
         },
+        TEXT_MODEL_CHAIN,
         2,
-        "groq-text",
       );
     } catch (err) {
       await ctx.runMutation(internal.examPrepDigital.failDigitization, {
@@ -766,8 +886,8 @@ export const parsePaperChunk = action({
             maxTokens: 12288,
             temperature: 0,
           },
+          TEXT_MODEL_CHAIN,
           2,
-          "groq-text",
         );
         parsed = extractJsonArray(raw);
       } catch (err) {
@@ -857,6 +977,7 @@ export const parsePaperPageImage = action({
 
     const chunkIndex = args.pageNumber - 1;
     const userMessage = `SCAN PAGE ${args.pageNumber} OF ${args.pageCount} of an Ethiopian national exam past paper. sourcePage for every question on this page is ${args.pageNumber}.`;
+    const visionModel = getVisionModelName();
 
     let raw: string;
     let parsed: unknown[] | null;
@@ -867,12 +988,16 @@ export const parsePaperPageImage = action({
           systemPrompt: VISION_SYSTEM_PROMPT,
           userMessage,
           images: [args.imageBase64],
-          model: getVisionModelName(),
+          model: visionModel,
           maxTokens: 8192,
           temperature: 0.1,
         },
-        3, // vision free-tier RPM is tight — one extra retry is worth it
-        "groq-vision",
+        // Vision-only chain: the text models CANNOT accept image parts
+        // (they 400 with "content must be a string"), so failing over to
+        // them here would guarantee failure. Retries stay on the vision
+        // model; its lane's 429 breaker does the pacing.
+        [{ model: visionModel, lane: `groq:${visionModel}` }],
+        3, // vision free-tier RPM is tight — extra retries are worth it
       );
     } catch (err) {
       await ctx.runMutation(internal.examPrepDigital.failDigitization, {
@@ -886,14 +1011,19 @@ export const parsePaperPageImage = action({
     if (parsed === null) {
       // One honest retry — vision models sometimes wrap the array.
       try {
-        raw = await callGroqWithRetry(ctx, {
-          systemPrompt: VISION_SYSTEM_PROMPT,
-          userMessage: `${userMessage}\n\nYour previous reply was not a parseable JSON array. Return ONLY the JSON array.`,
-          images: [args.imageBase64],
-          model: getVisionModelName(),
-          maxTokens: 8192,
-          temperature: 0,
-        });
+        raw = await callGroqWithRetry(
+          ctx,
+          {
+            systemPrompt: VISION_SYSTEM_PROMPT,
+            userMessage: `${userMessage}\n\nYour previous reply was not a parseable JSON array. Return ONLY the JSON array.`,
+            images: [args.imageBase64],
+            model: visionModel,
+            maxTokens: 8192,
+            temperature: 0,
+          },
+          [{ model: visionModel, lane: `groq:${visionModel}` }],
+          3,
+        );
         parsed = extractJsonArray(raw);
       } catch (err) {
         await ctx.runMutation(internal.examPrepDigital.failDigitization, {

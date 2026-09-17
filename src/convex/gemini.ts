@@ -79,6 +79,13 @@ export interface GeminiCallOptions {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * Inline PDF document (raw base64, NO data: prefix) sent as an
+   * inline_data part — Gemini reads scanned papers natively (built-in
+   * OCR), which lets the server-side conversion engine digitize image-only
+   * past papers with no browser involved. Optional; most calls are text-only.
+   */
+  pdfBase64?: string;
 }
 
 /** Error class for Gemini rate-limit failures so callers can detect them. */
@@ -121,9 +128,17 @@ export async function callGemini(ctx: ActionCtx, opts: GeminiCallOptions): Promi
 
   const url = `${GEMINI_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
+  const userParts: Record<string, unknown>[] = [];
+  if (opts.pdfBase64) {
+    userParts.push({
+      inline_data: { mime_type: "application/pdf", data: opts.pdfBase64 },
+    });
+  }
+  userParts.push({ text: opts.userMessage });
+
   const body = {
     system_instruction: { parts: { text: opts.systemPrompt } },
-    contents: [{ role: "user", parts: [{ text: opts.userMessage }] }],
+    contents: [{ role: "user", parts: userParts }],
     generationConfig: {
       temperature: opts.temperature ?? 0.4,
       maxOutputTokens: opts.maxTokens ?? 4096,

@@ -113,23 +113,7 @@ async function runPipeline(
 
   if (!extraction.hasTextLayer) {
     // ── VISION PATH: scanned paper → read every page as an image ──
-    onProgress?.({ stage: "transcribing-vision" });
-    const doc = await loadPdfDoc(url);
-    const pageCount = doc.numPages || extraction.pageCount;
-    let questions = 0;
-    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
-      onProgress?.({ stage: "transcribing-vision", page: pageNumber, pageCount, questions });
-      const imageBase64 = await renderPdfPageImage(doc, pageNumber);
-      const res = (await convex.action(api.examPrepDigital.parsePaperPageImage, {
-        contentId,
-        digitalPaperId,
-        pageNumber,
-        pageCount,
-        imageBase64,
-      })) as { questionsFound: number };
-      questions += res.questionsFound;
-      if (pageNumber < pageCount) await sleep(PAGE_PACING_MS_VISION);
-    }
+    await visionPass(convex, contentId, url, digitalPaperId, onProgress);
   } else {
     // ── TEXT PATH: page-attributed chunks ──
     const chunks = chunkPages(extraction.pages);
@@ -157,10 +141,76 @@ async function runPipeline(
     }
   }
 
+  return await finalStatus(convex, contentId, batch, url, onProgress);
+}
+
+/**
+ * The zero-question dead end, closed for good. A paper can HAVE a text
+ * layer that is garbage (bad embedded OCR, exotic layout) — the text path
+ * completes with 0 questions and the server marks it failed with a
+ * recognizable message. Instead of leaving that failure for a human (or
+ * burning queue retries on the same useless text pass), escalate to the
+ * page-image vision pass RIGHT HERE, in the same run, automatically.
+ * The vision completion can't re-enter this (its failure message differs
+ * and sourceMode becomes "vision"), so this escalates at most once.
+ */
+async function finalStatus(
+  convex: MinimalConvexClient,
+  contentId: string,
+  batch: boolean,
+  url: string,
+  onProgress?: (p: ConversionProgress) => void,
+): Promise<string> {
   const row = (await convex.query(api.examPrepDigital.getDigitalPaper, {
     contentId,
-  })) as { status?: string } | null;
+  })) as { status?: string; sourceMode?: string; error?: string } | null;
+
+  if (
+    row?.status === "failed" &&
+    row.sourceMode !== "vision" &&
+    (row.error ?? "").includes("No questions could be detected")
+  ) {
+    onProgress?.({ stage: "transcribing-vision" });
+    const visionClaim = (await convex.mutation(
+      api.examPrepDigital.beginDigitization,
+      { contentId, forceVision: true, asBatch: batch },
+    )) as { kind: string; digitalPaperId?: string };
+    if (visionClaim.kind === "claimed" && visionClaim.digitalPaperId) {
+      await visionPass(convex, contentId, url, visionClaim.digitalPaperId, onProgress);
+    }
+    const retryRow = (await convex.query(api.examPrepDigital.getDigitalPaper, {
+      contentId,
+    })) as { status?: string } | null;
+    return retryRow?.status ?? row.status ?? "unknown";
+  }
+
   return row?.status ?? "unknown";
+}
+
+/** Page-image OCR loop — one vision-model call per page, globally paced. */
+async function visionPass(
+  convex: MinimalConvexClient,
+  contentId: string,
+  url: string,
+  digitalPaperId: string,
+  onProgress?: (p: ConversionProgress) => void,
+): Promise<void> {
+  const doc = await loadPdfDoc(url);
+  const pageCount = doc.numPages;
+  let questions = 0;
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+    onProgress?.({ stage: "transcribing-vision", page: pageNumber, pageCount, questions });
+    const imageBase64 = await renderPdfPageImage(doc, pageNumber);
+    const res = (await convex.action(api.examPrepDigital.parsePaperPageImage, {
+      contentId,
+      digitalPaperId,
+      pageNumber,
+      pageCount,
+      imageBase64,
+    })) as { questionsFound: number };
+    questions += res.questionsFound;
+    if (pageNumber < pageCount) await sleep(PAGE_PACING_MS_VISION);
+  }
 }
 
 /** Admin-aware PDF url resolution: admin query first (no premium wall). */

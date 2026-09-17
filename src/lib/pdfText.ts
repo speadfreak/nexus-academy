@@ -1,18 +1,27 @@
 // pdfText — client-side PDF text extraction for the digital exam engine.
 //
-// Runs IN THE STUDENT'S BROWSER (pdf.js never runs server-side — it crashes
-// the Convex node runtime). Reuses the pdfjs instance bundled inside
-// react-pdf so the worker at /pdf.worker.min.mjs (synced by postinstall)
-// matches exactly — the same worker the Reader already proved works on
-// Render's static hosting.
-//
-// Text assembly is baseline-aware: pdf.js returns positioned items, not
-// lines. Items on the same visual line (same baseline Y) are joined with
-// x-gap-driven space insertion, then lines are ordered top-to-bottom.
-// Naive item concatenation produced "1.What is the unit ofA. kg B. N" —
-// baseline assembly produces real lines the AI can transcribe reliably.
+// Runs IN THE BROWSER (react-pdf's pdfjs). The heavy lifting of conversion
+// now happens SERVER-SIDE (examConversionEngine.ts via unpdf) — this module
+// remains for the original-page viewer, the admin/crowd vision-OCR path,
+// and any client fallback. All PURE helpers (baseline assembly, chunking,
+// page markers, sentence splitting) live in pdfTextShared.ts so the server
+// and browser share ONE implementation that can never drift.
 
 import { pdfjs } from "react-pdf";
+import {
+  assemblePageText,
+  chunkPages,
+  splitSentences,
+  withPageMarkers,
+  TEXT_LAYER_THRESHOLD_AVG,
+  // Re-exported so every existing importer keeps working unchanged.
+  type PdfChunk,
+  type TextItemLike,
+} from "./pdfTextShared";
+
+export { chunkPages, splitSentences, withPageMarkers };
+export type { PdfChunk };
+export { TEXT_LAYER_THRESHOLD_AVG };
 
 // Same-origin worker synced from node_modules by scripts/sync-pdfjs.mjs
 // (postinstall). Identical setup to the Reader — proven on production.
@@ -24,9 +33,6 @@ export interface PdfTextResult {
   pageCount: number;
   hasTextLayer: boolean;
 }
-
-/** Minimum average chars/page before we call the PDF a pure image scan. */
-const TEXT_LAYER_THRESHOLD_AVG = 40;
 
 /**
  * Fetch a PDF URL and extract baseline-assembled text for every page.
@@ -67,145 +73,8 @@ export async function extractPdfTextPages(
   };
 }
 
-interface TextItemLike {
-  str?: string;
-  transform?: number[]; // pdf.js transform matrix — [a, b, c, d, e, f]; e=x, f=y (baseline)
-  width?: number;
-  hasEOL?: boolean;
-}
-
-/**
- * Assemble one page's text items into lines using baseline Y, with
- * x-gap space insertion. Returns the page text with newlines between lines.
- */
-function assemblePageText(items: TextItemLike[]): string {
-  const lines = new Map<number, { x: number; str: string; endX: number }[]>();
-
-  for (const item of items) {
-    const str = typeof item.str === "string" ? item.str : "";
-    if (!str) continue;
-    const t = item.transform;
-    if (!t || t.length < 6) continue;
-    const x = t[4]!;
-    const y = Math.round(t[5]! / 2) * 2; // 2pt buckets — same visual line
-    const width = typeof item.width === "number" && item.width > 0 ? item.width : str.length * 4;
-    const entry = { x, str, endX: x + width };
-    const bucket = lines.get(y);
-    if (bucket) bucket.push(entry);
-    else lines.set(y, [entry]);
-  }
-
-  // Top-to-bottom = descending y in pdf.js coordinates.
-  const ys = [...lines.keys()].sort((a, b) => b - a);
-
-  const out: string[] = [];
-  for (const y of ys) {
-    const bucket = lines.get(y)!;
-    bucket.sort((a, b) => a.x - b.x);
-    let line = "";
-    let prevEnd = -Infinity;
-    for (const seg of bucket) {
-      // Gap wider than ~1.5 average chars between segments = a space.
-      const gap = seg.x - prevEnd;
-      if (line.length > 0 && gap > 6) line += " ";
-      line += seg.str;
-      prevEnd = seg.endX;
-    }
-    const trimmed = line.replace(/\s+/g, " ").trim();
-    if (trimmed) out.push(trimmed);
-  }
-  return out.join("\n");
-}
-
-// ─── Chunking ────────────────────────────────────────────────────────────
-
-export interface PdfChunk {
-  index: number;
-  text: string;
-  /** Human-readable page range for the pipeline UI, e.g. "pages 3–5". */
-  pageRange: string;
-  /** 1-based inclusive page bounds — powers sourcePage fallbacks. */
-  startPage: number;
-  endPage: number;
-}
-
-/**
- * Page-aligned chunking: whole pages accumulate into ~targetChar chunks.
- * Pages are never split mid-question; an oversized page gets its own chunk.
- * 5000 chars keeps each Groq request comfortably inside free-tier token
- * budgets (input + transcription output share the same TPM window).
- */
-export function chunkPages(pages: string[], targetChars = 5000): PdfChunk[] {
-  const chunks: PdfChunk[] = [];
-  let buffer: string[] = [];
-  let bufferLen = 0;
-  let startPage = 1;
-
-  const flush = (endPage: number) => {
-    if (buffer.length === 0) return;
-    chunks.push({
-      index: chunks.length,
-      text: buffer.join("\n\n"),
-      pageRange:
-        startPage === endPage ? `page ${startPage}` : `pages ${startPage}–${endPage}`,
-      startPage,
-      endPage,
-    });
-    buffer = [];
-    bufferLen = 0;
-  };
-
-  for (let i = 0; i < pages.length; i++) {
-    const pageText = pages[i]!;
-    if (pageText.length > targetChars && buffer.length === 0) {
-      // Single oversized page → own chunk (never split a page).
-      chunks.push({
-        index: chunks.length,
-        text: pageText,
-        pageRange: `page ${i + 1}`,
-        startPage: i + 1,
-        endPage: i + 1,
-      });
-      startPage = i + 2;
-      continue;
-    }
-    if (bufferLen + pageText.length > targetChars && buffer.length > 0) {
-      flush(i);
-      startPage = i + 1;
-    }
-    buffer.push(pageText);
-    bufferLen += pageText.length;
-  }
-  flush(pages.length);
-  return chunks;
-}
-
-// ─── Sentence splitting (shared with read-aloud) ─────────────────────────
-
-/**
- * Split text into sentences for the read-aloud queue and its highlighting.
- * Kept here so the player and the TTS hook segment IDENTICALLY.
- */
-export function splitSentences(text: string): string[] {
-  return text
-    .replace(/\s+/g, " ")
-    .split(/(?<=[.!?;:])\s+|(?<=\d)\.\s+/g)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
-// ─── Page markers (page attribution for AI transcription) ────────────────
-
-/**
- * Join per-page texts with explicit "=== PAGE N ===" markers so the AI can
- * attribute each question to its page (the sourcePage field). The markers
- * are a defined part of the transcription prompt contract.
- */
-export function withPageMarkers(pages: string[]): string {
-  return pages
-    .map((text, i) => `=== PAGE ${i + 1} ===\n${text}`)
-    .join("\n\n");
-}
+// assemblePageText + TextItemLike now come from pdfTextShared (imported at
+// the top) — one implementation shared with the server-side engine.
 
 // ─── Page-image rendering (vision OCR + original-page viewer) ────────────
 

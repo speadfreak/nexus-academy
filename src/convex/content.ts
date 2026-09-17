@@ -77,10 +77,13 @@ export const insertContentItem = internalMutation({
 
     // ── Exam autopilot: future uploads convert themselves ──
     // The moment a past exam enters the library it lands in the conversion
-    // queue (batch priority). Any open Learnyx tab picks it up when the
-    // platform is idle, so the FIRST student to open it already finds the
-    // digital paper ready. The 10-minute cron tick backstops this hook for
-    // any insertion path that bypasses insertContentItem (seed scripts).
+    // queue (batch priority). The ALWAYS-READY server engine (cron every
+    // 60s, examConversionEngine.ts) claims it and digitizes it fully
+    // server-side — unpdf text extraction, Groq transcription, Gemini OCR
+    // for scans — so by the time the first student opens it, the digital
+    // paper already exists and the player mounts instantly. The student
+    // kick (examPrepDigital.requestDigitization) covers the sub-minute
+    // window by bumping the job to student priority on open.
     if (args.contentType === "past_exam") {
       await ctx.db.insert("examConversionJobs", {
         contentId: id,
