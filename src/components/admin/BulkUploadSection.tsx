@@ -143,6 +143,9 @@ interface BulkFile {
   grade: string;
   contentType: string;
   examYear: string;
+  // Exam-prep classification for past_exam rows: "national_past_paper" |
+  // "practice_set" | "" (unclassified). Batch default + per-row override.
+  examPrepSubtype: string;
   isPremium: boolean;
   topics: string[];
   classified: boolean; // true after classifier ran (even if low-confidence)
@@ -241,6 +244,10 @@ export function BulkUploadSection() {
 
   const [files, setFiles] = useState<BulkFile[]>([]);
   const [batchPremium, setBatchPremium] = useState(false);
+  // Batch-default exam-paper classification — mirrored on the premium
+  // toggle: sets the default for every past_exam row in this batch, with
+  // per-row override in the review table.
+  const [batchSubtype, setBatchSubtype] = useState("");
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   // Currently-saving file id + label — set during Save All so the UI shows
@@ -259,6 +266,7 @@ export function BulkUploadSection() {
   const [batchEditGrade, setBatchEditGrade] = useState<string>("");
   const [batchEditType, setBatchEditType] = useState<string>("");
   const [batchEditYear, setBatchEditYear] = useState<string>("");
+  const [batchEditSubtype, setBatchEditSubtype] = useState<string>("");
   const [batchEditPremium, setBatchEditPremium] = useState<boolean | null>(null);
   // Blind Upload mode — lets the admin save rows that the classifier
   // couldn't fully classify, by applying admin-chosen defaults to fill in
@@ -302,6 +310,7 @@ export function BulkUploadSection() {
         grade: "",
         contentType: "",
         examYear: "",
+        examPrepSubtype: batchSubtype,
         isPremium: batchPremium,
         topics: [],
         classified: false,
@@ -328,7 +337,7 @@ export function BulkUploadSection() {
         setTimeout(() => preClassifyFromFilenames(newFiles, subjects), 50);
       }
     },
-    [batchPremium, subjects],
+    [batchPremium, batchSubtype, subjects],
   );
 
   // Pre-classify filenames immediately (no upload needed). Writes the
@@ -758,6 +767,14 @@ export function BulkUploadSection() {
           }
         }
         if (batchEditPremium !== null) updates.isPremium = batchEditPremium;
+        // Classification only applies to past-exam rows (the row's type
+        // after any batch type change above has been merged into f).
+        if (batchEditSubtype) {
+          const effectiveType = updates.contentType ?? f.contentType;
+          if (effectiveType === "past_exam" || typeHasYear(effectiveType)) {
+            updates.examPrepSubtype = batchEditSubtype;
+          }
+        }
         return { ...f, ...updates };
       }),
     );
@@ -769,6 +786,7 @@ export function BulkUploadSection() {
     setBatchEditGrade("");
     setBatchEditType("");
     setBatchEditYear("");
+    setBatchEditSubtype("");
     setBatchEditPremium(null);
   };
 
@@ -1131,6 +1149,10 @@ export function BulkUploadSection() {
           grade: Number(bulkFile.grade),
           subjectId: bulkFile.subjectId as Id<"subjects">,
           examYear: typeHasYear(bulkFile.contentType) ? Number(bulkFile.examYear) : undefined,
+          examPrepSubtype:
+            typeHasYear(bulkFile.contentType) && bulkFile.examPrepSubtype
+              ? (bulkFile.examPrepSubtype as "national_past_paper" | "practice_set")
+              : undefined,
           isPremium: bulkFile.isPremium,
           storageId: bulkFile.storageId!,
           filename: bulkFile.file.name,
@@ -1250,18 +1272,37 @@ export function BulkUploadSection() {
             </Button>
           </div>
 
-          {/* Batch premium toggle */}
-          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-            <div>
-              <p className="text-sm font-semibold">Mark all as Premium?</p>
-              <p className="text-xs text-muted-foreground">
-                Sets the default for every file in this batch. Can be overridden per file in the review step.
-              </p>
+          {/* Batch premium toggle + batch paper classification */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+              <div>
+                <p className="text-sm font-semibold">Mark all as Premium?</p>
+                <p className="text-xs text-muted-foreground">
+                  Sets the default for every file in this batch. Can be overridden per file in the review step.
+                </p>
+              </div>
+              <Switch
+                checked={batchPremium}
+                onCheckedChange={setBatchPremium}
+              />
             </div>
-            <Switch
-              checked={batchPremium}
-              onCheckedChange={setBatchPremium}
-            />
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Paper classification</p>
+                <p className="text-xs text-muted-foreground">
+                  Default for past-exam rows in this batch — official MoE paper or curated practice set. Per-row override in the review step.
+                </p>
+              </div>
+              <Select value={batchSubtype} onValueChange={setBatchSubtype}>
+                <SelectTrigger className="h-9 w-[170px] shrink-0 rounded-lg bg-white/5 text-xs">
+                  <SelectValue placeholder="Unclassified" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="national_past_paper">National past paper</SelectItem>
+                  <SelectItem value="practice_set">Practice set</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       )}
@@ -1513,6 +1554,7 @@ export function BulkUploadSection() {
                   <TableHead className="w-[90px]">Grade</TableHead>
                   <TableHead className="w-[140px]">Type</TableHead>
                   <TableHead className="w-[140px]">Year</TableHead>
+                  <TableHead className="w-[170px]">Paper type</TableHead>
                   <TableHead className="w-[80px]">Premium</TableHead>
                   <TableHead className="w-[100px]">Action</TableHead>
                 </TableRow>
@@ -1705,6 +1747,25 @@ export function BulkUploadSection() {
                             {YEARS.map((y) => (
                               <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
                             ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {typeHasYear(f.contentType) ? (
+                        <Select
+                          value={f.examPrepSubtype}
+                          onValueChange={(v) => updateFile(f.id, { examPrepSubtype: v })}
+                          disabled={processing}
+                        >
+                          <SelectTrigger className="h-10 rounded-md bg-white/5 text-xs">
+                            <SelectValue placeholder="Unclassified" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="national_past_paper">National paper</SelectItem>
+                            <SelectItem value="practice_set">Practice set</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (
@@ -1933,6 +1994,23 @@ export function BulkUploadSection() {
                       {YEARS.map((y) => (
                         <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Paper type
+                  </label>
+                  <Select
+                    value={batchEditSubtype}
+                    onValueChange={setBatchEditSubtype}
+                  >
+                    <SelectTrigger className="h-9 w-[150px] rounded-md bg-white/5 text-xs">
+                      <SelectValue placeholder="Keep as-is" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="national_past_paper">National paper</SelectItem>
+                      <SelectItem value="practice_set">Practice set</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

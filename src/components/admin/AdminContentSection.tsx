@@ -222,6 +222,11 @@ export function AdminContentSection() {
   const [grade, setGrade] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [examYear, setExamYear] = useState("");
+  // Exam-prep classification + estimated paper duration (past exams only).
+  // Subtype distinguishes a real official MoE past paper from an
+  // admin-curated practice set; duration drives Exam Mode's countdown.
+  const [examPrepSubtype, setExamPrepSubtype] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [isPremium, setIsPremium] = useState(false);
@@ -336,6 +341,8 @@ export function AdminContentSection() {
   const [editSubjectId, setEditSubjectId] = useState("");
   const [editContentType, setEditContentType] = useState("");
   const [editExamYear, setEditExamYear] = useState("");
+  const [editExamPrepSubtype, setEditExamPrepSubtype] = useState("");
+  const [editDurationMinutes, setEditDurationMinutes] = useState("");
   const [editIsPremium, setEditIsPremium] = useState(false);
   const [editAnswerKeyId, setEditAnswerKeyId] = useState<string>("");
   const [editSaving, setEditSaving] = useState(false);
@@ -347,6 +354,8 @@ export function AdminContentSection() {
     setEditSubjectId(item.subjectId);
     setEditContentType(item.contentType);
     setEditExamYear(item.examYear ? String(item.examYear) : "");
+    setEditExamPrepSubtype(item.examPrepSubtype ?? "");
+    setEditDurationMinutes(item.durationMinutes ? String(item.durationMinutes) : "");
     setEditIsPremium(item.isPremium);
     // Pre-fill the answer-key link if one exists. The Reader query exposes
     // it as part of `item` via the spread (answerKeyContentId is on the
@@ -369,6 +378,20 @@ export function AdminContentSection() {
         subjectId: editSubjectId as never,
         contentType: editContentType as ContentType,
         examYear: contentTypeHasYear(editContentType) ? (editExamYear ? Number(editExamYear) : undefined) : undefined,
+        // Exam-prep classification: explicit value/null so clearing works.
+        // Duration: null clears, empty string on a past_exam clears too.
+        examPrepSubtype:
+          editContentType === "past_exam"
+            ? editExamPrepSubtype
+              ? editExamPrepSubtype
+              : null
+            : null,
+        durationMinutes:
+          editContentType === "past_exam"
+            ? editDurationMinutes
+              ? Number(editDurationMinutes)
+              : null
+            : null,
         isPremium: editIsPremium,
       };
       // Only pass answerKeyContentId if it changed (avoids unnecessary
@@ -674,6 +697,8 @@ export function AdminContentSection() {
           grade: Number(grade),
           subjectId: subjectId as never,
           examYear: contentTypeHasYear(contentType) ? Number(examYear) : undefined,
+          examPrepSubtype: contentType === "past_exam" && examPrepSubtype ? (examPrepSubtype as "national_past_paper" | "practice_set") : undefined,
+          durationMinutes: contentType === "past_exam" && durationMinutes ? Number(durationMinutes) : undefined,
           isPremium,
           storageId,
           filename: file.name,
@@ -693,6 +718,8 @@ export function AdminContentSection() {
         setGrade("");
         setSubjectId("");
         setExamYear("");
+        setExamPrepSubtype("");
+        setDurationMinutes("");
         setSourceName("");
         setSourceUrl("");
         setIsPremium(false);
@@ -1158,6 +1185,38 @@ export function AdminContentSection() {
                   Only for past exams
                 </div>
               </div>
+            )}
+
+            {contentType === "past_exam" && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Paper classification</Label>
+                  <Select
+                    value={examPrepSubtype}
+                    onValueChange={setExamPrepSubtype}
+                  >
+                    <SelectTrigger className="h-9 rounded-xl bg-white/5">
+                      <SelectValue placeholder="Select classification" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="national_past_paper">National past paper (official)</SelectItem>
+                      <SelectItem value="practice_set">Practice set (curated)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Duration (minutes)</Label>
+                  <Input
+                    type="number"
+                    min={10}
+                    max={600}
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="120"
+                    className="h-9 rounded-xl bg-white/5"
+                  />
+                </div>
+              </>
             )}
           </div>
 
@@ -1671,6 +1730,34 @@ export function AdminContentSection() {
                     className="h-9 rounded-xl bg-white/5 disabled:opacity-40"
                   />
                 </div>
+                {editContentType === "past_exam" && (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <Label className="text-xs font-semibold text-muted-foreground">Paper classification</Label>
+                      <Select value={editExamPrepSubtype} onValueChange={setEditExamPrepSubtype}>
+                        <SelectTrigger className="h-9 rounded-xl bg-white/5">
+                          <SelectValue placeholder="Unclassified" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="national_past_paper">National past paper (official)</SelectItem>
+                          <SelectItem value="practice_set">Practice set (curated)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label className="text-xs font-semibold text-muted-foreground">Duration (minutes)</Label>
+                      <Input
+                        type="number"
+                        min={10}
+                        max={600}
+                        value={editDurationMinutes}
+                        onChange={(e) => setEditDurationMinutes(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="120"
+                        className="h-9 rounded-xl bg-white/5"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex items-center justify-between rounded-xl border border-border/70 bg-white/5 px-4 py-3">
                 <div>
