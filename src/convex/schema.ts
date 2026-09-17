@@ -1408,10 +1408,79 @@ const schema = defineSchema(
       // checking the answer key. Null when no answer key is linked or the
       // student chose not to self-grade.
       selfScorePct: v.optional(v.number()),
+      // ── Digital exam engine ─────────────────────────────────────────
+      // Which experience produced this attempt:
+      //   "exam"      — the digital Exam mode (strict countdown, no feedback)
+      //   "practice"  — the digital Practice mode (untimed, check-answer)
+      //   "pdf_exam"  — the legacy PDF-viewer Exam Mode (pre-digital rows)
+      mode: v.optional(
+        v.union(
+          v.literal("exam"),
+          v.literal("practice"),
+          v.literal("pdf_exam"),
+        ),
+      ),
+      // Auto-scored result for digital attempts (0-100). Exam mode scores
+      // correct/total (unanswered = wrong, like the real sitting); Practice
+      // scores correct/answered. Legacy PDF rows keep using selfScorePct.
+      autoScorePct: v.optional(v.number()),
+      questionsTotal: v.optional(v.number()),
+      questionsCorrect: v.optional(v.number()),
+      questionsAnswered: v.optional(v.number()),
     })
       .index("by_user", ["userId"])
       .index("by_user_content", ["userId", "contentId"])
       .index("by_user_endedAt", ["userId", "endedAt"]),
+
+    // ------------------------------------------------------------------
+    // Digital exam engine — auto-converted past papers.
+    // ------------------------------------------------------------------
+    //
+    // Each row is the digitized form of one contentItems past paper: the
+    // AI transcribes the multiple-choice questions out of the PDF text
+    // (strictly — never invents), and the result is cached here so every
+    // future Practice/Exam launch is instant. One row per paper, replaced
+    // on retry after failure or a stale interrupted conversion.
+    digitalPapers: defineTable({
+      contentId: v.id("contentItems"),
+      status: v.union(
+        v.literal("processing"),
+        v.literal("ready"),
+        v.literal("failed"),
+      ),
+      questions: v.array(
+        v.object({
+          number: v.number(), // final display number (renumbered 1..N on completion)
+          text: v.string(),
+          // Shared stimulus (reading passages, data tables) shown above the
+          // question when present.
+          passage: v.optional(v.string()),
+          options: v.array(
+            v.object({
+              label: v.string(), // "A".."F"
+              text: v.string(),
+            }),
+          ),
+          // Correct option label when the paper states it (answer-key page,
+          // marked key, etc). AI-suggested otherwise — the UI always labels
+          // suggestions as such. Absent = no answer could be determined.
+          answer: v.optional(v.string()),
+          explanation: v.optional(v.string()),
+          topic: v.optional(v.string()),
+        }),
+      ),
+      questionCount: v.number(),
+      // Telemetry for the conversion pipeline UI.
+      pageCount: v.optional(v.number()),
+      chunkCount: v.optional(v.number()),
+      chunksParsed: v.optional(v.number()),
+      error: v.optional(v.string()),
+      startedBy: v.optional(v.id("users")),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_content", ["contentId"])
+      .index("by_status", ["status"]),
 
     // ------------------------------------------------------------------
     // Manual payment system — TeleBirr personal transfers + admin review

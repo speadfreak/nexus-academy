@@ -181,10 +181,12 @@ export const getMyExamPrepResults = query({
         title: item.title,
         subjectName: subject?.name ?? null,
         date: attempt.endedAt,
-        scorePct: attempt.selfScorePct ?? null,
+        // Digital attempts carry an automatic score; legacy PDF-mode rows
+        // carry the student's self-graded one. Prefer whichever exists.
+        scorePct: attempt.autoScorePct ?? attempt.selfScorePct ?? null,
         timeSeconds: attempt.durationSeconds,
-        status: attempt.selfScorePct !== undefined
-          ? "self_graded"
+        status: (attempt.autoScorePct !== undefined || attempt.selfScorePct !== undefined)
+          ? "completed"
           : attempt.completed
             ? "completed"
             : "expired",

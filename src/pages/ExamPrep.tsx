@@ -4,16 +4,16 @@
 //   • Overview — real counts, the student's exam countdown (calendar),
 //     a "Recommended next" surface (weakest recent subject), quick links
 //   • Papers — browse uploaded MoE past papers + curated practice sets,
-//     each with Practice (normal Reader) and Exam mode (existing strict
-//     timed flow) actions
+//     each launching the FULLY DIGITAL Practice / Exam experience
+//     (/exam-prep/digital/:id?mode=practice|exam — the engine auto-converts
+//     the PDF into a digital question-by-question paper on first open)
 //   • Practice — a front door into the EXISTING practice systems
 //     (quiz generation, Aptitude Hub, Flashcard Exam Attack)
 //   • My Results — one unified readiness picture merging Exam Mode
 //     attempts, AI Mock Exam attempts and recent quiz scores
 //
-// REUSE: this page launches the normal Reader for Practice mode and
-// deep-links /read/:id?exam=1 for Exam mode (ReaderExamMode handles the
-// rest). It does NOT reimplement any exam, quiz or flashcard logic.
+// REUSE: this page launches the digital exam engine for both paper modes.
+// It does NOT reimplement any exam, quiz or flashcard logic.
 //
 // NO-DOWNLOAD POLICY: there is deliberately no download/save affordance
 // anywhere in this hub — only in-app sharing of a resource link.
@@ -90,6 +90,12 @@ interface SubjectRow {
 }
 
 type HubTab = "overview" | "papers" | "practice" | "results";
+
+/** Digital conversion status for one paper (from getDigitalPaperStatuses). */
+interface DigitalStatus {
+  status: "processing" | "ready" | "failed";
+  questionCount: number;
+}
 
 // ─── Small helpers ──────────────────────────────────────────────────────
 
@@ -355,14 +361,14 @@ function OverviewTab({
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
-                onClick={() => navigate(`/read/${recommended.paper._id}?practice=1`)}
+                onClick={() => navigate(`/exam-prep/digital/${recommended.paper._id}?mode=practice`)}
                 className="interactive-press gap-2"
               >
                 <BookOpen className="size-4" /> Practice
               </Button>
               <Button
                 variant="outline"
-                onClick={() => navigate(`/read/${recommended.paper._id}?exam=1`)}
+                onClick={() => navigate(`/exam-prep/digital/${recommended.paper._id}?mode=exam`)}
                 className="interactive-press gap-2"
               >
                 <Timer className="size-4" /> Exam mode
@@ -460,7 +466,15 @@ function sharePaper(paper: PrepPaper) {
   })();
 }
 
-function PaperCard({ paper, index }: { paper: PrepPaper; index: number }) {
+function PaperCard({
+  paper,
+  index,
+  digital,
+}: {
+  paper: PrepPaper;
+  index: number;
+  digital?: DigitalStatus;
+}) {
   const navigate = useNavigate();
   return (
     <motion.div
@@ -494,6 +508,21 @@ function PaperCard({ paper, index }: { paper: PrepPaper; index: number }) {
         )}
       </div>
 
+      {/* Digital conversion badge — real state from the engine */}
+      {digital?.status === "ready" ? (
+        <div className="mt-2">
+          <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 type-caption font-bold text-amber-300">
+            <Sparkles className="size-3" /> Digital · {digital.questionCount} Qs
+          </span>
+        </div>
+      ) : digital?.status === "processing" ? (
+        <div className="mt-2">
+          <span className="inline-flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 type-caption font-bold text-sky-300">
+            <Loader2 className="size-3 animate-spin" /> Converting…
+          </span>
+        </div>
+      ) : null}
+
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 type-caption text-muted-foreground/70">
         <span className="inline-flex items-center gap-1">
           <FileText className="size-3" />
@@ -510,23 +539,24 @@ function PaperCard({ paper, index }: { paper: PrepPaper; index: number }) {
         )}
       </div>
 
-      {/* Practice / Exam mode / Share — NO download affordance by design:
-          the no-download policy applies everywhere in this hub. */}
+      {/* Practice / Exam mode / Share — both launch the fully digital
+          engine; NO download affordance by design: the no-download policy
+          applies everywhere in this hub. */}
       <div className="mt-4 flex items-center gap-2 border-t border-white/5 pt-3">
         <Button
           size="sm"
-          onClick={() => navigate(`/read/${paper._id}?practice=1`)}
+          onClick={() => navigate(`/exam-prep/digital/${paper._id}?mode=practice`)}
           className="interactive-press flex-1 gap-1.5"
-          title="Opens the normal Reader — untimed, with AI companion and videos"
+          title="Fully digital Practice — untimed, with instant check-answer feedback"
         >
           <BookOpen className="size-3.5" /> Practice
         </Button>
         <Button
           size="sm"
           variant="outline"
-          onClick={() => navigate(`/read/${paper._id}?exam=1`)}
+          onClick={() => navigate(`/exam-prep/digital/${paper._id}?mode=exam`)}
           className="interactive-press flex-1 gap-1.5 border-emerald-400/30 bg-emerald-400/[0.08] text-emerald-200 hover:bg-emerald-400/20 hover:text-emerald-100"
-          title="Strict timed session — no pausing, locked until submit"
+          title="Fully digital Exam — real countdown, no pausing, auto-submit"
         >
           <Timer className="size-3.5" /> Exam mode
         </Button>
@@ -544,7 +574,15 @@ function PaperCard({ paper, index }: { paper: PrepPaper; index: number }) {
   );
 }
 
-function PapersTab({ papers, subjects }: { papers: PrepPaper[]; subjects: SubjectRow[] }) {
+function PapersTab({
+  papers,
+  subjects,
+  digitalStatuses,
+}: {
+  papers: PrepPaper[];
+  subjects: SubjectRow[];
+  digitalStatuses: Map<string, DigitalStatus>;
+}) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [subjectFilter, setSubjectFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>("all");
@@ -688,7 +726,7 @@ function PapersTab({ papers, subjects }: { papers: PrepPaper[]; subjects: Subjec
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtered.slice(0, 60).map((paper, i) => (
-            <PaperCard key={paper._id} paper={paper} index={i} />
+            <PaperCard key={paper._id} paper={paper} index={i} digital={digitalStatuses.get(paper._id)} />
           ))}
         </div>
       )}
@@ -804,7 +842,7 @@ function YearOverYearCompare({
                       <button
                         key={p._id}
                         type="button"
-                        onClick={() => navigate(`/read/${p._id}?practice=1`)}
+                        onClick={() => navigate(`/exam-prep/digital/${p._id}?mode=practice`)}
                         className="group flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left transition hover:border-primary/40"
                       >
                         <span className="min-w-0">
@@ -1148,6 +1186,21 @@ export default function ExamPrep() {
   const subjects = useQuery(api.subjects.getAll);
   const journey = useQuery(api.journey.getJourney);
   const profile = useQuery(api.profile.getProfile);
+  // Digital conversion states for the paper cards (Digital · N Qs / Converting…).
+  // The id array is memoized so the query args stay value-stable across renders
+  // (same hard requirement as the calendar query below).
+  const paperIds = useMemo(() => (papers ?? []).map((p) => p._id), [papers]);
+  const digitalStatusRows = useQuery(
+    api.examPrepDigital.getDigitalPaperStatuses,
+    paperIds.length > 0 ? { contentIds: paperIds } : { contentIds: [] },
+  );
+  const digitalStatuses = useMemo(() => {
+    const map = new Map<string, DigitalStatus>();
+    for (const row of digitalStatusRows ?? []) {
+      map.set(row.contentId, { status: row.status as DigitalStatus["status"], questionCount: row.questionCount });
+    }
+    return map;
+  }, [digitalStatusRows]);
   // Upcoming calendar events — the next type="exam" event drives the countdown.
   //
   // ⚠️ Args stability is a hard Convex useQuery requirement: the args object
@@ -1267,7 +1320,7 @@ export default function ExamPrep() {
                 />
               </TabsContent>
               <TabsContent value="papers" className="mt-4 outline-none">
-                <PapersTab papers={papers ?? []} subjects={(subjects ?? []) as SubjectRow[]} />
+                <PapersTab papers={papers ?? []} subjects={(subjects ?? []) as SubjectRow[]} digitalStatuses={digitalStatuses} />
               </TabsContent>
               <TabsContent value="practice" className="mt-4 outline-none">
                 <PracticeTab

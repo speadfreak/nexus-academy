@@ -111,6 +111,7 @@ const Achievements = lazy(() => import("./pages/Achievements.tsx"));
 const Groups = lazy(() => import("./pages/Groups.tsx"));
 const Room = lazy(() => import("./pages/Room.tsx"));
 const Reader = lazy(() => import("./pages/Reader.tsx"));
+const DigitalExam = lazy(() => import("./pages/DigitalExam.tsx"));
 const StudyCards = lazy(() => import("./pages/StudyCards.tsx"));
 const SchoolAdmin = lazy(() => import("./pages/SchoolAdmin.tsx"));
 const SchoolSetup = lazy(() => import("./pages/marketing/SchoolSetup.tsx"));
@@ -767,6 +768,20 @@ if (rootEl) {
                             element={
                               <RequireAuth>
                                 <Reader />
+                              </RequireAuth>
+                            }
+                          />
+                          {/* /exam-prep/digital/:contentId — the digital exam
+                              engine. Converts any past paper PDF into a
+                              fully digital question-by-question paper and
+                              plays it in Practice or Exam mode. Auth-gated:
+                              conversions are per-user claims and attempts
+                              are personal. */}
+                          <Route
+                            path="/exam-prep/digital/:contentId"
+                            element={
+                              <RequireAuth>
+                                <DigitalExam />
                               </RequireAuth>
                             }
                           />
