@@ -120,6 +120,7 @@ const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
 const MockExam = lazy(() => import("./pages/MockExam.tsx"));
+const ExamPrep = lazy(() => import("./pages/ExamPrep.tsx"));
 const AptitudeHub = lazy(() => import("./pages/AptitudeHub.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -652,6 +653,16 @@ if (rootEl) {
                             element={
                               <RequireAuth>
                                 <Dashboard />
+                              </RequireAuth>
+                            }
+                          />
+                          {/* /exam-prep — the Exam Prep Hub. Auth-gated like
+                              the other student pages. */}
+                          <Route
+                            path="/exam-prep"
+                            element={
+                              <RequireAuth>
+                                <ExamPrep />
                               </RequireAuth>
                             }
                           />
