@@ -174,11 +174,18 @@ export type BeginDigitizationResult =
  *
  * `forceVision` pre-declares the page-image OCR path (used by the
  * "Retry with page-image OCR" affordance after a no-text-layer failure).
+ *
+ * `asBatch` marks the claim as AUTOPILot capacity (admin worker / crowd
+ * worker converting the library ahead of demand). Batch claims never bump
+ * a queued job's priority — a student who opens the paper still outranks
+ * every pre-conversion. Only an explicit student open (asBatch absent)
+ * upgrades the job to "student" priority.
  */
 export const beginDigitization = mutation({
   args: {
     contentId: v.id("contentItems"),
     forceVision: v.optional(v.boolean()),
+    asBatch: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<BeginDigitizationResult> => {
     const userId = await getAuthUserId(ctx);
@@ -211,7 +218,8 @@ export const beginDigitization = mutation({
     }
 
     // ── The rate guard: queue row + platform concurrency cap ──
-    const jobId = await ensureJobQueued(ctx, args.contentId, userId, "student");
+    const demand: "student" | "batch" = args.asBatch ? "batch" : "student";
+    const jobId = await ensureJobQueued(ctx, args.contentId, userId, demand);
     const job = await ctx.db.get(jobId);
     if (job && job.status === "running" && now - job.updatedAt < PROCESSING_MS_HINT) {
       return { kind: "processing", digitalPaperId: existing?._id ?? "" };
@@ -933,6 +941,54 @@ export const getDigitalPaperStatuses = query({
       }
     }
     return out;
+  },
+});
+
+// ─── Autopilot crowd-worker peek ─────────────────────────────────────────
+
+/**
+ * IDLE-CAPACITY PEEK for the crowd autopilot. Every signed-in Learnyx tab
+ * (Exam Prep hub, admin console) polls this: when the platform's conversion
+ * capacity is COMPLETELY idle — zero fresh running jobs, student-demanded
+ * or otherwise — the oldest queued BATCH job is offered to this tab.
+ *
+ * The tab then runs the standard conversion pipeline (runPaperConversion
+ * with asBatch) in the background. The moment ANY student-demanded
+ * conversion is running, the peek returns null and every crowd worker
+ * stands down — students who are actively waiting always own the free
+ * tier. This is what makes "every paper already digital before a student
+ * arrives" happen without a server-side browser.
+ */
+export const peekCrowdJob = query({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{ contentId: string; title: string } | null> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    const freshCutoff = Date.now() - PROCESSING_MS_HINT;
+    const running = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_status", (q) => q.eq("status", "running"))
+      .collect();
+    // Idle means idle: any fresh claim (student OR batch) silences the
+    // whole crowd. Stale running rows older than the freshness window are
+    // treated as dead and ignored.
+    if (running.some((j) => (j.claimedAt ?? 0) >= freshCutoff)) return null;
+
+    const queued = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_status", (q) => q.eq("status", "queued"))
+      .collect();
+    const next = queued
+      .filter((j) => j.priority === "batch")
+      .sort((a, b) => a.createdAt - b.createdAt)[0];
+    if (!next) return null;
+
+    const item = await ctx.db.get(next.contentId);
+    if (!item) return null;
+    return { contentId: next.contentId, title: item.title };
   },
 });
 

@@ -19,12 +19,12 @@
 // anywhere in this hub — only in-app sharing of a resource link.
 
 import { api } from "@/convex/_generated/api";
+import { useExamAutopilotWorker } from "@/hooks/useExamAutopilotWorker";
 import { useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowRight,
-  BadgeCheck,
   BookOpen,
   Brain,
   CalendarDays,
@@ -38,7 +38,6 @@ import {
   Medal,
   Search,
   Share2,
-  ShieldAlert,
   Sparkles,
   Swords,
   Target,
@@ -97,7 +96,6 @@ type HubTab = "overview" | "papers" | "practice" | "results";
 interface DigitalStatus {
   status: "processing" | "ready" | "failed";
   questionCount: number;
-  verification?: string | null;
 }
 
 // ─── Small helpers ──────────────────────────────────────────────────────
@@ -511,25 +509,14 @@ function PaperCard({
         )}
       </div>
 
-      {/* Digital conversion badge — real state from the engine, with the
-          honest trust level: verified (admin-checked) vs AI-unverified. */}
+      {/* Digital availability chip — real state from the engine. Deliberately
+          NO trust/AI badges here: students see a clean card, and QC happens
+          silently in the background (admin review + in-player reports). */}
       {digital?.status === "ready" ? (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 type-caption font-bold text-amber-300">
             <Sparkles className="size-3" /> Digital · {digital.questionCount} Qs
           </span>
-          {digital.verification === "verified" ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 type-caption font-bold text-emerald-300">
-              <BadgeCheck className="size-3" /> Verified
-            </span>
-          ) : (
-            <span
-              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-1.5 py-0.5 type-caption text-muted-foreground"
-              title="Transcribed by AI and not yet human-verified. Report anything that looks wrong from inside the player."
-            >
-              <ShieldAlert className="size-3" /> AI · unverified
-            </span>
-          )}
         </div>
       ) : digital?.status === "processing" ? (
         <div className="mt-2">
@@ -1189,6 +1176,11 @@ function statusLabel(row: PrepResultRow): string | null {
 // ─── Main page ──────────────────────────────────────────────────────────
 
 export default function ExamPrep() {
+  // Library autopilot: while this hub is open, queued past papers convert
+  // themselves using idle capacity (silent, safe, student-first). This is
+  // why paper cards keep flipping to "Digital · N Qs" on their own.
+  useExamAutopilotWorker();
+
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = (["overview", "papers", "practice", "results"] as const).includes(
     searchParams.get("tab") as HubTab,
@@ -1216,7 +1208,6 @@ export default function ExamPrep() {
       map.set(row.contentId, {
         status: row.status as DigitalStatus["status"],
         questionCount: row.questionCount,
-        verification: row.verification,
       });
     }
     return map;

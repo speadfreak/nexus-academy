@@ -39,7 +39,7 @@ const TOOLS: Tool[] = [
   {
     icon: Wand2,
     title: "Digital Past Exams",
-    description: "Every past paper plays like a real digital exam — navigator, flags, highlights, read-aloud accessibility, instant Practice scoring and a strict Exam clock. The PDF converts itself on first open.",
+    description: "Every past paper plays like a real digital exam — navigator, flags, highlights, read-aloud accessibility, instant Practice scoring and a strict Exam clock. Papers are converted to digital before you even open them: zero wait, always ready.",
     href: "/exam-prep",
   },
   {

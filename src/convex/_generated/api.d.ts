@@ -31,6 +31,7 @@ import type * as contentAdmin from "../contentAdmin.js";
 import type * as coverage from "../coverage.js";
 import type * as crons from "../crons.js";
 import type * as dailyChallenge from "../dailyChallenge.js";
+import type * as examAutopilot from "../examAutopilot.js";
 import type * as examPrep from "../examPrep.js";
 import type * as examPrepDigital from "../examPrepDigital.js";
 import type * as examPrepDigitalConstants from "../examPrepDigitalConstants.js";
@@ -116,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   coverage: typeof coverage;
   crons: typeof crons;
   dailyChallenge: typeof dailyChallenge;
+  examAutopilot: typeof examAutopilot;
   examPrep: typeof examPrep;
   examPrepDigital: typeof examPrepDigital;
   examPrepDigitalConstants: typeof examPrepDigitalConstants;

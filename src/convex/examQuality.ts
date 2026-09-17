@@ -407,6 +407,74 @@ export const resolveQuestionReport = mutation({
   },
 });
 
+// ─── Library autopilot status ─────────────────────────────────────────────
+
+/**
+ * Coverage of the autopilot: how much of the past-exam library is already
+ * digital, what's in flight, and what needs a human. The console renders
+ * this as the "always ready" gauge.
+ */
+export const libraryAutopilotStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminRead(ctx);
+
+    const items = await ctx.db
+      .query("contentItems")
+      .withIndex("by_contentType", (q) => q.eq("contentType", "past_exam"))
+      .take(1000);
+
+    const papers = await ctx.db.query("digitalPapers").collect();
+    const readyByContent = new Map<string, Doc<"digitalPapers">>();
+    for (const p of papers) {
+      if (p.status === "ready" && p.verification !== "rejected") {
+        readyByContent.set(p.contentId, p);
+      }
+    }
+
+    const freshCutoff = Date.now() - PROCESSING_MS_HINT;
+    const jobs = await ctx.db.query("examConversionJobs").collect();
+    const now = Date.now();
+
+    let queued = 0;
+    let running = 0;
+    let failed = 0;
+    for (const j of jobs) {
+      if (j.status === "queued") queued += 1;
+      else if (j.status === "running") {
+        if ((j.claimedAt ?? 0) >= freshCutoff) running += 1;
+        else queued += 1; // stale claim — the autopilot tick will requeue it
+      } else if (j.status === "failed") failed += 1;
+    }
+
+    const ready = items.filter((i) => readyByContent.has(i._id)).length;
+    const libraryTotal = items.length;
+
+    return {
+      libraryTotal,
+      ready,
+      coveragePct: libraryTotal > 0 ? Math.round((ready / libraryTotal) * 100) : 100,
+      queued,
+      running,
+      failed,
+      // Questions transcribed across the whole ready library — the engine's
+      // "work done" number.
+      questionTotal: [...readyByContent.values()].reduce((s, p) => s + p.questionCount, 0),
+      lastTickNote:
+        "The autopilot tick runs every 10 minutes; any open Learnyx tab converts queued papers when the platform is idle.",
+    } as {
+      libraryTotal: number;
+      ready: number;
+      coveragePct: number;
+      queued: number;
+      running: number;
+      failed: number;
+      questionTotal: number;
+      lastTickNote: string;
+    };
+  },
+});
+
 // ─── Batch digitization queue ─────────────────────────────────────────────
 
 /**

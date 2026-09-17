@@ -9,10 +9,9 @@
 //     zero. Unanswered questions count as wrong, like the real sitting.
 //
 // V2 additions:
-//   • TRUST: every paper shows an honest "AI-digitized · unverified" badge
-//     until an admin verifies it; "Verified" once human-checked. Students
-//     report bad questions straight from the card — reports land in the
-//     Exam Engine console.
+//   • REPORT: students flag a broken question straight from the card —
+//     reports land in the Exam Engine console. (Trust badges are
+//     deliberately NOT shown to students — quality control is silent.)
 //   • STRUCTURED questions (no options / workout / show-that): typed
 //     answers, Practice reveals the paper's own suggested answer for
 //     self-checking, Exam saves the written work. Never auto-scored —
@@ -22,10 +21,13 @@
 //   • ACCESSIBILITY: adjustable text size (persisted), full keyboard
 //     operation (1-8 options, ←/→ nav, F flag, N navigator, R read-aloud,
 //     +/- text size, ? help), timer uses role="timer".
-//   • Read-aloud with sentence highlighting; navigator with state colors;
-//     flag-for-review; session highlights; slim progress bar; keyboard
-//     ←/→; real persistence to examPrepAttempts + studySessions
-//     (best-effort — a logging failure never blocks the results screen).
+//   • Read-aloud is STRICTLY OPT-IN: it never starts by itself — the
+//     student taps the speaker (or presses R) when they want it. Speed
+//     lives in the navigator; sentence highlighting included; navigator
+//     with state colors; flag-for-review; session highlights; slim
+//     progress bar; keyboard ←/→; real persistence to examPrepAttempts +
+//     studySessions (best-effort — a logging failure never blocks the
+//     results screen).
 //
 // All copy is original. Learnyx dark/gold cinematic system throughout.
 
@@ -74,13 +76,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   OriginalPageButton,
   ReportIssueButton,
   ShortcutsDialog,
-  TrustBadge,
   type ReportState,
 } from "./DigitalExamPlayerParts";
 
@@ -120,9 +120,6 @@ interface DigitalExamPlayerProps {
   /** Session-resolved PDF url — powers the original-page viewer. */
   pdfUrl?: string | null;
   pageCount?: number | null;
-  verification?: string | null;
-  adminEdited?: boolean;
-  sourceMode?: string | null;
 }
 
 // ─── Small helpers ───────────────────────────────────────────────────────
@@ -298,8 +295,7 @@ function NavigatorBody({
   currentIdx,
   highlights,
   onJump,
-  autoRead,
-  onAutoReadChange,
+  onSpeakCurrent,
   readAloudSupported,
   rate,
   onRateChange,
@@ -314,8 +310,7 @@ function NavigatorBody({
   currentIdx: number;
   highlights: Highlight[];
   onJump: (idx: number) => void;
-  autoRead: boolean;
-  onAutoReadChange: (v: boolean) => void;
+  onSpeakCurrent: () => void;
   readAloudSupported: boolean;
   rate: number;
   onRateChange: (r: number) => void;
@@ -395,17 +390,26 @@ function NavigatorBody({
         </div>
       </div>
 
-      {/* Read-aloud controls */}
+      {/* Read-aloud controls — strictly on-demand: speech starts only when
+          the student presses the button (or the speaker / R key on a
+          question). Nothing here can ever start audio by itself. */}
       {readAloudSupported && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 type-caption font-bold text-foreground/80">
               <Volume2 className="size-3.5 text-amber-300" /> Read aloud
             </span>
-            <Switch checked={autoRead} onCheckedChange={onAutoReadChange} aria-label="Read each question aloud automatically" />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onSpeakCurrent}
+              className="h-7 gap-1.5 rounded-lg border-white/15 px-2 type-caption font-bold"
+            >
+              <Volume2 className="size-3" /> Read this question
+            </Button>
           </div>
           <p className="mt-1.5 type-caption text-muted-foreground/70">
-            {autoRead ? "Auto-speaks each question as you open it." : "Tap the speaker on a question to hear it."}
+            Off until you start it — tap the speaker on any question or press R.
           </p>
           <div className="mt-2 flex items-center gap-1.5">
             {[0.75, 1, 1.25].map((r) => (
@@ -528,9 +532,6 @@ export function DigitalExamPlayer({
   questions,
   pdfUrl = null,
   pageCount = null,
-  verification = null,
-  adminEdited = false,
-  sourceMode = null,
 }: DigitalExamPlayerProps) {
   const navigate = useNavigate();
   const readAloud = useReadAloud();
@@ -549,7 +550,6 @@ export function DigitalExamPlayer({
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [revealedSuggested, setRevealedSuggested] = useState<Record<number, boolean>>({});
   const [highlights, setHighlights] = useState<Highlight[]>([]);
-  const [autoRead, setAutoRead] = useState<boolean>(() => localStorage.getItem("learnyx.readAloud.auto") === "1");
   const [fontScale, setFontScale] = useState<number>(() => {
     const raw = Number(localStorage.getItem("learnyx.exam.fontScale"));
     return Number.isFinite(raw) && raw >= 0.85 && raw <= 1.6 ? raw : 1;
@@ -815,12 +815,10 @@ export function DigitalExamPlayer({
     return () => window.removeEventListener("keydown", onKey);
   }, [checkAnswer, currentIdx, finished, goTo, mode, phase, q, selectOption, speakCurrent, toggleFlag]);
 
-  // Auto-read on question change.
-  useEffect(() => {
-    if (phase !== "playing" || finished || !autoRead || !readAloud.supported) return;
-    speakCurrent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIdx, autoRead, phase, finished]);
+  // Read-aloud is 100% on-demand: the ONLY triggers are the speaker button
+  // and the R key — both explicit student actions. It never starts by
+  // itself, not on mount, not on question change, not from a stored
+  // setting.
 
   // ── Text-selection highlight capture ──
   const [pendingSelection, setPendingSelection] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -914,8 +912,6 @@ export function DigitalExamPlayer({
       remainingSeconds={remainingSeconds}
       answeredCount={answeredCount}
       total={total}
-      verification={verification}
-      adminEdited={adminEdited}
       onShortcuts={() => setShortcutsOpen(true)}
       onBack={() => (hasWork && !finished ? setExitOpen(true) : abandon())}
       onReview={() => setReviewOpen(true)}
@@ -940,10 +936,6 @@ export function DigitalExamPlayer({
               {subjectName} · Grade {grade}
               {examYear !== null ? ` · ${examYear}` : ""} · {total} questions · {durationMinutes} minutes
             </p>
-
-            <div className="mt-3">
-              <TrustBadge verification={verification} adminEdited={adminEdited} sourceMode={sourceMode} />
-            </div>
 
             <div className="mt-5 grid gap-2.5">
               {[
@@ -1279,12 +1271,7 @@ export function DigitalExamPlayer({
               currentIdx={currentIdx}
               highlights={highlights}
               onJump={goTo}
-              autoRead={autoRead}
-              onAutoReadChange={(v) => {
-                setAutoRead(v);
-                localStorage.setItem("learnyx.readAloud.auto", v ? "1" : "0");
-                if (!v) readAloud.stop();
-              }}
+              onSpeakCurrent={speakCurrent}
               readAloudSupported={readAloud.supported}
               rate={readAloud.rate}
               onRateChange={readAloud.setRate}
@@ -1311,8 +1298,6 @@ export function DigitalExamPlayer({
           checks={checks}
           paperTitle={paperTitle}
           subjectName={subjectName}
-          verification={verification}
-          adminEdited={adminEdited}
           onRetake={retake}
           onBackToHub={() => navigate("/exam-prep?tab=results")}
         />
@@ -1333,12 +1318,7 @@ export function DigitalExamPlayer({
             currentIdx={currentIdx}
             highlights={highlights}
             onJump={goTo}
-            autoRead={autoRead}
-            onAutoReadChange={(v) => {
-              setAutoRead(v);
-              localStorage.setItem("learnyx.readAloud.auto", v ? "1" : "0");
-              if (!v) readAloud.stop();
-            }}
+            onSpeakCurrent={speakCurrent}
             readAloudSupported={readAloud.supported}
             rate={readAloud.rate}
             onRateChange={readAloud.setRate}
@@ -1461,8 +1441,6 @@ function PlayerShell({
   remainingSeconds,
   answeredCount,
   total,
-  verification,
-  adminEdited,
   onBack,
   onReview,
   onSubmit,
@@ -1482,8 +1460,6 @@ function PlayerShell({
   remainingSeconds: number;
   answeredCount: number;
   total: number;
-  verification: string | null;
-  adminEdited: boolean;
   onBack: () => void;
   onReview: () => void;
   onSubmit: () => void;
@@ -1521,9 +1497,6 @@ function PlayerShell({
                 {isExam ? "Exam mode" : "Practice mode"} · {subjectName} · Grade {grade}
                 {examYear !== null ? ` · ${examYear}` : ""}
               </p>
-              <span className="hidden sm:inline-flex">
-                <TrustBadge verification={verification} adminEdited={adminEdited} compact />
-              </span>
             </div>
           </div>
 
@@ -1661,8 +1634,6 @@ function ResultsScreen({
   checks,
   paperTitle,
   subjectName,
-  verification,
-  adminEdited,
   onRetake,
   onBackToHub,
 }: {
@@ -1686,8 +1657,6 @@ function ResultsScreen({
   checks: Record<number, "correct" | "wrong">;
   paperTitle: string;
   subjectName: string;
-  verification: string | null;
-  adminEdited: boolean;
   onRetake: () => void;
   onBackToHub: () => void;
 }) {
@@ -1708,7 +1677,6 @@ function ResultsScreen({
           <p className="type-caption font-bold uppercase tracking-wider text-amber-300">
             {isExam ? "Exam complete" : "Practice session complete"}
           </p>
-          <TrustBadge verification={verification} adminEdited={adminEdited} />
         </div>
         {autoSubmitted && (
           <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-rose-400/30 bg-rose-400/[0.07] p-3">

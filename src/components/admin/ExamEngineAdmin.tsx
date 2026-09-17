@@ -711,6 +711,7 @@ function ReportsSection() {
 
 function QueueSection() {
   const overview = useQuery(api.examQuality.adminExamOverview, {});
+  const autopilot = useQuery(api.examQuality.libraryAutopilotStatus, {});
   const jobs = useQuery(api.examQuality.adminListQueue, {});
   const enqueueAll = useMutation(api.examQuality.enqueueBatchDigitization);
   const retryFailed = useMutation(api.examQuality.adminRetryFailedJobs);
@@ -769,15 +770,67 @@ function QueueSection() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Autopilot — the library converts itself. This panel is a window
+          onto a system that runs whether or not this console is open. */}
+      <div className="glass-panel rounded-2xl border border-emerald-400/20 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-extrabold">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+              </span>
+              Library autopilot — ON
+            </h3>
+            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+              Every past exam is queued for automatic digitization (new uploads
+              included), any open Learnyx tab converts queued papers when the
+              platform is idle, and transient failures auto-retry. Students open
+              ready papers — zero wait.
+            </p>
+          </div>
+          {autopilot && (
+            <div className="text-right">
+              <p className="text-2xl font-black tabular-nums text-emerald-300">
+                {autopilot.coveragePct}%
+              </p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                library digital
+              </p>
+            </div>
+          )}
+        </div>
+        {autopilot && (
+          <>
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all"
+                style={{ width: `${autopilot.coveragePct}%` }}
+              />
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <MiniStat label="Papers" value={autopilot.libraryTotal} tone="text-foreground" />
+              <MiniStat label="Digital" value={autopilot.ready} tone="text-emerald-300" />
+              <MiniStat label="In flight" value={autopilot.queued + autopilot.running} tone="text-sky-300" />
+              <MiniStat label="Need attention" value={autopilot.failed} tone="text-rose-300" />
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground/70">
+              {autopilot.questionTotal.toLocaleString()} questions transcribed across the digital library.
+            </p>
+          </>
+        )}
+      </div>
+
       <div className="glass-panel rounded-2xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="flex items-center gap-2 text-sm font-extrabold">
-              <Sparkles className="size-4 text-amber-300" /> Batch digitization
+              <Sparkles className="size-4 text-amber-300" /> Manual controls
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Pre-convert the whole library so students never wait on a live conversion.
-              Free-tier AI stays safe: at most {overview?.queue.maxConcurrent ?? 2} conversions run
+              Force a library scan or run a worker in THIS tab. The autopilot keeps
+              the queue full on its own — these are for speeding it up or
+              investigating. At most {overview?.queue.maxConcurrent ?? 2} conversions run
               platform-wide, students always jump the line, and the worker paces itself.
             </p>
           </div>

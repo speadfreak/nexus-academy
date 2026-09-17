@@ -76,7 +76,7 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/exam-prep",
     title: "Digital Past Exams",
     description:
-      "Every past paper turns itself into a real digital exam: navigator, flags, highlights, read-aloud for accessibility, instant scoring in Practice and a strict clock in Exam mode.",
+      "Every past paper is already a real digital exam before you open it — navigator, flags, highlights, instant scoring in Practice and a strict clock in Exam mode. Read-aloud is there when you want it: just tap the speaker or press R.",
     icon: "🎓",
   },
   {

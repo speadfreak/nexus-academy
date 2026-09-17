@@ -74,6 +74,25 @@ export const insertContentItem = internalMutation({
       originalFileUrl: args.originalFileUrl,
       createdAt: Date.now(),
     });
+
+    // ── Exam autopilot: future uploads convert themselves ──
+    // The moment a past exam enters the library it lands in the conversion
+    // queue (batch priority). Any open Learnyx tab picks it up when the
+    // platform is idle, so the FIRST student to open it already finds the
+    // digital paper ready. The 10-minute cron tick backstops this hook for
+    // any insertion path that bypasses insertContentItem (seed scripts).
+    if (args.contentType === "past_exam") {
+      await ctx.db.insert("examConversionJobs", {
+        contentId: id,
+        priority: "batch",
+        status: "queued",
+        attempts: 0,
+        enqueuedBy: args.uploadedBy,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+
     return id;
   },
 });

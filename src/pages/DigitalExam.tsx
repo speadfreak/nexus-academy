@@ -1,23 +1,28 @@
 // DigitalExam — /exam-prep/digital/:contentId?mode=practice|exam
 //
-// The auto-conversion system. When a student opens ANY past paper here,
-// this page:
-//   1. Claims a conversion slot through the platform rate guard. When the
-//      free-tier AI budget is saturated (too many concurrent conversions),
-//      the student sees an honest live queue position and auto-starts the
-//      moment a slot frees — the AI provider never gets stampeded.
-//   2. Extracts the PDF text in the student's browser (pdf.js) and streams
-//      page-attributed chunks to the AI transcription action.
-//   3. SCANNED PAPERS: when the PDF has no text layer, the pipeline now
-//      switches automatically to page-image OCR — every page is rendered
-//      to a JPEG and read by a vision model. No more dead end.
-//   4. Auto-lands on the fully digital player the moment the paper flips
-//      ready. Every future visit is instant (cached conversion).
+// The auto-conversion system, inside the ALWAYS-READY autopilot:
+//   • The library autopilot (cron tick + any open Learnyx tab + admin
+//     worker) pre-converts every paper ahead of demand, so students
+//     normally land here on an ALREADY-ready paper — the player mounts
+//     instantly, zero wait.
+//   • If a paper somehow isn't ready yet (brand-new upload, nobody online),
+//     opening it AUTO-STARTS the conversion immediately at student
+//     priority — no button, no click. The page:
+//       1. Claims a conversion slot through the platform rate guard. When
+//          the free-tier AI budget is saturated, the student sees an honest
+//          live queue position and auto-starts the moment a slot frees.
+//       2. Extracts the PDF text in the student's browser (pdf.js) and
+//          streams page-attributed chunks to the AI transcription action.
+//       3. SCANNED PAPERS: when the PDF has no text layer, the pipeline
+//          switches automatically to page-image OCR — every page is
+//          rendered to a JPEG and read by a vision model. No dead end.
+//       4. Auto-lands on the fully digital player the moment the paper
+//          flips ready. Every future visit is instant (cached conversion).
 //
 // Honesty everywhere: the pipeline explains that questions are transcribed
-// — never invented — and that answers/explanations are AI-suggested. Every
-// ready paper starts "AI-digitized · unverified" until an admin verifies
-// it in the Exam Engine console.
+// — never invented — and that answers/explanations are AI-suggested. No
+// trust badges are shown to students; QC is silent (admin console +
+// in-player reports).
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -101,6 +106,7 @@ export default function DigitalExam() {
   // viewer (and is reused by the OCR path without a second fetch).
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const runningRef = useRef(false);
+  const autoStartRef = useRef(false);
 
   // ── Resolve the PDF URL (premium papers go through the server gate) ──
   const resolveUrl = useCallback(async (): Promise<string | null> => {
@@ -245,6 +251,18 @@ export default function DigitalExam() {
     return digital.questions as DigitalQuestion[];
   }, [digital]);
 
+  // ── AUTO-START: an unconverted paper starts converting the moment this
+  // page opens — student priority, no button, no click. The library
+  // autopilot (cron tick + crowd workers + admin console) normally has
+  // every paper ready long before anyone arrives; this is the last line
+  // of defense for a brand-new upload on a quiet day.
+  useEffect(() => {
+    if (digital === null && content?.item && !autoStartRef.current && !premiumWall) {
+      autoStartRef.current = true;
+      void runConversion();
+    }
+  }, [digital, content, premiumWall, runConversion]);
+
   // ── Render states ──
   if (!contentId) {
     return <NotFoundShell message="No paper specified." />;
@@ -301,9 +319,6 @@ export default function DigitalExam() {
         questions={playerQuestions}
         pdfUrl={pdfUrl}
         pageCount={digital!.pageCount ?? item.pageCount ?? null}
-        verification={digital!.verification}
-        adminEdited={digital!.adminEdited}
-        sourceMode={digital!.sourceMode}
       />
     );
   }
@@ -373,8 +388,9 @@ export default function DigitalExam() {
               <Loader2 className="mx-auto size-8 animate-spin text-amber-300" />
               <h2 className="mt-4 type-h2">Converting this paper right now</h2>
               <p className="mx-auto mt-2 max-w-md type-body text-muted-foreground">
-                Another student just digitized it — you'll jump straight into the digital
-                paper the moment it's ready. This screen updates by itself.
+                Learnyx's exam autopilot is digitizing it this second — you'll jump
+                straight into the digital paper the moment it's ready. This screen
+                updates by itself.
               </p>
               <Button variant="outline" asChild className="interactive-press mt-5 gap-2">
                 <Link to="/exam-prep?tab=papers">
@@ -459,12 +475,13 @@ function PipelineCard({
             {mode === "exam" ? "Exam mode" : "Practice mode"} · fully digital
           </p>
           <p className="mt-1 type-caption leading-relaxed text-muted-foreground">
-            One first-time step: this page turns the PDF into a real digital paper —
-            every question, option and answer — and remembers it for every student
-            after you. Takes under a minute on most papers.
+            Most papers are already digital before you arrive — Learnyx converts the
+            whole library in the background. This one isn't ready yet, so it's
+            converting right now (you're first in line) and every student after you
+            gets it instantly.
           </p>
           <Button onClick={onStart} size="lg" className="interactive-press mt-4 w-full gap-2 sm:w-auto">
-            <Wand2 className="size-4" /> Convert & start
+            <Wand2 className="size-4" /> Convert now
           </Button>
         </div>
       )}

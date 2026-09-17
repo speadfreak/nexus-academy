@@ -72,4 +72,16 @@ crons.weekly(
   internal.adminDigest.sendWeeklyBusinessDigest,
 );
 
+// Every 10 minutes: the exam-library autopilot. Ensures EVERY past-exam
+// paper has a digital conversion queued/done — new uploads included — and
+// auto-retries transient conversion failures (bounded). Together with the
+// crowd worker (any open Learnyx tab converts idle-capacity jobs) and the
+// student auto-start, this is what makes every paper digital before a
+// student opens it. See src/convex/examAutopilot.ts.
+crons.interval(
+  "exam-library-autopilot",
+  { minutes: 10 },
+  internal.examAutopilot.autoEnqueueTick,
+);
+
 export default crons;

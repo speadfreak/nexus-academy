@@ -54,6 +54,10 @@ export async function runPaperConversion(
   onProgress?.({ stage: "fetching" });
   let claim = (await convex.mutation(api.examPrepDigital.beginDigitization, {
     contentId,
+    // Batch claims (admin worker + crowd autopilot) never bump the job to
+    // student priority — pre-conversion work must never outrank a student
+    // who is actively waiting on this exact paper.
+    asBatch: batch,
   })) as { kind: string; digitalPaperId?: string; ahead?: number };
 
   while (claim.kind === "queued") {
