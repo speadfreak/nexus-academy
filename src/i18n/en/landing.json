@@ -32,18 +32,71 @@
     "sectionTitle2": "A study system.",
     "sectionSubtitle": "An adaptive learning engine — not a website. Plans build your roadmap, flashcards find your weaknesses, notes answer your questions, and the calendar runs your day. Every piece feeds the next.",
     "features": [
-      { "title": "AI tutor that knows your syllabus", "description": "AI-powered tutor grounded in the real curriculum. It remembers your stream, your hard subjects and every conversation.", "tag": "tutor" },
-      { "title": "Quick-check quizzes", "description": "AI writes exam-style questions from your subject's topics. Answer one at a time, get instant feedback, watch scores trend on your journey.", "tag": "quizzes" },
-      { "title": "AI Study Commander", "description": "Tell Learnyx your exam date and available study time. It builds a week-by-week roadmap with exam-critical topics first, tracks whether you're on track, and reorganizes the plan if you fall behind.", "tag": "plans" },
-      { "title": "Focus timer + streaks", "description": "Log every session. Streaks, hours and per-subject history build up on your dashboard — and reminders nudge you before the streak breaks.", "tag": "focus" },
-      { "title": "Notes with AI enhancement", "description": "Write messy notes, tap Enhance, and the AI restructures them into clean study material. Ask My Notes searches everything you've written and answers from your own notes.", "tag": "notes" },
-      { "title": "Study-vibe sound mixer", "description": "25 synthesized ambient tracks across 6 categories, plus classical pieces by Bach and Mozart. Layer multiple sounds, save custom mixes, or paste a YouTube study playlist.", "tag": "vibe" },
-      { "title": "Full mock exams under real conditions", "description": "AI generates ~340 original questions across all 6 EHEEE subjects — 50 min per section, no pausing, auto-graded per subject with progress tracking across attempts.", "tag": "mock-exam" },
-      { "title": "Study squads", "description": "Private groups with a shared invite code — live video rooms, group chat, and a weekly leaderboard that ranks real study effort, not guesswork.", "tag": "groups" },
-      { "title": "Levels & achievements", "description": "Real XP for real study — streaks, badges, and a level that actually reflects the work you've put in, not just time spent.", "tag": "achievements" },
-      { "title": "Smart flashcards with spaced repetition", "description": "Generate decks from any textbook page while you read. Smart Spaced Repetition schedules each card's next review. Weakness Hunter finds what you keep forgetting. Exam Attack mode tests you under pressure.", "tag": "flashcards" },
-      { "title": "Your journey, tracked honestly", "description": "Real progress charts, quiz trends, and the connections between topics across your subjects — no vanity metrics, just where you actually are.", "tag": "journey" },
-      { "title": "Calendar as your daily OS", "description": "Today's Mission shows what to study and for how long. Exam countdown ticks down to your next test. Study blocks from your AI plan land here automatically, with daily study load per subject.", "tag": "calendar" }
+      {
+        "title": "AI tutor that knows your syllabus",
+        "description": "AI-powered tutor grounded in the real curriculum. It remembers your stream, your hard subjects and every conversation.",
+        "tag": "tutor"
+      },
+      {
+        "title": "Every past exam, fully digital",
+        "description": "Past papers turn themselves into real digital exams — question navigator, flags, highlights, read-aloud for accessibility, instant scoring in Practice and a strict exam clock. No more squinting at PDFs.",
+        "tag": "digital-exams"
+      },
+      {
+        "title": "Quick-check quizzes",
+        "description": "AI writes exam-style questions from your subject's topics. Answer one at a time, get instant feedback, watch scores trend on your journey.",
+        "tag": "quizzes"
+      },
+      {
+        "title": "AI Study Commander",
+        "description": "Tell Learnyx your exam date and available study time. It builds a week-by-week roadmap with exam-critical topics first, tracks whether you're on track, and reorganizes the plan if you fall behind.",
+        "tag": "plans"
+      },
+      {
+        "title": "Focus timer + streaks",
+        "description": "Log every session. Streaks, hours and per-subject history build up on your dashboard — and reminders nudge you before the streak breaks.",
+        "tag": "focus"
+      },
+      {
+        "title": "Notes with AI enhancement",
+        "description": "Write messy notes, tap Enhance, and the AI restructures them into clean study material. Ask My Notes searches everything you've written and answers from your own notes.",
+        "tag": "notes"
+      },
+      {
+        "title": "Study-vibe sound mixer",
+        "description": "25 synthesized ambient tracks across 6 categories, plus classical pieces by Bach and Mozart. Layer multiple sounds, save custom mixes, or paste a YouTube study playlist.",
+        "tag": "vibe"
+      },
+      {
+        "title": "Full mock exams under real conditions",
+        "description": "AI generates ~340 original questions across all 6 EHEEE subjects — 50 min per section, no pausing, auto-graded per subject with progress tracking across attempts.",
+        "tag": "mock-exam"
+      },
+      {
+        "title": "Study squads",
+        "description": "Private groups with a shared invite code — live video rooms, group chat, and a weekly leaderboard that ranks real study effort, not guesswork.",
+        "tag": "groups"
+      },
+      {
+        "title": "Levels & achievements",
+        "description": "Real XP for real study — streaks, badges, and a level that actually reflects the work you've put in, not just time spent.",
+        "tag": "achievements"
+      },
+      {
+        "title": "Smart flashcards with spaced repetition",
+        "description": "Generate decks from any textbook page while you read. Smart Spaced Repetition schedules each card's next review. Weakness Hunter finds what you keep forgetting. Exam Attack mode tests you under pressure.",
+        "tag": "flashcards"
+      },
+      {
+        "title": "Your journey, tracked honestly",
+        "description": "Real progress charts, quiz trends, and the connections between topics across your subjects — no vanity metrics, just where you actually are.",
+        "tag": "journey"
+      },
+      {
+        "title": "Calendar as your daily OS",
+        "description": "Today's Mission shows what to study and for how long. Exam countdown ticks down to your next test. Study blocks from your AI plan land here automatically, with daily study load per subject.",
+        "tag": "calendar"
+      }
     ],
     "aiTutor": {
       "title": "AI Tutor",
@@ -93,9 +146,21 @@
     "title": "From sign-in to exam room in three steps",
     "subtitle": "No setup, no waiting. Pick your stream and grade, and you're studying.",
     "steps": [
-      { "step": "01", "title": "Sign in and pick your stream", "description": "Create an account in seconds — email, Google or guest. Choose natural, social or common and the AI organizes your dashboard around your exam subjects." },
-      { "step": "02", "title": "Study with the companion", "description": "Search the library, open past papers, chat with the tutor, run quizzes, plan your weeks and pin notes — every action feeds your real progress." },
-      { "step": "03", "title": "Watch your journey", "description": "Streaks, hours, quiz scores and topic completion, charted honestly. Premium unlocks past exams, plans and unlimited tutoring." }
+      {
+        "step": "01",
+        "title": "Sign in and pick your stream",
+        "description": "Create an account in seconds — email, Google or guest. Choose natural, social or common and the AI organizes your dashboard around your exam subjects."
+      },
+      {
+        "step": "02",
+        "title": "Study with the companion",
+        "description": "Search the library, open past papers, chat with the tutor, run quizzes, plan your weeks and pin notes — every action feeds your real progress."
+      },
+      {
+        "step": "03",
+        "title": "Watch your journey",
+        "description": "Streaks, hours, quiz scores and topic completion, charted honestly. Premium unlocks past exams, plans and unlimited tutoring."
+      }
     ],
     "step1": {
       "title": "Sign up free",

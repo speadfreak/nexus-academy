@@ -15,6 +15,7 @@ import {
   Target,
   TrendingUp,
   Users,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router";
@@ -34,6 +35,12 @@ const TOOLS: Tool[] = [
     title: "Textbook Library",
     description: "Every textbook, past exam, and worksheet — organized by subject, grade, and unit. Search, bookmark, and read in-app with the PDF reader.",
     href: "/library",
+  },
+  {
+    icon: Wand2,
+    title: "Digital Past Exams",
+    description: "Every past paper plays like a real digital exam — navigator, flags, highlights, read-aloud accessibility, instant Practice scoring and a strict Exam clock. The PDF converts itself on first open.",
+    href: "/exam-prep",
   },
   {
     icon: Brain,

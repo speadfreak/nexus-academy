@@ -24,6 +24,7 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowRight,
+  BadgeCheck,
   BookOpen,
   Brain,
   CalendarDays,
@@ -37,6 +38,7 @@ import {
   Medal,
   Search,
   Share2,
+  ShieldAlert,
   Sparkles,
   Swords,
   Target,
@@ -95,6 +97,7 @@ type HubTab = "overview" | "papers" | "practice" | "results";
 interface DigitalStatus {
   status: "processing" | "ready" | "failed";
   questionCount: number;
+  verification?: string | null;
 }
 
 // ─── Small helpers ──────────────────────────────────────────────────────
@@ -508,12 +511,25 @@ function PaperCard({
         )}
       </div>
 
-      {/* Digital conversion badge — real state from the engine */}
+      {/* Digital conversion badge — real state from the engine, with the
+          honest trust level: verified (admin-checked) vs AI-unverified. */}
       {digital?.status === "ready" ? (
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 type-caption font-bold text-amber-300">
             <Sparkles className="size-3" /> Digital · {digital.questionCount} Qs
           </span>
+          {digital.verification === "verified" ? (
+            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 type-caption font-bold text-emerald-300">
+              <BadgeCheck className="size-3" /> Verified
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-1.5 py-0.5 type-caption text-muted-foreground"
+              title="Transcribed by AI and not yet human-verified. Report anything that looks wrong from inside the player."
+            >
+              <ShieldAlert className="size-3" /> AI · unverified
+            </span>
+          )}
         </div>
       ) : digital?.status === "processing" ? (
         <div className="mt-2">
@@ -1197,7 +1213,11 @@ export default function ExamPrep() {
   const digitalStatuses = useMemo(() => {
     const map = new Map<string, DigitalStatus>();
     for (const row of digitalStatusRows ?? []) {
-      map.set(row.contentId, { status: row.status as DigitalStatus["status"], questionCount: row.questionCount });
+      map.set(row.contentId, {
+        status: row.status as DigitalStatus["status"],
+        questionCount: row.questionCount,
+        verification: row.verification,
+      });
     }
     return map;
   }, [digitalStatusRows]);

@@ -44,6 +44,7 @@ import {
   Bell,
   MessageCircle,
   Trophy,
+  Wand2,
 } from "lucide-react";
 import { useState, useEffect as useEff } from "react";
 import { Link, useNavigate } from "react-router";
@@ -158,12 +159,12 @@ const STATS = [
 ];
 
 const COMPANION_ICONS = [
-  Brain, HelpCircle, Map, Timer, NotebookPen, AudioLines, GraduationCap, Users,
+  Brain, Wand2, HelpCircle, Map, Timer, NotebookPen, AudioLines, GraduationCap, Users,
   Trophy, Layers, TrendingUp, CalendarDays,
 ];
 
 const COMPANION_TAGS = [
-  "tutor", "quizzes", "plans", "focus", "notes", "vibe", "mock-exam", "groups",
+  "tutor", "digital-exams", "quizzes", "plans", "focus", "notes", "vibe", "mock-exam", "groups",
   "achievements", "flashcards", "journey", "calendar",
 ];
 

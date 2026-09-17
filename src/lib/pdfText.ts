@@ -124,6 +124,9 @@ export interface PdfChunk {
   text: string;
   /** Human-readable page range for the pipeline UI, e.g. "pages 3–5". */
   pageRange: string;
+  /** 1-based inclusive page bounds — powers sourcePage fallbacks. */
+  startPage: number;
+  endPage: number;
 }
 
 /**
@@ -145,6 +148,8 @@ export function chunkPages(pages: string[], targetChars = 5000): PdfChunk[] {
       text: buffer.join("\n\n"),
       pageRange:
         startPage === endPage ? `page ${startPage}` : `pages ${startPage}–${endPage}`,
+      startPage,
+      endPage,
     });
     buffer = [];
     bufferLen = 0;
@@ -158,6 +163,8 @@ export function chunkPages(pages: string[], targetChars = 5000): PdfChunk[] {
         index: chunks.length,
         text: pageText,
         pageRange: `page ${i + 1}`,
+        startPage: i + 1,
+        endPage: i + 1,
       });
       startPage = i + 2;
       continue;
@@ -185,4 +192,66 @@ export function splitSentences(text: string): string[] {
     .split(/(?<=[.!?;:])\s+|(?<=\d)\.\s+/g)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+// ─── Page markers (page attribution for AI transcription) ────────────────
+
+/**
+ * Join per-page texts with explicit "=== PAGE N ===" markers so the AI can
+ * attribute each question to its page (the sourcePage field). The markers
+ * are a defined part of the transcription prompt contract.
+ */
+export function withPageMarkers(pages: string[]): string {
+  return pages
+    .map((text, i) => `=== PAGE ${i + 1} ===\n${text}`)
+    .join("\n\n");
+}
+
+// ─── Page-image rendering (vision OCR + original-page viewer) ────────────
+
+/**
+ * Render one PDF page to a JPEG data URL — the vision path for scanned
+ * papers (no text layer) and the player's "View original page" viewer.
+ * `maxWidth` caps memory/Groq payload size; 1400px keeps exam body text
+ * legible for OCR while staying well under provider image budgets.
+ */
+export async function renderPdfPageImage(
+  doc: PdfjsDocument,
+  pageNumber: number,
+  maxWidth = 1400,
+): Promise<string> {
+  const page = await doc.getPage(pageNumber);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(2, Math.max(1, maxWidth / base.width));
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Couldn't create a canvas to render the page.");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL("image/jpeg", 0.78);
+}
+
+/** Load a PDF document once, reuse it for many page renders. */
+export async function loadPdfDoc(url: string): Promise<PdfjsDocument> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Couldn't fetch the paper (${res.status}). Check your connection and retry.`);
+  }
+  const data = await res.arrayBuffer();
+  return pdfjs.getDocument({ data }).promise as unknown as PdfjsDocument;
+}
+
+/** Minimal structural type so callers don't need the raw pdfjs types. */
+export interface PdfjsDocument {
+  numPages: number;
+  getPage(n: number): Promise<{
+    getViewport(opts: { scale: number }): { width: number; height: number };
+    render(opts: { canvasContext: CanvasRenderingContext2D; viewport: unknown }): {
+      promise: Promise<void>;
+    };
+  }>;
 }

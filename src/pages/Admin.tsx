@@ -6,6 +6,7 @@
 import { api } from "@/convex/_generated/api";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Wand2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -75,6 +76,7 @@ import { AdminSubscriptionsSection } from "@/components/admin/AdminSubscriptions
 import { AdminTestimonialsSection } from "@/components/admin/AdminTestimonialsSection";
 import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
 import { PaymentReviewsSection } from "@/components/admin/PaymentReviewsSection";
+import { ExamEngineAdmin } from "@/components/admin/ExamEngineAdmin";
 import { StatCard2 } from "@/components/admin/StatCard2";
 import { ContactGroupPanel } from "@/components/admin/ContactGroupPanel";
 import { AdminCoverageSection } from "@/components/admin/AdminCoverageSection";
@@ -175,6 +177,7 @@ const ADMIN_TABS = [
   { id: "broadcast", label: "Broadcast", index: "16", icon: Send },
   { id: "system", label: "System", index: "17", icon: Plug },
   { id: "audit", label: "Audit Log", index: "18", icon: ScrollText },
+  { id: "examengine", label: "Exam Engine", index: "19", icon: Wand2 },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -2487,6 +2490,11 @@ export default function Admin() {
             {/* ══════ AUDIT LOG ══════ */}
             {tab === "audit" && (
               <AdminAuditLogSection />
+            )}
+
+            {/* ══════ EXAM ENGINE (digital past-paper QC) ══════ */}
+            {tab === "examengine" && (
+              <ExamEngineAdmin />
             )}
           </main>
         </div>

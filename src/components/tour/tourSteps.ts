@@ -73,6 +73,14 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     step: 9,
+    route: "/exam-prep",
+    title: "Digital Past Exams",
+    description:
+      "Every past paper turns itself into a real digital exam: navigator, flags, highlights, read-aloud for accessibility, instant scoring in Practice and a strict clock in Exam mode.",
+    icon: "🎓",
+  },
+  {
+    step: 10,
     route: "/study-cards",
     title: "Study Cards",
     description:
@@ -80,7 +88,7 @@ export const TOUR_STEPS: TourStep[] = [
     icon: "📄",
   },
   {
-    step: 10,
+    step: 11,
     route: "/aptitude-hub",
     title: "Aptitude Hub",
     description:
@@ -88,21 +96,21 @@ export const TOUR_STEPS: TourStep[] = [
     icon: "🧠",
   },
   {
-    step: 11,
+    step: 12,
     route: "/journey",
     title: "Your Journey",
     description: "Track your progress across subjects with stats and streaks.",
     icon: "🚀",
   },
   {
-    step: 12,
+    step: 13,
     route: "/achievements",
     title: "Achievements",
     description: "Earn XP, level up, and collect badges as you study.",
     icon: "🏆",
   },
   {
-    step: 13,
+    step: 14,
     route: "/groups",
     title: "Squads",
     description:
@@ -110,7 +118,7 @@ export const TOUR_STEPS: TourStep[] = [
     icon: "👥",
   },
   {
-    step: 14,
+    step: 15,
     route: "/mock-exam",
     title: "Mock Exams",
     description:
@@ -118,7 +126,7 @@ export const TOUR_STEPS: TourStep[] = [
     icon: "🎓",
   },
   {
-    step: 15,
+    step: 16,
     route: "/settings",
     title: "Settings",
     description:

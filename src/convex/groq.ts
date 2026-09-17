@@ -49,6 +49,12 @@ export interface GroqCallOptions {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * Vision input — base64 data URLs ("data:image/jpeg;base64,…") sent as
+   * image_url content parts BEFORE the text part. Only vision models
+   * (e.g. meta-llama/llama-4-scout-17b-16e-instruct) accept these.
+   */
+  images?: string[];
 }
 
 /**
@@ -60,7 +66,7 @@ export async function callGroq(ctx: ActionCtx, opts: GroqCallOptions): Promise<s
   const model = opts.model || DEFAULT_MODEL;
 
   // Build OpenAI-compatible messages array
-  const messages: { role: string; content: string }[] = [];
+  const messages: { role: string; content: unknown }[] = [];
   messages.push({ role: "system", content: opts.systemPrompt });
 
   if (opts.history) {
@@ -69,7 +75,15 @@ export async function callGroq(ctx: ActionCtx, opts: GroqCallOptions): Promise<s
     }
   }
 
-  messages.push({ role: "user", content: opts.userMessage });
+  if (opts.images && opts.images.length > 0) {
+    // Multimodal turn: image parts first, then the text part.
+    const parts: { type: string; image_url?: { url: string }; text?: string }[] = [];
+    for (const url of opts.images) parts.push({ type: "image_url", image_url: { url } });
+    parts.push({ type: "text", text: opts.userMessage });
+    messages.push({ role: "user", content: parts });
+  } else {
+    messages.push({ role: "user", content: opts.userMessage });
+  }
 
   const response = await fetch(GROQ_BASE, {
     method: "POST",
@@ -103,4 +117,12 @@ export async function callGroq(ctx: ActionCtx, opts: GroqCallOptions): Promise<s
 /** Model name for display / logging. */
 export function getModelName(): string {
   return DEFAULT_MODEL;
+}
+
+/**
+ * Vision model used for scanned-paper OCR (page images → questions).
+ * Overridable via the GROQ_VISION_MODEL env var / config key.
+ */
+export function getVisionModelName(): string {
+  return process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
 }

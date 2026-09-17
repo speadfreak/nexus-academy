@@ -2,19 +2,22 @@
 //
 // The auto-conversion system. When a student opens ANY past paper here,
 // this page:
-//   1. Resolves the PDF URL (premium papers pass the server-side
-//      subscription gate through contentAdmin.getDownloadUrl).
-//   2. Claims the conversion job on the backend (dedupe: ready papers
-//      replay instantly; in-flight conversions show a live reactive wait).
-//   3. Extracts the PDF text in the student's browser (pdf.js), streams
-//      page-aligned chunks to the AI transcription action, and shows a
-//      cinematic honest pipeline: pages read → questions transcribed.
+//   1. Claims a conversion slot through the platform rate guard. When the
+//      free-tier AI budget is saturated (too many concurrent conversions),
+//      the student sees an honest live queue position and auto-starts the
+//      moment a slot frees — the AI provider never gets stampeded.
+//   2. Extracts the PDF text in the student's browser (pdf.js) and streams
+//      page-attributed chunks to the AI transcription action.
+//   3. SCANNED PAPERS: when the PDF has no text layer, the pipeline now
+//      switches automatically to page-image OCR — every page is rendered
+//      to a JPEG and read by a vision model. No more dead end.
 //   4. Auto-lands on the fully digital player the moment the paper flips
 //      ready. Every future visit is instant (cached conversion).
 //
 // Honesty everywhere: the pipeline explains that questions are transcribed
-// — never invented — and that answers/explanations are AI-suggested.
-// Pure image scans (no text layer) fall back to the original PDF view.
+// — never invented — and that answers/explanations are AI-suggested. Every
+// ready paper starts "AI-digitized · unverified" until an admin verifies
+// it in the Exam Engine console.
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -24,6 +27,7 @@ import {
   ArrowRight,
   BookOpen,
   Check,
+  Clock3,
   FileText,
   FileWarning,
   Loader2,
@@ -41,10 +45,29 @@ import { Button } from "@/components/ui/button";
 import { Crown } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { DigitalQuestion } from "@/components/exam/DigitalExamPlayer";
-import { chunkPages, extractPdfTextPages } from "@/lib/pdfText";
+import {
+  chunkPages,
+  extractPdfTextPages,
+  loadPdfDoc,
+  renderPdfPageImage,
+  withPageMarkers,
+} from "@/lib/pdfText";
 import { cn } from "@/lib/utils";
 
-type PipelineStage = "idle" | "fetching" | "extracting" | "transcribing" | "done";
+type PipelineStage =
+  | "idle"
+  | "fetching"
+  | "extracting"
+  | "transcribing"
+  | "transcribing-vision"
+  | "queued"
+  | "done";
+
+// Polite pacing between AI calls (mirrors the backend constants — the
+// client keeps its own copy so the UI stays honest about what it does).
+const CHUNK_PACING_MS = 4_000;
+const PAGE_PACING_MS_VISION = 5_000;
+const QUEUE_POLL_MS = 6_000;
 
 export default function DigitalExam() {
   const { contentId } = useParams<{ contentId: string }>();
@@ -57,6 +80,7 @@ export default function DigitalExam() {
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const beginDigitization = useMutation(api.examPrepDigital.beginDigitization);
   const parsePaperChunk = useAction(api.examPrepDigital.parsePaperChunk);
+  const parsePaperPageImage = useAction(api.examPrepDigital.parsePaperPageImage);
 
   // The paper row — reactive: flips to ready even while we stream chunks.
   const digital = useQuery(
@@ -72,47 +96,71 @@ export default function DigitalExam() {
   const [pageProgress, setPageProgress] = useState({ page: 0, pageCount: 0 });
   const [chunkProgress, setChunkProgress] = useState({ chunk: 0, chunkCount: 0, questions: 0 });
   const [convertError, setConvertError] = useState<string | null>(null);
-  const [scannedFallback, setScannedFallback] = useState(false);
   const [premiumWall, setPremiumWall] = useState(false);
+  // Resolved PDF url for the session — powers the player's original-page
+  // viewer (and is reused by the OCR path without a second fetch).
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const runningRef = useRef(false);
-  const claimedRef = useRef(false);
 
   // ── Resolve the PDF URL (premium papers go through the server gate) ──
   const resolveUrl = useCallback(async (): Promise<string | null> => {
+    if (pdfUrl) return pdfUrl;
     if (!content?.item || !contentId) return null;
     if (content.item.isPremium) {
       try {
         const { url } = await getDownloadUrl({ contentId: contentId as never });
+        setPdfUrl(url);
         return url;
       } catch {
         setPremiumWall(true);
         return null;
       }
     }
+    setPdfUrl(content.item.fileUrl);
     return content.item.fileUrl;
-  }, [content, contentId, getDownloadUrl]);
+  }, [content, contentId, getDownloadUrl, pdfUrl]);
 
-  // ── The conversion pipeline ──
+  // Ready papers never ran the pipeline — still resolve the URL so the
+  // player's original-page viewer works.
+  const readyNeedsUrl = digital?.status === "ready" && !premiumWall;
+  useEffect(() => {
+    if (readyNeedsUrl && !pdfUrl) void resolveUrl();
+  }, [readyNeedsUrl, pdfUrl, resolveUrl]);
+
+  // ── The conversion pipeline (text path + vision path + queue wait) ──
   const runConversion = useCallback(async () => {
     if (!contentId || !content?.item || runningRef.current) return;
     runningRef.current = true;
     setConvertError(null);
-    setScannedFallback(false);
 
     try {
       setStage("fetching");
-      const claim = await beginDigitization({ contentId: contentId as never });
 
+      // ── Claim loop: waits in the platform queue when at capacity ──
+      let claim = await beginDigitization({ contentId: contentId as never });
+      let claimed = claim.kind === "claimed" ? claim : null;
+      const claimedPaperId = claim.kind === "claimed" ? claim.digitalPaperId : null;
       if (claim.kind === "ready" || claim.kind === "processing") {
-        // Reactive query lands us on the player/waiting screen — nothing to do.
         setStage("done");
-        return;
+        return; // reactive query takes over
       }
-      claimedRef.current = true;
-      const digitalPaperId = claim.digitalPaperId;
-      if (!digitalPaperId) throw new Error("Conversion claim failed.");
+      while (!claimed) {
+        if (claim.kind === "queued") {
+          setStage("queued");
+          await new Promise((r) => setTimeout(r, QUEUE_POLL_MS));
+          claim = await beginDigitization({ contentId: contentId as never });
+          if (claim.kind === "ready" || claim.kind === "processing") {
+            setStage("done");
+            return;
+          }
+          claimed = claim.kind === "claimed" ? claim : null;
+        } else {
+          break;
+        }
+      }
+      if (!claimed?.digitalPaperId) throw new Error("Conversion claim failed.");
+      const digitalPaperId = claimed.digitalPaperId;
 
-      setStage("fetching");
       const url = await resolveUrl();
       if (!url) return; // premium wall shown by resolveUrl
 
@@ -122,21 +170,39 @@ export default function DigitalExam() {
       );
 
       if (!extraction.hasTextLayer) {
-        setScannedFallback(true);
-        // Complete the empty job honestly — zero questions → backend records
-        // a clear failure so every visitor sees the same guidance.
-        await parsePaperChunk({
-          contentId: contentId as never,
-          digitalPaperId: digitalPaperId as never,
-          chunkIndex: 0,
-          chunkCount: 1,
-          pageCount: extraction.pageCount,
-          text: "",
-        });
+        // ── VISION PATH: scanned paper → read every page as an image ──
+        setStage("transcribing-vision");
+        const doc = await loadPdfDoc(url);
+        const pageCount = doc.numPages || extraction.pageCount;
+        let totalQuestions = 0;
+        for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+          setPageProgress({ page: pageNumber, pageCount });
+          const dataUrl = await renderPdfPageImage(doc, pageNumber);
+          try {
+            const res = await parsePaperPageImage({
+              contentId: contentId as never,
+              digitalPaperId: digitalPaperId as never,
+              pageNumber,
+              pageCount,
+              imageBase64: dataUrl,
+            });
+            totalQuestions += res.questionsFound;
+          } catch (err) {
+            // A failed page fails the paper honestly — the retry replaces
+            // the whole row, keeping the sequence guard consistent.
+            if (pageNumber === pageCount) throw err;
+            throw err;
+          }
+          setChunkProgress({ chunk: pageNumber, chunkCount: pageCount, questions: totalQuestions });
+          if (pageNumber < pageCount) {
+            await new Promise((r) => setTimeout(r, PAGE_PACING_MS_VISION));
+          }
+        }
         setStage("done");
         return;
       }
 
+      // ── TEXT PATH: page-attributed chunks through the text model ──
       const chunks = chunkPages(extraction.pages);
       setStage("transcribing");
       let totalQuestions = 0;
@@ -148,7 +214,10 @@ export default function DigitalExam() {
           chunkIndex: chunk.index,
           chunkCount: chunks.length,
           pageCount: extraction.pageCount,
-          text: chunk.text,
+          fallbackPage: chunk.startPage,
+          text: withPageMarkers(
+            extraction.pages.slice(chunk.startPage - 1, chunk.endPage),
+          ),
         });
         totalQuestions += res.questionsFound;
         setChunkProgress((prev) => ({ ...prev, questions: totalQuestions }));
@@ -156,7 +225,7 @@ export default function DigitalExam() {
         // minute; the action itself backs off on 429s, this keeps us from
         // getting there in the first place.
         if (chunk.index < chunks.length - 1) {
-          await new Promise((r) => setTimeout(r, 4_000));
+          await new Promise((r) => setTimeout(r, CHUNK_PACING_MS));
         }
       }
       setStage("done");
@@ -169,10 +238,7 @@ export default function DigitalExam() {
     } finally {
       runningRef.current = false;
     }
-  }, [beginDigitization, content, contentId, parsePaperChunk, resolveUrl]);
-
-  // ── Auto-retry: when the row is failed and the error was a chunk-level
-  //    Convex retry (sequence guard), the UI offers a Retry button instead.
+  }, [beginDigitization, content, contentId, parsePaperChunk, parsePaperPageImage, resolveUrl]);
 
   const playerQuestions = useMemo<DigitalQuestion[] | null>(() => {
     if (!digital || digital.status !== "ready" || !digital.questions) return null;
@@ -233,37 +299,47 @@ export default function DigitalExam() {
         durationMinutes={item.durationMinutes ?? 120}
         mode={mode}
         questions={playerQuestions}
+        pdfUrl={pdfUrl}
+        pageCount={digital!.pageCount ?? item.pageCount ?? null}
+        verification={digital!.verification}
+        adminEdited={digital!.adminEdited}
+        sourceMode={digital!.sourceMode}
       />
     );
   }
 
-  // ── Failed → honest failure + retry ──
+  // ── Failed → honest failure + the OCR escape hatch ──
   if (digital?.status === "failed") {
+    const canTryOcr = digital.sourceMode !== "vision";
     return (
       <PipelineShell>
         <div className="mx-auto max-w-xl rounded-3xl border border-rose-400/25 bg-rose-400/[0.04] p-8 text-center">
           <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-rose-400/15 text-rose-300">
-            {scannedFallback ? <ScanLine className="size-6" /> : <FileWarning className="size-6" />}
+            <FileWarning className="size-6" />
           </span>
-          <h2 className="mt-4 type-h2">
-            {scannedFallback ? "This paper is a scanned image" : "Conversion didn't make it"}
-          </h2>
+          <h2 className="mt-4 type-h2">Conversion didn't make it</h2>
           <p className="mt-2 type-body text-muted-foreground">
-            {scannedFallback
-              ? "This PDF has no selectable text layer, so its questions can't be auto-converted. You can still open it in the original reader — or try again if a text version appears."
-              : digital.error ?? convertError ?? "The transcription hit an unexpected error. Retrying usually fixes it."}
+            {digital.error ?? convertError ?? "The transcription hit an unexpected error. Retrying usually fixes it."}
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Button
-              onClick={() => {
-                setScannedFallback(false);
-                setConvertError(null);
-                void runConversion();
-              }}
+              onClick={() => void runConversion()}
               className="interactive-press gap-2"
             >
               <Wand2 className="size-4" /> Try again
             </Button>
+            {canTryOcr && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  void runConversion();
+                  toast.info("Reading every page as an image — this is slower but handles scans.");
+                }}
+                className="interactive-press gap-2"
+              >
+                <ScanLine className="size-4" /> Try page-image OCR
+              </Button>
+            )}
             <Button variant="outline" asChild className="interactive-press gap-2">
               <Link to={`/read/${contentId}`}>
                 <BookOpen className="size-4" /> Open the original PDF
@@ -277,7 +353,10 @@ export default function DigitalExam() {
 
   // ── Processing → pipeline UI (own run) or live wait (someone else's) ──
   if (digital?.status === "processing") {
-    const mine = digital.startedByMe && (stage === "fetching" || stage === "extracting" || stage === "transcribing" || (stage === "done" && !convertError));
+    const mine =
+      stage !== "idle" &&
+      stage !== "done" &&
+      digital.startedByMe;
     return (
       <PipelineShell>
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -288,7 +367,6 @@ export default function DigitalExam() {
               pageProgress={pageProgress}
               chunkProgress={chunkProgress}
               error={convertError}
-              totalChars={null}
             />
           ) : (
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center">
@@ -320,7 +398,6 @@ export default function DigitalExam() {
           pageProgress={pageProgress}
           chunkProgress={chunkProgress}
           error={convertError}
-          totalChars={null}
           onStart={() => void runConversion()}
           mode={mode}
         />
@@ -345,7 +422,6 @@ function PipelineCard({
   pageProgress: { page: number; pageCount: number };
   chunkProgress: { chunk: number; chunkCount: number; questions: number };
   error: string | null;
-  totalChars: string | null;
   onStart?: () => void;
   mode?: ExamMode;
 }) {
@@ -393,9 +469,30 @@ function PipelineCard({
         </div>
       )}
 
+      {/* Queue wait — the platform is protecting the shared AI budget */}
+      {stage === "queued" && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-5 rounded-2xl border border-sky-400/25 bg-sky-400/[0.05] p-4"
+        >
+          <div className="flex items-center gap-3">
+            <Clock3 className="size-5 shrink-0 animate-pulse text-sky-300" />
+            <div>
+              <p className="type-body font-bold">Waiting for a free conversion slot</p>
+              <p className="mt-0.5 type-caption leading-relaxed text-muted-foreground">
+                A few papers are being digitized right now, and Learnyx keeps AI usage
+                at a healthy pace so every conversion succeeds. You start automatically
+                — keep this page open.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Live steps */}
       <AnimatePresence>
-        {stage !== "idle" && (
+        {(stage === "fetching" || stage === "extracting" || stage === "transcribing" || stage === "transcribing-vision") && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -403,8 +500,13 @@ function PipelineCard({
           >
             {steps.slice(0, 3).map((s, i) => {
               const Icon = s.icon;
-              const isActive = i === activeStepIdx;
-              const isDone = activeStepIdx > i || stage === "done";
+              const isActive =
+                i === activeStepIdx ||
+                (s.key === "transcribing" && stage === "transcribing-vision");
+              const isDone =
+                (s.key === "fetching" && stage !== "fetching") ||
+                (s.key === "extracting" &&
+                  (stage === "transcribing" || stage === "transcribing-vision"));
               return (
                 <motion.div
                   key={s.key}
@@ -432,12 +534,16 @@ function PipelineCard({
                     {isActive ? <Loader2 className="size-4 animate-spin" /> : isDone ? <Check className="size-4" /> : <Icon className="size-4" />}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="type-body font-bold">{s.label}</p>
+                    <p className="type-body font-bold">
+                      {s.key === "transcribing" && stage === "transcribing-vision"
+                        ? "Reading pages as images (OCR)"
+                        : s.label}
+                    </p>
                     <p className="type-caption text-muted-foreground">
                       {s.key === "extracting" && isActive && pageProgress.pageCount > 0
                         ? `Page ${pageProgress.page} of ${pageProgress.pageCount}`
                         : s.key === "transcribing" && isActive && chunkProgress.chunkCount > 0
-                          ? `Section ${chunkProgress.chunk + 1} of ${chunkProgress.chunkCount} · ${chunkProgress.questions} question${chunkProgress.questions === 1 ? "" : "s"} so far`
+                          ? `${stage === "transcribing-vision" ? "Page" : "Section"} ${chunkProgress.chunk} of ${chunkProgress.chunkCount} · ${chunkProgress.questions} question${chunkProgress.questions === 1 ? "" : "s"} so far`
                           : s.key === "done" && isDone
                             ? "Opening your digital paper…"
                             : "…"}

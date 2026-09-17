@@ -1,4 +1,4 @@
-// DigitalExamPlayer — the fully digital exam experience.
+// DigitalExamPlayer — the fully digital exam experience. V2.
 //
 // One player, two honest modes:
 //   • Practice — untimed (elapsed clock + "No time limit"), per-question
@@ -8,16 +8,28 @@
 //     until submit, pre-submit review, auto-submit when the clock hits
 //     zero. Unanswered questions count as wrong, like the real sitting.
 //
-// Shared: question navigator with state coloring + jump, flag-for-review,
-// session text-selection highlights, slim progress bar, read-aloud
-// accessibility (sentence highlighting, rate control, auto-read),
-// keyboard ←/→, and real persistence to examPrepAttempts +
-// studySessions on finish (best-effort — a logging failure never blocks
-// the results screen).
+// V2 additions:
+//   • TRUST: every paper shows an honest "AI-digitized · unverified" badge
+//     until an admin verifies it; "Verified" once human-checked. Students
+//     report bad questions straight from the card — reports land in the
+//     Exam Engine console.
+//   • STRUCTURED questions (no options / workout / show-that): typed
+//     answers, Practice reveals the paper's own suggested answer for
+//     self-checking, Exam saves the written work. Never auto-scored —
+//     the results screen says so honestly.
+//   • ORIGINAL PAGE: every question carries its source page — a tap shows
+//     the real PDF page (figures, tables, maps are never silently lost).
+//   • ACCESSIBILITY: adjustable text size (persisted), full keyboard
+//     operation (1-8 options, ←/→ nav, F flag, N navigator, R read-aloud,
+//     +/- text size, ? help), timer uses role="timer".
+//   • Read-aloud with sentence highlighting; navigator with state colors;
+//     flag-for-review; session highlights; slim progress bar; keyboard
+//     ←/→; real persistence to examPrepAttempts + studySessions
+//     (best-effort — a logging failure never blocks the results screen).
 //
 // All copy is original. Learnyx dark/gold cinematic system throughout.
 
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -35,6 +47,7 @@ import {
   Lightbulb,
   ListChecks,
   Pause,
+  PenLine,
   Play,
   RotateCcw,
   Square,
@@ -63,17 +76,28 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import {
+  OriginalPageButton,
+  ReportIssueButton,
+  ShortcutsDialog,
+  TrustBadge,
+  type ReportState,
+} from "./DigitalExamPlayerParts";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
 export interface DigitalQuestion {
   number: number;
+  kind?: "mcq" | "structured";
   text: string;
   passage?: string;
   options: { label: string; text: string }[];
   answer?: string;
+  suggestedAnswer?: string;
   explanation?: string;
   topic?: string;
+  sourcePage?: number;
+  figureHint?: boolean;
 }
 
 export type ExamMode = "practice" | "exam";
@@ -93,6 +117,12 @@ interface DigitalExamPlayerProps {
   durationMinutes: number;
   mode: ExamMode;
   questions: DigitalQuestion[];
+  /** Session-resolved PDF url — powers the original-page viewer. */
+  pdfUrl?: string | null;
+  pageCount?: number | null;
+  verification?: string | null;
+  adminEdited?: boolean;
+  sourceMode?: string | null;
 }
 
 // ─── Small helpers ───────────────────────────────────────────────────────
@@ -120,6 +150,9 @@ function localDateStr(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+const isStructured = (q: DigitalQuestion) =>
+  q.kind === "structured" || q.options.length === 0;
+
 // ─── Spoken-text sentence highlighting ───────────────────────────────────
 
 /**
@@ -131,14 +164,16 @@ function SentenceText({
   text,
   activeSentence,
   className,
+  style,
 }: {
   text: string;
   activeSentence: number | null;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   const sentences = useMemo(() => splitSentences(text), [text]);
   return (
-    <span className={className}>
+    <span className={className} style={style}>
       {sentences.map((s, i) => (
         <span
           key={`${i}-${s.slice(0, 8)}`}
@@ -193,6 +228,7 @@ function OptionButton({
   state, // "idle" | "correct" | "wrong" | "dim" (practice reveals)
   disabled,
   onSelect,
+  style,
 }: {
   label: string;
   text: string;
@@ -200,12 +236,14 @@ function OptionButton({
   state: "idle" | "correct" | "wrong" | "dim";
   disabled: boolean;
   onSelect: () => void;
+  style?: React.CSSProperties;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onSelect}
+      style={style}
       className={cn(
         "interactive-press group flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition",
         state === "idle" &&
@@ -231,7 +269,9 @@ function OptionButton({
       >
         {state === "correct" ? <Check className="size-4" /> : state === "wrong" ? <X className="size-4" /> : label}
       </span>
-      <span className="min-w-0 pt-1 text-sm leading-relaxed text-foreground/90">{text}</span>
+      <span className="min-w-0 pt-1 leading-relaxed text-foreground/90" style={{ fontSize: "0.9rem" }}>
+        {text}
+      </span>
     </button>
   );
 }
@@ -253,6 +293,7 @@ function paletteTileClass(state: QState, active: boolean): string {
 function NavigatorBody({
   questions,
   answers,
+  structuredAnswers,
   flagged,
   currentIdx,
   highlights,
@@ -263,9 +304,12 @@ function NavigatorBody({
   rate,
   onRateChange,
   onRemoveHighlight,
+  fontScale,
+  onFontScale,
 }: {
   questions: DigitalQuestion[];
   answers: Record<number, string | null>;
+  structuredAnswers: Record<number, string>;
   flagged: Record<number, boolean>;
   currentIdx: number;
   highlights: Highlight[];
@@ -276,13 +320,17 @@ function NavigatorBody({
   rate: number;
   onRateChange: (r: number) => void;
   onRemoveHighlight: (h: Highlight) => void;
+  fontScale: number;
+  onFontScale: (v: number) => void;
 }) {
-  const answeredCount = questions.filter((q) => answers[q.number]).length;
+  const isAnswered = (n: number) =>
+    Boolean(answers[n]) || (structuredAnswers[n]?.trim().length ?? 0) > 0;
+  const answeredCount = questions.filter((q) => isAnswered(q.number)).length;
   const flaggedCount = questions.filter((q) => flagged[q.number]).length;
 
   const stateOf = (q: DigitalQuestion): QState => {
     if (flagged[q.number]) return "flagged";
-    if (answers[q.number]) return "answered";
+    if (isAnswered(q.number)) return "answered";
     return "unanswered";
   };
 
@@ -317,6 +365,34 @@ function NavigatorBody({
             )}
           </button>
         ))}
+      </div>
+
+      {/* Text size (accessibility) */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+        <p className="inline-flex items-center gap-1.5 type-caption font-bold text-foreground/80">
+          <PenLine className="size-3.5 text-emerald-300" /> Text size
+        </p>
+        <div className="mt-2 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onFontScale(Math.max(0.85, Math.round((fontScale - 0.1) * 100) / 100))}
+            className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 type-caption font-black text-muted-foreground hover:border-white/25"
+            aria-label="Smaller text"
+          >
+            A−
+          </button>
+          <span className="min-w-10 text-center type-caption font-bold tabular-nums text-foreground/70">
+            {Math.round(fontScale * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => onFontScale(Math.min(1.6, Math.round((fontScale + 0.1) * 100) / 100))}
+            className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 type-caption font-black text-muted-foreground hover:border-white/25"
+            aria-label="Larger text"
+          >
+            A+
+          </button>
+        </div>
       </div>
 
       {/* Read-aloud controls */}
@@ -450,6 +526,11 @@ export function DigitalExamPlayer({
   durationMinutes,
   mode,
   questions,
+  pdfUrl = null,
+  pageCount = null,
+  verification = null,
+  adminEdited = false,
+  sourceMode = null,
 }: DigitalExamPlayerProps) {
   const navigate = useNavigate();
   const readAloud = useReadAloud();
@@ -462,16 +543,41 @@ export function DigitalExamPlayer({
   const [now, setNow] = useState<number>(() => Date.now());
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string | null>>({});
+  const [structuredAnswers, setStructuredAnswers] = useState<Record<number, string>>({});
   const [flagged, setFlagged] = useState<Record<number, boolean>>({});
   const [checks, setChecks] = useState<Record<number, "correct" | "wrong">>({});
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
+  const [revealedSuggested, setRevealedSuggested] = useState<Record<number, boolean>>({});
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [autoRead, setAutoRead] = useState<boolean>(() => localStorage.getItem("learnyx.readAloud.auto") === "1");
+  const [fontScale, setFontScale] = useState<number>(() => {
+    const raw = Number(localStorage.getItem("learnyx.exam.fontScale"));
+    return Number.isFinite(raw) && raw >= 0.85 && raw <= 1.6 ? raw : 1;
+  });
+
+  // ── Reports (crowdsourced QC) ──
+  const myReports = useQuery(api.examPrepDigital.getMyQuestionReports, { contentId: contentId as never });
+  const reportFor = useCallback(
+    (n: number): ReportState | undefined => {
+      const row = myReports?.find((r) => r.questionNumber === n);
+      return row ? { questionNumber: row.questionNumber, status: row.status } : undefined;
+    },
+    [myReports],
+  );
+  const [localReports, setLocalReports] = useState<ReportState[]>([]);
+  const reportStateFor = useCallback(
+    (n: number) => localReports.find((r) => r.questionNumber === n) ?? reportFor(n),
+    [localReports, reportFor],
+  );
+  const onReported = useCallback((r: ReportState) => {
+    setLocalReports((prev) => [...prev.filter((x) => x.questionNumber !== r.questionNumber), r]);
+  }, []);
 
   // ── Dialogs / sheet ──
   const [exitOpen, setExitOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [finished, setFinished] = useState<{ autoSubmitted: boolean } | null>(null);
 
   // ── Refs ──
@@ -481,6 +587,10 @@ export function DigitalExamPlayer({
   const q = questions[currentIdx]!;
   const total = questions.length;
   const examLimitSeconds = durationMinutes * 60;
+
+  useEffect(() => {
+    localStorage.setItem("learnyx.exam.fontScale", String(fontScale));
+  }, [fontScale]);
 
   // ── Clock ──
   useEffect(() => {
@@ -492,16 +602,24 @@ export function DigitalExamPlayer({
   const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
   const remainingSeconds = examLimitSeconds - elapsedSeconds;
 
-  // ── Score math (honest denominators) ──
-  const gradable = useMemo(() => questions.filter((x) => x.answer), [questions]);
+  // ── Answer predicates ──
+  const isAnswered = useCallback(
+    (n: number) => Boolean(answers[n]) || (structuredAnswers[n]?.trim().length ?? 0) > 0,
+    [answers, structuredAnswers],
+  );
+
+  // ── Score math (honest denominators — only auto-gradable MCQs score) ──
+  const gradable = useMemo(() => questions.filter((x) => !isStructured(x) && x.answer), [questions]);
+  const structuredCount = useMemo(() => questions.filter((x) => isStructured(x)).length, [questions]);
   const score = useMemo(() => {
     let correct = 0;
     let answeredGradable = 0;
     let answeredAll = 0;
     for (const x of questions) {
       const picked = answers[x.number];
-      if (picked) answeredAll += 1;
-      if (!x.answer) continue;
+      const written = (structuredAnswers[x.number]?.trim().length ?? 0) > 0;
+      if (picked || written) answeredAll += 1;
+      if (isStructured(x) || !x.answer) continue;
       if (picked) answeredGradable += 1;
       if (picked && picked === x.answer) correct += 1;
     }
@@ -517,9 +635,9 @@ export function DigitalExamPlayer({
       examPct,
       practicePct,
     };
-  }, [answers, gradable, questions]);
+  }, [answers, gradable, questions, structuredAnswers]);
 
-  const answeredCount = questions.filter((x) => answers[x.number]).length;
+  const answeredCount = questions.filter((x) => isAnswered(x.number)).length;
   const flaggedCount = questions.filter((x) => flagged[x.number]).length;
 
   // ── Persistence (idempotent, best-effort) ──
@@ -624,19 +742,6 @@ export function DigitalExamPlayer({
     [questions.length],
   );
 
-  // ── Keyboard ←/→ ──
-  useEffect(() => {
-    if (phase !== "playing" || finished) return;
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-      if (e.key === "ArrowRight") goTo(currentIdx + 1);
-      if (e.key === "ArrowLeft") goTo(currentIdx - 1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [currentIdx, finished, goTo, phase]);
-
   // ── Read aloud: per-question speech with block-aware highlighting ──
   const passageSentenceCount = useMemo(
     () => (q.passage ? splitSentences(q.passage).length : 0),
@@ -659,12 +764,56 @@ export function DigitalExamPlayer({
   }, [passageSentenceCount, questionSentenceCount, readAloud.sentenceIndex]);
 
   const speakCurrent = useCallback(() => {
+    if (!readAloud.supported) return;
     const parts: string[] = [];
     if (q.passage) parts.push(q.passage);
     parts.push(`Question ${q.number}. ${q.text}`);
-    parts.push(q.options.map((o) => `${o.label}. ${o.text}`).join(" "));
+    if (q.options.length > 0) {
+      parts.push(q.options.map((o) => `${o.label}. ${o.text}`).join(" "));
+    }
     readAloud.speak(parts.join(" "));
   }, [q, readAloud]);
+
+  // ── Full keyboard operation (accessibility) ──
+  useEffect(() => {
+    if (phase !== "playing" || finished) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable ||
+          target.tagName === "SELECT")
+      ) {
+        return; // never hijack typing
+      }
+      if (e.key === "ArrowRight") {
+        goTo(currentIdx + 1);
+      } else if (e.key === "ArrowLeft") {
+        goTo(currentIdx - 1);
+      } else if (/^[1-8]$/.test(e.key) && !isStructured(q)) {
+        const opt = q.options[Number(e.key) - 1];
+        if (opt) selectOption(opt.label);
+      } else if (e.key === "Enter" && mode === "practice" && !isStructured(q) && q.answer) {
+        checkAnswer();
+      } else if (e.key === "f" || e.key === "F") {
+        toggleFlag();
+      } else if (e.key === "n" || e.key === "N") {
+        setNavigatorOpen((v) => !v);
+      } else if (e.key === "r" || e.key === "R") {
+        speakCurrent();
+      } else if (e.key === "+" || e.key === "=") {
+        setFontScale((s) => Math.min(1.6, Math.round((s + 0.1) * 100) / 100));
+      } else if (e.key === "-" || e.key === "_") {
+        setFontScale((s) => Math.max(0.85, Math.round((s - 0.1) * 100) / 100));
+      } else if (e.key === "?") {
+        setShortcutsOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [checkAnswer, currentIdx, finished, goTo, mode, phase, q, selectOption, speakCurrent, toggleFlag]);
 
   // Auto-read on question change.
   useEffect(() => {
@@ -721,9 +870,11 @@ export function DigitalExamPlayer({
     persistedRef.current = false;
     autoSubmittedRef.current = false;
     setAnswers({});
+    setStructuredAnswers({});
     setFlagged({});
     setChecks({});
     setRevealed({});
+    setRevealedSuggested({});
     setHighlights([]);
     setCurrentIdx(0);
     setFinished(null);
@@ -745,6 +896,11 @@ export function DigitalExamPlayer({
 
   const hasWork = answeredCount > 0 || flaggedCount > 0;
 
+  // Font sizing for the reading surfaces.
+  const questionTextStyle = { fontSize: `${1.25 * fontScale}rem` } as React.CSSProperties;
+  const passageTextStyle = { fontSize: `${0.95 * fontScale}rem` } as React.CSSProperties;
+  const optionTextStyle = { fontSize: `${0.9 * fontScale}rem` } as React.CSSProperties;
+
   return (
     <PlayerShell
       mode={mode}
@@ -758,6 +914,9 @@ export function DigitalExamPlayer({
       remainingSeconds={remainingSeconds}
       answeredCount={answeredCount}
       total={total}
+      verification={verification}
+      adminEdited={adminEdited}
+      onShortcuts={() => setShortcutsOpen(true)}
       onBack={() => (hasWork && !finished ? setExitOpen(true) : abandon())}
       onReview={() => setReviewOpen(true)}
       onSubmit={() => (answeredCount === 0 ? finishExam(false) : setReviewOpen(true))}
@@ -782,12 +941,19 @@ export function DigitalExamPlayer({
               {examYear !== null ? ` · ${examYear}` : ""} · {total} questions · {durationMinutes} minutes
             </p>
 
+            <div className="mt-3">
+              <TrustBadge verification={verification} adminEdited={adminEdited} sourceMode={sourceMode} />
+            </div>
+
             <div className="mt-5 grid gap-2.5">
               {[
                 { icon: Timer, text: `The ${durationMinutes}-minute clock starts the moment you press Start — it cannot be paused.` },
                 { icon: XCircle, text: "No check-answer feedback during the exam — exactly like the real sitting." },
                 { icon: ListChecks, text: "Unanswered questions are marked wrong. Flag anything you want to revisit with the navigator." },
                 { icon: Volume2, text: readAloud.supported ? "Read-aloud is available throughout — tap the speaker on any question." : "Read-aloud is not supported by this browser." },
+                ...(structuredCount > 0
+                  ? [{ icon: PenLine, text: `${structuredCount} written (free-response) question${structuredCount === 1 ? "" : "s"} in this paper — ${structuredCount === 1 ? "it is" : "these are"} saved but not auto-scored.` }]
+                  : []),
                 { icon: AlertTriangle, text: "When the clock hits zero, your exam submits itself automatically." },
               ].map((r, i) => {
                 const Icon = r.icon;
@@ -842,13 +1008,18 @@ export function DigitalExamPlayer({
               >
                 {/* Question header row */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="flex size-9 items-center justify-center rounded-xl bg-amber-400/15 text-sm font-black tabular-nums text-amber-300">
                       {q.number}
                     </span>
                     <span className="type-caption text-muted-foreground">
-                      of {total} · {subjectName}
+                      of {total} · {isStructured(q) ? "written answer" : "multiple choice"}
                     </span>
+                    {q.topic && (
+                      <Badge variant="outline" className="border-white/10 text-muted-foreground">
+                        {q.topic}
+                      </Badge>
+                    )}
                     {flagged[q.number] && (
                       <Badge className="gap-1 border-amber-400/40 bg-amber-400/15 text-amber-200">
                         <Flag className="size-3" /> Flagged
@@ -868,7 +1039,7 @@ export function DigitalExamPlayer({
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-0.5">
                     {readAloud.supported && (
                       <Button
                         size="sm"
@@ -892,6 +1063,18 @@ export function DigitalExamPlayer({
                     >
                       {flagged[q.number] ? <FlagOff className="size-4" /> : <Flag className="size-4" />}
                     </Button>
+                    <OriginalPageButton
+                      pdfUrl={pdfUrl}
+                      page={q.sourcePage ?? null}
+                      pageCount={pageCount}
+                      figure={q.figureHint}
+                    />
+                    <ReportIssueButton
+                      contentId={contentId}
+                      questionNumber={q.number}
+                      reported={reportStateFor(q.number)}
+                      onReported={onReported}
+                    />
                   </div>
                 </div>
 
@@ -899,43 +1082,104 @@ export function DigitalExamPlayer({
                 {q.passage && (
                   <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                     <p className="type-caption font-bold uppercase tracking-wider text-muted-foreground/60">Stimulus</p>
-                    <p className="mt-1.5 type-body leading-relaxed text-foreground/85">
+                    <p className="mt-1.5 leading-relaxed text-foreground/85" style={passageTextStyle}>
                       <SentenceText text={q.passage} activeSentence={activePassageSentence} />
                     </p>
                   </div>
                 )}
 
                 {/* Question text */}
-                <p className="mt-4 type-h3 leading-relaxed">
+                <p className="mt-4 font-bold leading-relaxed" style={questionTextStyle}>
                   <SentenceText text={q.text} activeSentence={activeQuestionSentence} />
                 </p>
 
-                {/* Options */}
-                <div className="mt-4 grid gap-2">
-                  {q.options.map((opt) => {
-                    const picked = answers[q.number] === opt.label;
-                    let state: "idle" | "correct" | "wrong" | "dim" = "idle";
-                    if (mode === "practice" && revealed[q.number]) {
-                      if (opt.label === q.answer) state = "correct";
-                      else if (picked) state = "wrong";
-                      else state = "dim";
-                    }
-                    return (
-                      <OptionButton
-                        key={opt.label}
-                        label={opt.label}
-                        text={opt.text}
-                        selected={picked}
-                        state={state}
-                        disabled={finished !== null || (mode === "practice" && revealed[q.number])}
-                        onSelect={() => selectOption(opt.label)}
-                      />
-                    );
-                  })}
-                </div>
+                {/* Options (MCQ) */}
+                {q.options.length > 0 && (
+                  <div className="mt-4 grid gap-2">
+                    {q.options.map((opt) => {
+                      const picked = answers[q.number] === opt.label;
+                      let state: "idle" | "correct" | "wrong" | "dim" = "idle";
+                      if (mode === "practice" && revealed[q.number]) {
+                        if (opt.label === q.answer) state = "correct";
+                        else if (picked) state = "wrong";
+                        else state = "dim";
+                      }
+                      return (
+                        <OptionButton
+                          key={opt.label}
+                          label={opt.label}
+                          text={opt.text}
+                          selected={picked}
+                          state={state}
+                          disabled={finished !== null || (mode === "practice" && revealed[q.number])}
+                          onSelect={() => selectOption(opt.label)}
+                          style={optionTextStyle}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Written answer (structured) */}
+                {isStructured(q) && (
+                  <div className="mt-4">
+                    <textarea
+                      value={structuredAnswers[q.number] ?? ""}
+                      onChange={(e) =>
+                        setStructuredAnswers((prev) => ({ ...prev, [q.number]: e.target.value.slice(0, 4000) }))
+                      }
+                      disabled={finished !== null}
+                      rows={4}
+                      placeholder="Write your answer here…"
+                      className="w-full resize-y rounded-2xl border border-white/10 bg-white/[0.03] p-3.5 leading-relaxed outline-none placeholder:text-muted-foreground/50 focus:border-amber-400/50"
+                      style={optionTextStyle}
+                      aria-label={`Your written answer for question ${q.number}`}
+                    />
+                    <p className="mt-1.5 flex items-center gap-1.5 type-caption text-muted-foreground/60">
+                      <Info className="size-3 shrink-0" />
+                      Written answers are saved with your attempt but never auto-scored —{mode === "practice" && q.suggestedAnswer
+                        ? " reveal the paper's suggested answer below to check yourself."
+                        : " compare with the official marking scheme."}
+                    </p>
+                    {mode === "practice" && (
+                      <div className="mt-3">
+                        {!revealedSuggested[q.number] ? (
+                          <Button
+                            variant="outline"
+                            disabled={!q.suggestedAnswer}
+                            onClick={() => setRevealedSuggested((prev) => ({ ...prev, [q.number]: true }))}
+                            className="interactive-press gap-2"
+                          >
+                            <Lightbulb className="size-4" />
+                            {q.suggestedAnswer ? "Reveal suggested answer" : "No suggested answer in the paper"}
+                          </Button>
+                        ) : (
+                          <motion.div
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="rounded-2xl border border-emerald-400/25 bg-emerald-400/[0.06] p-3.5"
+                          >
+                            <p className="type-caption font-bold uppercase tracking-wider text-emerald-300">
+                              Suggested answer {q.suggestedAnswer ? "" : "— not in the paper"}
+                            </p>
+                            <p className="mt-1.5 whitespace-pre-wrap leading-relaxed text-foreground/85" style={passageTextStyle}>
+                              {q.suggestedAnswer ?? "This paper didn't include a marking scheme for this question — cross-check with your teacher or the official key."}
+                            </p>
+                            {q.suggestedAnswer && (
+                              <p className="mt-2 inline-flex items-center gap-1.5 type-caption text-muted-foreground/60">
+                                <Info className="size-3 shrink-0" />
+                                From the paper itself (or AI-extracted from its key) — grade yourself honestly.
+                              </p>
+                            )}
+                          </motion.div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Practice: check answer (exam NEVER gets this) */}
-                {mode === "practice" && !revealed[q.number] && (
+                {mode === "practice" && q.options.length > 0 && !revealed[q.number] && (
                   <div className="mt-4 flex flex-wrap items-center gap-2.5">
                     <Button
                       onClick={checkAnswer}
@@ -953,7 +1197,7 @@ export function DigitalExamPlayer({
                 )}
 
                 {/* Practice: feedback + explanation (post-check) */}
-                {mode === "practice" && revealed[q.number] && (
+                {mode === "practice" && q.options.length > 0 && revealed[q.number] && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1030,6 +1274,7 @@ export function DigitalExamPlayer({
             <NavigatorBody
               questions={questions}
               answers={answers}
+              structuredAnswers={structuredAnswers}
               flagged={flagged}
               currentIdx={currentIdx}
               highlights={highlights}
@@ -1044,6 +1289,8 @@ export function DigitalExamPlayer({
               rate={readAloud.rate}
               onRateChange={readAloud.setRate}
               onRemoveHighlight={(h) => setHighlights((prev) => prev.filter((x) => x !== h))}
+              fontScale={fontScale}
+              onFontScale={setFontScale}
             />
           </aside>
         </div>
@@ -1060,9 +1307,12 @@ export function DigitalExamPlayer({
           flaggedCount={flaggedCount}
           questions={questions}
           answers={answers}
+          structuredAnswers={structuredAnswers}
           checks={checks}
           paperTitle={paperTitle}
           subjectName={subjectName}
+          verification={verification}
+          adminEdited={adminEdited}
           onRetake={retake}
           onBackToHub={() => navigate("/exam-prep?tab=results")}
         />
@@ -1078,6 +1328,7 @@ export function DigitalExamPlayer({
           <NavigatorBody
             questions={questions}
             answers={answers}
+            structuredAnswers={structuredAnswers}
             flagged={flagged}
             currentIdx={currentIdx}
             highlights={highlights}
@@ -1092,9 +1343,14 @@ export function DigitalExamPlayer({
             rate={readAloud.rate}
             onRateChange={readAloud.setRate}
             onRemoveHighlight={(h) => setHighlights((prev) => prev.filter((x) => x !== h))}
+            fontScale={fontScale}
+            onFontScale={setFontScale}
           />
         </SheetContent>
       </Sheet>
+
+      {/* Keyboard shortcuts */}
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
 
       {/* Floating highlight capture */}
       <AnimatePresence>
@@ -1148,7 +1404,7 @@ export function DigitalExamPlayer({
                   setCurrentIdx(idx);
                   setReviewOpen(false);
                 }}
-                className={paletteTileClass(flagged[x.number] ? "flagged" : answers[x.number] ? "answered" : "unanswered", false)}
+                className={paletteTileClass(flagged[x.number] ? "flagged" : isAnswered(x.number) ? "answered" : "unanswered", false)}
               >
                 {x.number}
               </button>
@@ -1205,11 +1461,14 @@ function PlayerShell({
   remainingSeconds,
   answeredCount,
   total,
+  verification,
+  adminEdited,
   onBack,
   onReview,
   onSubmit,
   onOpenNavigator,
   onPracticeFinish,
+  onShortcuts,
   children,
 }: {
   mode: ExamMode;
@@ -1223,11 +1482,14 @@ function PlayerShell({
   remainingSeconds: number;
   answeredCount: number;
   total: number;
+  verification: string | null;
+  adminEdited: boolean;
   onBack: () => void;
   onReview: () => void;
   onSubmit: () => void;
   onOpenNavigator: () => void;
   onPracticeFinish: () => void;
+  onShortcuts: () => void;
   children: React.ReactNode;
 }) {
   const isExam = mode === "exam";
@@ -1254,15 +1516,22 @@ function PlayerShell({
           </Button>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold leading-tight">{title}</p>
-            <p className="truncate type-caption text-muted-foreground/70">
-              {isExam ? "Exam mode" : "Practice mode"} · {subjectName} · Grade {grade}
-              {examYear !== null ? ` · ${examYear}` : ""}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <p className="truncate type-caption text-muted-foreground/70">
+                {isExam ? "Exam mode" : "Practice mode"} · {subjectName} · Grade {grade}
+                {examYear !== null ? ` · ${examYear}` : ""}
+              </p>
+              <span className="hidden sm:inline-flex">
+                <TrustBadge verification={verification} adminEdited={adminEdited} compact />
+              </span>
+            </div>
           </div>
 
-          {/* Timer chip */}
+          {/* Timer chip — role=timer keeps screen readers informed without spam */}
           {phase === "playing" && (
             <div
+              role="timer"
+              aria-label={isExam ? `Time remaining ${fmtClock(remainingSeconds)}` : `Elapsed time ${fmtClock(elapsedSeconds)}`}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-1 type-caption font-black tabular-nums",
                 isExam
@@ -1309,6 +1578,18 @@ function PlayerShell({
               className="hidden shrink-0 rounded-xl gap-1.5 border-white/15 sm:inline-flex"
             >
               <CheckCircle2 className="size-3.5" /> Finish
+            </Button>
+          )}
+          {phase === "playing" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onShortcuts}
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              className="hidden size-8 shrink-0 rounded-xl p-0 text-muted-foreground hover:text-amber-300 md:inline-flex"
+            >
+              <span className="font-mono text-[11px] font-black">?</span>
             </Button>
           )}
         </div>
@@ -1376,9 +1657,12 @@ function ResultsScreen({
   flaggedCount,
   questions,
   answers,
+  structuredAnswers,
   checks,
   paperTitle,
   subjectName,
+  verification,
+  adminEdited,
   onRetake,
   onBackToHub,
 }: {
@@ -1398,9 +1682,12 @@ function ResultsScreen({
   flaggedCount: number;
   questions: DigitalQuestion[];
   answers: Record<number, string | null>;
+  structuredAnswers: Record<number, string>;
   checks: Record<number, "correct" | "wrong">;
   paperTitle: string;
   subjectName: string;
+  verification: string | null;
+  adminEdited: boolean;
   onRetake: () => void;
   onBackToHub: () => void;
 }) {
@@ -1417,9 +1704,12 @@ function ResultsScreen({
       {/* Score card */}
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-amber-400/10 blur-3xl" />
-        <p className="type-caption font-bold uppercase tracking-wider text-amber-300">
-          {isExam ? "Exam complete" : "Practice session complete"}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="type-caption font-bold uppercase tracking-wider text-amber-300">
+            {isExam ? "Exam complete" : "Practice session complete"}
+          </p>
+          <TrustBadge verification={verification} adminEdited={adminEdited} />
+        </div>
         {autoSubmitted && (
           <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-rose-400/30 bg-rose-400/[0.07] p-3">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-rose-300" />
@@ -1434,7 +1724,7 @@ function ResultsScreen({
           <div className="min-w-0 flex-1 text-center sm:text-left">
             <h2 className="type-h2">{paperTitle}</h2>
             <p className="mt-1 type-caption text-muted-foreground">
-              {subjectName} · {isExam ? "scored on every question" : "scored on questions you answered"}
+              {subjectName} · {isExam ? "scored on every auto-gradable question" : "scored on questions you answered"}
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <StatTile label="Correct" value={score.correct} accent="text-emerald-300" />
@@ -1448,8 +1738,8 @@ function ResultsScreen({
             </p>
             {score.ungradable > 0 && (
               <p className="mt-1.5 type-caption text-muted-foreground/60">
-                {score.ungradable} question{score.ungradable === 1 ? "" : "s"} had no transcribed answer and{" "}
-                {score.ungradable === 1 ? "is" : "are"} excluded from the score.
+                {score.ungradable} question{score.ungradable === 1 ? "" : "s"} — written answers or
+                questions with no transcribed key — {score.ungradable === 1 ? "is" : "are"} excluded from the score.
               </p>
             )}
             <p className="mt-2 inline-flex items-center gap-1.5 type-caption text-emerald-300/80">
@@ -1477,6 +1767,7 @@ function ResultsScreen({
         <div className="mt-4 flex flex-col gap-2">
           {questions.map((x) => {
             const picked = answers[x.number];
+            const written = structuredAnswers[x.number]?.trim();
             const hasAnswer = Boolean(x.answer);
             const correct = picked && picked === x.answer;
             return (
@@ -1490,24 +1781,33 @@ function ResultsScreen({
                 <div className="min-w-0 flex-1">
                   <p className="line-clamp-2 type-caption font-semibold text-foreground/90">{x.text}</p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5 type-caption">
-                    <span
-                      className={cn(
-                        "rounded-md border px-1.5 py-0.5 font-bold",
-                        picked
-                          ? "border-white/15 bg-white/5 text-foreground/80"
-                          : "border-white/10 bg-transparent text-muted-foreground/60",
-                      )}
-                    >
-                      {picked ? `You: ${picked}` : "Not answered"}
-                    </span>
-                    {hasAnswer && (
-                      <span className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 font-bold text-emerald-300">
-                        Answer: {x.answer}
-                      </span>
-                    )}
-                    {!hasAnswer && (
-                      <span className="rounded-md border border-white/10 px-1.5 py-0.5 text-muted-foreground/60">
-                        No transcribed answer
+                    {x.options.length > 0 ? (
+                      <>
+                        <span
+                          className={cn(
+                            "rounded-md border px-1.5 py-0.5 font-bold",
+                            picked
+                              ? "border-white/15 bg-white/5 text-foreground/80"
+                              : "border-white/10 bg-transparent text-muted-foreground/60",
+                          )}
+                        >
+                          {picked ? `You: ${picked}` : "Not answered"}
+                        </span>
+                        {hasAnswer && (
+                          <span className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 font-bold text-emerald-300">
+                            Answer: {x.answer}
+                          </span>
+                        )}
+                        {!hasAnswer && (
+                          <span className="rounded-md border border-white/10 px-1.5 py-0.5 text-muted-foreground/60">
+                            No transcribed answer
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-sky-400/25 bg-sky-400/[0.07] px-1.5 py-0.5 text-sky-300">
+                        <PenLine className="size-3" />
+                        {written ? "Written answer saved" : "No written answer"}
                       </span>
                     )}
                     {mode === "practice" && checks[x.number] && (
@@ -1516,6 +1816,11 @@ function ResultsScreen({
                       </span>
                     )}
                   </div>
+                  {written && (
+                    <p className="mt-1.5 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-white/[0.03] p-2 type-caption leading-relaxed text-foreground/75">
+                      {written}
+                    </p>
+                  )}
                   {x.explanation && (
                     <p className="mt-1.5 flex items-start gap-1.5 type-caption leading-relaxed text-muted-foreground">
                       <Lightbulb className="mt-0.5 size-3 shrink-0 text-amber-300/80" />

@@ -1451,6 +1451,10 @@ const schema = defineSchema(
       questions: v.array(
         v.object({
           number: v.number(), // final display number (renumbered 1..N on completion)
+          // "mcq" = lettered options; "structured" = free-response / show-that
+          // / workout question (options empty, suggestedAnswer used instead).
+          // Absent = "mcq" (every legacy row predates the field).
+          kind: v.optional(v.union(v.literal("mcq"), v.literal("structured"))),
           text: v.string(),
           // Shared stimulus (reading passages, data tables) shown above the
           // question when present.
@@ -1465,11 +1469,45 @@ const schema = defineSchema(
           // marked key, etc). AI-suggested otherwise — the UI always labels
           // suggestions as such. Absent = no answer could be determined.
           answer: v.optional(v.string()),
+          // Model answer for structured (free-response) questions — present
+          // only when the paper itself provides one (answer key / marking
+          // scheme). Practice mode reveals it for self-grading.
+          suggestedAnswer: v.optional(v.string()),
           explanation: v.optional(v.string()),
           topic: v.optional(v.string()),
+          // 1-based page in the original PDF the question was transcribed
+          // from — powers the "View original page" cross-check affordance.
+          sourcePage: v.optional(v.number()),
+          // True when the question references a figure/diagram/map/graph/
+          // table ("in the figure above", "the graph shows", …). Deterministic
+          // regex detection — never trusted to the AI. The player offers the
+          // original page image so no diagram is ever silently lost.
+          figureHint: v.optional(v.boolean()),
         }),
       ),
       questionCount: v.number(),
+      // ── Trust / verification workflow ────────────────────────────────
+      // "ai_unverified" (or absent on legacy rows) = transcribed by AI,
+      // not yet human-checked: every surface shows the honest amber badge.
+      // "verified" = an admin reviewed (and possibly corrected) every
+      // question; the platform treats it as authoritative. "rejected" =
+      // an admin judged the transcription unusable (players fall back to
+      // the original PDF until a re-conversion replaces it).
+      verification: v.optional(
+        v.union(
+          v.literal("ai_unverified"),
+          v.literal("verified"),
+          v.literal("rejected"),
+        ),
+      ),
+      verifiedBy: v.optional(v.id("users")),
+      verifiedAt: v.optional(v.number()),
+      // True once an admin edited at least one question in the review
+      // console — surfaced as "corrected by a teacher" on the badge.
+      adminEdited: v.optional(v.boolean()),
+      // How the text was obtained: "text" = pdf.js text layer, "vision" =
+      // page-image OCR (scanned papers). Absent = "text" (legacy rows).
+      sourceMode: v.optional(v.union(v.literal("text"), v.literal("vision"))),
       // Telemetry for the conversion pipeline UI.
       pageCount: v.optional(v.number()),
       chunkCount: v.optional(v.number()),
@@ -1478,6 +1516,80 @@ const schema = defineSchema(
       startedBy: v.optional(v.id("users")),
       createdAt: v.number(),
       updatedAt: v.number(),
+    })
+      .index("by_content", ["contentId"])
+      .index("by_status", ["status"])
+      .index("by_verification", ["verification"]),
+
+    // ------------------------------------------------------------------
+    // Digital exam quality control — student-reported question issues
+    // ------------------------------------------------------------------
+    //
+    // Every digital question carries a "Report an issue" affordance. A
+    // report is one row here; admins resolve/dismiss from the Exam Engine
+    // console. Dedupe: at most one OPEN report per (user, paper, question).
+    examQuestionReports: defineTable({
+      contentId: v.id("contentItems"),
+      questionNumber: v.number(), // the display number the student saw
+      // What kind of problem — keeps the admin inbox scannable.
+      category: v.union(
+        v.literal("wrong_answer"),
+        v.literal("garbled_text"),
+        v.literal("missing_options"),
+        v.literal("missing_figure"),
+        v.literal("not_in_paper"),
+        v.literal("other"),
+      ),
+      details: v.string(), // the student's own words (≤1000 chars)
+      reportedBy: v.id("users"),
+      status: v.union(
+        v.literal("open"),
+        v.literal("resolved"),
+        v.literal("dismissed"),
+      ),
+      resolvedBy: v.optional(v.id("users")),
+      resolvedAt: v.optional(v.number()),
+      resolutionNote: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_content", ["contentId"])
+      .index("by_status", ["status"])
+      .index("by_reporter", ["reportedBy"]),
+
+    // ------------------------------------------------------------------
+    // Digital exam conversion queue — the platform-wide rate guard
+    // ------------------------------------------------------------------
+    //
+    // AI transcription runs on free-tier providers; an unbounded stampede
+    // of first-open conversions would exhaust the token budget and every
+    // conversion would start failing mid-paper. This queue makes the whole
+    // platform honest about capacity:
+    //   • MAX_CONCURRENT fresh "running" claims platform-wide (students see
+    //     "you're #N in line" and auto-start when a slot frees).
+    //   • priority "student" (someone is waiting NOW) always dequeues
+    //     ahead of "batch" (admin pre-digitization of the whole library).
+    //   • Batch runs are resumable — jobs live here, not in any browser,
+    //     so the admin can close the tab and retry failures later.
+    examConversionJobs: defineTable({
+      contentId: v.id("contentItems"),
+      // "student" = demanded right now by a real student (dequeue first);
+      // "batch" = proactive library pre-digitization (fills idle capacity).
+      priority: v.union(v.literal("student"), v.literal("batch")),
+      status: v.union(
+        v.literal("queued"),
+        v.literal("running"),
+        v.literal("done"),
+        v.literal("failed"),
+      ),
+      attempts: v.number(),
+      lastError: v.optional(v.string()),
+      enqueuedBy: v.optional(v.id("users")),
+      claimedBy: v.optional(v.string()), // opaque worker id (browser session)
+      claimedAt: v.optional(v.number()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      doneAt: v.optional(v.number()),
     })
       .index("by_content", ["contentId"])
       .index("by_status", ["status"]),
