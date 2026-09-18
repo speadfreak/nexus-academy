@@ -31,7 +31,6 @@ import type * as contentAdmin from "../contentAdmin.js";
 import type * as coverage from "../coverage.js";
 import type * as crons from "../crons.js";
 import type * as dailyChallenge from "../dailyChallenge.js";
-import type * as devDump2 from "../devDump2.js";
 import type * as examConversionEngine from "../examConversionEngine.js";
 import type * as examConversionEngineDispatch from "../examConversionEngineDispatch.js";
 import type * as examPrep from "../examPrep.js";
@@ -119,7 +118,6 @@ declare const fullApi: ApiFromModules<{
   coverage: typeof coverage;
   crons: typeof crons;
   dailyChallenge: typeof dailyChallenge;
-  devDump2: typeof devDump2;
   examConversionEngine: typeof examConversionEngine;
   examConversionEngineDispatch: typeof examConversionEngineDispatch;
   examPrep: typeof examPrep;

@@ -404,8 +404,12 @@ export const completeDeterministic = internalMutation({
  * Terminal failure of a deterministic conversion (transient fetch error,
  * zero questions parsed, or an answer-key document). `reviewStatus`
  * routes the student surface: "pdf_only" → original-PDF view; anything
- * else → the calm retry affordance. The job row is closed either way —
- * a deterministic outcome doesn't change by retrying.
+ * else → the calm retry affordance. The JOB is marked failed (not done!):
+ * marking it done would make the dispatch requeue it every tick (a done
+ * job whose paper isn't live looks like a lost row), and a doomed paper
+ * would ping-pong through the queue at the FIFO head forever, starving
+ * everything behind it. As "failed" it gets bounded retries via the
+ * normal backoff, then the daily self-heal.
  */
 export const failDeterministic = internalMutation({
   args: {
@@ -424,7 +428,7 @@ export const failDeterministic = internalMutation({
         updatedAt: Date.now(),
       });
     }
-    await markJobByContent(ctx, args.contentId, "done", args.error);
+    await markJobByContent(ctx, args.contentId, "failed", args.error);
   },
 });
 

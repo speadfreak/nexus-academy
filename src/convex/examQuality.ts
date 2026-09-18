@@ -595,6 +595,9 @@ export const adminRetryFailedJobs = mutation({
     for (const j of failed) {
       await ctx.db.patch(j._id, {
         status: "queued",
+        attempts: 0, // explicit admin retry = a fresh campaign
+        claimedBy: undefined,
+        claimedAt: undefined,
         lastError: undefined,
         updatedAt: now,
       });
