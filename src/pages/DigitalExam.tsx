@@ -186,7 +186,10 @@ export default function DigitalExam() {
     );
   }
 
-  // ── Failed → one honest line + a server-side retry ──
+  // ── Failed → never a raw provider error. The engine self-heals and
+  //    re-queues failed papers on its own, so this state is a brief
+  //    waypoint, not a dead end. Students get one calm line + a nudge
+  //    button; the honest diagnostics stay in the admin console only.
   if (digital?.status === "failed") {
     const isScanQueue = (digital.error ?? "").includes("NEEDS_OCR");
     return (
@@ -200,12 +203,12 @@ export default function DigitalExam() {
             <FileWarning className="size-6" />
           </span>
           <h2 className="mt-4 type-h2">
-            {isScanQueue ? "Deep-reading this scan" : "This paper hit a snag"}
+            {isScanQueue ? "Deep-reading this scan" : "Finishing this paper up"}
           </h2>
           <p className="mt-2 type-body text-muted-foreground">
             {isScanQueue
-              ? "It's a scanned paper — the deeper OCR pass is queued. It usually clears within minutes."
-              : digital.error ?? "The server engine will retry it automatically. You can also nudge it now."}
+              ? "It's a scanned paper — the deeper reading pass is queued. It usually clears within minutes, and you'll jump in automatically."
+              : "Our conversion engine hit a busy moment and is already re-preparing this paper. It usually takes just a few minutes — you'll jump in automatically the second it's ready."}
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Button

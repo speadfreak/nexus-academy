@@ -1507,7 +1507,7 @@ const schema = defineSchema(
       adminEdited: v.optional(v.boolean()),
       // How the text was obtained: "text" = pdf.js text layer, "vision" =
       // page-image OCR (scanned papers). Absent = "text" (legacy rows).
-      sourceMode: v.optional(v.union(v.literal("text"), v.literal("vision"))),
+      sourceMode: v.optional(v.union(v.literal("text"), v.literal("vision"), v.literal("ocr"))),
       // Telemetry for the conversion pipeline UI.
       pageCount: v.optional(v.number()),
       chunkCount: v.optional(v.number()),

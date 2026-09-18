@@ -47,6 +47,9 @@ import {
   sanitizeQuestion,
   SYSTEM_PROMPT,
   TEXT_MODEL_CHAIN,
+  AiCooldownError,
+  isRateLimitError,
+  parseRateLimitCooldownMs,
   type RawQuestion,
   type SanitizedQuestion,
 } from "./examPrepDigital";
@@ -255,10 +258,39 @@ export const engineTranscribeChunk = internalAction({
         pageCount: args.pageCount,
       });
     } catch (err) {
+      const message = (err as Error).message ?? "";
+      // Benign concurrency: another runner (dispatch self-heal vs a
+      // scheduled continuation) already appended this chunk. Its chain is
+      // running — this duplicate dies quietly instead of failing the paper.
+      if (message.includes("out of sequence")) return;
+      // ── RATE LIMIT → PAUSE & RESUME, never fail ──
+      // A provider quota wall (Groq 429 TPD/TPM, all-lanes cooldown, Gemini
+      // RESOURCE_EXHAUSTED) is a WHEN problem, not an IF problem: the paper
+      // stays "processing" and the SAME chunk re-fires the moment the
+      // provider frees up. The student sees the calm "ready in a moment"
+      // auto-jump state the whole time — never a snag, never a raw error.
+      const rateLimitCooldownMs = rateLimitCooldownOf(err, message);
+      if (rateLimitCooldownMs !== null) {
+        await pauseForRateLimit(ctx, {
+          digitalPaperId: args.digitalPaperId,
+          contentId: args.contentId,
+          cooldownMs: rateLimitCooldownMs,
+          reason: `chunk ${args.chunkIndex + 1}/${args.chunkCount}: ${message}`,
+          resumeFn: internal.examConversionEngine.engineTranscribeChunk,
+          resumeArgs: {
+            digitalPaperId: args.digitalPaperId,
+            contentId: args.contentId,
+            chunkIndex: args.chunkIndex,
+            chunkCount: args.chunkCount,
+            pageCount: args.pageCount,
+          },
+        });
+        return;
+      }
       await failPaper(ctx, {
         digitalPaperId: args.digitalPaperId,
         contentId: args.contentId,
-        error: `AI transcription failed on chunk ${args.chunkIndex + 1}: ${(err as Error).message}`,
+        error: `AI transcription failed on chunk ${args.chunkIndex + 1}: ${message}`,
       });
     }
   },
@@ -358,6 +390,8 @@ export const engineOcrChunk = internalAction({
       });
     } catch (err) {
       const message = (err as Error).message ?? "";
+      // Benign concurrency duplicate — the live runner owns the chain.
+      if (message.includes("out of sequence")) return;
       // Gemini unavailable (region/404) → fall back to the crowd worker's
       // page-image path instead of burning retries on a hopeless provider.
       if (err instanceof GeminiUnavailableError) {
@@ -369,11 +403,22 @@ export const engineOcrChunk = internalAction({
         });
         return;
       }
-      if (err instanceof GeminiRateLimitError) {
-        await failPaper(ctx, {
+      // ── RATE LIMIT → PAUSE & RESUME (same contract as the text path) ──
+      const rateLimitCooldownMs = rateLimitCooldownOf(err, message);
+      if (rateLimitCooldownMs !== null) {
+        await pauseForRateLimit(ctx, {
           digitalPaperId: args.digitalPaperId,
           contentId: args.contentId,
-          error: `OCR rate-limited on pages ${startPage}–${endPage}: ${message.slice(0, 300)}`,
+          cooldownMs: rateLimitCooldownMs,
+          reason: `OCR pages ${startPage}–${endPage}: ${message}`,
+          resumeFn: internal.examConversionEngine.engineOcrChunk,
+          resumeArgs: {
+            digitalPaperId: args.digitalPaperId,
+            contentId: args.contentId,
+            chunkIndex: args.chunkIndex,
+            chunkCount: args.chunkCount,
+            pageCount: args.pageCount,
+          },
         });
         return;
       }
@@ -387,6 +432,69 @@ export const engineOcrChunk = internalAction({
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * How long should we wait because of THIS error? Returns the cooldown in
+ * ms when the error is a provider rate/quota limit, null otherwise.
+ * Handles: AiCooldownError (all Groq lanes deep-cooling), GeminiRateLimit
+ * (carries its own retryAfterMs), and any 429/quota-shaped message with a
+ * parseable "try again in 9m5.616s" style cooldown.
+ */
+function rateLimitCooldownOf(err: unknown, message: string): number | null {
+  if (err instanceof AiCooldownError) return err.cooldownMs;
+  if (err instanceof GeminiRateLimitError) return err.retryAfterMs;
+  if (isRateLimitError(message)) return parseRateLimitCooldownMs(message);
+  return null;
+}
+
+/** Cooldown hops stay inside the 25-minute claim-freshness window, so the
+ *  dead-claim reaper can never double-claim a paused paper. Longer real
+ *  cooldowns simply hop twice (each hop re-bumps freshness). */
+const MAX_PAUSE_HOP_MS = 20 * 60 * 1000;
+/** Below this the scheduling overhead isn't worth it — but uniformity wins:
+ *  the pause mutation + scheduled continuation is the one code path that
+ *  must be airtight, so every pause uses it. */
+const MIN_PAUSE_MS = 30_000;
+
+/**
+ * Pause a paper on a provider rate limit: keep every freshness signal
+ * alive (pausePaperForCooldown), then schedule the SAME chunk to re-fire
+ * exactly when the provider frees up. The paper NEVER leaves "processing"
+ * — the student's screen stays on the calm auto-jump state, and the
+ * reactive query lands them in the player the moment the chain completes.
+ */
+async function pauseForRateLimit(
+  ctx: GenericActionCtx<any>,
+  args: {
+    digitalPaperId: Id<"digitalPapers">;
+    contentId: Id<"contentItems">;
+    cooldownMs: number;
+    reason: string;
+    resumeFn:
+      | typeof internal.examConversionEngine.engineTranscribeChunk
+      | typeof internal.examConversionEngine.engineOcrChunk;
+    resumeArgs: {
+      digitalPaperId: Id<"digitalPapers">;
+      contentId: Id<"contentItems">;
+      chunkIndex: number;
+      chunkCount: number;
+      pageCount: number;
+    };
+  },
+) {
+  const wait = Math.max(MIN_PAUSE_MS, Math.min(args.cooldownMs, MAX_PAUSE_HOP_MS));
+  const resumeAtMs = Date.now() + wait;
+  await ctx.runMutation(internal.examConversionEngineDispatch.pausePaperForCooldown, {
+    digitalPaperId: args.digitalPaperId,
+    contentId: args.contentId,
+    reason: args.reason,
+    resumeAtMs,
+  });
+  await ctx.scheduler.runAfter(wait, args.resumeFn as never, args.resumeArgs as never);
+  console.log(
+    `[exam-engine] rate-limit pause contentId=${args.contentId} resumeIn=${Math.round(wait / 1000)}s (provider asked ${Math.round(args.cooldownMs / 1000)}s)`,
+  );
+}
 
 const OCR_SYSTEM_PROMPT = `You are an exam-paper OCR transcription engine for Learnyx Academy ET. You receive scanned pages of an Ethiopian national exam past paper as an inline PDF document.
 
@@ -441,17 +549,34 @@ async function transcribeChunk(
 ): Promise<SanitizedQuestion[]> {
   const userMessage = `PAPER CHUNK ${opts.chunkIndex + 1} OF ${opts.chunkCount} (pages of an Ethiopian national exam past paper):\n\n${opts.chunkText.slice(0, 14000)}`;
 
-  const raw = await callGroqWithRetry(
-    ctx,
-    {
+  const groqOpts = {
+    systemPrompt: SYSTEM_PROMPT,
+    userMessage,
+    maxTokens: 12288,
+    temperature: 0.1,
+  } as const;
+
+  let raw: string;
+  try {
+    raw = await callGroqWithRetry(ctx, groqOpts, TEXT_MODEL_CHAIN, 2);
+  } catch (groqErr) {
+    // ── PROVIDER FALLBACK ──
+    // The whole Groq chain failed (all five lanes cooling down / erroring).
+    // Gemini is a COMPLETELY separate provider with its own daily budget —
+    // one text call here keeps papers converting through Groq outages and
+    // quota resets alike. If Gemini also fails we rethrow: rate-limit
+    // errors flow into the pause-and-resume path, everything else into
+    // bounded retries.
+    raw = await callGemini(ctx, {
       systemPrompt: SYSTEM_PROMPT,
       userMessage,
-      maxTokens: 12288,
+      maxTokens: 16384,
       temperature: 0.1,
-    },
-    TEXT_MODEL_CHAIN,
-    2,
-  );
+    }).catch((geminiErr: unknown) => {
+      if (isRateLimitError((groqErr as Error)?.message ?? "")) throw groqErr;
+      throw geminiErr;
+    });
+  }
 
   let parsed = extractJsonArray(raw);
   if (parsed === null) {
@@ -533,6 +658,12 @@ async function startOcrPath(
     digitalPaperId: args.digitalPaperId,
     pageCount: args.pageCount,
     chunkCount,
+  });
+  // Stamp the route so a crashed/interrupted OCR chain can be RESUMED
+  // (not restarted) by the dispatch self-heal with the right chunk shape.
+  await ctx.runMutation(internal.examPrepDigital.setPaperSourceMode, {
+    digitalPaperId: args.digitalPaperId,
+    sourceMode: "ocr",
   });
   await ctx.scheduler.runAfter(0, internal.examConversionEngine.engineOcrChunk, {
     digitalPaperId: args.digitalPaperId,

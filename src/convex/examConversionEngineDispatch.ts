@@ -214,8 +214,6 @@ export const dispatchTick = internalMutation({
       const item = await ctx.db.get(job.contentId);
       if (!item) continue;
 
-      // Replace any stale/failed/rejected digital row (sequence guard
-      // requires a clean row per run).
       const existing = await ctx.db
         .query("digitalPapers")
         .withIndex("by_content", (q) => q.eq("contentId", job.contentId))
@@ -228,6 +226,53 @@ export const dispatchTick = internalMutation({
             doneAt: now,
             updatedAt: now,
           });
+          continue;
+        }
+        // ── RESUME-NOT-RESTART ──
+        // A row with real progress (chunks already transcribed and
+        // appended) represents PAID-FOR AI work. Deleting it would burn
+        // the same tokens again — instead revive it: flip it back to
+        // processing and continue the chain at the exact chunk where it
+        // stopped (the sequence guard makes this airtight). Only a
+        // progress-less row (or an admin-rejected one) is replaced
+        // wholesale.
+        const parsed = existing.chunksParsed ?? 0;
+        const partial =
+          existing.verification !== "rejected" &&
+          parsed > 0 &&
+          parsed < (existing.chunkCount ?? 0) &&
+          (existing.pageCount ?? 0) > 0;
+        if (partial) {
+          const claimedAt = Date.now();
+          await ctx.db.patch(existing._id, {
+            status: "processing",
+            error: undefined,
+            updatedAt: claimedAt,
+          });
+          await ctx.db.patch(job._id, {
+            status: "running",
+            claimedBy: "server-engine",
+            claimedAt,
+            updatedAt: claimedAt,
+            attempts: job.attempts + 1,
+          });
+          const resumeIdx = parsed;
+          const ocrRoute = existing.sourceMode === "ocr";
+          await ctx.scheduler.runAfter(
+            0,
+            ocrRoute
+              ? internal.examConversionEngine.engineOcrChunk
+              : internal.examConversionEngine.engineTranscribeChunk,
+            {
+              digitalPaperId: existing._id,
+              contentId: job.contentId,
+              chunkIndex: resumeIdx,
+              chunkCount: existing.chunkCount ?? 0,
+              pageCount: existing.pageCount ?? 0,
+            },
+          );
+          slots -= 1;
+          stats.claimed += 1;
           continue;
         }
         await ctx.db.delete(existing._id);
@@ -263,6 +308,59 @@ export const dispatchTick = internalMutation({
     }
 
     return stats;
+  },
+});
+
+/**
+ * BACKLOG KICK — one-shot reset for papers stranded by an old cooldown
+ * crash (a Groq TPD wall once failed 100+ papers in one evening).
+ *
+ * The engine's pause-and-resume + 5 Groq lanes + Gemini fallback makes
+ * those failures structurally impossible now, so every exhausted job gets
+ * a FRESH campaign immediately instead of waiting for the daily
+ * self-heal. Safe to run any time: ready papers are untouched, everything
+ * else just re-enters the normal queue at batch priority.
+ */
+export const kickStaleBacklog = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    let reset = 0;
+    const jobs = await ctx.db.query("examConversionJobs").collect();
+    for (const job of jobs) {
+      if (job.status === "failed") {
+        await ctx.db.patch(job._id, {
+          status: "queued",
+          priority: "batch",
+          attempts: 0,
+          claimedBy: undefined,
+          claimedAt: undefined,
+          lastError: undefined,
+          updatedAt: now,
+        });
+        reset += 1;
+        continue;
+      }
+      // Stale running claims that exhausted their attempts sit in the
+      // reaper's "exhausted" limbo — requeue them too.
+      if (
+        job.status === "running" &&
+        (job.claimedAt ?? 0) < now - PROCESSING_MS_HINT &&
+        job.attempts >= MAX_AUTO_ATTEMPTS
+      ) {
+        await ctx.db.patch(job._id, {
+          status: "queued",
+          priority: "batch",
+          attempts: 0,
+          claimedBy: undefined,
+          claimedAt: undefined,
+          lastError: undefined,
+          updatedAt: now,
+        });
+        reset += 1;
+      }
+    }
+    return { reset };
   },
 });
 
@@ -309,5 +407,55 @@ export const failPaperInternal = internalMutation({
       lastError: args.error.slice(0, 500),
       updatedAt: Date.now(),
     });
+  },
+});
+
+/**
+ * PAUSE-FOR-COOLDOWN — the anti-429 heart of the engine.
+ *
+ * When a provider rate limit (Groq TPD/TPM, Gemini quota) interrupts a
+ * conversion, the paper is NOT failed — it stays "processing" and the
+ * worker schedules its own continuation for the exact cooldown the
+ * provider asked for. This mutation just keeps every freshness signal
+ * alive while the paper sleeps:
+ *
+ *   • digitalPapers.updatedAt bumped → the student surface keeps showing
+ *     the calm "Ready in a moment — you'll jump in automatically" state
+ *     (a stale timestamp would let a student kick delete the row and
+ *     restart from zero, burning the very tokens we're saving).
+ *   • examConversionJobs.claimedAt/updatedAt bumped → the 25-minute
+ *     dead-claim reaper leaves the claim alone across long cooldowns.
+ *   • lastError records the pause reason — visible ONLY in the admin
+ *     console, never to students.
+ */
+export const pausePaperForCooldown = internalMutation({
+  args: {
+    digitalPaperId: v.id("digitalPapers"),
+    contentId: v.id("contentItems"),
+    reason: v.string(),
+    resumeAtMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const waitMs = Math.max(0, args.resumeAtMs - now);
+    const row = await ctx.db.get(args.digitalPaperId);
+    if (row && row.status === "processing") {
+      await ctx.db.patch(args.digitalPaperId, {
+        updatedAt: now,
+        error: `Cooling down ${Math.ceil(waitMs / 1000)}s for provider rate limit — auto-resumes. ${args.reason.slice(0, 200)}`,
+      });
+    }
+    const job = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    if (job) {
+      await ctx.db.patch(job._id, {
+        claimedAt: now, // keep the claim fresh across the cooldown
+        updatedAt: now,
+        lastError: `Paused (rate-limit cooldown ${Math.ceil(waitMs / 1000)}s): ${args.reason.slice(0, 300)}`,
+      });
+    }
+    return { waitMs };
   },
 });

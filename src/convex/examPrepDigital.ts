@@ -299,7 +299,56 @@ export const requestDigitization = mutation({
       if (existing.status === "processing" && now - existing.updatedAt < PROCESSING_MS_HINT) {
         return { kind: "processing" }; // already converting server-side
       }
-      // Failed / rejected / stale — replace wholesale (sequence guard stays honest).
+      // ── RESUME-NOT-RESTART ──
+      // A stale row with real progress holds PAID-FOR AI work (chunks
+      // already transcribed). Deleting it would burn the same tokens again
+      // — instead continue the chain at the exact chunk where it stopped,
+      // right now, at student priority. The sequence guard makes resuming
+      // airtight; an interrupted OCR chain resumes on its own route.
+      const parsed = existing.chunksParsed ?? 0;
+      const resumable =
+        existing.verification !== "rejected" &&
+        parsed > 0 &&
+        parsed < (existing.chunkCount ?? 0) &&
+        (existing.pageCount ?? 0) > 0;
+      if (resumable) {
+        await ctx.db.patch(existing._id, {
+          status: "processing",
+          error: undefined,
+          updatedAt: now,
+        });
+        const job = await ctx.db
+          .query("examConversionJobs")
+          .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+          .unique();
+        if (job) {
+          await ctx.db.patch(job._id, {
+            status: "running",
+            priority: "student",
+            claimedBy: "server-engine",
+            claimedAt: now,
+            updatedAt: now,
+            attempts: (job.attempts ?? 0) + 1,
+          });
+        }
+        const ocrRoute = existing.sourceMode === "ocr";
+        await ctx.scheduler.runAfter(
+          0,
+          ocrRoute
+            ? internal.examConversionEngine.engineOcrChunk
+            : internal.examConversionEngine.engineTranscribeChunk,
+          {
+            digitalPaperId: existing._id,
+            contentId: args.contentId,
+            chunkIndex: parsed,
+            chunkCount: existing.chunkCount ?? 0,
+            pageCount: existing.pageCount ?? 0,
+          } as never,
+        );
+        return { kind: "processing" };
+      }
+      // Failed with nothing worth keeping / rejected / stale empty — replace
+      // wholesale (the sequence guard stays honest on a clean row).
       await ctx.db.delete(existing._id);
     }
 
@@ -351,6 +400,31 @@ export const patchPaperProgress = internalMutation({
     await ctx.db.patch(args.digitalPaperId, {
       pageCount: args.pageCount,
       chunkCount: args.chunkCount,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Stamp the conversion route ("text" | "vision" | "ocr") on a processing
+ * row. The dispatch self-heal reads it to RESUME an interrupted chain with
+ * the correct chunk shape — an OCR chain resumed as text chunks would
+ * corrupt the paper (the sequence guard alone can't tell the difference).
+ */
+export const setPaperSourceMode = internalMutation({
+  args: { digitalPaperId: v.id("digitalPapers"), sourceMode: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.digitalPaperId);
+    if (!row || row.status !== "processing") return;
+    if (
+      args.sourceMode !== "text" &&
+      args.sourceMode !== "vision" &&
+      args.sourceMode !== "ocr"
+    ) {
+      return;
+    }
+    await ctx.db.patch(args.digitalPaperId, {
+      sourceMode: args.sourceMode,
       updatedAt: Date.now(),
     });
   },
@@ -713,7 +787,78 @@ export const TEXT_MODEL_CHAIN: AiModelSlot[] = [
   { lane: "groq:openai/gpt-oss-120b" },
   { model: "openai/gpt-oss-20b", lane: "groq:openai/gpt-oss-20b" },
   { model: "qwen/qwen3.8-27b", lane: "groq:qwen/qwen3.8-27b" },
+  // Extra independent daily token budgets: Groq meters TPD PER MODEL, so
+  // every model added here multiplies the platform's total free daily
+  // transcription capacity. llama-3.3-70b-versatile is a long-standing GA
+  // model with strong verbatim transcription quality; llama-3.1-8b-instant
+  // is the tiny-but-alive last Groq resort before the Gemini fallback.
+  { model: "llama-3.3-70b-versatile", lane: "groq:llama-3.3-70b-versatile" },
+  { model: "llama-3.1-8b-instant", lane: "groq:llama-3.1-8b-instant" },
 ];
+
+/**
+ * Parse a provider cooldown from an error message. Groq writes compound
+ * durations like "Please try again in 9m5.616s" (TPD) or "in 12.3s" (TPM);
+ * Gemini writes "retryDelay": "30s". The old parser only matched bare
+ * seconds and read "9m5.616s" as 5.6s — firing straight back into the
+ * same 429. This handles h/m/s compounds and returns milliseconds
+ * (default 90s when nothing parseable is present).
+ */
+export function parseRateLimitCooldownMs(message: string): number {
+  const m = message.match(
+    /try again in\s*(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m)?\s*(?:(\d+(?:\.\d+)?)\s*s)?/i,
+  );
+  if (m) {
+    const h = m[1] ? parseFloat(m[1]) : 0;
+    const min = m[2] ? parseFloat(m[2]) : 0;
+    const s = m[3] ? parseFloat(m[3]) : 0;
+    const totalMs = (h * 3600 + min * 60 + s) * 1000;
+    if (totalMs > 0) return totalMs;
+  }
+  const iso = message.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/);
+  if (iso) return parseFloat(iso[1]!) * 1000;
+  const gemini = message.match(/retry after\s*(\d+(?:\.\d+)?)\s*ms/i);
+  if (gemini) return parseFloat(gemini[1]!);
+  return 90_000;
+}
+
+/** True when the error is a provider rate/quota limit (worth waiting out),
+ *  false for everything else (bad JSON, vanished rows, real bugs…). */
+export function isRateLimitError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("429") ||
+    lower.includes("rate limit") ||
+    lower.includes("tokens per day") ||
+    lower.includes("tpd)") ||
+    lower.includes("resource_exhausted") ||
+    lower.includes("quota")
+  );
+}
+
+/**
+ * Thrown when EVERY model lane in the chain is in a deep cooldown (daily
+ * token budget exhausted platform-wide). Carries the earliest moment any
+ * lane frees up, so the engine can pause the paper and resume exactly
+ * there instead of failing it.
+ */
+export class AiCooldownError extends Error {
+  cooldownMs: number;
+  constructor(cooldownMs: number) {
+    super(
+      `All AI lanes are cooling down — next slot in roughly ${Math.ceil(cooldownMs / 1000)}s`,
+    );
+    this.name = "AiCooldownError";
+    this.cooldownMs = cooldownMs;
+  }
+}
+
+/** Waits longer than this inside the wrapper are pointless — the engine
+ *  pauses the whole paper instead (actions shouldn't sleep for minutes). */
+const MAX_INLINE_WAIT_MS = 60_000;
+/** Circuit-breaker cap: lanes re-probe after this even on huge cooldowns
+ *  (Groq TPD budgets actually free up continuously, not once per day). */
+const MAX_BREAKER_COOLDOWN_MS = 30 * 60 * 1000;
 
 /**
  * Groq call with GLOBAL per-model pacing + automatic model failover.
@@ -737,19 +882,37 @@ export async function callGroqWithRetry(
   let slotIdx = 0;
   const maxAttempts = maxRetries * chain.length + chain.length;
   let lastError: Error | null = null;
+  // Earliest moment a skipped deep-cooldown lane frees up — thrown as an
+  // AiCooldownError if the whole chain turns out to be cooling.
+  let earliestCooldownMs = Number.POSITIVE_INFINITY;
+  const deepLanes = new Set<string>();
   for (;;) {
     const slot = chain[slotIdx % chain.length]!;
     // Global AI pacing — the wait here IS the rate guard. Fail open to
     // plain pacing if the limiter itself ever errors.
+    let waitMs = 0;
     try {
       const permit = await ctx.runMutation(internal.aiRateLimit.acquireAiPermit, {
         lane: slot.lane,
       });
-      if (permit.waitMs > 0) {
-        await new Promise((r) => setTimeout(r, Math.min(permit.waitMs, 45_000)));
-      }
+      waitMs = permit.waitMs;
     } catch {
       // Limiter unavailable — proceed; the failover below still protects us.
+    }
+    if (waitMs > MAX_INLINE_WAIT_MS) {
+      // Deep cooldown on this lane (usually the daily token budget). Do
+      // NOT burn a request straight into a 429 — note the slot, hop to the
+      // next model, and if every lane is deep, hand the cooldown back to
+      // the engine (it pauses the paper and resumes exactly on time).
+      deepLanes.add(slot.lane);
+      earliestCooldownMs = Math.min(earliestCooldownMs, waitMs);
+      if (deepLanes.size >= chain.length) throw new AiCooldownError(earliestCooldownMs);
+      slotIdx += 1;
+      attempt += 1;
+      continue;
+    }
+    if (waitMs > 0) {
+      await new Promise((r) => setTimeout(r, waitMs));
     }
     try {
       return await callGroq(ctx, { ...opts, model: slot.model });
@@ -759,12 +922,14 @@ export async function callGroqWithRetry(
       const is429 = message.includes("429") || message.toLowerCase().includes("rate limit");
       const isModelGone = message.includes("404") || message.includes("model_not_found");
       if ((!is429 && !isModelGone) || attempt >= maxAttempts) throw lastError;
-      const match = message.match(/try again in\s*([\d.]+)\s*s/i);
-      const cooldownS = match ? parseFloat(match[1]!) : 20;
+      // Honor the provider's OWN cooldown — compound forms like "9m5.616s"
+      // included (the old parser read that as 5.6s and re-fired straight
+      // into the same wall).
+      const cooldownS = parseRateLimitCooldownMs(message) / 1000;
       if (is429) {
         await ctx.runMutation(internal.aiRateLimit.reportAiRateLimitHit, {
           lane: slot.lane,
-          backoffMs: Math.min(60_000, Math.ceil(cooldownS * 1000) + 5_000),
+          backoffMs: Math.min(MAX_BREAKER_COOLDOWN_MS, Math.ceil(cooldownS * 1000) + 5_000),
         }).catch(() => {});
       }
       // Next attempt continues on the model that failed — but first try a

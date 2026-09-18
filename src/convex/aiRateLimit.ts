@@ -42,6 +42,8 @@ const PERMIT_INTERVAL_MS: Record<string, number> = {
   "groq:openai/gpt-oss-120b": 20_000,
   "groq:openai/gpt-oss-20b": 15_000,
   "groq:qwen/qwen3.8-27b": 12_000,
+  "groq:llama-3.3-70b-versatile": 15_000,
+  "groq:llama-3.1-8b-instant": 8_000,
   // Legacy generic lanes (still honored if referenced anywhere).
   "groq-text": 20_000,
   "groq-vision": 12_000,
