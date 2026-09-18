@@ -109,6 +109,21 @@ function stripOcrBubbles(line: string): string {
     .trim();
 }
 
+/**
+ * Scan-OCR option lines start with the printed radio bubble: "O A) 2460".
+ * Strip a leading bubble when it sits right before an option marker, and
+ * repair the classic "©)" misread of "(C)" — both are pure OCR artifacts,
+ * and leaving them in voids every option run on bubble-printed papers.
+ */
+function repairOcrOptionLine(line: string): string {
+  return line
+    .replace(/©\)/g, "C)")
+    .replace(/\(\s*©/g, "(C")
+    .replace(/^\s*[O〇©]\s+(?=[A-H][.)]\s*\S)/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 interface LineInfo {
   text: string;
   page: number;
@@ -122,6 +137,9 @@ function flatten(pages: string[]): LineInfo[] {
       let text = raw.replace(/\s+/g, " ").trim();
       if (isNoiseLine(text)) continue;
       if (/[(〇©]|[O〇©]\)/.test(text)) text = stripOcrBubbles(text);
+      if (/[O〇©]\s+[A-H][.)]/.test(text) || text.includes("©")) {
+        text = repairOcrOptionLine(text);
+      }
       if (!text) continue;
       lines.push({ text, page: i + 1, consumed: false });
     }
@@ -306,9 +324,18 @@ function extractOptionRun(
   const byLetter = new Map<string, OptMatch>();
   for (const f of found) if (!byLetter.has(f.letter)) byLetter.set(f.letter, f);
   const letters = [...byLetter.keys()].sort();
-  // Must be exactly a prefix of A..H of size 2..8.
-  const expected = "ABCDEFGH".slice(0, letters.length);
-  if (letters.join("") !== expected || letters.length > 8) return null;
+  // Must be an IN-ORDER SUBSEQUENCE of A..H of size 2..8 — contiguous is
+  // NOT required, because scans routinely misread one letter (a bubble-C
+  // that OCR'd as "©" or "0") and voiding the whole block over one lost
+  // letter would zero out every option run on bubble-printed papers.
+  // Requiring the letters to still climb (A < B < D) keeps the run honest.
+  if (letters.length > 8) return null;
+  let probe = 0;
+  for (const letter of letters) {
+    probe = "ABCDEFGH".indexOf(letter, probe);
+    if (probe < 0) return null;
+    probe += 1;
+  }
 
   // Text boundaries: each option runs to the next match's text start (in
   // printed order, not letter order).

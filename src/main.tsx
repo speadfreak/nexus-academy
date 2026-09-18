@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { Toaster } from "@/components/ui/sonner";
+import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { TourProvider } from "@/components/tour";
 import AppPreloader from "@/components/AppPreloader";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -850,6 +851,7 @@ if (rootEl) {
                 </BrowserRouter>
               </PreloaderGate>
               <Toaster />
+              <UpdatePrompt />
             </MusicProvider>
           </ThemeProvider>
         </ConvexAuthProvider>

@@ -95,6 +95,7 @@ type HubTab = "overview" | "papers" | "practice" | "results";
 interface DigitalStatus {
   status: "processing" | "ready" | "failed";
   questionCount: number;
+  reviewStatus: string | null;
 }
 
 // ─── Small helpers ──────────────────────────────────────────────────────
@@ -511,7 +512,9 @@ function PaperCard({
       {/* Digital availability chip — real state from the engine. Deliberately
           NO trust/AI badges here: students see a clean card, and QC happens
           silently in the background (admin review + in-player reports). */}
-      {digital?.status === "ready" ? (
+      {digital?.status === "ready" &&
+      digital.reviewStatus !== "needs_review" &&
+      digital.reviewStatus !== "pdf_only" ? (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 type-caption font-bold text-amber-300">
             <Sparkles className="size-3" /> Digital · {digital.questionCount} Qs
@@ -1207,6 +1210,7 @@ export default function ExamPrep() {
       map.set(row.contentId, {
         status: row.status as DigitalStatus["status"],
         questionCount: row.questionCount,
+        reviewStatus: row.reviewStatus ?? null,
       });
     }
     return map;
