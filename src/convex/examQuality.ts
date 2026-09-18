@@ -1,19 +1,20 @@
-// Exam Engine admin console backend — quality control for AI-digitized
-// past papers.
+// Exam Engine admin console backend — quality control for deterministically
+// parsed past papers.
 //
-// WHY THIS EXISTS: every digital paper starts life as an AI transcription
-// marked "ai_unverified". Before the platform treats it as authoritative
-// study material, an admin reviews it here — question by question, with
-// inline correction — and flips it to "verified" (or rejects it). Students
-// crowdsource error-finding through per-question reports, which land in
-// this console's inbox.
+// HOW QUALITY WORKS NOW: the deterministic parser computes a real
+// confidence score (0-100) for every paper from measurable signals —
+// sequential numbering continuity, option-set consistency, how much of
+// the document's text was captured inside parsed blocks, stem quality.
+// High confidence → live instantly, no admin step. Low confidence → the
+// review queue below, where an admin glances at the paper and either
+// ACCEPTS it, fixes specific questions, or routes students to the
+// original PDF. Confidence is computed in milliseconds — no provider,
+// no verification backlog.
 //
-// This file also owns the BATCH DIGITIZATION queue: "digitize the whole
-// library" pre-converts every past paper so real students never wait on a
-// live AI conversion. Batch jobs run in any admin's browser (the PDF text
-// extraction is client-side), dequeue strictly AFTER student-demanded
-// jobs, and are fully resumable — the queue lives in the database, not in
-// any tab.
+// This file also owns the conversion queue controls ("digitize the whole
+// library", reconvert everything through the deterministic engine) and
+// the scan-OCR handoff list (scanned papers wait for a browser tab to
+// read them with Tesseract.js — zero cloud AI).
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
@@ -23,10 +24,7 @@ import type { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireAdminMutation, isAdmin, type UserDoc } from "./admin";
-import {
-  MAX_CONCURRENT_CONVERSIONS,
-  PROCESSING_MS_HINT,
-} from "./examPrepDigitalConstants";
+import { PROCESSING_MS_HINT } from "./examPrepDigitalConstants";
 
 /**
  * Read-only admin gate for QUERIES (requireAdminMutation needs a
@@ -35,8 +33,8 @@ import {
  */
 async function requireAdminRead(ctx: GenericQueryCtx<any>): Promise<UserDoc> {
   const userId = await getAuthUserId(ctx);
-  const user: UserDoc | null = userId
-    ? await ctx.runQuery(internal.admin.getUserById, { userId })
+  const user = userId
+    ? ((await ctx.db.get(userId)) as UserDoc | null)
     : null;
   if (!user || !(await isAdmin(ctx, user))) {
     throw new ConvexError({ message: "Admin access required.", code: "unauthorized" });
@@ -55,22 +53,35 @@ export const adminExamOverview = query({
     const reports = await ctx.db.query("examQuestionReports").collect();
     const jobs = await ctx.db.query("examConversionJobs").collect();
 
-    const ready = papers.filter((p) => p.status === "ready");
+    const ready = papers.filter((p) => p.status === "ready" && p.verification !== "rejected" && p.reviewStatus !== "pdf_only");
     const freshCutoff = Date.now() - PROCESSING_MS_HINT;
     const running = jobs.filter(
       (j) => j.status === "running" && (j.claimedAt ?? 0) >= freshCutoff,
     ).length;
+
+    const reviewOf = (p: Doc<"digitalPapers">) => p.reviewStatus ?? "auto";
+    const confidences = ready
+      .map((p) => p.confidence)
+      .filter((c): c is number => typeof c === "number");
 
     return {
       papersTotal: papers.length,
       readyCount: ready.length,
       processingCount: papers.filter((p) => p.status === "processing").length,
       failedCount: papers.filter((p) => p.status === "failed").length,
-      verifiedCount: ready.filter((p) => p.verification === "verified").length,
-      unverifiedCount: ready.filter(
-        (p) => (p.verification ?? "ai_unverified") === "ai_unverified",
+      // Deterministic review pipeline:
+      autoCount: ready.filter((p) => reviewOf(p) === "auto").length,
+      acceptedCount: ready.filter((p) => reviewOf(p) === "accepted").length,
+      needsReviewCount: papers.filter((p) => p.reviewStatus === "needs_review").length,
+      pdfOnlyCount: papers.filter((p) => p.reviewStatus === "pdf_only").length,
+      avgConfidence:
+        confidences.length > 0
+          ? Math.round(confidences.reduce((s, c) => s + c, 0) / confidences.length)
+          : null,
+      // Scans waiting for a browser tab to OCR them.
+      scansWaiting: papers.filter(
+        (p) => p.status === "processing" && p.sourceMode === "scan",
       ).length,
-      rejectedCount: ready.filter((p) => p.verification === "rejected").length,
       questionTotal: ready.reduce((sum, p) => sum + p.questionCount, 0),
       openReports: reports.filter((r) => r.status === "open").length,
       resolvedReports: reports.filter((r) => r.status === "resolved").length,
@@ -79,13 +90,12 @@ export const adminExamOverview = query({
         running,
         done: jobs.filter((j) => j.status === "done").length,
         failed: jobs.filter((j) => j.status === "failed").length,
-        maxConcurrent: MAX_CONCURRENT_CONVERSIONS,
       },
     };
   },
 });
 
-// ─── Papers table (review / verify / reconvert) ──────────────────────────
+// ─── Papers table (review / accept / reconvert) ──────────────────────────
 
 export const adminListDigitalPapers = query({
   args: {
@@ -93,9 +103,11 @@ export const adminListDigitalPapers = query({
       v.union(
         v.literal("all"),
         v.literal("ready"),
-        v.literal("unverified"),
-        v.literal("verified"),
+        v.literal("needs_review"),
+        v.literal("auto"),
+        v.literal("pdf_only"),
         v.literal("failed"),
+        v.literal("scans"),
         v.literal("not_converted"),
       ),
     ),
@@ -120,26 +132,6 @@ export const adminListDigitalPapers = query({
       subjectNames.set(s._id, s.name);
     }
 
-    const rows: {
-      _id: string;
-      contentId: string;
-      title: string;
-      subjectName: string;
-      grade: number;
-      examYear: number | null;
-      isPremium: boolean;
-      // digitalPapers fields (null when never converted):
-      status: string | null;
-      questionCount: number | null;
-      verification: string | null;
-      adminEdited: boolean;
-      sourceMode: string | null;
-      error: string | null;
-      updatedAt: number | null;
-      openReports: number;
-      queued: boolean;
-    }[] = [];
-
     const reportRows = await ctx.db.query("examQuestionReports").collect();
     const openByContent = new Map<string, number>();
     for (const r of reportRows) {
@@ -151,6 +143,26 @@ export const adminListDigitalPapers = query({
     const jobByContent = new Map<string, Doc<"examConversionJobs">>();
     for (const j of jobRows) jobByContent.set(j.contentId, j);
 
+    const freshCutoff = Date.now() - PROCESSING_MS_HINT;
+    const rows: {
+      _id: string;
+      contentId: string;
+      title: string;
+      subjectName: string;
+      grade: number;
+      examYear: number | null;
+      isPremium: boolean;
+      status: string | null;
+      questionCount: number | null;
+      confidence: number | null;
+      reviewStatus: string | null;
+      sourceMode: string | null;
+      error: string | null;
+      updatedAt: number | null;
+      openReports: number;
+      queued: boolean;
+    }[] = [];
+
     for (const item of items) {
       const paper = await ctx.db
         .query("digitalPapers")
@@ -158,15 +170,16 @@ export const adminListDigitalPapers = query({
         .unique();
 
       const status = paper?.status ?? null;
-      const verification =
-        status === "ready" ? paper?.verification ?? "ai_unverified" : null;
+      const reviewStatus = paper?.reviewStatus ?? null;
+      const sourceMode = paper?.sourceMode ?? null;
 
       if (filter === "ready" && status !== "ready") continue;
-      if (filter === "unverified" && verification !== "ai_unverified") continue;
-      if (filter === "verified" && verification !== "verified") continue;
+      if (filter === "needs_review" && reviewStatus !== "needs_review") continue;
+      if (filter === "auto" && !(status === "ready" && (reviewStatus === "auto" || reviewStatus === "accepted"))) continue;
+      if (filter === "pdf_only" && reviewStatus !== "pdf_only") continue;
       if (filter === "failed" && status !== "failed") continue;
+      if (filter === "scans" && !(status === "processing" && sourceMode === "scan")) continue;
       if (filter === "not_converted" && status !== null) continue;
-
       if (search && !item.title.toLowerCase().includes(search)) continue;
 
       const job = jobByContent.get(item._id);
@@ -180,35 +193,32 @@ export const adminListDigitalPapers = query({
         isPremium: item.isPremium,
         status,
         questionCount: paper?.questionCount ?? null,
-        verification,
-        adminEdited: paper?.adminEdited ?? false,
-        sourceMode: paper?.sourceMode ?? null,
+        confidence: paper?.confidence ?? null,
+        reviewStatus,
+        sourceMode,
         error: paper?.error ?? null,
         updatedAt: paper?.updatedAt ?? null,
         openReports: openByContent.get(item._id) ?? 0,
-        queued: job?.status === "queued" || (job?.status === "running" && (job.claimedAt ?? 0) >= freshCutoffSafe()),
+        queued:
+          job?.status === "queued" ||
+          (job?.status === "running" && (job.claimedAt ?? 0) >= freshCutoff),
       });
       if (rows.length >= limit) break;
     }
 
     rows.sort((a, b) => {
-      // Papers with open reports first — that's the QC priority signal —
-      // then unverified above verified, then most recently touched.
+      // Review-queue papers first, then papers with open reports, then
+      // most recently touched.
+      const aReview = a.reviewStatus === "needs_review" ? 0 : 1;
+      const bReview = b.reviewStatus === "needs_review" ? 0 : 1;
+      if (aReview !== bReview) return aReview - bReview;
       if (a.openReports !== b.openReports) return b.openReports - a.openReports;
-      const vRank = (v: string | null) => (v === "ai_unverified" ? 0 : v === "rejected" ? 1 : 2);
-      if (a.status === "ready" && b.status === "ready" && a.verification !== b.verification) {
-        return vRank(a.verification) - vRank(b.verification);
-      }
       return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
     });
 
     return rows;
   },
 });
-
-function freshCutoffSafe(): number {
-  return Date.now() - PROCESSING_MS_HINT;
-}
 
 /** One full digital paper for the review dialog (admin-only, all fields). */
 export const adminGetDigitalPaper = query({
@@ -223,8 +233,9 @@ export const adminGetDigitalPaper = query({
     return {
       _id: row._id,
       status: row.status,
-      verification: row.verification ?? (row.status === "ready" ? "ai_unverified" : null),
-      adminEdited: row.adminEdited ?? false,
+      confidence: row.confidence ?? null,
+      reviewStatus: row.reviewStatus ?? null,
+      parserMeta: row.parserMeta ?? null,
       sourceMode: row.sourceMode ?? "text",
       questionCount: row.questionCount,
       error: row.error ?? null,
@@ -234,11 +245,16 @@ export const adminGetDigitalPaper = query({
   },
 });
 
-/** Verify / reject a paper — the trust flip every surface reflects. */
-export const setPaperVerification = mutation({
+/**
+ * Admin review decision on a parsed paper — the confidence-era replacement
+ * for AI verification:
+ *   accept    → "accepted": the paper goes live for students;
+ *   pdf_only  → "pdf_only": students are routed to the original PDF.
+ */
+export const adminReviewDecide = mutation({
   args: {
     contentId: v.id("contentItems"),
-    decision: v.union(v.literal("verified"), v.literal("rejected")),
+    decision: v.union(v.literal("accept"), v.literal("pdf_only")),
   },
   handler: async (ctx, args) => {
     const { user } = await requireAdminMutation(ctx);
@@ -247,10 +263,12 @@ export const setPaperVerification = mutation({
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
       .unique();
     if (!row || row.status !== "ready") {
-      throw new ConvexError("Only a ready (converted) paper can be verified.");
+      throw new ConvexError("Only a parsed (ready) paper can be reviewed.");
     }
     await ctx.db.patch(row._id, {
-      verification: args.decision,
+      reviewStatus: args.decision === "accept" ? "accepted" : "pdf_only",
+      // Keep the legacy field in sync so every read-path agrees.
+      verification: args.decision === "accept" ? "verified" : "rejected",
       verifiedBy: user._id,
       verifiedAt: Date.now(),
       updatedAt: Date.now(),
@@ -261,8 +279,7 @@ export const setPaperVerification = mutation({
 
 /**
  * Inline correction of ONE question from the review console. Every field
- * is optional — only provided fields change. Sets adminEdited so the
- * badge can say "corrected by a teacher".
+ * is optional — only provided fields change. Sets adminEdited.
  */
 export const adminFixQuestion = mutation({
   args: {
@@ -407,12 +424,11 @@ export const resolveQuestionReport = mutation({
   },
 });
 
-// ─── Library autopilot status ─────────────────────────────────────────────
+// ─── Library status ───────────────────────────────────────────────────────
 
 /**
- * Coverage of the autopilot: how much of the past-exam library is already
- * digital, what's in flight, and what needs a human. The console renders
- * this as the "always ready" gauge.
+ * Coverage of the conversion engine: how much of the past-exam library is
+ * digital, what's in flight, what waits for OCR, and what needs review.
  */
 export const libraryAutopilotStatus = query({
   args: {},
@@ -427,14 +443,17 @@ export const libraryAutopilotStatus = query({
     const papers = await ctx.db.query("digitalPapers").collect();
     const readyByContent = new Map<string, Doc<"digitalPapers">>();
     for (const p of papers) {
-      if (p.status === "ready" && p.verification !== "rejected") {
+      if (
+        p.status === "ready" &&
+        p.verification !== "rejected" &&
+        p.reviewStatus !== "pdf_only"
+      ) {
         readyByContent.set(p.contentId, p);
       }
     }
 
     const freshCutoff = Date.now() - PROCESSING_MS_HINT;
     const jobs = await ctx.db.query("examConversionJobs").collect();
-    const now = Date.now();
 
     let queued = 0;
     let running = 0;
@@ -443,12 +462,15 @@ export const libraryAutopilotStatus = query({
       if (j.status === "queued") queued += 1;
       else if (j.status === "running") {
         if ((j.claimedAt ?? 0) >= freshCutoff) running += 1;
-        else queued += 1; // stale claim — the autopilot tick will requeue it
+        else queued += 1; // stale claim — the dispatch tick will requeue it
       } else if (j.status === "failed") failed += 1;
     }
 
     const ready = items.filter((i) => readyByContent.has(i._id)).length;
     const libraryTotal = items.length;
+    const scansWaiting = papers.filter(
+      (p) => p.status === "processing" && p.sourceMode === "scan",
+    ).length;
 
     return {
       libraryTotal,
@@ -457,31 +479,22 @@ export const libraryAutopilotStatus = query({
       queued,
       running,
       failed,
-      // Questions transcribed across the whole ready library — the engine's
+      scansWaiting,
+      needsReview: papers.filter((p) => p.reviewStatus === "needs_review").length,
+      // Questions parsed across the whole ready library — the engine's
       // "work done" number.
       questionTotal: [...readyByContent.values()].reduce((s, p) => s + p.questionCount, 0),
       lastTickNote:
-        "The autopilot tick runs every 10 minutes; any open Learnyx tab converts queued papers when the platform is idle.",
-    } as {
-      libraryTotal: number;
-      ready: number;
-      coveragePct: number;
-      queued: number;
-      running: number;
-      failed: number;
-      questionTotal: number;
-      lastTickNote: string;
+        "The deterministic engine ticks every minute: text papers parse in seconds, scans wait for a browser tab (Tesseract.js, zero cloud AI).",
     };
   },
 });
 
-// ─── Batch digitization queue ─────────────────────────────────────────────
+// ─── Queue controls ───────────────────────────────────────────────────────
 
 /**
  * "Digitize the whole library": enqueue every past-exam paper that has no
- * ready digital version yet. Student-demanded jobs always dequeue first;
- * these batch rows simply fill the platform's idle conversion capacity.
- * Safe to click twice — papers already queued/done are skipped.
+ * live digital version yet. Safe to click twice.
  */
 export const enqueueBatchDigitization = mutation({
   args: {},
@@ -507,24 +520,28 @@ export const enqueueBatchDigitization = mutation({
 
     for (const item of items) {
       const paper = paperByContent.get(item._id);
-      if (paper && paper.status === "ready" && paper.verification !== "rejected") {
+      const live =
+        paper &&
+        paper.status === "ready" &&
+        paper.verification !== "rejected" &&
+        paper.reviewStatus !== "pdf_only";
+      if (live) {
         skippedReady += 1;
         continue;
       }
       const job = jobByContent.get(item._id);
-      if (job && (job.status === "queued" || job.status === "running" || job.status === "done")) {
-        if (job.status === "done" && paper?.status === "ready") {
-          skippedReady += 1;
-          continue;
-        }
+      if (job && (job.status === "queued" || job.status === "running")) {
         skippedQueued += 1;
         continue;
       }
-      if (job && job.status === "failed") {
-        // A fresh batch pass retries earlier failures.
+      if (job) {
+        // done/failed → fresh run.
         await ctx.db.patch(job._id, {
           status: "queued",
           priority: "batch",
+          attempts: 0,
+          claimedBy: undefined,
+          claimedAt: undefined,
           lastError: undefined,
           updatedAt: now,
         });
@@ -548,69 +565,20 @@ export const enqueueBatchDigitization = mutation({
 });
 
 /**
- * The batch worker's claim step (runs in an admin's browser tab). Returns
- * the next queued BATCH job — student-demanded jobs are never claimed
- * here (their own clients convert them) — while respecting the platform
- * concurrency cap. Null when the queue is empty or at capacity.
+ * Re-convert EVERYTHING through the deterministic engine: all digital
+ * rows deleted, every job re-queued. This is how the library migrates to
+ * a new parser version (or shakes off legacy AI-era rows) in one click.
  */
-export const claimNextBatchJob = mutation({
+export const adminReconvertAll = mutation({
   args: {},
   handler: async (ctx) => {
-    const { user } = await requireAdminMutation(ctx);
-
-    const freshCutoff = Date.now() - PROCESSING_MS_HINT;
-    const runningRows = await ctx.db
-      .query("examConversionJobs")
-      .withIndex("by_status", (q) => q.eq("status", "running"))
-      .collect();
-    const running = runningRows.filter((j) => (j.claimedAt ?? 0) >= freshCutoff).length;
-    if (running >= MAX_CONCURRENT_CONVERSIONS) return null;
-
-    const queued = await ctx.db
-      .query("examConversionJobs")
-      .withIndex("by_status", (q) => q.eq("status", "queued"))
-      .collect();
-    const next = queued
-      .filter((j) => j.priority === "batch")
-      .sort((a, b) => a.createdAt - b.createdAt)[0];
-    if (!next) return null;
-
-    // Clear any dead digitalPapers row before the worker starts.
-    const existingPaper = await ctx.db
-      .query("digitalPapers")
-      .withIndex("by_content", (q) => q.eq("contentId", next.contentId))
-      .unique();
-    if (
-      existingPaper &&
-      (existingPaper.status !== "processing" ||
-        Date.now() - existingPaper.updatedAt > PROCESSING_MS_HINT)
-    ) {
-      await ctx.db.delete(existingPaper._id);
-    }
-    if (
-      existingPaper &&
-      existingPaper.status === "processing" &&
-      Date.now() - existingPaper.updatedAt <= PROCESSING_MS_HINT
-    ) {
-      // Another pipeline is live on this paper — skip it for now.
-      return null;
-    }
-
-    const now = Date.now();
-    await ctx.db.patch(next._id, {
-      status: "running",
-      claimedBy: user._id,
-      claimedAt: now,
-      attempts: next.attempts + 1,
-      updatedAt: now,
-    });
-
-    const item = await ctx.db.get(next.contentId);
-    return {
-      jobId: next._id,
-      contentId: next.contentId,
-      title: item?.title ?? "(unknown)",
-    };
+    await requireAdminMutation(ctx);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.examConversionEngineDispatch.reconvertEntireLibrary,
+      {},
+    );
+    return { ok: true as const };
   },
 });
 
@@ -680,12 +648,44 @@ export const adminListQueue = query({
   },
 });
 
+// ─── Scan OCR handoff ─────────────────────────────────────────────────────
+
+/**
+ * Scanned papers waiting for OCR (status processing + sourceMode scan),
+ * with per-paper progress. The admin console's "OCR scans in this tab"
+ * runner consumes this list; a student opening the paper also triggers
+ * their own tab automatically. Zero cloud AI — Tesseract.js in the tab.
+ */
+export const adminListScansNeedingOcr = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminRead(ctx);
+    const papers = await ctx.db
+      .query("digitalPapers")
+      .withIndex("by_status", (q) => q.eq("status", "processing"))
+      .collect();
+    const scans = papers.filter((p) => p.sourceMode === "scan");
+    scans.sort((a, b) => a.createdAt - b.createdAt);
+    const out = [];
+    for (const p of scans.slice(0, 200)) {
+      const item = await ctx.db.get(p.contentId);
+      out.push({
+        contentId: p.contentId,
+        title: item?.title ?? "(deleted)",
+        pageCount: p.pageCount ?? 0,
+        pagesDone: (p.ocrPages ?? []).filter((t) => t.length > 0).length,
+        updatedAt: p.updatedAt,
+      });
+    }
+    return out;
+  },
+});
+
 // ─── Single-paper actions ─────────────────────────────────────────────────
 
 /**
  * Re-enqueue ONE paper for conversion (admin "Convert"/"Reconvert" button).
- * Batch priority — students still outrank it — but it lands immediately
- * when a slot is free.
+ * Batch priority — students still outrank it.
  */
 export const enqueueSinglePaper = mutation({
   args: { contentId: v.id("contentItems") },
@@ -706,10 +706,21 @@ export const enqueueSinglePaper = mutation({
       await ctx.db.patch(existing._id, {
         status: "queued",
         priority: "batch",
+        attempts: 0,
+        claimedBy: undefined,
+        claimedAt: undefined,
         lastError: undefined,
         enqueuedBy: user._id,
         updatedAt: now,
       });
+      // Remove the old digital row entirely (INCLUDING scan-waiting rows —
+      // the admin's reconvert is an explicit override) so the engine starts
+      // clean.
+      const paper = await ctx.db
+        .query("digitalPapers")
+        .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+        .unique();
+      if (paper) await ctx.db.delete(paper._id);
       return { queued: true as const };
     }
     await ctx.db.insert("examConversionJobs", {

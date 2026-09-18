@@ -119,15 +119,3 @@ export async function callGroq(ctx: ActionCtx, opts: GroqCallOptions): Promise<s
 export function getModelName(): string {
   return DEFAULT_MODEL;
 }
-
-/**
- * Vision model used for scanned-paper OCR (page images → questions).
- * Overridable via the GROQ_VISION_MODEL env var / config key.
- *
- * NOTE: probed against the live Groq account — llama-4 scout/maverick are
- * NOT available on it, but qwen/qwen3.8-27b accepts image_url content parts
- * and read a rendered exam page verbatim, so it is the default.
- */
-export function getVisionModelName(): string {
-  return process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b";
-}

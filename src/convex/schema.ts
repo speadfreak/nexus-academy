@@ -1486,7 +1486,41 @@ const schema = defineSchema(
         }),
       ),
       questionCount: v.number(),
-      // ── Trust / verification workflow ────────────────────────────────
+      // ── DETERMINISTIC PARSER quality signals (replaces AI verification) ──
+      // confidence: 0-100, computed from real parsing signals (sequential
+      // continuity, option consistency, text coverage, stem quality) — an
+      // instant, honest number, not a provider opinion.
+      confidence: v.optional(v.number()),
+      // "auto" = high confidence, live without an admin step;
+      // "needs_review" = parked for the admin review queue (students are
+      //   routed to the original PDF until an admin accepts it);
+      // "accepted" = an admin reviewed and accepted it;
+      // "pdf_only" = an admin (or the parser, for answer-key documents)
+      //   decided students should use the original PDF.
+      // Absent = legacy row (treated as "auto" for compatibility).
+      reviewStatus: v.optional(
+        v.union(
+          v.literal("auto"),
+          v.literal("needs_review"),
+          v.literal("accepted"),
+          v.literal("pdf_only"),
+        ),
+      ),
+      // Compact parser diagnostics for the admin console.
+      parserMeta: v.optional(
+        v.object({
+          numberingStyle: v.string(),
+          optionStyle: v.string(),
+          answerKeySource: v.string(),
+          answerKeyCount: v.number(),
+          flaggedDiagrams: v.number(),
+        }),
+      ),
+      // Page-indexed OCR text for scanned papers ("" = page not yet read).
+      // Filled by the client-side Tesseract.js runner, then parsed by the
+      // same deterministic parser as text-layer papers. Zero cloud AI.
+      ocrPages: v.optional(v.array(v.string())),
+      // ── Trust / verification workflow (LEGACY — AI era) ────────────────
       // "ai_unverified" (or absent on legacy rows) = transcribed by AI,
       // not yet human-checked: every surface shows the honest amber badge.
       // "verified" = an admin reviewed (and possibly corrected) every
@@ -1505,9 +1539,18 @@ const schema = defineSchema(
       // True once an admin edited at least one question in the review
       // console — surfaced as "corrected by a teacher" on the badge.
       adminEdited: v.optional(v.boolean()),
-      // How the text was obtained: "text" = pdf.js text layer, "vision" =
-      // page-image OCR (scanned papers). Absent = "text" (legacy rows).
-      sourceMode: v.optional(v.union(v.literal("text"), v.literal("vision"), v.literal("ocr"))),
+      // How the text was obtained: "text" = the PDF's own text layer,
+      // "scan" = Tesseract.js OCR of page images (no text layer; zero
+      // cloud AI). "vision"/"ocr" are LEGACY values from the retired AI
+      // pipelines — kept in the union so historical rows stay valid.
+      sourceMode: v.optional(
+        v.union(
+          v.literal("text"),
+          v.literal("vision"),
+          v.literal("ocr"),
+          v.literal("scan"),
+        ),
+      ),
       // Telemetry for the conversion pipeline UI.
       pageCount: v.optional(v.number()),
       chunkCount: v.optional(v.number()),
@@ -1595,27 +1638,12 @@ const schema = defineSchema(
       .index("by_status", ["status"]),
 
     // ------------------------------------------------------------------
-    // Global AI rate orchestrator — one row per "lane" ("groq-text",
-    // "groq-vision"). The platform's true conversion rate guard: every AI
-    // call reserves a staggered time slot here, so ANY number of parallel
-    // conversion pipelines still spaces their calls exactly <interval> ms
-    // apart platform-wide (≈20 requests/min — safely under the free tier's
-    // 30/min cap). cooldownUntil is the shared 429 circuit breaker: when
-    // Groq ever answers 429, EVERY pipeline on that lane pauses together
-    // for the exact cooldown Groq asks for instead of each crashing its
-    // own paper. See aiRateLimit.ts.
+    // (The old global AI rate orchestrator table was removed together with
+    // the AI transcription pipeline — exam conversion is now a
+    // deterministic parser with zero AI calls. The general Groq/Gemini
+    // clients used by Tutor / Quizzes / Flashcards / Mock Exam are
+    // untouched.)
     // ------------------------------------------------------------------
-    aiRateLimit: defineTable({
-      key: v.string(),
-      // Timestamp of the most recently reserved slot (may be in the future —
-      // it IS the reservation queue).
-      lastPermitAt: v.number(),
-      // Optional global pause: all callers on this lane wait until this
-      // timestamp before their next call (set on a 429).
-      cooldownUntil: v.optional(v.number()),
-      // Lifetime 429 count on this lane — admin visibility only.
-      hits: v.optional(v.number()),
-    }).index("by_key", ["key"]),
 
     // ------------------------------------------------------------------
     // Manual payment system — TeleBirr personal transfers + admin review

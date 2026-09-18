@@ -1,120 +1,49 @@
-// Digital exam engine backend — auto-converts every past-exam PDF into a
-// fully digital, question-by-question paper. V2.
+// Digital exam engine backend — turns every past-exam PDF into a fully
+// digital, question-by-question paper. V3: THE DETERMINISTIC ERA.
 //
-// PIPELINE (who does what):
-//   1. beginDigitization  (mutation, client)  — the RATE GUARD + claim.
-//      Every conversion on the platform passes through a queue row
-//      (examConversionJobs). At most MAX_CONCURRENT_CONVERSIONS fresh
-//      claims platform-wide — free-tier AI providers stay alive even when
-//      a whole class opens papers at once. Students waiting for a slot see
-//      their live queue position; student-demanded jobs always dequeue
-//      ahead of admin batch jobs.
-//   2. Client extracts the PDF text locally (pdf.js — same engine the
-//      Reader uses) and streams page-aligned chunks to:
-//   3. parsePaperChunk    (action, client)    — Groq transcription with a
-//      strict "transcribe, never invent" prompt. Scanned papers (no text
-//      layer) take the VISION path instead: the client renders each page
-//      to a JPEG and streams it to parsePaperPageImage (Groq vision model
-//      = honest OCR). Each chunk/page appends through the internal
-//      sequence-guarded appendParsedChunk; the last one completes the job
-//      (renumber 1..N, flip ready, mark the row "ai_unverified").
-//   4. getDigitalPaper / getDigitalPaperStatuses (queries) — the player and
-//      the hub badges read from here.
+// There is NO AI in this pipeline. Real past exam papers have a highly
+// predictable structure (numbered questions, lettered options, answer
+// keys), so conversion is pure pattern-matching:
 //
-// QUESTION KINDS (v2 — fixes the old "Conversion didn't make it" dead end):
-//   • "mcq"        — lettered options; what v1 handled exclusively.
-//   • "structured" — numbered free-response / show-that / workout
-//     questions with NO options. Practice mode reveals a suggested
-//     answer (only when the paper itself provides one) for self-grading.
-//   A paper that previously failed because it had zero MCQs now converts
-//   as a structured paper. A paper that failed because it is a pure
-//   image scan now converts through the vision path.
+//   1. requestDigitization (mutation, student kick) — claims the queue
+//      row and schedules the server engine immediately.
+//   2. engineConvert (action, server) — layout-aware text extraction
+//      (two-column aware) + the deterministic parser (examParser.ts).
+//      Text-layer papers complete in ONE action, typically seconds, with
+//      a computed confidence score. Scanned papers (no text layer) are
+//      stamped for the OCR route: a browser tab (the student's own, or
+//      the admin console) runs Tesseract.js page by page — zero cloud
+//      AI, zero quotas — and submits text through submitOcrPageText.
+//   3. When every page's OCR text is in, finalizeOcrPaper runs the EXACT
+//      SAME deterministic parser on it. One parser, two text sources.
+//   4. Quality: every paper gets confidence (0-100) from real signals.
+//      High → live instantly ("auto"). Low → "needs_review" (the admin
+//      queue: accept / fix / original-PDF-only). Answer-key PDFs linked
+//      via contentItems.answerKeyContentId are parsed for their number→
+//      letter map and merged deterministically.
 //
-// HONESTY RULES baked into the backend:
-//   - The AI is told to transcribe ONLY questions that literally appear
-//     in the text/image. It may attach an answer/solution only when the
-//     paper itself states one (answer-key page); otherwise the fields
-//     stay empty and the UI labels anything shown as AI-suggested.
-//   - Every ready row starts "ai_unverified": the player shows an honest
-//     badge until an admin verifies it in the Exam Engine console.
-//   - figureHint is DETECTED BY REGEX, not by the AI — a question that
-//     references a figure/diagram/table always offers "View original
-//     page" so no diagram is silently lost.
-//   - Question text is stored verbatim (trimmed) — no rewriting.
+// HONESTY RULES (unchanged in spirit, sharper in the deterministic era):
+//   - The parser transcribes structure — it never invents question text,
+//     options, or answers. Answers come only from the paper's own key.
+//   - Questions whose real content is a diagram are flagged (figureHint)
+//     with a link to the original page — never silently incomplete.
+//   - No trust badges are shown to students; QC lives in the admin
+//     console plus the in-player "Report an issue" affordance.
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import type { GenericActionCtx } from "convex/server";
 import { internal } from "./_generated/api";
-import {
-  action,
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-} from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isPremiumStatus } from "./subscriptions";
-import { callGroq, getVisionModelName } from "./groq";
-import {
-  CROWD_MAX_CONCURRENT,
-  MAX_CONCURRENT_CONVERSIONS,
-  PROCESSING_MS_HINT,
-} from "./examPrepDigitalConstants";
 
-// Platform-wide conversion concurrency + claim freshness live in
-// examPrepDigitalConstants.ts (shared with the admin console).
+// How long a "processing" row stays fresh before a student kick may
+// replace it. The deterministic engine finishes text papers in seconds —
+// two minutes is generous. (Scan rows stay fresh as long as OCR page
+// submissions keep arriving; the dispatch reaper handles abandonment.)
+const PROCESSING_FRESH_MS = 2 * 60 * 1000;
 
-const rawQuestionValidator = v.object({
-  number: v.number(),
-  kind: v.optional(v.union(v.literal("mcq"), v.literal("structured"))),
-  text: v.string(),
-  passage: v.optional(v.string()),
-  options: v.array(v.object({ label: v.string(), text: v.string() })),
-  answer: v.optional(v.string()),
-  suggestedAnswer: v.optional(v.string()),
-  explanation: v.optional(v.string()),
-  topic: v.optional(v.string()),
-  sourcePage: v.optional(v.number()),
-  // Deterministic figure/diagram detection (FIGURE_RE over the transcribed
-  // text) — sanitizeQuestion ALWAYS sets it on its output, so the validator
-  // must accept it or every appendParsedChunk rejects its own questions.
-  figureHint: v.optional(v.boolean()),
-});
-
-// ─── Queue helpers (internal) ────────────────────────────────────────────
-
-/** Count fresh running claims + the waiting line ahead of `contentId`. */
-async function queueSnapshot(
-  ctx: { db: any },
-  contentId: Id<"examConversionJobs"> | null,
-): Promise<{ running: number; ahead: number }> {
-  const freshCutoff = Date.now() - PROCESSING_MS_HINT;
-  const runningRows = await ctx.db
-    .query("examConversionJobs")
-    .withIndex("by_status", (q: any) => q.eq("status", "running"))
-    .collect();
-  const running = runningRows.filter(
-    (j: Doc<"examConversionJobs">) => (j.claimedAt ?? 0) >= freshCutoff,
-  ).length;
-
-  let ahead = 0;
-  if (contentId) {
-    const me = await ctx.db.get(contentId);
-    if (me && me.status === "queued") {
-      const queuedRows = await ctx.db
-        .query("examConversionJobs")
-        .withIndex("by_status", (q: any) => q.eq("status", "queued"))
-        .collect();
-      // Students first, then FIFO within each priority.
-      const rank = (j: Doc<"examConversionJobs">) =>
-        (j.priority === "student" ? 0 : 1) * 1e15 + j.createdAt;
-      const myRank = rank(me);
-      ahead = queuedRows.filter((j: Doc<"examConversionJobs">) => rank(j) < myRank).length;
-    }
-  }
-  return { running, ahead };
-}
+// ─── Queue helpers ───────────────────────────────────────────────────────
 
 /**
  * Find (or create) the queue row for a paper and reset it to a claimable
@@ -139,7 +68,7 @@ async function ensureJobQueued(
       }
       return existing._id;
     }
-    if (existing.status === "running" && now - existing.updatedAt < PROCESSING_MS_HINT) {
+    if (existing.status === "running" && now - existing.updatedAt < PROCESSING_FRESH_MS) {
       return existing._id; // someone is actively converting — keep it
     }
     // done/failed/stale-running → back into the line for a fresh run.
@@ -164,121 +93,47 @@ async function ensureJobQueued(
   });
 }
 
-// ─── Claim / dedupe the conversion job ──────────────────────────────────
+/** Keep the queue job row in step with the digitalPapers row. */
+async function markJobByContent(
+  ctx: { db: any },
+  contentId: Id<"contentItems">,
+  status: "done" | "failed",
+  error?: string,
+) {
+  const job = await ctx.db
+    .query("examConversionJobs")
+    .withIndex("by_content", (q: any) => q.eq("contentId", contentId))
+    .unique();
+  if (!job) return;
+  await ctx.db.patch(job._id, {
+    status,
+    lastError: error ? String(error).slice(0, 500) : undefined,
+    updatedAt: Date.now(),
+    doneAt: status === "done" ? Date.now() : job.doneAt,
+  });
+}
 
-export type BeginDigitizationResult =
-  | { kind: "ready"; digitalPaperId: string }
-  | { kind: "processing"; digitalPaperId: string }
-  | { kind: "queued"; ahead: number; jobId: string }
-  | { kind: "claimed"; digitalPaperId: string };
+/** Live for students? Live = ready + not rejected (legacy) + not pdf_only. */
+function isPlayable(row: Doc<"digitalPapers">): boolean {
+  return (
+    row.status === "ready" &&
+    row.verification !== "rejected" &&
+    row.reviewStatus !== "pdf_only"
+  );
+}
 
-/**
- * Claim a conversion slot for this paper. Returns the current state so the
- * client knows what to do:
- *   { kind: "ready" }         — a digitized version already exists; play it
- *   { kind: "processing" }    — someone (possibly you) is converting now
- *   { kind: "queued", ahead } — the platform is at capacity; poll again
- *   { kind: "claimed", digitalPaperId } — you own the job; start extracting
- *
- * `forceVision` pre-declares the page-image OCR path (used by the
- * "Retry with page-image OCR" affordance after a no-text-layer failure).
- *
- * `asBatch` marks the claim as AUTOPILot capacity (admin worker / crowd
- * worker converting the library ahead of demand). Batch claims never bump
- * a queued job's priority — a student who opens the paper still outranks
- * every pre-conversion. Only an explicit student open (asBatch absent)
- * upgrades the job to "student" priority.
- */
-export const beginDigitization = mutation({
-  args: {
-    contentId: v.id("contentItems"),
-    forceVision: v.optional(v.boolean()),
-    asBatch: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args): Promise<BeginDigitizationResult> => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
-
-    const item = await ctx.db.get(args.contentId);
-    if (!item) throw new ConvexError({ message: "Paper not found.", code: "not_found" });
-
-    const existing = await ctx.db
-      .query("digitalPapers")
-      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
-
-    const now = Date.now();
-
-    if (existing) {
-      if (existing.status === "ready" && existing.verification !== "rejected") {
-        return { kind: "ready", digitalPaperId: existing._id };
-      }
-      if (
-        existing.status === "processing" &&
-        now - existing.updatedAt < PROCESSING_MS_HINT
-      ) {
-        return { kind: "processing", digitalPaperId: existing._id };
-      }
-      // Failed, rejected by an admin, or a stale interrupted conversion —
-      // replace it wholesale. (Questions may have been partially appended;
-      // a clean row keeps the sequence guard honest.)
-      await ctx.db.delete(existing._id);
-    }
-
-    // ── The rate guard: queue row + platform concurrency cap ──
-    const demand: "student" | "batch" = args.asBatch ? "batch" : "student";
-    const jobId = await ensureJobQueued(ctx, args.contentId, userId, demand);
-    const job = await ctx.db.get(jobId);
-    if (job && job.status === "running" && now - job.updatedAt < PROCESSING_MS_HINT) {
-      return { kind: "processing", digitalPaperId: existing?._id ?? "" };
-    }
-    const { running, ahead } = await queueSnapshot(ctx, jobId);
-    if (running >= MAX_CONCURRENT_CONVERSIONS && job?.status === "queued") {
-      return { kind: "queued", ahead, jobId };
-    }
-
-    // Claim the slot.
-    await ctx.db.patch(jobId, {
-      status: "running",
-      claimedAt: now,
-      updatedAt: now,
-      attempts: (job?.attempts ?? 0) + 1,
-    });
-
-    const id = await ctx.db.insert("digitalPapers", {
-      contentId: args.contentId,
-      status: "processing",
-      questions: [],
-      questionCount: 0,
-      chunksParsed: 0,
-      sourceMode: args.forceVision ? "vision" : "text",
-      startedBy: userId,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return { kind: "claimed", digitalPaperId: id };
-  },
-});
+// ─── Student kick ────────────────────────────────────────────────────────
 
 /**
- * STUDENT KICK for the server-side always-ready engine.
- *
- * The engine (examConversionEngine.ts) converts every paper server-side —
- * the student's browser NEVER extracts, transcribes or waits in any visible
- * queue anymore. When a student somehow lands on a paper that is not ready
- * yet (a brand-new upload mid-second), this mutation:
- *   1. claims the job at STUDENT priority (dequeues ahead of all batch work),
- *   2. creates the processing row, and
- *   3. schedules the server engine worker IMMEDIATELY — no cron wait.
- *
- * Server workers are cheap and the global AI lanes pace every call, so this
- * bypasses the old browser-pipeline concurrency cap entirely. The page
- * shows a calm "ready in a moment" auto-jump and the reactive query lands
- * the student in the player the second the engine finishes.
+ * STUDENT KICK. When a student opens a paper that isn't ready yet (a
+ * brand-new upload, or a scan nobody has OCR'd), this claims the job at
+ * STUDENT priority and schedules the server engine immediately — no cron
+ * wait. The page shows a calm "Preparing…" state and the reactive query
+ * lands the student in the player the moment conversion completes.
  */
 export const requestDigitization = mutation({
   args: { contentId: v.id("contentItems") },
-  handler: async (ctx, args): Promise<{ kind: "ready" | "processing" | "claimed" }> => {
+  handler: async (ctx, args): Promise<{ kind: "ready" | "blocked" | "processing" | "claimed" }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
 
@@ -293,63 +148,31 @@ export const requestDigitization = mutation({
     const now = Date.now();
 
     if (existing) {
-      if (existing.status === "ready" && existing.verification !== "rejected") {
-        return { kind: "ready" };
+      if (isPlayable(existing)) return { kind: "ready" };
+      // Admin parked it: needs review or original-PDF-only.
+      if (
+        existing.status === "ready" &&
+        (existing.reviewStatus === "needs_review" || existing.reviewStatus === "pdf_only")
+      ) {
+        return { kind: "blocked" };
       }
-      if (existing.status === "processing" && now - existing.updatedAt < PROCESSING_MS_HINT) {
-        return { kind: "processing" }; // already converting server-side
-      }
-      // ── RESUME-NOT-RESTART ──
-      // A stale row with real progress holds PAID-FOR AI work (chunks
-      // already transcribed). Deleting it would burn the same tokens again
-      // — instead continue the chain at the exact chunk where it stopped,
-      // right now, at student priority. The sequence guard makes resuming
-      // airtight; an interrupted OCR chain resumes on its own route.
-      const parsed = existing.chunksParsed ?? 0;
-      const resumable =
-        existing.verification !== "rejected" &&
-        parsed > 0 &&
-        parsed < (existing.chunkCount ?? 0) &&
-        (existing.pageCount ?? 0) > 0;
-      if (resumable) {
-        await ctx.db.patch(existing._id, {
-          status: "processing",
-          error: undefined,
-          updatedAt: now,
-        });
-        const job = await ctx.db
-          .query("examConversionJobs")
-          .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-          .unique();
-        if (job) {
-          await ctx.db.patch(job._id, {
-            status: "running",
-            priority: "student",
-            claimedBy: "server-engine",
-            claimedAt: now,
-            updatedAt: now,
-            attempts: (job.attempts ?? 0) + 1,
-          });
+      if (existing.status === "processing") {
+        if (existing.sourceMode === "scan") {
+          // Keep scan rows (they may hold partial OCR progress); the
+          // dispatch reaper reclaims abandoned scans.
+          await ctx.db.patch(existing._id, { updatedAt: now });
+          return { kind: "processing" };
         }
-        const ocrRoute = existing.sourceMode === "ocr";
-        await ctx.scheduler.runAfter(
-          0,
-          ocrRoute
-            ? internal.examConversionEngine.engineOcrChunk
-            : internal.examConversionEngine.engineTranscribeChunk,
-          {
-            digitalPaperId: existing._id,
-            contentId: args.contentId,
-            chunkIndex: parsed,
-            chunkCount: existing.chunkCount ?? 0,
-            pageCount: existing.pageCount ?? 0,
-          } as never,
-        );
-        return { kind: "processing" };
+        if (now - existing.updatedAt < PROCESSING_FRESH_MS) {
+          return { kind: "processing" }; // the engine is on it right now
+        }
+        // Stale text run — replace wholesale.
+        await ctx.db.delete(existing._id);
+      } else {
+        // Failed — replace; the deterministic parser may succeed where a
+        // previous attempt hit a transient storage error.
+        await ctx.db.delete(existing._id);
       }
-      // Failed with nothing worth keeping / rejected / stale empty — replace
-      // wholesale (the sequence guard stays honest on a clean row).
-      await ctx.db.delete(existing._id);
     }
 
     const jobId = await ensureJobQueued(ctx, args.contentId, userId, "student");
@@ -374,7 +197,7 @@ export const requestDigitization = mutation({
     });
 
     // The engine worker starts THIS second — student priority end to end.
-    await ctx.scheduler.runAfter(0, internal.examConversionEngine.engineExtract, {
+    await ctx.scheduler.runAfter(0, internal.examConversionEngine.engineConvert, {
       contentId: args.contentId,
       digitalPaperId,
     });
@@ -384,9 +207,7 @@ export const requestDigitization = mutation({
 });
 
 /**
- * Engine progress stamp — the server-side conversion engine records the
- * page/chunk counts right after extraction so the pipeline UI (and the
- * admin console) can see a paper's shape while the chain runs.
+ * Engine progress stamp — page count is known right after extraction.
  */
 export const patchPaperProgress = internalMutation({
   args: {
@@ -406,838 +227,212 @@ export const patchPaperProgress = internalMutation({
 });
 
 /**
- * Stamp the conversion route ("text" | "vision" | "ocr") on a processing
- * row. The dispatch self-heal reads it to RESUME an interrupted chain with
- * the correct chunk shape — an OCR chain resumed as text chunks would
- * corrupt the paper (the sequence guard alone can't tell the difference).
+ * The engine determined this paper is a SCAN (no usable text layer).
+ * Stamp the OCR route and hand ownership to whichever browser tab runs
+ * Tesseract.js next (the student's own page mounts the runner; the admin
+ * console can do the whole library). Zero cloud AI involved.
  */
-export const setPaperSourceMode = internalMutation({
-  args: { digitalPaperId: v.id("digitalPapers"), sourceMode: v.string() },
-  handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.digitalPaperId);
-    if (!row || row.status !== "processing") return;
-    if (
-      args.sourceMode !== "text" &&
-      args.sourceMode !== "vision" &&
-      args.sourceMode !== "ocr"
-    ) {
-      return;
-    }
-    await ctx.db.patch(args.digitalPaperId, {
-      sourceMode: args.sourceMode,
-      updatedAt: Date.now(),
-    });
-  },
-});
-
-/**
- * Live queue position for a waiting student. Reactive — the waiting
- * screen re-renders as the line moves. `ahead: -1` means "claimable now".
- */
-export const getQueuePosition = query({
-  args: { contentId: v.id("contentItems") },
-  handler: async (ctx, args): Promise<{ status: string; ahead: number } | null> => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return null;
-    const job = await ctx.db
-      .query("examConversionJobs")
-      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
-    if (!job) return null;
-    if (job.status === "queued") {
-      const { ahead } = await queueSnapshot(ctx, job._id);
-      return { status: "queued", ahead };
-    }
-    return { status: job.status, ahead: -1 };
-  },
-});
-
-/**
- * Action-side status peek (actions have no direct db access).
- */
-export const getDigitizationRowStatus = internalQuery({
-  args: { digitalPaperId: v.id("digitalPapers") },
-  handler: async (ctx, args): Promise<{ status: string } | null> => {
-    const row = await ctx.db.get(args.digitalPaperId);
-    return row ? { status: row.status } : null;
-  },
-});
-
-// ─── Chunk append / complete / fail (internal pipeline steps) ────────────
-
-/**
- * Append one chunk's questions. STRICT SEQUENCE GUARD: chunk N is only
- * accepted when exactly N chunks have already been parsed — a client
- * retrying a timed-out call can never double-append, and out-of-order
- * arrival is rejected instead of silently producing a broken paper.
- */
-export const appendParsedChunk = internalMutation({
+export const markScanRoute = internalMutation({
   args: {
     digitalPaperId: v.id("digitalPapers"),
-    chunkIndex: v.number(),
-    chunkCount: v.number(),
+    contentId: v.id("contentItems"),
     pageCount: v.number(),
-    // 1-based page the chunk starts on — backfills sourcePage for any
-    // question where the AI omitted (or garbled) its page attribution.
-    fallbackPage: v.optional(v.number()),
-    questions: v.array(rawQuestionValidator),
   },
   handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.digitalPaperId);
-    if (!row) throw new ConvexError("Digital paper row vanished mid-conversion.");
-    if (row.status !== "processing") return { ok: false as const };
-    const parsed = row.chunksParsed ?? 0;
-    if (args.chunkIndex !== parsed) {
-      throw new ConvexError(
-        `Chunk ${args.chunkIndex} out of sequence (expected ${parsed}) — retry.`,
-      );
-    }
-    const clampedQuestions = args.questions.map((q) => ({
-      ...q,
-      sourcePage:
-        q.sourcePage && q.sourcePage >= 1 && q.sourcePage <= args.pageCount
-          ? q.sourcePage
-          : args.fallbackPage,
-    }));
-    await ctx.db.patch(args.digitalPaperId, {
-      questions: [...row.questions, ...clampedQuestions],
-      chunksParsed: parsed + 1,
-      chunkCount: args.chunkCount,
-      pageCount: args.pageCount,
-      updatedAt: Date.now(),
-    });
-    return { ok: true as const };
-  },
-});
-
-/**
- * Finalize a conversion: renumber questions 1..N, stamp the row
- * "ai_unverified", and mark the queue job done. A zero-question result is
- * an honest failure with guidance that matches WHY (text layer present?).
- */
-export const completeDigitization = internalMutation({
-  args: { digitalPaperId: v.id("digitalPapers") },
-  handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.digitalPaperId);
-    if (!row) return;
     const now = Date.now();
-    if (row.questions.length === 0) {
+    const row = await ctx.db.get(args.digitalPaperId);
+    if (row && row.status === "processing") {
       await ctx.db.patch(args.digitalPaperId, {
-        status: "failed",
-        error:
-          row.sourceMode === "vision"
-            ? "Page-image OCR could not find any questions in this paper. An admin can retry it from the Exam Engine console, or you can open the original PDF."
-            : "No questions could be detected in the text layer. If this paper is a scan, use 'Try page-image OCR' — Learnyx will read the pages as pictures instead.",
+        sourceMode: "scan",
+        pageCount: args.pageCount,
+        chunkCount: args.pageCount,
+        chunksParsed: 0,
+        ocrPages: new Array(args.pageCount).fill(""),
+        error: undefined,
         updatedAt: now,
       });
-      await markJobByContent(ctx, row.contentId, "failed", row.error);
-      return;
     }
-    const renumbered = row.questions.map((q, i) => ({ ...q, number: i + 1 }));
-    await ctx.db.patch(args.digitalPaperId, {
-      status: "ready",
-      questions: renumbered,
-      questionCount: renumbered.length,
-      verification: row.verification ?? "ai_unverified",
-      updatedAt: now,
-    });
-    await markJobByContent(ctx, row.contentId, "done");
-  },
-});
-
-export const failDigitization = internalMutation({
-  args: { digitalPaperId: v.id("digitalPapers"), error: v.string() },
-  handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.digitalPaperId);
-    if (!row || row.status !== "processing") return;
-    await ctx.db.patch(args.digitalPaperId, {
-      status: "failed",
-      error: args.error.slice(0, 500),
-      updatedAt: Date.now(),
-    });
-    await markJobByContent(ctx, row.contentId, "failed", args.error);
-  },
-});
-
-/**
- * Client-side pipeline crash reporting. AI-step failures already mark the
- * job failed from inside the actions (failDigitization) — but a run can
- * also die in the browser BEFORE any AI call: premium-wall on the PDF url,
- * a network drop mid-extraction, pdf.js blowing up on a corrupt file.
- * Without this mutation those crashes left the job row "running" (fresh)
- * for the whole PROCESSING_MS_HINT window, silently eating a concurrency
- * slot — with several dead claims the entire crowd autopilot stalled and
- * students saw avoidable wait screens. Now the converting client reports
- * the crash the moment it happens: the slot frees instantly, the autopilot
- * tick requeues (bounded retries), and another worker picks the paper up.
- */
-export const reportClientConversionFailure = mutation({
-  args: { contentId: v.id("contentItems"), error: v.string() },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return;
-
+    // Hand the claim to the client OCR runner (not the server engine).
     const job = await ctx.db
       .query("examConversionJobs")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
       .unique();
-    // Only the fresh claim owner's crash is relevant — never clobber a
-    // live run by another tab, and never touch queued/done rows.
-    if (!job || job.status !== "running") return;
+    if (job) {
+      await ctx.db.patch(job._id, {
+        claimedBy: "client-ocr",
+        claimedAt: now,
+        updatedAt: now,
+        lastError: undefined,
+      });
+    }
+  },
+});
 
-    const paper = await ctx.db
+// ─── OCR page submission (client-side Tesseract.js → server parse) ──────
+
+const MAX_OCR_CHARS_PER_PAGE = 30_000;
+
+/**
+ * Submit ONE page's OCR text (from the browser Tesseract.js runner).
+ * Idempotent per page; the row's updatedAt is the scan claim's freshness
+ * signal. When the last missing page arrives, this schedules the
+ * finalize action that runs the deterministic parser over the full text.
+ */
+export const submitOcrPageText = mutation({
+  args: {
+    contentId: v.id("contentItems"),
+    pageNumber: v.number(), // 1-based
+    pageCount: v.number(),
+    text: v.string(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ done: boolean; accepted: boolean }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    if (args.pageNumber < 1 || args.pageNumber > args.pageCount) {
+      return { done: false, accepted: false };
+    }
+
+    const row = await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
       .unique();
-    if (paper && paper.status === "processing") {
-      await ctx.db.patch(paper._id, {
+    if (!row || row.status !== "processing" || row.sourceMode !== "scan") {
+      // The row moved on (reconverted, rejected, OCR finished elsewhere).
+      return { done: false, accepted: false };
+    }
+
+    const pageCount = row.pageCount ?? args.pageCount;
+    const pages = (row.ocrPages && row.ocrPages.length === pageCount
+      ? [...row.ocrPages]
+      : new Array(pageCount).fill("")) as string[];
+    pages[args.pageNumber - 1] = args.text.slice(0, MAX_OCR_CHARS_PER_PAGE);
+
+    const doneCount = pages.filter((t) => t.length > 0).length;
+    const now = Date.now();
+
+    if (doneCount >= pageCount) {
+      await ctx.db.patch(row._id, {
+        ocrPages: pages,
+        chunksParsed: doneCount,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAfter(0, internal.examConversionEngine.finalizeOcrPaper, {
+        digitalPaperId: row._id,
+        contentId: args.contentId,
+      });
+      return { done: true, accepted: true };
+    }
+
+    await ctx.db.patch(row._id, {
+      ocrPages: pages,
+      chunksParsed: doneCount,
+      updatedAt: now,
+    });
+    // Keep the job claim fresh while pages stream in.
+    const job = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    if (job && job.status === "running") {
+      await ctx.db.patch(job._id, { claimedAt: now, updatedAt: now });
+    }
+    return { done: false, accepted: true };
+  },
+});
+
+// ─── Terminal states (called by the engine actions) ─────────────────────
+
+/**
+ * Complete a deterministically parsed paper: renumbered questions,
+ * confidence + review status + compact parser meta, and the job closed.
+ */
+export const completeDeterministic = internalMutation({
+  args: {
+    digitalPaperId: v.id("digitalPapers"),
+    contentId: v.id("contentItems"),
+    questions: v.array(
+      v.object({
+        number: v.number(),
+        kind: v.union(v.literal("mcq"), v.literal("structured")),
+        text: v.string(),
+        passage: v.optional(v.string()),
+        options: v.array(v.object({ label: v.string(), text: v.string() })),
+        answer: v.optional(v.string()),
+        suggestedAnswer: v.optional(v.string()),
+        explanation: v.optional(v.string()),
+        topic: v.optional(v.string()),
+        sourcePage: v.optional(v.number()),
+        figureHint: v.optional(v.boolean()),
+      }),
+    ),
+    pageCount: v.number(),
+    sourceMode: v.union(v.literal("text"), v.literal("scan")),
+    confidence: v.number(),
+    reviewStatus: v.union(v.literal("auto"), v.literal("needs_review")),
+    parserMeta: v.object({
+      numberingStyle: v.string(),
+      optionStyle: v.string(),
+      answerKeySource: v.string(),
+      answerKeyCount: v.number(),
+      flaggedDiagrams: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.digitalPaperId);
+    if (!row || row.status !== "processing") return;
+    const now = Date.now();
+    await ctx.db.patch(args.digitalPaperId, {
+      status: "ready",
+      questions: args.questions,
+      questionCount: args.questions.length,
+      pageCount: args.pageCount,
+      sourceMode: args.sourceMode,
+      confidence: args.confidence,
+      reviewStatus: args.reviewStatus,
+      parserMeta: args.parserMeta,
+      error: undefined,
+      updatedAt: now,
+    });
+    await markJobByContent(ctx, args.contentId, "done");
+  },
+});
+
+/**
+ * Terminal failure of a deterministic conversion (transient fetch error,
+ * zero questions parsed, or an answer-key document). `reviewStatus`
+ * routes the student surface: "pdf_only" → original-PDF view; anything
+ * else → the calm retry affordance. The job row is closed either way —
+ * a deterministic outcome doesn't change by retrying.
+ */
+export const failDeterministic = internalMutation({
+  args: {
+    digitalPaperId: v.id("digitalPapers"),
+    contentId: v.id("contentItems"),
+    error: v.string(),
+    reviewStatus: v.union(v.literal("needs_review"), v.literal("pdf_only")),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.digitalPaperId);
+    if (row && row.status === "processing") {
+      await ctx.db.patch(args.digitalPaperId, {
         status: "failed",
         error: args.error.slice(0, 500),
+        reviewStatus: args.reviewStatus,
         updatedAt: Date.now(),
       });
     }
-    await markJobByContent(ctx, args.contentId, "failed", args.error);
-  },
-});
-
-/** Keep the queue job row in step with the digitalPapers row. */
-async function markJobByContent(
-  ctx: { db: any },
-  contentId: Id<"contentItems">,
-  status: "done" | "failed",
-  error?: string,
-) {
-  const job = await ctx.db
-    .query("examConversionJobs")
-    .withIndex("by_content", (q: any) => q.eq("contentId", contentId))
-    .unique();
-  if (!job) return;
-  await ctx.db.patch(job._id, {
-    status,
-    lastError: error ? String(error).slice(0, 500) : undefined,
-    updatedAt: Date.now(),
-    doneAt: status === "done" ? Date.now() : job.doneAt,
-  });
-}
-
-// ─── AI transcription — TEXT path (text-layer PDFs) ──────────────────────
-
-export const SYSTEM_PROMPT = `You are an exam-paper transcription engine for Learnyx Academy ET. You receive plain text extracted from an Ethiopian national exam past paper (may include headers, instructions, formatting noise, and possibly an answer-key section). Page boundaries are marked with lines like "=== PAGE 3 ===".
-
-TASK: transcribe the questions that literally appear in the text. Two kinds exist:
-
-1. kind "mcq" — questions with lettered options (A/B/C/D, a) (a), ሀ/ሁ/ለ… mapped to A-D in printed order). Every mcq must have between 2 and 8 options with non-empty text.
-2. kind "structured" — numbered questions WITHOUT options: definitions, "show that", "calculate/workout", short-answer, essay prompts. Output options: [] for these. Do NOT force option letters onto a question that has none.
-
-STRICT RULES:
-1. TRANSCRIBE, NEVER INVENT. Only output questions whose wording appears in the text. Copy the question text and option texts verbatim (trim surrounding whitespace, join lines that one sentence was split across). Never paraphrase, never complete a half-visible question, never add questions from your own knowledge.
-2. Ignore instructions, cover pages, codes, and anything that is not a question.
-3. If the text contains an ANSWER KEY (e.g. "1. B   2. D" or a key table), attach the matching letter to each mcq's "answer". For a structured question, if the paper provides its full solution/marking scheme, put it in "suggestedAnswer". If there is no key, omit both — do NOT guess.
-4. If a question references a shared stimulus (a reading passage, a table, a graph description) that is present in the text, put that stimulus text in "passage". Omit when there is none.
-5. "sourcePage": the integer page number (from the === PAGE N === markers) the question was printed on.
-6. "explanation": ONLY if the paper itself provides an explanation/solution. Otherwise omit.
-7. Output ONLY a JSON array — no prose, no markdown fences.
-
-JSON shape:
-[{"number": 1, "kind": "mcq", "text": "...", "passage": "optional", "options": [{"label":"A","text":"..."},...], "answer": "B", "explanation": "optional", "topic": "optional short topic", "sourcePage": 3}]
-
-structured questions use the same shape with "kind":"structured", "options":[] and optionally "suggestedAnswer".
-
-If the chunk contains no complete questions, output []`;
-
-export interface RawQuestion {
-  number?: unknown;
-  kind?: unknown;
-  text?: unknown;
-  passage?: unknown;
-  options?: unknown;
-  answer?: unknown;
-  suggestedAnswer?: unknown;
-  explanation?: unknown;
-  topic?: unknown;
-  sourcePage?: unknown;
-}
-
-export interface SanitizedQuestion {
-  number: number;
-  kind: "mcq" | "structured";
-  text: string;
-  passage?: string;
-  options: { label: string; text: string }[];
-  answer?: string;
-  suggestedAnswer?: string;
-  explanation?: string;
-  topic?: string;
-  sourcePage?: number;
-  figureHint?: boolean;
-}
-
-const LABELS = "ABCDEFGH";
-
-/** Deterministic figure/diagram/table reference detection (never the AI). */
-const FIGURE_RE =
-  /\b(figure|fig\.|diagram|graph|map|chart|table|illustration|circuit|picture|image|drawing|plot)\b/i;
-
-/** Validate + normalize one AI-returned question. Returns null to drop. */
-export function sanitizeQuestion(raw: RawQuestion): SanitizedQuestion | null {
-  const text = typeof raw.text === "string" ? raw.text.trim() : "";
-  if (text.length < 3 || text.length > 2000) return null;
-
-  const kind = raw.kind === "structured" ? "structured" : "mcq";
-
-  const passage = typeof raw.passage === "string" && raw.passage.trim().length > 0
-    ? raw.passage.trim().slice(0, 4000)
-    : undefined;
-  const explanation = typeof raw.explanation === "string" && raw.explanation.trim().length > 0
-    ? raw.explanation.trim().slice(0, 1200)
-    : undefined;
-  const topic = typeof raw.topic === "string" && raw.topic.trim().length > 0
-    ? raw.topic.trim().slice(0, 60)
-    : undefined;
-
-  const sourcePage =
-    typeof raw.sourcePage === "number" && Number.isFinite(raw.sourcePage) &&
-    raw.sourcePage >= 1 && raw.sourcePage <= 999
-      ? Math.round(raw.sourcePage)
-      : undefined;
-
-  const figureHint = FIGURE_RE.test(text) || (passage ? FIGURE_RE.test(passage) : false);
-
-  if (kind === "structured") {
-    // Free-response: no options. suggestedAnswer ONLY from the paper itself.
-    const suggested =
-      typeof raw.suggestedAnswer === "string" && raw.suggestedAnswer.trim().length > 0
-        ? raw.suggestedAnswer.trim().slice(0, 4000)
-        : undefined;
-    return {
-      number: 0, // renumbered 1..N on completion
-      kind,
-      text: text.slice(0, 2000),
-      passage,
-      options: [],
-      suggestedAnswer: suggested,
-      explanation,
-      topic,
-      sourcePage,
-      figureHint,
-    };
-  }
-
-  // ── mcq path ──
-  if (!Array.isArray(raw.options)) return null;
-  const options: { label: string; text: string }[] = [];
-  const seen = new Set<string>();
-  for (const opt of raw.options as { label?: unknown; text?: unknown }[]) {
-    const optText = typeof opt?.text === "string" ? opt.text.trim() : "";
-    if (optText.length === 0 || optText.length > 500) return null;
-    // Re-label A, B, C… in printed order — papers with non-Latin option
-    // markers get normalized here, and duplicate/missing labels can't happen.
-    const label = LABELS[options.length];
-    if (!label) return null; // more than 8 options — malformed
-    if (!seen.has(optText)) {
-      seen.add(optText);
-      options.push({ label, text: optText });
-    }
-  }
-  if (options.length < 2) return null;
-
-  const answer =
-    typeof raw.answer === "string" && /^[A-H]$/.test(raw.answer.trim().toUpperCase())
-      ? raw.answer.trim().toUpperCase()
-      : undefined;
-
-  return {
-    number: 0,
-    kind,
-    text: text.slice(0, 2000),
-    passage,
-    options,
-    answer: answer && options.some((o) => o.label === answer) ? answer : undefined,
-    explanation,
-    topic,
-    sourcePage,
-    figureHint,
-  };
-}
-
-/** Pull the JSON array out of a model response (tolerates fences/prose). */
-export function extractJsonArray(text: string): unknown[] | null {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    const parsed = JSON.parse(text.slice(start, end + 1));
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * One entry in the failover chain: a model + the rate lane that meters it.
- * Groq meters each model's budget independently on the same key, so each
- * model gets its own lane and its own 429 circuit breaker.
- */
-interface AiModelSlot {
-  model?: string; // undefined = provider default (AI_MODEL env)
-  lane: string;
-}
-
-export const TEXT_MODEL_CHAIN: AiModelSlot[] = [
-  { lane: "groq:openai/gpt-oss-120b" },
-  { model: "openai/gpt-oss-20b", lane: "groq:openai/gpt-oss-20b" },
-  { model: "qwen/qwen3.8-27b", lane: "groq:qwen/qwen3.8-27b" },
-  // Extra independent daily token budgets: Groq meters TPD PER MODEL, so
-  // every model added here multiplies the platform's total free daily
-  // transcription capacity. llama-3.3-70b-versatile is a long-standing GA
-  // model with strong verbatim transcription quality; llama-3.1-8b-instant
-  // is the tiny-but-alive last Groq resort before the Gemini fallback.
-  { model: "llama-3.3-70b-versatile", lane: "groq:llama-3.3-70b-versatile" },
-  { model: "llama-3.1-8b-instant", lane: "groq:llama-3.1-8b-instant" },
-];
-
-/**
- * Parse a provider cooldown from an error message. Groq writes compound
- * durations like "Please try again in 9m5.616s" (TPD) or "in 12.3s" (TPM);
- * Gemini writes "retryDelay": "30s". The old parser only matched bare
- * seconds and read "9m5.616s" as 5.6s — firing straight back into the
- * same 429. This handles h/m/s compounds and returns milliseconds
- * (default 90s when nothing parseable is present).
- */
-export function parseRateLimitCooldownMs(message: string): number {
-  const m = message.match(
-    /try again in\s*(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m)?\s*(?:(\d+(?:\.\d+)?)\s*s)?/i,
-  );
-  if (m) {
-    const h = m[1] ? parseFloat(m[1]) : 0;
-    const min = m[2] ? parseFloat(m[2]) : 0;
-    const s = m[3] ? parseFloat(m[3]) : 0;
-    const totalMs = (h * 3600 + min * 60 + s) * 1000;
-    if (totalMs > 0) return totalMs;
-  }
-  const iso = message.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/);
-  if (iso) return parseFloat(iso[1]!) * 1000;
-  const gemini = message.match(/retry after\s*(\d+(?:\.\d+)?)\s*ms/i);
-  if (gemini) return parseFloat(gemini[1]!);
-  return 90_000;
-}
-
-/** True when the error is a provider rate/quota limit (worth waiting out),
- *  false for everything else (bad JSON, vanished rows, real bugs…). */
-export function isRateLimitError(message: string): boolean {
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("429") ||
-    lower.includes("rate limit") ||
-    lower.includes("tokens per day") ||
-    lower.includes("tpd)") ||
-    lower.includes("resource_exhausted") ||
-    lower.includes("quota")
-  );
-}
-
-/**
- * Thrown when EVERY model lane in the chain is in a deep cooldown (daily
- * token budget exhausted platform-wide). Carries the earliest moment any
- * lane frees up, so the engine can pause the paper and resume exactly
- * there instead of failing it.
- */
-export class AiCooldownError extends Error {
-  cooldownMs: number;
-  constructor(cooldownMs: number) {
-    super(
-      `All AI lanes are cooling down — next slot in roughly ${Math.ceil(cooldownMs / 1000)}s`,
-    );
-    this.name = "AiCooldownError";
-    this.cooldownMs = cooldownMs;
-  }
-}
-
-/** Waits longer than this inside the wrapper are pointless — the engine
- *  pauses the whole paper instead (actions shouldn't sleep for minutes). */
-const MAX_INLINE_WAIT_MS = 60_000;
-/** Circuit-breaker cap: lanes re-probe after this even on huge cooldowns
- *  (Groq TPD budgets actually free up continuously, not once per day). */
-const MAX_BREAKER_COOLDOWN_MS = 30 * 60 * 1000;
-
-/**
- * Groq call with GLOBAL per-model pacing + automatic model failover.
- *
- * Every attempt reserves a slot on its model's lane (aiRateLimit
- * .acquireAiPermit) — that spacing, not the old 2-slot cap, keeps the free
- * tier alive with many pipelines in parallel. On a 429 the wrapper trips
- * the shared circuit breaker for that model's lane (EVERY pipeline pauses
- * for the exact cooldown Groq requested) and — crucially — FAILS OVER to
- * the next model in the chain, whose budget is untouched. A rate-limit
- * spike on one model no longer stalls conversions at all: another model
- * keeps transcribing. Model 404s (account loses access) fail over too.
- */
-export async function callGroqWithRetry(
-  ctx: GenericActionCtx<any>,
-  opts: Parameters<typeof callGroq>[1],
-  chain: AiModelSlot[],
-  maxRetries = 2,
-): Promise<string> {
-  let attempt = 0;
-  let slotIdx = 0;
-  const maxAttempts = maxRetries * chain.length + chain.length;
-  let lastError: Error | null = null;
-  // Earliest moment a skipped deep-cooldown lane frees up — thrown as an
-  // AiCooldownError if the whole chain turns out to be cooling.
-  let earliestCooldownMs = Number.POSITIVE_INFINITY;
-  const deepLanes = new Set<string>();
-  for (;;) {
-    const slot = chain[slotIdx % chain.length]!;
-    // Global AI pacing — the wait here IS the rate guard. Fail open to
-    // plain pacing if the limiter itself ever errors.
-    let waitMs = 0;
-    try {
-      const permit = await ctx.runMutation(internal.aiRateLimit.acquireAiPermit, {
-        lane: slot.lane,
-      });
-      waitMs = permit.waitMs;
-    } catch {
-      // Limiter unavailable — proceed; the failover below still protects us.
-    }
-    if (waitMs > MAX_INLINE_WAIT_MS) {
-      // Deep cooldown on this lane (usually the daily token budget). Do
-      // NOT burn a request straight into a 429 — note the slot, hop to the
-      // next model, and if every lane is deep, hand the cooldown back to
-      // the engine (it pauses the paper and resumes exactly on time).
-      deepLanes.add(slot.lane);
-      earliestCooldownMs = Math.min(earliestCooldownMs, waitMs);
-      if (deepLanes.size >= chain.length) throw new AiCooldownError(earliestCooldownMs);
-      slotIdx += 1;
-      attempt += 1;
-      continue;
-    }
-    if (waitMs > 0) {
-      await new Promise((r) => setTimeout(r, waitMs));
-    }
-    try {
-      return await callGroq(ctx, { ...opts, model: slot.model });
-    } catch (err) {
-      lastError = err as Error;
-      const message = lastError.message ?? "";
-      const is429 = message.includes("429") || message.toLowerCase().includes("rate limit");
-      const isModelGone = message.includes("404") || message.includes("model_not_found");
-      if ((!is429 && !isModelGone) || attempt >= maxAttempts) throw lastError;
-      // Honor the provider's OWN cooldown — compound forms like "9m5.616s"
-      // included (the old parser read that as 5.6s and re-fired straight
-      // into the same wall).
-      const cooldownS = parseRateLimitCooldownMs(message) / 1000;
-      if (is429) {
-        await ctx.runMutation(internal.aiRateLimit.reportAiRateLimitHit, {
-          lane: slot.lane,
-          backoffMs: Math.min(MAX_BREAKER_COOLDOWN_MS, Math.ceil(cooldownS * 1000) + 5_000),
-        }).catch(() => {});
-      }
-      // Next attempt continues on the model that failed — but first try a
-      // DIFFERENT model: its token budget is completely separate.
-      slotIdx += 1;
-      attempt += 1;
-    }
-  }
-}
-
-/**
- * Shared completion step for both paths: append the chunk (sequence
- * guarded) and, on the final chunk, complete the job.
- */
-async function appendAndMaybeComplete(
-  ctx: GenericActionCtx<any>,
-  args: {
-    digitalPaperId: string;
-    chunkIndex: number;
-    chunkCount: number;
-    pageCount: number;
-    fallbackPage?: number;
-    questions: SanitizedQuestion[];
-  },
-) {
-  await ctx.runMutation(internal.examPrepDigital.appendParsedChunk, {
-    digitalPaperId: args.digitalPaperId as never,
-    chunkIndex: args.chunkIndex,
-    chunkCount: args.chunkCount,
-    pageCount: args.pageCount,
-    fallbackPage: args.fallbackPage,
-    questions: args.questions as never,
-  });
-  if (args.chunkIndex === args.chunkCount - 1) {
-    await ctx.runMutation(internal.examPrepDigital.completeDigitization, {
-      digitalPaperId: args.digitalPaperId as never,
-    });
-  }
-}
-
-/**
- * Transcribe one chunk of PDF text into questions. Called sequentially by
- * the client (sequence guard in appendParsedChunk enforces order). The
- * action itself appends and, on the final chunk, completes the job — so a
- * client crash mid-pipeline still leaves a consistent (stale) row that a
- * later beginDigitization can replace.
- *
- * This is an ACTION (not a mutation) because it calls the Groq HTTP API.
- */
-export const parsePaperChunk = action({
-  args: {
-    contentId: v.id("contentItems"),
-    digitalPaperId: v.id("digitalPapers"),
-    chunkIndex: v.number(),
-    chunkCount: v.number(),
-    pageCount: v.number(),
-    fallbackPage: v.optional(v.number()),
-    text: v.string(),
-  },
-  handler: async (ctx, args): Promise<{ questionsFound: number }> => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
-
-    const row = await ctx.runQuery(internal.examPrepDigital.getDigitizationRowStatus, {
-      digitalPaperId: args.digitalPaperId,
-    });
-    if (!row || row.status !== "processing") {
-      // Someone else's job finished/restarted between our calls — tell the
-      // client to stop pushing chunks rather than fail loudly.
-      return { questionsFound: 0 };
-    }
-    if (args.text.trim().length === 0) {
-      // Nothing to transcribe in this chunk — still count it as parsed so
-      // the sequence guard advances.
-      await appendAndMaybeComplete(ctx, {
-        digitalPaperId: args.digitalPaperId,
-        chunkIndex: args.chunkIndex,
-        chunkCount: args.chunkCount,
-        pageCount: args.pageCount,
-        fallbackPage: args.fallbackPage,
-        questions: [],
-      });
-      return { questionsFound: 0 };
-    }
-
-    const userMessage = `PAPER CHUNK ${args.chunkIndex + 1} OF ${args.chunkCount} (pages of an Ethiopian national exam past paper):\n\n${args.text.slice(0, 14000)}`;
-
-    let raw: string;
-    let parsed: unknown[] | null;
-    try {
-      raw = await callGroqWithRetry(
-        ctx,
-        {
-          systemPrompt: SYSTEM_PROMPT,
-          userMessage,
-          maxTokens: 12288,
-          temperature: 0.1,
-        },
-        TEXT_MODEL_CHAIN,
-        2,
-      );
-    } catch (err) {
-      await ctx.runMutation(internal.examPrepDigital.failDigitization, {
-        digitalPaperId: args.digitalPaperId,
-        error: `AI transcription failed on chunk ${args.chunkIndex + 1}: ${(err as Error).message}`,
-      });
-      throw err;
-    }
-
-    parsed = extractJsonArray(raw);
-    if (parsed === null) {
-      // One honest retry — models occasionally wrap the array in prose.
-      try {
-        raw = await callGroqWithRetry(
-          ctx,
-          {
-            systemPrompt: SYSTEM_PROMPT,
-            userMessage: `${userMessage}\n\nYour previous reply was not a parseable JSON array. Return ONLY the JSON array.`,
-            maxTokens: 12288,
-            temperature: 0,
-          },
-          TEXT_MODEL_CHAIN,
-          2,
-        );
-        parsed = extractJsonArray(raw);
-      } catch (err) {
-        await ctx.runMutation(internal.examPrepDigital.failDigitization, {
-          digitalPaperId: args.digitalPaperId,
-          error: `AI transcription failed on chunk ${args.chunkIndex + 1}: ${(err as Error).message}`,
-        });
-        throw err;
-      }
-    }
-    if (parsed === null) {
-      await ctx.runMutation(internal.examPrepDigital.failDigitization, {
-        digitalPaperId: args.digitalPaperId,
-        error: `The AI response for chunk ${args.chunkIndex + 1} was not valid JSON. Try again.`,
-      });
-      throw new ConvexError("AI response was not valid JSON.");
-    }
-
-    const questions: SanitizedQuestion[] = [];
-    for (const item of parsed) {
-      if (item && typeof item === "object") {
-        const q = sanitizeQuestion(item as RawQuestion);
-        if (q) questions.push(q);
-      }
-    }
-
-    await appendAndMaybeComplete(ctx, {
-      digitalPaperId: args.digitalPaperId,
-      chunkIndex: args.chunkIndex,
-      chunkCount: args.chunkCount,
-      pageCount: args.pageCount,
-      fallbackPage: args.fallbackPage,
-      questions,
-    });
-
-    return { questionsFound: questions.length };
-  },
-});
-
-// ─── AI transcription — VISION path (scanned papers, no text layer) ─────
-
-const VISION_SYSTEM_PROMPT = `You are an exam-paper OCR transcription engine for Learnyx Academy ET. You receive ONE photographed/scanned page image of an Ethiopian national exam past paper (may include headers, instructions, figures, and possibly an answer-key section).
-
-TASK: transcribe the questions that are legible in the image. Two kinds exist:
-
-1. kind "mcq" — questions with lettered options (A/B/C/D, a) (a), ሀ/ሁ/ለ… mapped to A-D in printed order). Every mcq must have between 2 and 8 options with non-empty text.
-2. kind "structured" — numbered questions WITHOUT options: definitions, "show that", "calculate/workout", short-answer, essay prompts. Output options: [] for these.
-
-STRICT RULES:
-1. TRANSCRIBE, NEVER INVENT. Only output questions you can actually read in the image. Copy wording verbatim. If part of a question is cut off at the page edge or too illegible to read, SKIP that question entirely — do not guess or complete it.
-2. Ignore instructions, cover pages, codes, and anything that is not a question.
-3. Figures/diagrams/graphs: transcribe the question text around them. Never try to describe a figure in the question text — the app shows the real page image to the student.
-4. If the page contains an ANSWER KEY, attach the matching letter to each mcq's "answer"; for structured questions put the provided solution in "suggestedAnswer". Omit when there is no key — do NOT guess.
-5. "sourcePage": always the integer page number given in the user message.
-6. Output ONLY a JSON array — no prose, no markdown fences.
-
-JSON shape:
-[{"number": 1, "kind": "mcq", "text": "...", "passage": "optional", "options": [{"label":"A","text":"..."},...], "answer": "B", "sourcePage": 3}]
-
-If the page contains no complete legible questions, output []`;
-
-/**
- * Transcribe ONE scanned page image (JPEG base64 data URL) into questions
- * via a Groq vision model. The client renders pages with pdf.js at a
- * readable scale and streams them sequentially — chunkIndex = pageNumber-1
- * keeps the same sequence guard as the text path.
- */
-export const parsePaperPageImage = action({
-  args: {
-    contentId: v.id("contentItems"),
-    digitalPaperId: v.id("digitalPapers"),
-    pageNumber: v.number(),
-    pageCount: v.number(),
-    imageBase64: v.string(), // "data:image/jpeg;base64,..."
-  },
-  handler: async (ctx, args): Promise<{ questionsFound: number }> => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
-    if (!args.imageBase64.startsWith("data:image/")) {
-      throw new ConvexError("Page image payload must be a base64 image data URL.");
-    }
-
-    const row = await ctx.runQuery(internal.examPrepDigital.getDigitizationRowStatus, {
-      digitalPaperId: args.digitalPaperId,
-    });
-    if (!row || row.status !== "processing") return { questionsFound: 0 };
-
-    const chunkIndex = args.pageNumber - 1;
-    const userMessage = `SCAN PAGE ${args.pageNumber} OF ${args.pageCount} of an Ethiopian national exam past paper. sourcePage for every question on this page is ${args.pageNumber}.`;
-    const visionModel = getVisionModelName();
-
-    let raw: string;
-    let parsed: unknown[] | null;
-    try {
-      raw = await callGroqWithRetry(
-        ctx,
-        {
-          systemPrompt: VISION_SYSTEM_PROMPT,
-          userMessage,
-          images: [args.imageBase64],
-          model: visionModel,
-          maxTokens: 8192,
-          temperature: 0.1,
-        },
-        // Vision-only chain: the text models CANNOT accept image parts
-        // (they 400 with "content must be a string"), so failing over to
-        // them here would guarantee failure. Retries stay on the vision
-        // model; its lane's 429 breaker does the pacing.
-        [{ model: visionModel, lane: `groq:${visionModel}` }],
-        3, // vision free-tier RPM is tight — extra retries are worth it
-      );
-    } catch (err) {
-      await ctx.runMutation(internal.examPrepDigital.failDigitization, {
-        digitalPaperId: args.digitalPaperId,
-        error: `Page-image OCR failed on page ${args.pageNumber}: ${(err as Error).message}`,
-      });
-      throw err;
-    }
-
-    parsed = extractJsonArray(raw);
-    if (parsed === null) {
-      // One honest retry — vision models sometimes wrap the array.
-      try {
-        raw = await callGroqWithRetry(
-          ctx,
-          {
-            systemPrompt: VISION_SYSTEM_PROMPT,
-            userMessage: `${userMessage}\n\nYour previous reply was not a parseable JSON array. Return ONLY the JSON array.`,
-            images: [args.imageBase64],
-            model: visionModel,
-            maxTokens: 8192,
-            temperature: 0,
-          },
-          [{ model: visionModel, lane: `groq:${visionModel}` }],
-          3,
-        );
-        parsed = extractJsonArray(raw);
-      } catch (err) {
-        await ctx.runMutation(internal.examPrepDigital.failDigitization, {
-          digitalPaperId: args.digitalPaperId,
-          error: `Page-image OCR failed on page ${args.pageNumber}: ${(err as Error).message}`,
-        });
-        throw err;
-      }
-    }
-    if (parsed === null) {
-      // A single unreadable page must not kill the whole paper — record
-      // the page as parsed-but-empty and keep going.
-      await appendAndMaybeComplete(ctx, {
-        digitalPaperId: args.digitalPaperId,
-        chunkIndex,
-        chunkCount: args.pageCount,
-        pageCount: args.pageCount,
-        fallbackPage: args.pageNumber,
-        questions: [],
-      });
-      return { questionsFound: 0 };
-    }
-
-    const questions: SanitizedQuestion[] = [];
-    for (const item of parsed) {
-      if (item && typeof item === "object") {
-        const q = sanitizeQuestion(item as RawQuestion);
-        if (q) questions.push(q);
-      }
-    }
-
-    await appendAndMaybeComplete(ctx, {
-      digitalPaperId: args.digitalPaperId,
-      chunkIndex,
-      chunkCount: args.pageCount,
-      pageCount: args.pageCount,
-      fallbackPage: args.pageNumber,
-      questions,
-    });
-
-    return { questionsFound: questions.length };
+    await markJobByContent(ctx, args.contentId, "done", args.error);
   },
 });
 
 // ─── Reads ───────────────────────────────────────────────────────────────
 
 /**
- * The digitized paper. Metadata is available to any signed-in user (the hub
- * badges use it); the questions themselves are premium-gated when the
+ * The digitized paper. Metadata is available to any signed-in user (the
+ * hub chips use it); the questions themselves are premium-gated when the
  * source paper is premium — matching the Reader's download gating exactly.
  */
 export const getDigitalPaper = query({
@@ -1269,12 +464,21 @@ export const getDigitalPaper = query({
       status: row.status,
       questionCount: row.questionCount,
       pageCount: row.pageCount ?? null,
-      chunkCount: row.chunkCount ?? null,
-      chunksParsed: row.chunksParsed ?? null,
-      // Trust surface: "ai_unverified" until an admin verifies the paper.
+      sourceMode: row.sourceMode ?? "text",
+      // Deterministic quality signals.
+      confidence: row.confidence ?? null,
+      reviewStatus: row.reviewStatus ?? null,
+      parserMeta: row.parserMeta ?? null,
+      // OCR progress for scanned papers (0..pageCount).
+      ocrDone: row.ocrPages ? row.ocrPages.filter((t) => t.length > 0).length : null,
+      ocrTotal: row.ocrPages ? row.ocrPages.length : null,
+      // Per-page presence so a runner can resume exactly where it left off.
+      ocrPagesPresent: row.ocrPages
+        ? row.ocrPages.map((t) => t.length > 0)
+        : null,
+      // Legacy verification field (admin verification semantics).
       verification: row.verification ?? (row.status === "ready" ? "ai_unverified" : null),
       adminEdited: row.adminEdited ?? false,
-      sourceMode: row.sourceMode ?? "text",
       error: row.error ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -1299,11 +503,8 @@ export const getDigitalPaperStatuses = query({
       contentId: string;
       status: string;
       questionCount: number;
-      verification: string | null;
+      reviewStatus: string | null;
     }[] = [];
-    // Chunk the lookups — a .filter() over a bounded take avoids a full
-    // table scan when the library is small, and by_content lookups stay
-    // index-driven per id.
     for (const contentId of args.contentIds.slice(0, 1000)) {
       const row = await ctx.db
         .query("digitalPapers")
@@ -1314,64 +515,11 @@ export const getDigitalPaperStatuses = query({
           contentId,
           status: row.status,
           questionCount: row.questionCount,
-          verification:
-            row.status === "ready" ? row.verification ?? "ai_unverified" : null,
+          reviewStatus: row.reviewStatus ?? null,
         });
       }
     }
     return out;
-  },
-});
-
-// ─── Autopilot crowd-worker peek ─────────────────────────────────────────
-
-/**
- * CROWD-WORKER PEEK for the autopilot. Every signed-in Learnyx tab (all
- * pages — the worker is mounted app-wide) polls this: while FEWER than
- * CROWD_MAX_CONCURRENT conversions are running platform-wide, the oldest
- * queued BATCH job is offered to this tab, which runs the standard
- * conversion pipeline (runPaperConversion with asBatch) in the background.
- *
- * The old version only spoke when the platform was 100% idle — with a
- * backlog that meant one paper every few minutes and students kept
- * hitting the wait screen. Now the crowd drains the library at full speed
- * whenever headroom exists, while CROWD_MAX_CONCURRENT keeps a permanent
- * reserve of conversion slots for student-demanded papers (peek stops
- * before the hard MAX_CONCURRENT_CONVERSIONS cap that students claim
- * under). Student priority in the queue still outranks everything, and
- * every paper converted here is cached in the database forever.
- */
-export const peekCrowdJob = query({
-  args: {},
-  handler: async (
-    ctx,
-  ): Promise<{ contentId: string; title: string } | null> => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return null;
-
-    const freshCutoff = Date.now() - PROCESSING_MS_HINT;
-    const running = await ctx.db
-      .query("examConversionJobs")
-      .withIndex("by_status", (q) => q.eq("status", "running"))
-      .collect();
-    // Headroom check: crowd work fills the platform up to the crowd cap
-    // only. Stale running rows older than the freshness window are dead
-    // (crashed tab) and don't count.
-    const liveRunning = running.filter((j) => (j.claimedAt ?? 0) >= freshCutoff).length;
-    if (liveRunning >= CROWD_MAX_CONCURRENT) return null;
-
-    const queued = await ctx.db
-      .query("examConversionJobs")
-      .withIndex("by_status", (q) => q.eq("status", "queued"))
-      .collect();
-    const next = queued
-      .filter((j) => j.priority === "batch")
-      .sort((a, b) => a.createdAt - b.createdAt)[0];
-    if (!next) return null;
-
-    const item = await ctx.db.get(next.contentId);
-    if (!item) return null;
-    return { contentId: next.contentId, title: item.title };
   },
 });
 

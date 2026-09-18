@@ -72,15 +72,16 @@ crons.weekly(
   internal.adminDigest.sendWeeklyBusinessDigest,
 );
 
-// Every 1 minute: the ALWAYS-READY conversion engine. This is the heart of
-// "students never wait": the tick enqueues any past exam without a job
-// (new uploads included), requeues dead claims / cooled-down failures
-// (bounded fast retries + a daily self-heal so no paper is ever stuck),
-// then CLAIMS the next papers and runs the full conversion SERVER-SIDE
-// (unpdf text extraction + Groq transcription chains + Gemini OCR for
-// scans) — no browser, no student-visible queue, no wait screens, ever.
-// Replaces the old 10-minute enqueue-only autopilot entirely.
-// See src/convex/examConversionEngine.ts + examConversionEngineDispatch.ts.
+// Every 1 minute: the DETERMINISTIC conversion engine. This is the heart
+// of "students never wait": the tick enqueues any past exam without a job
+// (new uploads included), requeues dead claims (bounded retries + a daily
+// self-heal so no paper is ever stuck), then CLAIMS the next papers and
+// runs engineConvert — layout-aware text extraction + a pure pattern-
+// matching parser. NO AI, NO rate limits, NO token budgets: text-layer
+// papers complete in seconds. Scanned papers wait for a browser tab to
+// OCR them with Tesseract.js (also zero cloud AI). See
+// src/convex/examConversionEngine.ts + examConversionEngineDispatch.ts +
+// src/lib/examParser.ts.
 crons.interval(
   "exam-conversion-engine-dispatch",
   { minutes: 1 },

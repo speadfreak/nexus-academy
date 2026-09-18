@@ -1,25 +1,27 @@
 // DigitalExam — /exam-prep/digital/:contentId?mode=practice|exam
 //
-// THE ZERO-CONVERSION STUDENT SURFACE.
+// THE DETERMINISTIC STUDENT SURFACE.
 //
-// Papers are kept digital by the server-side ALWAYS-READY ENGINE
-// (convex/examConversionEngine.ts): a 1-minute dispatch tick converts the
-// whole library ahead of demand, every new upload auto-enqueues the moment
-// it lands, and scanned papers OCR server-side via Gemini. Conversion no
-// longer runs in students' browsers and there is NO student-visible queue.
+// Papers are parsed by the server-side DETERMINISTIC ENGINE
+// (convex/examConversionEngine.ts): layout-aware text extraction plus a
+// pure pattern-matching parser — NO AI, NO rate limits, NO token budgets.
+// Text-layer papers parse in seconds; scanned papers are read by
+// Tesseract.js in a browser tab (this one, or an admin's) and parsed by
+// the same parser. Conversion results are cached forever, so the normal
+// path here is INSTANT.
 //
-// What a student experiences here:
+// What a student experiences:
 //   • Ready paper (the norm) → the fully digital player mounts instantly.
-//   • Not ready yet (a brand-new upload, mid-second) → one calm line —
-//     "Ready in a moment — you'll jump in automatically" — while the
-//     server engine digitizes at student priority. The reactive query
-//     lands them in the player the second it's done. No stages, no slot
-//     lines, no waiting walls, nothing to click.
+//   • Scanned paper being read → "Reading page X of Y…" with a live OCR
+//     runner in this tab, then an automatic jump into the player.
+//   • Text paper mid-parse (seconds) → a brief "Preparing…" spinner.
+//   • Paper parked by the review pipeline (low confidence / answer-key
+//     document) → an honest pointer to the original PDF.
 //
-// Honesty rules unchanged: questions are transcribed — never invented;
-// answers the paper itself provides are attached, the rest are labelled
-// AI-suggested in the player. No trust badges are shown to students; QC
-// is silent (admin console + in-player reports).
+// Honesty rules: the parser transcribes structure — it never invents
+// questions, options, or answers; answers come only from the paper's own
+// answer key. Diagram-heavy questions are flagged with a link to the
+// original page. No trust badges are shown to students.
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -30,11 +32,12 @@ import {
   Crown,
   FileWarning,
   Loader2,
-  RefreshCw,
+  ScanLine,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { DigitalExamPlayer, type ExamMode } from "@/components/exam/DigitalExamPlayer";
+import { ScanOcrRunner } from "@/components/exam/ScanOcrRunner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { DigitalQuestion } from "@/components/exam/DigitalExamPlayer";
@@ -50,7 +53,7 @@ export default function DigitalExam() {
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const requestDigitization = useMutation(api.examPrepDigital.requestDigitization);
 
-  // The paper row — reactive: flips to ready the moment the server engine
+  // The paper row — reactive: flips to ready the moment conversion
   // completes, which auto-lands the student in the player.
   const digital = useQuery(
     api.examPrepDigital.getDigitalPaper,
@@ -62,12 +65,10 @@ export default function DigitalExam() {
   );
 
   const [premiumWall, setPremiumWall] = useState(false);
-  // Manual retry counter ("Try again" on a failed paper) — the engine
-  // re-runs at student priority; scans fall through to the OCR chain.
-  const [retryTick, setRetryTick] = useState(0);
   // Resolved PDF url for the session — powers the player's original-page
-  // viewer.
+  // viewer and the scan-OCR runner.
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
 
   // ── Resolve the PDF URL (premium papers go through the server gate) ──
   const resolveUrl = useCallback(async (): Promise<string | null> => {
@@ -87,16 +88,17 @@ export default function DigitalExam() {
     return content.item.fileUrl;
   }, [content, contentId, getDownloadUrl, pdfUrl]);
 
-  // Ready papers never ran a pipeline — still resolve the URL so the
-  // player's original-page viewer works.
-  const readyNeedsUrl = digital?.status === "ready" && !premiumWall;
+  // Papers that need the URL: ready players, and scans mid-OCR.
+  const needsUrl =
+    (digital?.status === "ready" || (digital?.status === "processing" && digital.sourceMode === "scan")) &&
+    !premiumWall;
   useEffect(() => {
-    if (readyNeedsUrl && !pdfUrl) void resolveUrl();
-  }, [readyNeedsUrl, pdfUrl, resolveUrl]);
+    if (needsUrl && !pdfUrl) void resolveUrl();
+  }, [needsUrl, pdfUrl, resolveUrl]);
 
   // ── STUDENT KICK: a paper that isn't ready yet asks the server engine
-  // to digitize it NOW, at student priority. Never renders a pipeline,
-  // never polls a queue — the reactive query does all the work.
+  // to convert it NOW, at student priority. Never renders a pipeline —
+  // the reactive query does all the work.
   const autoKickRef = useRef(false);
   const kick = useCallback(async () => {
     if (!contentId) return;
@@ -113,13 +115,6 @@ export default function DigitalExam() {
       void kick();
     }
   }, [digital, content, premiumWall, kick]);
-
-  const retriedRef = useRef(-1);
-  useEffect(() => {
-    if (retryTick === 0 || retriedRef.current === retryTick) return;
-    retriedRef.current = retryTick;
-    void kick();
-  }, [retryTick, kick]);
 
   const playerQuestions = useMemo<DigitalQuestion[] | null>(() => {
     if (!digital || digital.status !== "ready" || !digital.questions) return null;
@@ -166,11 +161,24 @@ export default function DigitalExam() {
     );
   }
 
+  // Row not created yet (the kick above is on its way) → brief spinner.
+  if (!digital) {
+    return (
+      <Shell>
+        <PreparingShell item={item} contentId={contentId} />
+      </Shell>
+    );
+  }
+
   // ── Ready → the player itself (the normal path — instant) ──
-  if (playerQuestions && playerQuestions.length > 0) {
+  const playable =
+    digital.status === "ready" &&
+    digital.reviewStatus !== "needs_review" &&
+    digital.reviewStatus !== "pdf_only";
+  if (playable && playerQuestions && playerQuestions.length > 0) {
     return (
       <DigitalExamPlayer
-        key={`${digital!._id}-${mode}`}
+        key={`${digital._id}-${mode}`}
         contentId={contentId}
         subjectId={item.subjectId}
         paperTitle={item.title}
@@ -181,17 +189,117 @@ export default function DigitalExam() {
         mode={mode}
         questions={playerQuestions}
         pdfUrl={pdfUrl}
-        pageCount={digital!.pageCount ?? item.pageCount ?? null}
+        pageCount={digital.pageCount ?? item.pageCount ?? null}
       />
     );
   }
 
-  // ── Failed → never a raw provider error. The engine self-heals and
-  //    re-queues failed papers on its own, so this state is a brief
-  //    waypoint, not a dead end. Students get one calm line + a nudge
-  //    button; the honest diagnostics stay in the admin console only.
-  if (digital?.status === "failed") {
-    const isScanQueue = (digital.error ?? "").includes("NEEDS_OCR");
+  // ── Parked by the review pipeline (low confidence / answer-key doc) ──
+  if (
+    (digital.status === "ready" || digital.status === "failed") &&
+    (digital.reviewStatus === "needs_review" || digital.reviewStatus === "pdf_only")
+  ) {
+    const isKeyDoc = (digital.error ?? "").includes("ANSWER_KEY_DOCUMENT");
+    return (
+      <Shell>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center"
+        >
+          <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground">
+            <BookOpen className="size-6" />
+          </span>
+          <h2 className="mt-4 type-h2">
+            {isKeyDoc ? "This is the answer-key document" : "Read this one from the original PDF"}
+          </h2>
+          <p className="mt-2 type-body text-muted-foreground">
+            {isKeyDoc
+              ? "This PDF holds the answer key — pair it with the questions paper in Exam Prep. The original document opens below."
+              : "We haven't verified a digital version of this paper yet, so here's the original — exactly as it was printed."}
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Button variant="outline" asChild className="interactive-press gap-2">
+              <Link to={`/read/${contentId}`}>
+                <BookOpen className="size-4" /> Open the original PDF
+              </Link>
+            </Button>
+            <Button variant="ghost" asChild className="interactive-press gap-2">
+              <Link to="/exam-prep?tab=papers">
+                <ArrowLeft className="size-4" /> Back to papers
+              </Link>
+            </Button>
+          </div>
+        </motion.div>
+      </Shell>
+    );
+  }
+
+  // ── Scanned paper mid-OCR → honest live progress + this tab helps ──
+  if (digital.status === "processing" && digital.sourceMode === "scan") {
+    const done = digital.ocrDone ?? 0;
+    const total = digital.ocrTotal ?? digital.pageCount ?? item.pageCount ?? 0;
+    return (
+      <Shell>
+        {pdfUrl && digital.ocrPagesPresent && total > 0 && (
+          <ScanOcrRunner
+            contentId={contentId}
+            pdfUrl={pdfUrl}
+            pageCount={total}
+            ocrPagesPresent={digital.ocrPagesPresent}
+            onError={(m) => setOcrError(m)}
+          />
+        )}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center"
+        >
+          <ScanLine className="mx-auto size-7 animate-pulse text-amber-300" />
+          <h2 className="mt-4 type-h2">{item.title}</h2>
+          <p className="mt-1 type-caption text-muted-foreground">
+            {item.subjectName} · Grade {item.grade}
+            {item.examYear !== undefined && item.examYear !== null ? ` · ${item.examYear}` : ""}
+          </p>
+          <p className="mt-3 type-body font-semibold text-foreground/90">
+            Reading page {Math.min(done + 1, total)} of {total}…
+          </p>
+          <p className="mt-1 type-caption text-muted-foreground">
+            This one is a scan — it's being read right now, and you'll jump in automatically. Every
+            page is saved, so this only ever happens once.
+          </p>
+          {total > 0 && (
+            <div className="mx-auto mt-4 h-1.5 w-56 overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all"
+                style={{ width: `${Math.round((done / total) * 100)}%` }}
+              />
+            </div>
+          )}
+          {ocrError && (
+            <p className="mt-3 type-caption text-rose-300/80">
+              {ocrError} — the reading continues server-side; no need to do anything.
+            </p>
+          )}
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Button variant="outline" asChild className="interactive-press gap-2">
+              <Link to={`/read/${contentId}`}>
+                <BookOpen className="size-4" /> Original PDF
+              </Link>
+            </Button>
+            <Button variant="ghost" asChild className="interactive-press gap-2">
+              <Link to="/exam-prep?tab=papers">
+                <ArrowLeft className="size-4" /> Exam Prep
+              </Link>
+            </Button>
+          </div>
+        </motion.div>
+      </Shell>
+    );
+  }
+
+  // ── Failed (transient) → calm waypoint, the queue self-heals ──
+  if (digital.status === "failed") {
     return (
       <Shell>
         <motion.div
@@ -202,20 +310,17 @@ export default function DigitalExam() {
           <span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-white/5 text-muted-foreground">
             <FileWarning className="size-6" />
           </span>
-          <h2 className="mt-4 type-h2">
-            {isScanQueue ? "Deep-reading this scan" : "Finishing this paper up"}
-          </h2>
+          <h2 className="mt-4 type-h2">Finishing this paper up</h2>
           <p className="mt-2 type-body text-muted-foreground">
-            {isScanQueue
-              ? "It's a scanned paper — the deeper reading pass is queued. It usually clears within minutes, and you'll jump in automatically."
-              : "Our conversion engine hit a busy moment and is already re-preparing this paper. It usually takes just a few minutes — you'll jump in automatically the second it's ready."}
+            Our conversion engine hit a hiccup and is already re-preparing this paper. It usually
+            takes just a few minutes — you'll jump in automatically the second it's ready.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Button
-              onClick={() => setRetryTick((t) => t + 1)}
+              onClick={() => void kick()}
               className="interactive-press gap-2"
             >
-              <RefreshCw className="size-4" /> Try again now
+              <Loader2 className="size-4" /> Try again now
             </Button>
             <Button variant="outline" asChild className="interactive-press gap-2">
               <Link to={`/read/${contentId}`}>
@@ -233,47 +338,56 @@ export default function DigitalExam() {
     );
   }
 
-  // ── Not ready (never converted or converting server-side right now) →
-  //    ONE calm auto-jump line. This screen is a rare guest: the engine
-  //    pre-converts the library ahead of demand, so almost every student
-  //    lands straight in the player above.
+  // ── Not ready (text paper mid-parse — seconds) → brief spinner ──
   return (
     <Shell>
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center"
-      >
-        <Loader2 className="mx-auto size-7 animate-spin text-amber-300" />
-        <h2 className="mt-4 type-h2">{item.title}</h2>
-        <p className="mt-1 type-caption text-muted-foreground">
-          {item.subjectName} · Grade {item.grade}
-          {item.examYear !== undefined && item.examYear !== null ? ` · ${item.examYear}` : ""}
-        </p>
-        <p className="mt-3 type-body font-semibold text-foreground/90">
-          Ready in a moment — you'll jump in automatically.
-        </p>
-        <p className="mt-1 type-caption text-muted-foreground">
-          The digital version is being finalized on our servers. No need to do anything.
-        </p>
-        <div className="mt-5 flex flex-wrap justify-center gap-2">
-          <Button variant="outline" asChild className="interactive-press gap-2">
-            <Link to={`/read/${contentId}`}>
-              <BookOpen className="size-4" /> Original PDF
-            </Link>
-          </Button>
-          <Button variant="ghost" asChild className="interactive-press gap-2">
-            <Link to="/exam-prep?tab=papers">
-              <ArrowLeft className="size-4" /> Exam Prep
-            </Link>
-          </Button>
-        </div>
-      </motion.div>
+      <PreparingShell item={item} contentId={contentId} />
     </Shell>
   );
 }
 
 // ─── Shared shells ───────────────────────────────────────────────────────
+
+function PreparingShell({
+  item,
+  contentId,
+}: {
+  item: { title: string; subjectName: string; grade: number; examYear?: number | null };
+  contentId: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center"
+    >
+      <Loader2 className="mx-auto size-7 animate-spin text-amber-300" />
+      <h2 className="mt-4 type-h2">{item.title}</h2>
+      <p className="mt-1 type-caption text-muted-foreground">
+        {item.subjectName} · Grade {item.grade}
+        {item.examYear !== undefined && item.examYear !== null ? ` · ${item.examYear}` : ""}
+      </p>
+      <p className="mt-3 type-body font-semibold text-foreground/90">
+        Preparing — you'll jump in automatically.
+      </p>
+      <p className="mt-1 type-caption text-muted-foreground">
+        The digital version is being finalized on our servers. No need to do anything.
+      </p>
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
+        <Button variant="outline" asChild className="interactive-press gap-2">
+          <Link to={`/read/${contentId}`}>
+            <BookOpen className="size-4" /> Original PDF
+          </Link>
+        </Button>
+        <Button variant="ghost" asChild className="interactive-press gap-2">
+          <Link to="/exam-prep?tab=papers">
+            <ArrowLeft className="size-4" /> Exam Prep
+          </Link>
+        </Button>
+      </div>
+    </motion.div>
+  );
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (

@@ -1,18 +1,21 @@
-// ExamEngineAdmin — the quality-control console for AI-digitized past papers.
+// ExamEngineAdmin — the quality-control console for deterministically
+// parsed past papers.
 //
 // Sections:
-//   • Overview   — live trust + queue stats
-//   • Papers     — every past paper: status, verification, open reports;
-//                  Review opens the question-by-question correction dialog;
-//                  Verify/Reject flips the platform-wide trust level;
-//                  Convert/Reconvert re-enqueues a paper.
+//   • Overview   — live confidence + queue stats
+//   • Papers     — every past paper: status, confidence, review state,
+//                  open reports; Review opens the question-by-question
+//                  correction dialog; Accept / Original-PDF-only routes
+//                  the paper; Convert/Reconvert re-enqueues it.
 //   • Reports    — the student crowdsourced error inbox; resolve/dismiss.
-//   • Queue      — batch digitization: enqueue the whole library, watch it
-//                  drain, retry failures. Student jobs always jump ahead.
+//   • Queue      — conversion controls: digitize the whole library,
+//                  re-parse everything through the deterministic engine,
+//                  retry failures, and OCR the scan backlog in this tab
+//                  (Tesseract.js — zero cloud AI).
 //
-// Everything here is honest: the console exists because AI transcription
-// is good but not authoritative — a human check is the difference between
-// "AI-digitized" and "Verified".
+// There is no AI in this pipeline: the parser computes an honest
+// confidence score from real signals, and this console is where the rare
+// low-confidence paper gets a human glance.
 
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -27,7 +30,6 @@ import {
   Loader2,
   ListChecks,
   Pencil,
-  Play,
   RefreshCw,
   ScanLine,
   Search,
@@ -55,11 +57,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { OriginalPageButton, TrustBadge } from "@/components/exam/DigitalExamPlayerParts";
+import { OriginalPageButton } from "@/components/exam/DigitalExamPlayerParts";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 
-type PaperFilter = "all" | "ready" | "unverified" | "verified" | "failed" | "not_converted";
+type PaperFilter =
+  | "all"
+  | "ready"
+  | "needs_review"
+  | "auto"
+  | "pdf_only"
+  | "failed"
+  | "scans"
+  | "not_converted";
 
 const REPORT_LABELS: Record<string, string> = {
   wrong_answer: "Wrong answer",
@@ -84,8 +94,8 @@ export function ExamEngineAdmin() {
               <Wand2 className="size-4 text-primary" /> Exam Engine
             </h2>
             <p className="text-sm text-muted-foreground">
-              Quality control for AI-digitized past papers — verify, correct, and keep
-              the conversion queue healthy.
+              Quality control for deterministically parsed past papers — review the rare
+              low-confidence parse, correct questions, and keep the queue healthy.
             </p>
           </div>
           <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-1">
@@ -120,15 +130,38 @@ export function ExamEngineAdmin() {
 
         {overview ? (
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-            <MiniStat label="Digitized" value={overview.readyCount} tone="text-amber-300" />
-            <MiniStat label="Verified" value={overview.verifiedCount} tone="text-emerald-300" />
-            <MiniStat label="Unverified" value={overview.unverifiedCount} tone="text-amber-200" />
-            <MiniStat label="Failed" value={overview.failedCount} tone="text-rose-300" />
-            <MiniStat label="Open reports" value={overview.openReports} tone="text-sky-300" />
+            <MiniStat
+              label="Digitized"
+              value={overview.readyCount}
+              hint={
+                overview.avgConfidence !== null
+                  ? `avg confidence ${overview.avgConfidence}%`
+                  : undefined
+              }
+              tone="text-amber-300"
+            />
+            <MiniStat
+              label="Auto (high conf)"
+              value={overview.autoCount}
+              tone="text-emerald-300"
+            />
+            <MiniStat label="Accepted" value={overview.acceptedCount} tone="text-emerald-200" />
+            <MiniStat
+              label="Needs review"
+              value={overview.needsReviewCount}
+              hint={overview.needsReviewCount > 0 ? "glance & accept" : undefined}
+              tone="text-amber-200"
+            />
+            <MiniStat
+              label="Waiting for OCR"
+              value={overview.scansWaiting}
+              hint="scans — zero cloud AI"
+              tone="text-sky-300"
+            />
             <MiniStat
               label="Queue"
               value={overview.queue.queued}
-              hint={`${overview.queue.running}/${overview.queue.maxConcurrent} running`}
+              hint={`${overview.queue.running} running`}
               tone="text-violet-300"
             />
           </div>
@@ -175,7 +208,7 @@ function PapersSection() {
     filter,
     search: search.trim().length >= 2 ? search.trim() : undefined,
   });
-  const setVerification = useMutation(api.examQuality.setPaperVerification);
+  const reviewDecide = useMutation(api.examQuality.adminReviewDecide);
   const enqueueSingle = useMutation(api.examQuality.enqueueSinglePaper);
   const [reviewing, setReviewing] = useState<string | null>(null);
 
@@ -204,15 +237,17 @@ function PapersSection() {
           />
         </div>
         <Select value={filter} onValueChange={(v) => setFilter(v as PaperFilter)}>
-          <SelectTrigger className="w-44 rounded-xl border-white/10 bg-white/[0.03] text-sm">
+          <SelectTrigger className="w-52 rounded-xl border-white/10 bg-white/[0.03] text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="rounded-xl border-white/10 bg-background">
             <SelectItem value="all">All papers</SelectItem>
-            <SelectItem value="unverified">AI · unverified</SelectItem>
-            <SelectItem value="verified">Verified</SelectItem>
+            <SelectItem value="needs_review">Needs review (low confidence)</SelectItem>
+            <SelectItem value="auto">Auto-published (high confidence)</SelectItem>
+            <SelectItem value="scans">Waiting for OCR (scans)</SelectItem>
+            <SelectItem value="pdf_only">Original-PDF only</SelectItem>
             <SelectItem value="failed">Failed conversions</SelectItem>
-            <SelectItem value="not_converted">Not digitized yet</SelectItem>
+            <SelectItem value="not_converted">Not converted yet</SelectItem>
             <SelectItem value="ready">All digitized</SelectItem>
           </SelectContent>
         </Select>
@@ -243,20 +278,43 @@ function PapersSection() {
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                   <span>{r.subjectName} · Grade {r.grade}{r.examYear !== null ? ` · ${r.examYear}` : ""}</span>
                   {r.status === "ready" && (
-                    <span className="inline-flex items-center gap-1">
-                      <TrustBadge verification={r.verification} adminEdited={r.adminEdited} compact />
+                    <span className="inline-flex items-center gap-1.5">
+                      {r.reviewStatus === "needs_review" ? (
+                        <Badge className="border-amber-400/40 bg-amber-400/10 text-amber-200">
+                          needs review
+                        </Badge>
+                      ) : (
+                        <Badge className="border-emerald-400/30 bg-emerald-400/10 text-emerald-200">
+                          {r.reviewStatus === "accepted" ? "accepted" : "auto"}
+                        </Badge>
+                      )}
+                      {r.confidence !== null && (
+                        <span
+                          className={cn(
+                            "font-bold tabular-nums",
+                            r.confidence >= 70 ? "text-emerald-300/90" : "text-amber-300",
+                          )}
+                        >
+                          {r.confidence}% conf
+                        </span>
+                      )}
                       <span className="text-muted-foreground/70">· {r.questionCount} Qs</span>
                     </span>
                   )}
-                  {r.status === "processing" && (
+                  {r.status === "processing" && r.sourceMode === "scan" && (
+                    <span className="inline-flex items-center gap-1 text-sky-300">
+                      <ScanLine className="size-3" /> waiting for OCR…
+                    </span>
+                  )}
+                  {r.status === "processing" && r.sourceMode !== "scan" && (
                     <span className="inline-flex items-center gap-1 text-sky-300">
                       <Loader2 className="size-3 animate-spin" /> converting…
                     </span>
                   )}
                   {r.status === "failed" && (
-                    <span className="text-rose-300">failed — {r.error?.slice(0, 80)}…</span>
+                    <span className="text-rose-300">failed — {(r.error ?? "").slice(0, 80)}…</span>
                   )}
-                  {r.status === null && <span className="text-muted-foreground/60">not digitized</span>}
+                  {r.status === null && <span className="text-muted-foreground/60">not converted</span>}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -270,33 +328,33 @@ function PapersSection() {
                     >
                       <Pencil className="size-3" /> Review
                     </Button>
-                    {r.verification !== "verified" && (
+                    {r.reviewStatus !== "accepted" && (
                       <Button
                         size="sm"
                         className="h-8 gap-1 rounded-xl bg-emerald-500/90 text-xs text-black hover:bg-emerald-400"
                         onClick={() =>
                           act(
-                            () => setVerification({ contentId: r.contentId as never, decision: "verified" }),
-                            "Paper verified — students now see the trusted badge.",
+                            () => reviewDecide({ contentId: r.contentId as never, decision: "accept" }),
+                            "Paper accepted — it's live for students.",
                           )
                         }
                       >
-                        <BadgeCheck className="size-3" /> Verify
+                        <Check className="size-3" /> Accept
                       </Button>
                     )}
-                    {r.verification !== "rejected" && (
+                    {r.reviewStatus !== "pdf_only" && (
                       <Button
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1 rounded-xl border-rose-400/30 text-xs text-rose-300 hover:bg-rose-400/10"
                         onClick={() =>
                           act(
-                            () => setVerification({ contentId: r.contentId as never, decision: "rejected" }),
-                            "Paper rejected — students will be sent to the original PDF.",
+                            () => reviewDecide({ contentId: r.contentId as never, decision: "pdf_only" }),
+                            "Routed to the original PDF — students will read the source.",
                           )
                         }
                       >
-                        <X className="size-3" /> Reject
+                        <X className="size-3" /> Original only
                       </Button>
                     )}
                   </>
@@ -309,8 +367,8 @@ function PapersSection() {
                     act(
                       () => enqueueSingle({ contentId: r.contentId as never }),
                       r.status
-                        ? "Requeued for conversion."
-                        : "Queued — the next free conversion slot takes it.",
+                        ? "Requeued — the deterministic engine re-parses it in seconds."
+                        : "Queued — the engine takes it within a minute.",
                     )
                   }
                 >
@@ -350,7 +408,7 @@ function ReviewDialog({ contentId, onClose }: { contentId: string; onClose: () =
   const paper = useQuery(api.examQuality.adminGetDigitalPaper, { contentId: contentId as never });
   const meta = useQuery(api.examQuality.adminGetFileUrl, { contentId: contentId as never });
   const fixQuestion = useMutation(api.examQuality.adminFixQuestion);
-  const setVerification = useMutation(api.examQuality.setPaperVerification);
+  const reviewDecide = useMutation(api.examQuality.adminReviewDecide);
 
   const [idx, setIdx] = useState(0);
   const questions = (paper?.questions ?? []) as unknown as ReviewQuestion[];
@@ -388,21 +446,21 @@ function ReviewDialog({ contentId, onClose }: { contentId: string; onClose: () =
   }, [contentId, d, dirty, fixQuestion, q]);
 
   const decide = useCallback(
-    async (decision: "verified" | "rejected") => {
+    async (decision: "accept" | "pdf_only") => {
       try {
         if (dirty) await save();
-        await setVerification({ contentId: contentId as never, decision });
+        await reviewDecide({ contentId: contentId as never, decision });
         toast.success(
-          decision === "verified"
-            ? "Paper verified — every surface now shows the trusted badge."
-            : "Paper rejected — players fall back to the original PDF.",
+          decision === "accept"
+            ? "Paper accepted — it's live for students."
+            : "Routed to the original PDF.",
         );
-        if (decision === "verified") onClose();
+        if (decision === "accept") onClose();
       } catch (err) {
-        toast.error((err as Error).message || "Couldn't update the verification.");
+        toast.error((err as Error).message || "Couldn't update the review state.");
       }
     },
-    [contentId, dirty, onClose, save, setVerification],
+    [contentId, dirty, onClose, reviewDecide, save],
   );
 
   if (!paper) {
@@ -420,11 +478,29 @@ function ReviewDialog({ contentId, onClose }: { contentId: string; onClose: () =
       <DialogHeader>
         <DialogTitle className="flex flex-wrap items-center gap-2 type-h3">
           Review — {meta?.title ?? "paper"}
-          {paper.verification && <TrustBadge verification={paper.verification} adminEdited={paper.adminEdited} />}
+          {paper.confidence !== null && (
+            <Badge
+              className={cn(
+                paper.confidence >= 70
+                  ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                  : "border-amber-400/40 bg-amber-400/10 text-amber-200",
+              )}
+            >
+              {paper.confidence}% confidence
+            </Badge>
+          )}
+          {paper.reviewStatus && (
+            <Badge variant="outline" className="border-white/15 text-muted-foreground">
+              {paper.reviewStatus}
+            </Badge>
+          )}
         </DialogTitle>
         <DialogDescription className="type-caption">
-          {questions.length} questions · fix anything the AI got wrong, then verify to
-          mark this paper trustworthy platform-wide.
+          {questions.length} questions parsed deterministically
+          {paper.parserMeta
+            ? ` · numbering "${paper.parserMeta.numberingStyle}" · options "${paper.parserMeta.optionStyle}" · ${paper.parserMeta.answerKeyCount} answers from the paper's key`
+            : ""}
+          . Fix anything the parser misread, then accept to publish.
         </DialogDescription>
       </DialogHeader>
 
@@ -602,13 +678,13 @@ function ReviewDialog({ contentId, onClose }: { contentId: string; onClose: () =
           <>
             <Button
               variant="outline"
-              onClick={() => void decide("rejected")}
+              onClick={() => void decide("pdf_only")}
               className="flex-1 gap-1 border-rose-400/30 text-rose-300 hover:bg-rose-400/10"
             >
-              <X className="size-4" /> Reject paper
+              <X className="size-4" /> Original PDF only
             </Button>
-            <Button onClick={() => void decide("verified")} className="flex-1 gap-1">
-              <BadgeCheck className="size-4" /> Verify paper
+            <Button onClick={() => void decide("accept")} className="flex-1 gap-1">
+              <BadgeCheck className="size-4" /> Accept paper
             </Button>
           </>
         )}
@@ -707,57 +783,77 @@ function ReportsSection() {
   );
 }
 
-// ─── Queue section (batch digitization) ──────────────────────────────────
+// ─── Queue section (conversion controls) ──────────────────────────────────
 
 function QueueSection() {
   const overview = useQuery(api.examQuality.adminExamOverview, {});
   const autopilot = useQuery(api.examQuality.libraryAutopilotStatus, {});
   const jobs = useQuery(api.examQuality.adminListQueue, {});
+  const scans = useQuery(api.examQuality.adminListScansNeedingOcr, {});
   const enqueueAll = useMutation(api.examQuality.enqueueBatchDigitization);
+  const reconvertAll = useMutation(api.examQuality.adminReconvertAll);
   const retryFailed = useMutation(api.examQuality.adminRetryFailedJobs);
   const clearBatch = useMutation(api.examQuality.adminClearBatchQueue);
-  const claimNext = useMutation(api.examQuality.claimNextBatchJob);
-  const [running, setRunning] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
   const stopRef = useRef(false);
-  const convexClient = useConvex();
+  const convex = useConvex();
+  const [msg, setMsg] = useState<string | null>(null);
 
-  // The batch worker loop — one conversion at a time, in this tab. Runs
-  // until the queue is empty or the admin stops it. The pipeline itself is
-  // the SAME one students trigger (claim → extract → AI → complete), so a
-  // batch conversion produces exactly what a student conversion would.
-  const [workerMsg, setWorkerMsg] = useState<string | null>(null);
-
-  const runWorkerLoop = useCallback(async () => {
-    if (running) return;
-    setRunning(true);
+  /**
+   * OCR the scan backlog IN THIS TAB with Tesseract.js — zero cloud AI.
+   * One paper at a time, resume-aware (pages already read are skipped).
+   */
+  const runScanOcr = useCallback(async () => {
+    if (ocrBusy) return;
+    setOcrBusy(true);
     stopRef.current = false;
     try {
       for (;;) {
         if (stopRef.current) {
-          setWorkerMsg("Worker stopped by you.");
+          setMsg("OCR stopped by you.");
           break;
         }
-        const job = await claimNext({});
-        if (!job) {
-          setWorkerMsg("Queue is drained — every queued paper is done or a slot is busy.");
+        const list = (await convex.query(api.examQuality.adminListScansNeedingOcr, {})) as {
+          contentId: string;
+          title: string;
+          pageCount: number;
+          pagesDone: number;
+        }[];
+        const next = list[0];
+        if (!next) {
+          setMsg("No scans are waiting — every scan has been read.");
           break;
         }
-        setWorkerMsg(`Converting: ${job.title}`);
-        // Dynamically imported to keep this component light on first paint.
-        const { runPaperConversion } = await import("@/lib/batchConvert");
-        await runPaperConversion(convexClient as never, job.contentId, { batch: true });
-        if (stopRef.current) {
-          setWorkerMsg("Worker stopped by you.");
+        if (next.pageCount === 0) {
+          setMsg(`"${next.title}" has no page count yet — skipping.`);
           break;
         }
-        await new Promise((r) => setTimeout(r, 3_000)); // polite gap between jobs
+        setMsg(`Reading scan: ${next.title} (${next.pagesDone}/${next.pageCount} pages done)`);
+        const meta = (await convex.query(api.examQuality.adminGetFileUrl, {
+          contentId: next.contentId as never,
+        })) as { url: string } | null;
+        if (!meta?.url) {
+          setMsg(`Couldn't resolve the PDF for "${next.title}" — stopping.`);
+          break;
+        }
+        // Fresh presence snapshot each pass so concurrent tabs stay honest.
+        const present = Array.from({ length: next.pageCount }, (_, i) => i < next.pagesDone);
+        const { ocrMissingPages } = await import("@/lib/scanOcr");
+        await ocrMissingPages(convex, {
+          contentId: next.contentId,
+          url: meta.url,
+          pageCount: next.pageCount,
+          present,
+          shouldStop: () => stopRef.current,
+        });
+        await new Promise((r) => setTimeout(r, 500));
       }
     } catch (err) {
-      setWorkerMsg(`Worker stopped: ${(err as Error).message}`);
+      setMsg(`OCR stopped: ${(err as Error).message}`);
     } finally {
-      setRunning(false);
+      setOcrBusy(false);
     }
-  }, [claimNext, convexClient, running]);
+  }, [convex, ocrBusy]);
 
   const act = useCallback(async (fn: () => Promise<unknown>, done: string) => {
     try {
@@ -770,8 +866,7 @@ function QueueSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Autopilot — the library converts itself. This panel is a window
-          onto a system that runs whether or not this console is open. */}
+      {/* Engine status */}
       <div className="glass-panel rounded-2xl border border-emerald-400/20 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -780,14 +875,13 @@ function QueueSection() {
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                 <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
               </span>
-              Library autopilot — ON
+              Deterministic engine — ON
             </h3>
             <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-              Every past exam is queued for automatic digitization (new uploads
-              included), every open Learnyx tab converts queued papers in
-              parallel while slots are free (up to 6 background pipelines, AI
-              paced globally), and transient failures auto-retry. Students open
-              ready papers — zero wait.
+              Every past exam is queued for automatic parsing (new uploads included). Text-layer
+              papers convert in seconds — zero AI, zero rate limits. Scanned papers wait for a
+              browser tab to read them with Tesseract.js (also zero cloud AI), and low-confidence
+              parses land in the review queue above.
             </p>
           </div>
           {autopilot && (
@@ -809,14 +903,15 @@ function QueueSection() {
                 style={{ width: `${autopilot.coveragePct}%` }}
               />
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
               <MiniStat label="Papers" value={autopilot.libraryTotal} tone="text-foreground" />
               <MiniStat label="Digital" value={autopilot.ready} tone="text-emerald-300" />
               <MiniStat label="In flight" value={autopilot.queued + autopilot.running} tone="text-sky-300" />
-              <MiniStat label="Need attention" value={autopilot.failed} tone="text-rose-300" />
+              <MiniStat label="Waiting OCR" value={autopilot.scansWaiting} tone="text-violet-300" />
+              <MiniStat label="Need review" value={autopilot.needsReview} tone="text-amber-300" />
             </div>
             <p className="mt-2 text-[10px] text-muted-foreground/70">
-              {autopilot.questionTotal.toLocaleString()} questions transcribed across the digital library.
+              {autopilot.questionTotal.toLocaleString()} questions parsed across the digital library.
             </p>
           </>
         )}
@@ -828,11 +923,9 @@ function QueueSection() {
             <h3 className="flex items-center gap-2 text-sm font-extrabold">
               <Sparkles className="size-4 text-amber-300" /> Manual controls
             </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Force a library scan or run a worker in THIS tab. The autopilot keeps
-              the queue full on its own — these are for speeding it up or
-              investigating. At most {overview?.queue.maxConcurrent ?? 2} conversions run
-              platform-wide, students always jump the line, and the worker paces itself.
+            <p className="mt-0.5 max-w-xl text-xs text-muted-foreground">
+              The engine keeps the queue full on its own — these are for speeding it up or
+              re-running the library through a parser improvement. Students always jump the line.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -846,21 +939,34 @@ function QueueSection() {
             <Button
               size="sm"
               variant="outline"
-              className="gap-1 rounded-xl border-white/15 text-xs"
-              disabled={running}
-              onClick={() => void runWorkerLoop()}
+              className="gap-1 rounded-xl border-amber-400/30 text-xs text-amber-300"
+              onClick={() =>
+                act(
+                  () => reconvertAll({}),
+                  "Re-parsing everything — text papers finish in seconds.",
+                )
+              }
             >
-              {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-              Start worker here
+              <RefreshCw className="size-3.5" /> Re-parse entire library
             </Button>
-            {running && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 rounded-xl border-sky-400/30 text-xs text-sky-300"
+              disabled={ocrBusy}
+              onClick={() => void runScanOcr()}
+            >
+              {ocrBusy ? <Loader2 className="size-3.5 animate-spin" /> : <ScanLine className="size-3.5" />}
+              OCR scans in this tab
+            </Button>
+            {ocrBusy && (
               <Button
                 size="sm"
                 variant="outline"
                 className="gap-1 rounded-xl border-rose-400/30 text-xs text-rose-300"
                 onClick={() => {
                   stopRef.current = true;
-                  setWorkerMsg("Worker will stop after the current paper.");
+                  setMsg("OCR will stop after the current page.");
                 }}
               >
                 <Square className="size-3.5" /> Stop
@@ -884,9 +990,9 @@ function QueueSection() {
             </Button>
           </div>
         </div>
-        {workerMsg && (
+        {msg && (
           <p className="mt-3 rounded-xl border border-sky-400/25 bg-sky-400/[0.07] px-3 py-2 text-xs font-semibold text-sky-200">
-            {workerMsg}
+            {msg}
           </p>
         )}
         {overview && (
@@ -944,6 +1050,32 @@ function QueueSection() {
           </div>
         )}
       </div>
+
+      {/* Scans waiting for OCR — live progress */}
+      {scans && scans.length > 0 && (
+        <div className="glass-panel rounded-2xl p-5">
+          <h3 className="flex items-center gap-2 text-sm font-extrabold">
+            <ScanLine className="size-4 text-sky-300" /> Scans being read ({scans.length})
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Open any of these papers yourself, or press “OCR scans in this tab” — reading is free
+            and local (Tesseract.js).
+          </p>
+          <div className="mt-3 grid max-h-60 gap-1.5 overflow-y-auto pr-1">
+            {scans.map((s) => (
+              <div
+                key={s.contentId}
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2"
+              >
+                <p className="min-w-0 flex-1 truncate text-xs font-semibold">{s.title}</p>
+                <span className="text-[10px] font-bold tabular-nums text-sky-300">
+                  {s.pagesDone}/{s.pageCount} pages
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
