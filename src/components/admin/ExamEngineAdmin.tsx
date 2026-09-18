@@ -794,6 +794,7 @@ function QueueSection() {
   const reconvertAll = useMutation(api.examQuality.adminReconvertAll);
   const retryFailed = useMutation(api.examQuality.adminRetryFailedJobs);
   const clearBatch = useMutation(api.examQuality.adminClearBatchQueue);
+  const abandonScan = useMutation(api.examQuality.adminAbandonScan);
   const [ocrBusy, setOcrBusy] = useState(false);
   const stopRef = useRef(false);
   const convex = useConvex();
@@ -801,12 +802,15 @@ function QueueSection() {
 
   /**
    * OCR the scan backlog IN THIS TAB with Tesseract.js — zero cloud AI.
-   * One paper at a time, resume-aware (pages already read are skipped).
+   * One paper at a time, resume-aware (pages already read are skipped via
+   * exact per-page presence), and broken scans are quarantined instead of
+   * stopping the run.
    */
   const runScanOcr = useCallback(async () => {
     if (ocrBusy) return;
     setOcrBusy(true);
     stopRef.current = false;
+    let papersRead = 0;
     try {
       for (;;) {
         if (stopRef.current) {
@@ -818,26 +822,42 @@ function QueueSection() {
           title: string;
           pageCount: number;
           pagesDone: number;
+          pagesPresent?: boolean[];
         }[];
         const next = list[0];
         if (!next) {
-          setMsg("No scans are waiting — every scan has been read.");
+          setMsg(
+            papersRead > 0
+              ? `Done — ${papersRead} paper${papersRead === 1 ? "" : "s"} read. No scans are waiting.`
+              : "No scans are waiting — every scan has been read.",
+          );
           break;
         }
         if (next.pageCount === 0) {
-          setMsg(`"${next.title}" has no page count yet — skipping.`);
-          break;
+          // Broken stamp (page count never arrived) — quarantine and move
+          // on; stopping would strand the whole backlog behind one row.
+          setMsg(`"${next.title}" has no page count — quarantining and moving on.`);
+          await abandonScan({ contentId: next.contentId as never, reason: "no page count" }).catch(
+            () => {},
+          );
+          continue;
         }
         setMsg(`Reading scan: ${next.title} (${next.pagesDone}/${next.pageCount} pages done)`);
         const meta = (await convex.query(api.examQuality.adminGetFileUrl, {
           contentId: next.contentId as never,
         })) as { url: string } | null;
         if (!meta?.url) {
-          setMsg(`Couldn't resolve the PDF for "${next.title}" — stopping.`);
-          break;
+          setMsg(`Couldn't resolve the PDF for "${next.title}" — quarantining and moving on.`);
+          await abandonScan({ contentId: next.contentId as never, reason: "file URL missing" }).catch(
+            () => {},
+          );
+          continue;
         }
-        // Fresh presence snapshot each pass so concurrent tabs stay honest.
-        const present = Array.from({ length: next.pageCount }, (_, i) => i < next.pagesDone);
+        // Exact per-page presence snapshot so concurrent tabs stay honest.
+        const present =
+          next.pagesPresent && next.pagesPresent.length === next.pageCount
+            ? [...next.pagesPresent]
+            : Array.from({ length: next.pageCount }, (_, i) => i < next.pagesDone);
         const { ocrMissingPages } = await import("@/lib/scanOcr");
         await ocrMissingPages(convex, {
           contentId: next.contentId,
@@ -846,6 +866,7 @@ function QueueSection() {
           present,
           shouldStop: () => stopRef.current,
         });
+        papersRead += 1;
         await new Promise((r) => setTimeout(r, 500));
       }
     } catch (err) {
@@ -853,7 +874,7 @@ function QueueSection() {
     } finally {
       setOcrBusy(false);
     }
-  }, [convex, ocrBusy]);
+  }, [convex, ocrBusy, abandonScan]);
 
   const act = useCallback(async (fn: () => Promise<unknown>, done: string) => {
     try {

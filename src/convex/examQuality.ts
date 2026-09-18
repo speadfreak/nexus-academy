@@ -677,10 +677,50 @@ export const adminListScansNeedingOcr = query({
         title: item?.title ?? "(deleted)",
         pageCount: p.pageCount ?? 0,
         pagesDone: (p.ocrPages ?? []).filter((t) => t.length > 0).length,
+        // Exact per-page presence — resume skips only truly missing pages,
+        // even when pages were filled out of order by concurrent runners.
+        pagesPresent: (p.ocrPages ?? []).map((t) => t.length > 0),
         updatedAt: p.updatedAt,
       });
     }
     return out;
+  },
+});
+
+/**
+ * QUARANTINE A BROKEN SCAN — a paper stamped for OCR that can never be
+ * read (page count never arrived, or the file URL is gone). The admin
+ * runner skips it and moves on instead of stopping the whole backlog;
+ * the row is parked honestly as failed with the reason attached.
+ */
+export const adminAbandonScan = mutation({
+  args: { contentId: v.id("contentItems"), reason: v.string() },
+  handler: async (ctx, args) => {
+    await requireAdminMutation(ctx);
+    const paper = await ctx.db
+      .query("digitalPapers")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    if (paper && paper.status === "processing") {
+      await ctx.db.patch(paper._id, {
+        status: "failed",
+        error: `Scan unreadable: ${args.reason.slice(0, 300)}`,
+        reviewStatus: "needs_review",
+        updatedAt: Date.now(),
+      });
+    }
+    const job = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    if (job) {
+      await ctx.db.patch(job._id, {
+        status: "failed",
+        lastError: `Scan unreadable: ${args.reason.slice(0, 300)}`,
+        updatedAt: Date.now(),
+      });
+    }
+    return { abandoned: true as const };
   },
 });
 

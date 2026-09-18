@@ -440,6 +440,21 @@ export const engineCensus = internalQuery({
         ? Math.round(readyConfidences.reduce((s, c) => s + c, 0) / readyConfidences.length)
         : null;
 
+    // Parser output aggregates across the whole live library.
+    let totalQuestions = 0;
+    let mcqQuestions = 0;
+    let answeredQuestions = 0;
+    let flaggedDiagrams = 0;
+    let scanSourceReady = 0;
+    for (const p of papers) {
+      if (p.status !== "ready") continue;
+      totalQuestions += p.questionCount ?? 0;
+      mcqQuestions += (p.questions ?? []).filter((q) => q.kind === "mcq").length;
+      answeredQuestions += (p.questions ?? []).filter((q) => q.answer).length;
+      flaggedDiagrams += p.parserMeta?.flaggedDiagrams ?? 0;
+      if (p.sourceMode === "scan") scanSourceReady += 1;
+    }
+
     return {
       papers: {
         total: papers.length,
@@ -449,6 +464,13 @@ export const engineCensus = internalQuery({
       },
       review: byReview,
       avgConfidence,
+      library: {
+        totalQuestions,
+        mcqQuestions,
+        answeredQuestions,
+        flaggedDiagrams,
+        scanSourceReady,
+      },
       scans: { waiting: scansWaiting, pagesDone: scanPagesDone, pagesTotal: scanPagesTotal },
       pastExams: { total: pastExams.length, withoutDigitalRow: notEnqueued },
       jobs: byJobStatus,

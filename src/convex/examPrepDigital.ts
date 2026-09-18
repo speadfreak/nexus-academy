@@ -33,7 +33,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { mutation, query, internalMutation } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isPremiumStatus } from "./subscriptions";
 
@@ -271,6 +271,109 @@ export const markScanRoute = internalMutation({
 // ─── OCR page submission (client-side Tesseract.js → server parse) ──────
 
 const MAX_OCR_CHARS_PER_PAGE = 30_000;
+/** Upper bound on pages per internal batch call (payload stays well under limits). */
+const MAX_OCR_BATCH_PAGES = 40;
+
+/**
+ * Batch variant of submitOcrPageText for INTERNAL runners (the ops
+ * backlog grinder runs Tesseract.js in Node — same engine, same parser,
+ * no auth needed behind the deploy-key wall). Identical semantics per
+ * page: idempotent writes, freshness stamps, and the finalize action
+ * scheduled the moment the last missing page lands.
+ */
+export const submitOcrPagesInternal = internalMutation({
+  args: {
+    contentId: v.id("contentItems"),
+    pageCount: v.number(),
+    pages: v.array(
+      v.object({ pageNumber: v.number(), text: v.string() }),
+    ),
+  },
+  handler: async (ctx, args): Promise<{ accepted: number; done: boolean }> => {
+    if (args.pages.length === 0 || args.pages.length > MAX_OCR_BATCH_PAGES) {
+      return { accepted: 0, done: false };
+    }
+
+    const row = await ctx.db
+      .query("digitalPapers")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    if (!row || row.status !== "processing" || row.sourceMode !== "scan") {
+      return { accepted: 0, done: false }; // row moved on — stop quietly
+    }
+
+    const pageCount = row.pageCount ?? args.pageCount;
+    const pages = (row.ocrPages && row.ocrPages.length === pageCount
+      ? [...row.ocrPages]
+      : new Array(pageCount).fill("")) as string[];
+
+    let accepted = 0;
+    for (const p of args.pages) {
+      if (p.pageNumber < 1 || p.pageNumber > pageCount) continue;
+      pages[p.pageNumber - 1] = p.text.slice(0, MAX_OCR_CHARS_PER_PAGE);
+      accepted += 1;
+    }
+    if (accepted === 0) return { accepted: 0, done: false };
+
+    const doneCount = pages.filter((t) => t.length > 0).length;
+    const now = Date.now();
+    await ctx.db.patch(row._id, {
+      ocrPages: pages,
+      chunksParsed: doneCount,
+      updatedAt: now,
+    });
+
+    // Keep the job claim fresh while pages stream in.
+    const job = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    if (job && job.status === "running") {
+      await ctx.db.patch(job._id, { claimedAt: now, updatedAt: now });
+    }
+
+    if (doneCount >= pageCount) {
+      await ctx.scheduler.runAfter(0, internal.examConversionEngine.finalizeOcrPaper, {
+        digitalPaperId: row._id,
+        contentId: args.contentId,
+      });
+      return { accepted, done: true };
+    }
+    return { accepted, done: false };
+  },
+});
+
+/**
+ * INTERNAL SCAN BACKLOG LIST — everything the Node/ops OCR grinder and the
+ * admin runner need per scan: the PDF url, page count, and exact per-page
+ * presence for resume. Internal so the deploy-key CLI can read it without
+ * end-user auth.
+ */
+export const scanBacklogInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const papers = await ctx.db
+      .query("digitalPapers")
+      .withIndex("by_status", (q) => q.eq("status", "processing"))
+      .collect();
+    const scans = papers.filter((p) => p.sourceMode === "scan");
+    scans.sort((a, b) => a.createdAt - b.createdAt);
+    const out = [];
+    for (const p of scans.slice(0, 300)) {
+      const item = await ctx.db.get(p.contentId);
+      if (!item) continue;
+      out.push({
+        contentId: p.contentId,
+        digitalPaperId: p._id,
+        title: item.title,
+        fileUrl: item.fileUrl,
+        pageCount: p.pageCount ?? 0,
+        pagesPresent: (p.ocrPages ?? []).map((t) => t.length > 0),
+      });
+    }
+    return out;
+  },
+});
 
 /**
  * Submit ONE page's OCR text (from the browser Tesseract.js runner).
