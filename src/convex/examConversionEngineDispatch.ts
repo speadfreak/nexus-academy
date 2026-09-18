@@ -459,3 +459,87 @@ export const pausePaperForCooldown = internalMutation({
     return { waitMs };
   },
 });
+
+/**
+ * ENGINE CENSUS — internal diagnostics for the admin console / ops checks.
+ * One cheap aggregate: how much of the past-exam library is player-ready
+ * right now vs still in flight vs failed, plus how many past exams have no
+ * digitalPapers row at all (those get enqueued by the next dispatch tick).
+ */
+export const engineCensus = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const papers = await ctx.db.query("digitalPapers").collect();
+    const byStatus: Record<string, number> = {};
+    for (const p of papers) byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
+
+    // Past exams without a digital row → engine will enqueue them on the
+    // next tick; a persistent nonzero number here means the engine is
+    // behind on new uploads.
+    const pastExams = await ctx.db
+      .query("contentItems")
+      .withIndex("by_contentType", (q) => q.eq("contentType", "past_exam"))
+      .collect();
+    const converted = new Set(papers.map((p) => p.contentId));
+    let notEnqueued = 0;
+    for (const item of pastExams) if (!converted.has(item._id)) notEnqueued += 1;
+
+    const jobs = await ctx.db.query("examConversionJobs").collect();
+    const byJobStatus: Record<string, number> = {};
+    for (const j of jobs) {
+      const s = j.status ?? "unknown";
+      byJobStatus[s] = (byJobStatus[s] ?? 0) + 1;
+    }
+
+    // Failure forensics: bucket failed papers by a normalized error head so
+    // ops can see WHAT is blocking the backlog at a glance (rate limits,
+    // NEEDS_OCR scans, network, …). Bounded to keep the mutation cheap.
+    const failures: Record<string, number> = {};
+    let lastAttemptAt = 0;
+    for (const p of papers) {
+      if (p.status !== "failed") continue;
+      const raw = (p.error ?? "unknown").slice(0, 120);
+      // Normalize: keep the first meaningful clause only. Keys must be
+      // non-control ASCII (Convex object field names) — strip the rest.
+      const head = raw.split(/[.:\n]/)[0]?.trim().slice(0, 80) || "unknown";
+      const key =
+        head
+          .replace(/[^\x20-\x7E]/g, " ")
+          .replace(/\d+/g, "N")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 60) || "unknown";
+      failures[key] = (failures[key] ?? 0) + 1;
+    }
+    for (const j of jobs) if ((j.updatedAt ?? 0) > lastAttemptAt) lastAttemptAt = j.updatedAt ?? 0;
+
+    // In-flight sample: are the claimed papers actually advancing chunks
+    // (healthy grind) or all parked in rate-limit cooldowns (expected when
+    // the free tier is drained)? Cheap bounded read for ops dashboards.
+    const processingSample = papers
+      .filter((p) => p.status === "processing")
+      .slice(0, 12)
+      .map((p) => ({
+        contentId: p.contentId,
+        chunksParsed: p.chunksParsed ?? 0,
+        chunkCount: p.chunkCount ?? 0,
+        updatedAt: p.updatedAt ?? 0,
+        paused: (p.error ?? "").startsWith("Cooling down"),
+      }));
+
+    return {
+      papers: {
+        total: papers.length,
+        ready: byStatus.ready ?? 0,
+        processing: byStatus.processing ?? 0,
+        failed: byStatus.failed ?? 0,
+      },
+      pastExams: { total: pastExams.length, withoutDigitalRow: notEnqueued },
+      jobs: byJobStatus,
+      failureBuckets: failures,
+      processingSample,
+      lastEngineActivityAt: lastAttemptAt,
+      checkedAt: Date.now(),
+    };
+  },
+});
