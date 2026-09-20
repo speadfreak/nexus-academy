@@ -16,9 +16,11 @@
 // EXCEPTION: the platform admin's /admin → Schools management tab stays
 // visible regardless of this flag. The admin can prepare a school's
 // setup in the background before flipping the switch.
+//
+// The underlying query lives in AppBootstrap (one subscription for the
+// whole app) — this hook is a context reader, not its own subscription.
 
-import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 
 interface UseSchoolFeatureResult {
   /** True when SCHOOL_FEATURE_ENABLED is "true". Schools-feature UI should
@@ -31,7 +33,7 @@ interface UseSchoolFeatureResult {
 }
 
 export function useSchoolFeatureEnabled(): UseSchoolFeatureResult {
-  const enabledQuery = useQuery(api.configKeys.getSchoolFeatureEnabled);
+  const { schoolFeatureEnabled: enabledQuery } = useAppBootstrap();
   const enabled = enabledQuery === true;
   const loading = enabledQuery === undefined;
   return { enabled, loading };

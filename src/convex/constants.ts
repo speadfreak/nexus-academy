@@ -167,3 +167,10 @@ export const VIDEO_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Max results per search slice (priority channel + general).
 export const VIDEO_MAX_PER_SLICE = 4;
+
+// ── Branding version ──────────────────────────────────────────────────
+// Bump when the branded PDF cover design materially changes. Lives here
+// (pure-TS, import-safe from non-node Convex files) so reactive queries
+// like content.getBrandingStats can report it without importing the
+// "use node" pdfBranding module. pdfBranding re-exports it.
+export const BRANDING_VERSION = 1;

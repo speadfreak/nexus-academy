@@ -11,7 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useAppBootstrap } from "@/components/AppBootstrap";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { AnimatePresence } from "framer-motion";
 import { TOUR_STEPS, TOTAL_STEPS } from "./tourSteps";
@@ -50,7 +51,8 @@ export function useTour() {
 export function TourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const tourStatus = useQuery(api.tour.getTourStatus);
+  // Shared subscription (AppBootstrap) — one tour-status query for the app.
+  const { tourStatus } = useAppBootstrap();
   const updateTour = useMutation(api.tour.updateTourStatus);
 
   const [phase, setPhase] = useState<TourPhase>("idle");

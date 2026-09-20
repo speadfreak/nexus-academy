@@ -33,9 +33,13 @@
 
 import { rgb, PDFDocument, StandardFonts, degrees, type Color } from "pdf-lib";
 
+import { BRANDING_VERSION } from "./constants";
+
 // ── Bump this when the cover design materially changes ────────────────
 // v1: initial release — dark cover, gold "L" mark, title block, footer.
-export const BRANDING_VERSION = 1;
+// The constant itself lives in constants.ts (pure TS) so non-node files
+// can import it; re-exported here for the branding pipeline's callers.
+export { BRANDING_VERSION };
 
 // ── Palette (PDFs use 0-1 rgb, not 0-255) ─────────────────────────────
 const COLOR = {

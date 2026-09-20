@@ -1,4 +1,5 @@
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -681,9 +682,8 @@ export default function Dashboard() {
   const subjects = useQuery(api.subjects.getAll);
   const bookmarkIds = useQuery(api.bookmarks.getMyBookmarkIds);
   const toggleBookmark = useMutation(api.bookmarks.toggleBookmark);
-  const profile = useQuery(api.profile.getProfile);
+  const { profile, adminInfo: isAdmin } = useAppBootstrap();
   const updateProfile = useMutation(api.profile.updateProfile);
-  const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const [premiumPrompt, setPremiumPrompt] = useState<{ reason: "premium_content"; open: boolean } | null>(null);
 

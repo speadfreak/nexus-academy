@@ -17,6 +17,7 @@
 // full setup before flipping the public switch.
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -202,7 +203,7 @@ export function AdminSchoolsSection() {
   const stats = useQuery(api.schools.adminSchoolsStats, {});
   const schools = useQuery(api.schools.adminListSchools, {});
   const submissions = useQuery(api.schools.adminListSeatSubmissions, {});
-  const featureEnabled = useQuery(api.configKeys.getSchoolFeatureEnabled, {});
+  const { schoolFeatureEnabled: featureEnabled } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const users = useQuery(api.adminCenter.listUsers, {});
 
   const approveMut = useMutation(api.schools.adminApproveSeatSubmission);

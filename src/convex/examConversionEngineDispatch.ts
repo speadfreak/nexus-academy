@@ -53,6 +53,11 @@ const FAILED_RETRY_BACKOFF_MS = 10 * 60 * 1000;
  */
 const EXHAUSTED_SELF_HEAL_MS = 24 * 60 * 60 * 1000;
 
+/** How often the dispatch tick forces a full sweep even when the cheap
+ *  early-exit sees nothing to do (covers done-but-not-live requeues and
+ *  past_exam rows missing job rows). */
+const FULL_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+
 /** Rows enqueued per tick — comfortably inside mutation budgets. */
 const MAX_ENQUEUE_PER_TICK = 200;
 
@@ -100,7 +105,54 @@ export const dispatchTick = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const stats = { enqueued: 0, requeued: 0, claimed: 0, skippedReady: 0, exhausted: 0 };
+    const stats = { enqueued: 0, requeued: 0, claimed: 0, skippedReady: 0, exhausted: 0, earlyExit: false };
+
+    // ── 0. CHEAP EARLY-EXIT (steady state) ──────────────────────────
+    // The deterministic parser has converted the entire library — most
+    // minutes the queue is terminal (everything ready/failed/done). The
+    // full pass below reads EVERY past_exam + EVERY job + EVERY digital
+    // paper row (~350+ documents today) and burns that every minute even
+    // when there is nothing to do. This phase spends ~4 indexed reads to
+    // prove there is nothing to do:
+    //   • queued job  → claiming work below
+    //   • running job → stale-claim reaping below
+    //   • actionable failed job (retry backoff elapsed / 24h self-heal due)
+    // The remaining slow-moving cases (a done job whose paper was
+    // rejected/pdf-only by an admin, a past_exam row inserted without a
+    // job row) are covered by the HOURLY full sweep below — max one hour
+    // of extra latency for edge cases instead of ~350 reads every minute.
+    const anyQueued = await ctx.db
+      .query("examConversionJobs")
+      .withIndex("by_status", (q) => q.eq("status", "queued"))
+      .first();
+    if (!anyQueued) {
+      const anyRunning = await ctx.db
+        .query("examConversionJobs")
+        .withIndex("by_status", (q) => q.eq("status", "running"))
+        .first();
+      if (!anyRunning) {
+        const failedJobs = await ctx.db
+          .query("examConversionJobs")
+          .withIndex("by_status", (q) => q.eq("status", "failed"))
+          .take(50);
+        const anyActionable = failedJobs.some(
+          (j) =>
+            j.attempts < MAX_AUTO_ATTEMPTS
+              ? now - j.updatedAt >= FAILED_RETRY_BACKOFF_MS
+              : now - j.updatedAt >= EXHAUSTED_SELF_HEAL_MS,
+        );
+        if (!anyActionable) {
+          const sweepRow = await ctx.db
+            .query("engineState")
+            .withIndex("by_key", (q) => q.eq("key", "dispatch_last_full_sweep_at"))
+            .first();
+          if (now - (sweepRow?.value ?? 0) < FULL_SWEEP_INTERVAL_MS) {
+            stats.earlyExit = true;
+            return stats;
+          }
+        }
+      }
+    }
 
     // ── 1. Enqueue backstop: every past_exam must have a queue row ──
     const items = await ctx.db
@@ -251,7 +303,22 @@ export const dispatchTick = internalMutation({
         (j.claimedAt ?? 0) >= textCutoff,
     ).length;
     let slots = Math.max(0, ENGINE_PARALLEL_CONVERSIONS - engineRunning);
-    if (slots === 0) return stats;
+    if (slots === 0) {
+      // A full pass ran (enqueue backstop + requeue scan), so this counts
+      // as a sweep — mark it, otherwise the early-exit would consider the
+      // sweep stale and redo the full pass every minute.
+      const sweepRow = await ctx.db
+        .query("engineState")
+        .withIndex("by_key", (q) => q.eq("key", "dispatch_last_full_sweep_at"))
+        .first();
+      if (sweepRow) await ctx.db.patch(sweepRow._id, { value: now });
+      else
+        await ctx.db.insert("engineState", {
+          key: "dispatch_last_full_sweep_at",
+          value: now,
+        });
+      return stats;
+    }
 
     const queued = await ctx.db
       .query("examConversionJobs")
@@ -319,6 +386,21 @@ export const dispatchTick = internalMutation({
 
       slots -= 1;
       stats.claimed += 1;
+    }
+
+    // Full pass ran — remember the time so the cheap early-exit can sleep
+    // until the next hourly sweep (or until real work appears).
+    const sweepRow = await ctx.db
+      .query("engineState")
+      .withIndex("by_key", (q) => q.eq("key", "dispatch_last_full_sweep_at"))
+      .first();
+    if (sweepRow) {
+      await ctx.db.patch(sweepRow._id, { value: now });
+    } else {
+      await ctx.db.insert("engineState", {
+        key: "dispatch_last_full_sweep_at",
+        value: now,
+      });
     }
 
     return stats;

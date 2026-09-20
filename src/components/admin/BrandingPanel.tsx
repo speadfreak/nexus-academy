@@ -21,7 +21,7 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -62,8 +62,12 @@ const INITIAL_JOB: BrandingJob = {
 export function BrandingPanel() {
   const rebrandOne = useAction(api.contentAdmin.rebrandOneContent);
   const listUnbrandedAction = useAction(api.contentAdmin.listUnbranded);
-  const getBrandingStats = useAction(api.contentAdmin.getBrandingStats);
-  const [stats, setStats] = useState<{ branded: number; total: number; pending: number; version: number } | undefined>(undefined);
+  // Branding stats as a REACTIVE QUERY (api.content.getBrandingStats).
+  // The old design polled a getBrandingStats ACTION with a 15-second
+  // setInterval even when idle — ≈5,760 action calls/day from one open
+  // admin tab. As a query this panel subscribes once and Convex pushes
+  // updates only when brandingApplied actually changes. Zero polling.
+  const stats = useQuery(api.content.getBrandingStats);
 
   const [job, setJob] = useState<BrandingJob>(INITIAL_JOB);
   // Ref to allow the running loop to detect a "stop" request without
@@ -74,27 +78,9 @@ export function BrandingPanel() {
   // already branded before we started).
   const startedProcessedRef = useRef(0);
 
-  // Poll branding stats — fast while the job is running, slower when idle.
-  // This is the only source of truth for the "X of Y resources branded"
-  // display. Even when no job is running we still poll (every 15s) so the
-  // admin sees accurate counts if content is uploaded elsewhere.
-  useEffect(() => {
-    let cancelled = false;
-    const fetchStats = async () => {
-      try {
-        const s = await getBrandingStats({});
-        if (!cancelled) setStats(s);
-      } catch {
-        // Ignore — stats are non-critical for the UI.
-      }
-    };
-    void fetchStats();
-    const interval = setInterval(fetchStats, job.isRunning ? 2000 : 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [job.isRunning, getBrandingStats]);
+  // (Polling removed — `stats` above is a reactive subscription. While a
+  // rebranding job runs, each rebrandOneContent mutation flips
+  // brandingApplied, which reactively refreshes the stats query.)
 
   const startJob = useCallback(async () => {
     if (job.isRunning) return;

@@ -11,6 +11,7 @@
 
 import { Toaster } from "@/components/ui/sonner";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
+import { AppBootstrapProvider } from "@/components/AppBootstrap";
 import { TourProvider } from "@/components/tour";
 import AppPreloader from "@/components/AppPreloader";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -576,6 +577,11 @@ if (rootEl) {
         </Suspense>
         <ConvexAuthProvider client={convex}>
           <OAuthPopupCloser />
+          {/* AppBootstrap — the ONE home of the app-shell queries (profile,
+              admin check, feature flags, tour). Every consumer below reads
+              them via useAppBootstrap() instead of subscribing separately.
+              See the file header for the free-plan usage-spike story. */}
+          <AppBootstrapProvider>
           <ThemeProvider>
             <MusicProvider>
               <PreloaderGate>
@@ -854,6 +860,7 @@ if (rootEl) {
               <UpdatePrompt />
             </MusicProvider>
           </ThemeProvider>
+          </AppBootstrapProvider>
         </ConvexAuthProvider>
       </RootErrorBoundary>
     </StrictMode>,

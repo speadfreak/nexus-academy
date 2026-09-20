@@ -24,6 +24,7 @@
 // throws `premium_mock_exams`.
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -168,7 +169,7 @@ export default function MockExamPage() {
   const subjectNames = useSubjectNames();
 
   // User profile — for auto-detecting the stream
-  const profile = useQuery(api.profile.getProfile);
+  const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const userStream: "natural" | "social" | undefined =
     profile?.stream === "natural" || profile?.stream === "social" ? profile.stream : undefined;
 

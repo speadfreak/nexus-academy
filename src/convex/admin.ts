@@ -67,12 +67,52 @@ export const getUserByEmail = internalQuery({
   },
 });
 
+// ── Admin existence (indexed, scan-free) ─────────────────────────────
+// "Does any admin/moderator+ exist?" used to be answered by scanning the
+// first 200 user documents. Two problems:
+//   1. VOLUME: every isCurrentUserAdmin subscriber re-ran the scan, and the
+//      scan's read set (200 user docs) was invalidated by ANY write to ANY
+//      of those users — every OAuth sign-in patch of an early account
+//      re-fired admin checks for every open client.
+//   2. The read-set churn fed the Convex free-plan query spike.
+// The users table now has a by_role index; three indexed first() lookups
+// answer the question and the reactive read set only contains users whose
+// role field actually matches an elevated role.
+
+/** Roles at or above the admin threshold (moderator = 60). */
+const ELEVATED_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MODERATOR] as const;
+
+/** Indexed existence check — three point lookups, zero scans. */
+async function adminExistsIndexed(
+  ctx: QueryCtx | MutationCtx | ActionCtx,
+): Promise<boolean> {
+  for (const role of ELEVATED_ROLES) {
+    const row =
+      "db" in ctx
+        ? await ctx.db
+            .query("users")
+            .withIndex("by_role", (q) => q.eq("role", role))
+            .first()
+        : await ctx.runQuery(internal.admin.anyAdminRoleExists, { role });
+    if (row) return true;
+  }
+  return false;
+}
+
+export const anyAdminRoleExists = internalQuery({
+  args: { role: v.string() },
+  handler: async (ctx, { role }) => {
+    const row = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", role as Doc<"users">["role"]))
+      .first();
+    return row !== null;
+  },
+});
+
 export const anyAdminExists = internalQuery({
   args: {},
-  handler: async (ctx) => {
-    const users = await ctx.db.query("users").take(200);
-    return users.some((u) => getUserRoleLevel(u) >= ADMIN_MIN_LEVEL);
-  },
+  handler: async (ctx) => adminExistsIndexed(ctx),
 });
 
 /** All admin/moderator+ user ids — used to route safety reports. */
@@ -87,8 +127,7 @@ export const listAdminUserIds = internalQuery({
 });
 
 async function adminExistsFromDb(ctx: DbCtx): Promise<boolean> {
-  const allUsers = await ctx.db.query("users").take(200);
-  return allUsers.some((u) => getUserRoleLevel(u) >= ADMIN_MIN_LEVEL);
+  return adminExistsIndexed(ctx);
 }
 
 /** Count super_admins (used by removeAdmin safeguard). */

@@ -19,6 +19,7 @@
 // anywhere in this hub — only in-app sharing of a resource link.
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
@@ -1195,7 +1196,7 @@ export default function ExamPrep() {
   const results = useQuery(api.examPrep.getMyExamPrepResults);
   const subjects = useQuery(api.subjects.getAll);
   const journey = useQuery(api.journey.getJourney);
-  const profile = useQuery(api.profile.getProfile);
+  const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   // Digital conversion states for the paper cards (Digital · N Qs / Converting…).
   // The id array is memoized so the query args stay value-stable across renders
   // (same hard requirement as the calendar query below).

@@ -18,8 +18,7 @@
 
 import { Check, ChevronDown, Globe2, ShieldAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/hooks/useLanguage";
@@ -42,7 +41,8 @@ export function LanguageSwitcher({
   const containerRef = useRef<HTMLDivElement>(null);
   // Admin-only check — for the "needs review" note on om/ti (Phase 7).
   // The note is ONLY shown to admins, never to students.
-  const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
+  // Shared subscription (AppBootstrap) — one admin check for the whole app.
+  const { adminInfo: isAdmin } = useAppBootstrap();
 
   // Close on outside click + Escape.
   useEffect(() => {

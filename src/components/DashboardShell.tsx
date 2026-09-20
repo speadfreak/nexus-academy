@@ -1,4 +1,5 @@
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useMutation, useQuery } from "convex/react";
 import {
   Award,
@@ -49,7 +50,8 @@ const EXPANDED_W = "15rem";
 
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
-  const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
+  // Shared admin-check subscription (AppBootstrap) — one for the whole app.
+  const { adminInfo: isAdmin } = useAppBootstrap();
   const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
   const touch = useMutation(api.subscriptions.touch);
   const navigate = useNavigate();

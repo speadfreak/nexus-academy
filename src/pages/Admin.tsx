@@ -4,6 +4,7 @@
 // the flex layout behind Cloudflare/Render.
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Wand2 } from "lucide-react";
@@ -926,7 +927,7 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
    ══════════════════════════════════════════════════════════════════════ */
 
 export default function Admin() {
-  const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
+  const { adminInfo: isAdmin } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const promoteSelf = useMutation(api.admin.promoteSelfIfBootstrap);
 
   // Auto-persist bootstrap promotion: if user is admin (bootstrap) but has no

@@ -23,7 +23,8 @@
 //     falls back to localStorage for guests
 
 import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { useAppBootstrap } from "@/components/AppBootstrap";
+import { useMutation } from "convex/react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -58,9 +59,9 @@ interface UseLanguageResult {
 
 export function useLanguage(): UseLanguageResult {
   const { i18n } = useTranslation();
-  // Public query — no admin gate, used by the landing page too.
-  const enabledQuery = useQuery(api.configKeys.getMultiLanguageEnabled);
-  const profile = useQuery(api.profile.getProfile);
+  // Shared subscriptions (AppBootstrap) — the flag + profile are app-shell
+  // data fetched exactly once for the whole app.
+  const { multiLanguageEnabled: enabledQuery, profile } = useAppBootstrap();
   const updateProfile = useMutation(api.profile.updateProfile);
 
   const enabled = enabledQuery === true;

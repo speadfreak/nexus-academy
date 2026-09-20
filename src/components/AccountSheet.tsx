@@ -10,6 +10,7 @@
 // instead of the broken window.location.href = "/api/auth/signout".
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useMutation, useQuery } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -43,10 +44,10 @@ interface AccountSheetProps {
 }
 
 export function AccountSheet({ children, initials = "N" }: AccountSheetProps) {
-  const profile = useQuery(api.profile.getProfile);
+  // Shared shell subscriptions (AppBootstrap) — profile + admin check.
+  const { profile, adminInfo: isAdmin } = useAppBootstrap();
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const updateProfile = useMutation(api.profile.updateProfile);
-  const isAdmin = useQuery(api.admin.isCurrentUserAdmin);
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);

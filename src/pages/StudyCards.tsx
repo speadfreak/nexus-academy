@@ -18,6 +18,7 @@
 // how quizzes/flashcards gate generation.
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -78,7 +79,7 @@ export default function StudyCardsPage() {
   const { t } = useTranslation(["common"]);
   const friendlyError = useFriendlyError();
   const subjects = useQuery(api.subjects.getAll);
-  const profile = useQuery(api.profile.getProfile);
+  const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const generateAI = useAction(api.studyCards.generateAI);
   const toggleBookmark = useMutation(api.studyCards.toggleBookmark);

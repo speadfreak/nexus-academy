@@ -1,5 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
   internalQuery,
@@ -10,6 +10,7 @@ import {
 import type { Doc, Id } from "./_generated/dataModel";
 import { isAdmin } from "./admin";
 import { contentTypeValidator } from "./schema";
+import { BRANDING_VERSION } from "./constants";
 
 export type ContentItem = Doc<"contentItems">;
 export type ContentItemWithSubject = ContentItem & {
@@ -295,6 +296,38 @@ export const getBrandingCounts = internalQuery({
     return {
       branded: items.filter((i) => i.brandingApplied === true).length,
       total: items.length,
+    };
+  },
+});
+
+/**
+ * Reactive admin-facing branding stats — the query replacement for the
+ * old getBrandingStats ACTION. The action existed only because the admin
+ * check was action-shaped; the BrandingPanel then polled it with a
+ * 15-second setInterval even when idle (≈5,760 action calls/day from a
+ * single open admin tab). As a query, the BrandingPanel subscribes once
+ * and Convex pushes updates only when brandingApplied actually changes.
+ */
+export const getBrandingStats = query({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{ branded: number; total: number; pending: number; version: number }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    const user = await ctx.db.get(userId);
+    if (!(await isAdmin(ctx, user))) {
+      throw new ConvexError({ message: "Admin access required.", code: "unauthorized" });
+    }
+    const items = await ctx.db.query("contentItems").collect();
+    const branded = items.filter((i) => i.brandingApplied === true).length;
+    return {
+      branded,
+      total: items.length,
+      pending: items.length - branded,
+      version: BRANDING_VERSION,
     };
   },
 });

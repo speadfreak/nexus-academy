@@ -57,7 +57,14 @@ const schema = defineSchema(
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
 
       role: v.optional(roleValidator), // role of the user. do not remove
-    }).index("email", ["email"]), // index for the email. do not remove or modify
+    })
+      .index("email", ["email"]) // index for the email. do not remove or modify
+      // by_role — lets "does any admin exist?" checks (admin bootstrap) run
+      // as three indexed first() lookups instead of a 200-document table
+      // scan. The scan subscribed every isCurrentUserAdmin client to the
+      // first 200 user documents, so ANY user-doc write re-fired admin
+      // checks platform-wide — a real query-volume amplifier.
+      .index("by_role", ["role"]),
 
     // ------------------------------------------------------------------
     // Learnyx Academy ET 🇪🇹 content library
@@ -1636,6 +1643,15 @@ const schema = defineSchema(
     })
       .index("by_content", ["contentId"])
       .index("by_status", ["status"]),
+
+    // Tiny key/numeric-value store for server-side engine bookkeeping
+    // (e.g. the dispatch cron's last-full-sweep timestamp). Deliberately
+    // separate from configKeys (whose updatedBy requires a user id — the
+    // cron has none) and from systemEvents (append-only log).
+    engineState: defineTable({
+      key: v.string(),
+      value: v.number(), // epoch ms timestamps / counters
+    }).index("by_key", ["key"]),
 
     // ------------------------------------------------------------------
     // (The old global AI rate orchestrator table was removed together with

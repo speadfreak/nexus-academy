@@ -12,6 +12,17 @@ type UserDoc = {
   role?: string;
 };
 
+// ── Session cache for the one-shot currentUser query ───────────────────
+// useAuth() is mounted by RequireAuth on EVERY route plus the shell —
+// each mount used to fire one convex.query() round-trip, so heavy
+// navigation burned dozens of function calls per session for data that
+// changes ~never mid-navigation. A 60s TTL keeps role/name fresh enough
+// (mutations that change roles re-render via their own subscriptions)
+// while collapsing the call volume ~10x.
+let cachedUser: UserDoc | null | undefined = undefined;
+let cachedAt = 0;
+const USER_CACHE_TTL_MS = 60_000;
+
 export function useAuth() {
   const { isLoading: isAuthLoading, isAuthenticated } = useConvexAuth();
   const convex = useConvex();
@@ -28,12 +39,22 @@ export function useAuth() {
   useEffect(() => {
     if (!isAuthenticated) {
       setUser(undefined);
+      cachedUser = undefined;
+      cachedAt = 0;
+      return;
+    }
+    // Fresh cache hit — skip the round-trip entirely.
+    const now = Date.now();
+    if (cachedUser !== undefined && now - cachedAt < USER_CACHE_TTL_MS) {
+      setUser(cachedUser ?? undefined);
       return;
     }
     let cancelled = false;
     convex
       .query(api.users.currentUser)
       .then((result: UserDoc | null) => {
+        cachedUser = result;
+        cachedAt = Date.now();
         if (!cancelled) setUser(result ?? undefined);
       })
       .catch((err: unknown) => {

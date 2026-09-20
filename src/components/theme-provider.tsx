@@ -1,5 +1,4 @@
-import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import {
   createContext,
   useContext,
@@ -34,7 +33,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() =>
     typeof window === "undefined" ? "dark" : readStoredTheme(),
   );
-  const profile = useQuery(api.profile.getProfile);
+  // Shared subscription (AppBootstrap) — do NOT subscribe per-provider.
+  const { profile } = useAppBootstrap();
 
   // Apply the class to <html> and persist.
   useEffect(() => {

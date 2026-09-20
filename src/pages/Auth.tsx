@@ -1,6 +1,7 @@
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { STREAM_LABELS } from "@/convex/constants";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -555,7 +556,7 @@ function Onboarding({
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
-  const profile = useQuery(api.profile.getProfile);
+  const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const saveStream = useMutation(api.profile.updateProfile);
   const recordReferral = useMutation(api.marketing.recordReferralSignup);
   const navigate = useNavigate();

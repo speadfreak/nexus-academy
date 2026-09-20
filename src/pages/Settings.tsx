@@ -3,6 +3,7 @@
 // ThemeProvider picks it up and flips the .dark/.light class on <html>.
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { STREAM_LABELS } from "@/convex/constants";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -74,7 +75,7 @@ export default function Settings() {
   const { t } = useTranslation(["settings", "common"]);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
-  const profile = useQuery(api.profile.getProfile);
+  const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
   const updateProfile = useMutation(api.profile.updateProfile);
   const generateAvatarUploadUrl = useMutation(api.profile.generateAvatarUploadUrl);

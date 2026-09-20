@@ -17,6 +17,7 @@
 // session, not just on page reload (the Convex query auto-refreshes).
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -577,7 +578,7 @@ function PracticePanel({
 export default function AptitudeHub() {
   const { t } = useTranslation(["aptitude", "common"]);
   const skillMap = useQuery(api.aptitude.getSkillMap);
-  const profile = useQuery(api.profile.getProfile);
+  const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
   const [authPromptConfig, setAuthPromptConfig] = useState<{ title: string; description: string }>({

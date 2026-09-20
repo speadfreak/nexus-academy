@@ -7,6 +7,7 @@
 // breaks on Render's static hosting.
 
 import { api } from "@/convex/_generated/api";
+import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { evaluate } from "mathjs";
@@ -120,7 +121,7 @@ export default function Reader() {
   // This is a purely cosmetic sibling element layered on top of the
   // iframe (pointer-events: none). It does NOT modify or interact with
   // the iframe's content or rendering in any way.
-  const profile = useQuery(api.profile.getProfile);
+  const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
   const [pdfDocProxy, setPdfDocProxy] = useState<any>(null);
   // Pre-render cache: stores rendered page canvases as blob URLs for instant back-nav
