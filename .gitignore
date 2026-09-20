@@ -42,3 +42,4 @@ isolate/
 # Replit
 .replit
 eng.traineddata
+tsconfig.tsbuildinfo
