@@ -19,7 +19,6 @@ import { api } from "@/convex/_generated/api";
 import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { evaluate } from "mathjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { extractPdfText, extractPageTextFromProxy } from "@/lib/pdf";
@@ -626,6 +625,7 @@ export default function Reader() {
   const [savingScratch, setSavingScratch] = useState(false);
   const [scratchInput, setScratchInput] = useState("");
   const [scratchResult, setScratchResult] = useState<string | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
 
   useEffect(() => {
     if (scratchpad) {
@@ -648,8 +648,13 @@ export default function Reader() {
     }
   };
 
-  const handleEvaluate = () => {
+  // mathjs is ~600 KB of the Reader chunk — loaded ON DEMAND the first
+  // time a student actually evaluates an expression, never at route open.
+  const handleEvaluate = async () => {
+    if (!scratchInput.trim()) return;
+    setEvaluating(true);
     try {
+      const { evaluate } = await import("mathjs");
       const result = evaluate(scratchInput);
       const display =
         typeof result === "number"
@@ -662,6 +667,8 @@ export default function Reader() {
       setScratchSaved(false);
     } catch {
       setScratchResult("⚠ invalid expression");
+    } finally {
+      setEvaluating(false);
     }
   };
 
@@ -824,20 +831,19 @@ export default function Reader() {
 
           <div className="min-w-0 flex-1">
             <p className="type-h3 truncate text-foreground">{item.title}</p>
-            <div className="mt-0.5 flex items-center gap-2">
-              <span className="type-caption text-muted-foreground">{item.subjectName}</span>
-              <span className="size-1 rounded-full bg-white/20" />
-              <span className="type-caption text-muted-foreground">Grade {item.grade}</span>
+            <div className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
+              <span className="type-caption hidden truncate text-muted-foreground sm:inline">{item.subjectName}</span>
+              <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+              <span className="type-caption hidden text-muted-foreground sm:inline">Grade {item.grade}</span>
               {item.examYear && (
                 <>
-                  <span className="size-1 rounded-full bg-white/20" />
-                  <span className="type-caption text-muted-foreground">{item.examYear}</span>
+                  <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+                  <span className="type-caption hidden text-muted-foreground sm:inline">{item.examYear}</span>
                 </>
               )}
-              <span className="size-1 rounded-full bg-white/20" />
               <span
                 className={cn(
-                  "type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 text-[10px] uppercase",
+                  "type-mono shrink-0 rounded-md border bg-gradient-to-b px-1.5 py-0.5 text-[10px] uppercase",
                   subjectHue(item.subjectSlug ?? ""),
                 )}
               >
@@ -845,8 +851,8 @@ export default function Reader() {
               </span>
               {item.fileSizeBytes && (
                 <>
-                  <span className="size-1 rounded-full bg-white/20" />
-                  <span className="type-caption text-muted-foreground/60">{formatBytes(item.fileSizeBytes)}</span>
+                  <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+                  <span className="type-caption hidden text-muted-foreground/60 sm:inline">{formatBytes(item.fileSizeBytes)}</span>
                 </>
               )}
             </div>
@@ -923,6 +929,7 @@ export default function Reader() {
               )}
               onClick={() => setPanelOpen((open) => !open)}
               aria-label={panelOpen ? "Hide side panel" : "Show side panel"}
+              style={profile?.isAnonymous ? { display: "none" } : undefined}
             >
               {panelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
             </Button>
@@ -1156,10 +1163,16 @@ export default function Reader() {
             />
           )}
 
-          {/* ═══ SIDE PANEL ═══ */}
-          <AnimatePresence>
-            {panelOpen && (
-              <>
+        </main>
+
+        {/* ═══ SIDE PANEL — a sibling of <main> in the flex ROW.
+             It was previously nested INSIDE <main>'s column flex, so on
+             desktop it stacked BELOW the PDF (left-aligned) and squeezed
+             the page canvas into a black sliver — the "deformed reader".
+             Here `sm:static` places it as the right column of the row. */}
+        <AnimatePresence>
+          {panelOpen && !profile?.isAnonymous && (
+            <>
                 {/* Mobile backdrop */}
                 <motion.button
                   type="button"
@@ -1168,7 +1181,7 @@ export default function Reader() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm sm:hidden"
+                  className="absolute inset-0 z-40 bg-black/50 backdrop-blur-sm sm:hidden"
                   onClick={() => setPanelOpen(false)}
                 />
                 <motion.aside
@@ -1177,10 +1190,9 @@ export default function Reader() {
                   animate={{ x: 0 }}
                   exit={{ x: "100%" }}
                   transition={{ type: "spring", stiffness: 350, damping: 35 }}
-                  role="dialog"
-                  aria-modal="true"
+                  role="complementary"
                   aria-labelledby="reader-panel-title"
-                  className="absolute bottom-0 right-0 top-0 z-20 flex w-[85%] max-w-[380px] flex-col border-l border-white/[0.06] bg-[#0a0e17]/95 shadow-[-20px_0_60px_-20px_rgba(0,0,0,0.5)] backdrop-blur-2xl sm:static sm:z-auto sm:w-[380px] sm:max-w-none sm:shadow-none [&]:sm:transform-none"
+                  className="absolute bottom-0 right-0 top-0 z-50 flex w-[88%] max-w-[400px] flex-col border-l border-white/[0.08] bg-[#0a0e17]/95 shadow-[-24px_0_80px_-24px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:static sm:z-auto sm:w-[380px] sm:max-w-none sm:shadow-none xl:w-[410px]"
                 >
                   <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent sm:hidden" />
 
@@ -1437,7 +1449,9 @@ export default function Reader() {
                               value={scratchInput}
                               onChange={(e) => setScratchInput(e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") handleEvaluate();
+                                if (e.key === "Enter") {
+                                  void handleEvaluate();
+                                }
                               }}
                               placeholder="e.g. sqrt(144) or (2*3.14*6371)/(24)"
                               className="h-7 flex-1 rounded-lg border-0 bg-transparent px-0 type-mono text-xs shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/30"
@@ -1445,9 +1459,10 @@ export default function Reader() {
                             <Button
                               size="sm"
                               className="h-7 shrink-0 cursor-pointer rounded-lg border-0 bg-emerald-400/10 px-2 text-emerald-400 hover:bg-emerald-400/20"
-                              onClick={handleEvaluate}
+                              onClick={() => void handleEvaluate()}
+                              disabled={evaluating}
                             >
-                              <Calculator className="size-3" /> =
+                              {evaluating ? <Loader2 className="size-3 animate-spin" /> : <Calculator className="size-3" />} =
                             </Button>
                           </div>
                         </div>
@@ -1502,8 +1517,7 @@ export default function Reader() {
                 </motion.aside>
               </>
             )}
-          </AnimatePresence>
-        </main>
+        </AnimatePresence>
       </div>
 
       {/* ═══ RELATED RESOURCES STRIP ═══ */}

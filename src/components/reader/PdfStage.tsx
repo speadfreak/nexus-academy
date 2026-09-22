@@ -29,8 +29,14 @@
 // full download (with progress) → iframe (browser native viewer).
 
 import { AnimatePresence, motion } from "framer-motion";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Document, Page as PdfPage, pdfjs } from "react-pdf";
+// MANDATORY react-pdf styles — without TextLayer.css the selection text
+// layer renders as VISIBLE ghost text below the canvas and text selection
+// (the "Ask Learnyx AI" popup) is completely broken.
+import "react-pdf/dist/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
 import {
   ChevronLeft,
   ChevronRight,
@@ -69,6 +75,29 @@ const PDF_OPTIONS = {
 export interface OutlineChapter {
   title: string;
   page: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PDF ENGINE BOUNDARY — a crash in pdf.js / react-pdf must NEVER take the
+// whole app down (the "Invariant failed" full-screen recovery overlay).
+// Any render error inside the engine flips this document to the native
+// viewer instead. Scoped so the outer app keeps running.
+// ═══════════════════════════════════════════════════════════════════════
+class PdfEngineBoundary extends Component<
+  { onCrash: (error: Error) => void; children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: Error) {
+    console.error("[PdfStage] PDF engine crashed — falling back to native viewer:", error);
+    this.props.onCrash(error);
+  }
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
 }
 
 interface LoadProgress {
@@ -135,6 +164,7 @@ export const PdfStage = memo(function PdfStage({
   const textLayerTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [pageDirection, setPageDirection] = useState(1);
   const basePageWidthRef = useRef<number | null>(null);
+  const autoFitDoneRef = useRef(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -144,6 +174,12 @@ export const PdfStage = memo(function PdfStage({
   // ── Overlays ────────────────────────────────────────────────────────
   const [thumbsOpen, setThumbsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // Any crash inside the pdf.js engine degrades to the native viewer for
+  // THIS document only — the app itself keeps running.
+  const handleEngineCrash = useCallback(() => {
+    setUseIframeFallback(true);
+  }, []);
 
   // Reset per-document state when the content changes.
   useEffect(() => {
@@ -156,6 +192,7 @@ export const PdfStage = memo(function PdfStage({
     setThumbsOpen(false);
     setSearchOpen(false);
     basePageWidthRef.current = null;
+    autoFitDoneRef.current = false;
   }, [contentId]);
 
   // ── ArrayBuffer fallback (full download with progress) ──────────────
@@ -275,8 +312,14 @@ export const PdfStage = memo(function PdfStage({
       else if (event.key === "+" || event.key === "=")
         onScaleChange(Math.min(3, Math.round((scale + 0.15) * 100) / 100));
       else if (event.key === "-")
-        onScaleChange(Math.max(0.5, Math.round((scale - 0.15) * 100) / 100));
-      else if (event.key === "Escape") {
+        onScaleChange(Math.max(0.25, Math.round((scale - 0.15) * 100) / 100));
+      else if (event.key === "s" || event.key === "S") {
+        setSearchOpen((v) => !v);
+        setThumbsOpen(false);
+      } else if (event.key === "t" || event.key === "T") {
+        setThumbsOpen((v) => !v);
+        setSearchOpen(false);
+      } else if (event.key === "Escape") {
         setSearchOpen(false);
         setThumbsOpen(false);
       }
@@ -291,7 +334,7 @@ export const PdfStage = memo(function PdfStage({
     const container = stageRef.current;
     if (!base || !container) return;
     const available = container.clientWidth - 48; // stage padding
-    const fit = Math.max(0.5, Math.min(3, Math.round((available / base) * 100) / 100));
+    const fit = Math.max(0.25, Math.min(3, Math.round((available / base) * 100) / 100));
     onScaleChange(fit);
   }, [onScaleChange]);
 
@@ -383,7 +426,7 @@ export const PdfStage = memo(function PdfStage({
         </div>
       ) : (
         /* ═══ SMART READER MODE ═══ */
-        <>
+        <PdfEngineBoundary onCrash={handleEngineCrash}>
           {/* Thumbnails rail (lazy) */}
           <AnimatePresence>
             {thumbsOpen && docProxy && numPages && (
@@ -575,6 +618,19 @@ export const PdfStage = memo(function PdfStage({
                           try {
                             const viewport = page.getViewport({ scale: 1 });
                             basePageWidthRef.current = viewport.width;
+                            // Phones: auto-fit the FIRST page to the viewport
+                            // width — a 100% textbook page (often 700-1100px
+                            // wide) otherwise overflows a 390px screen. Floor
+                            // is 0.25 because large-format PDFs need <0.5.
+                            if (!autoFitDoneRef.current) {
+                              autoFitDoneRef.current = true;
+                              const container = stageRef.current;
+                              if (container && window.matchMedia("(max-width: 640px)").matches) {
+                                const available = container.clientWidth - 20;
+                                const fit = Math.max(0.25, Math.min(1, Math.round((available / viewport.width) * 100) / 100));
+                                if (fit < scale) onScaleChange(fit);
+                              }
+                            }
                           } catch {
                             // Non-fatal — fit-to-width just stays unavailable.
                           }
@@ -604,28 +660,32 @@ export const PdfStage = memo(function PdfStage({
                 </motion.div>
               )}
 
-              {/* Hidden ±1 pre-render for instant page flips */}
-              {file && !pdfError && numPages && docLoaded && (
+              {/* Hidden ±1 pre-render for instant page flips. NOTE: these
+                  render OUTSIDE <Document>, so the explicit `pdf` prop is
+                  MANDATORY — without it react-pdf's Page invariant throws
+                  "Invariant failed" and killed the whole app (the crash the
+                  production app hit on every document open). */}
+              {file && !pdfError && numPages && docProxy && docLoaded && (
                 <div className="pointer-events-none absolute h-0 w-0 overflow-hidden" aria-hidden="true">
                   {pageNumber > 1 && (
-                    <PdfPage pageNumber={pageNumber - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                    <PdfPage pdf={docProxy} pageNumber={pageNumber - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
                   )}
                   {pageNumber < numPages && (
-                    <PdfPage pageNumber={pageNumber + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                    <PdfPage pdf={docProxy} pageNumber={pageNumber + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
                   )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* ═══ FLOATING READER CONTROLS ═══ */}
+          {/* ═══ FLOATING READER CONTROLS — above the iOS safe area ═══ */}
           {docProxy && !pdfError && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-3">
-              <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-white/10 bg-black/70 px-1.5 py-1 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+            <div className="pointer-events-none absolute inset-x-0 bottom-[max(0.9rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-3">
+              <div className="pointer-events-auto flex items-center gap-0.5 rounded-2xl border border-white/10 bg-black/75 px-1.5 py-1 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
                 <button
                   type="button"
-                  onClick={() => onScaleChange(Math.max(0.5, Math.round((scale - 0.15) * 100) / 100))}
-                  className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground active:scale-90"
+                  onClick={() => onScaleChange(Math.max(0.25, Math.round((scale - 0.15) * 100) / 100))}
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8"
                   aria-label="Zoom out"
                 >
                   <ZoomOut className="size-3.5" />
@@ -641,7 +701,7 @@ export const PdfStage = memo(function PdfStage({
                 <button
                   type="button"
                   onClick={() => onScaleChange(Math.min(3, Math.round((scale + 0.15) * 100) / 100))}
-                  className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground active:scale-90"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8"
                   aria-label="Zoom in"
                 >
                   <ZoomIn className="size-3.5" />
@@ -653,7 +713,7 @@ export const PdfStage = memo(function PdfStage({
                   type="button"
                   onClick={() => goToPage(pageNumber - 1)}
                   disabled={pageNumber <= 1}
-                  className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground disabled:opacity-20 active:scale-90"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground disabled:opacity-20 active:scale-90 sm:size-8"
                   aria-label="Previous page"
                 >
                   <ChevronLeft className="size-4" />
@@ -668,7 +728,7 @@ export const PdfStage = memo(function PdfStage({
                   type="button"
                   onClick={() => goToPage(pageNumber + 1)}
                   disabled={numPages !== null && pageNumber >= numPages}
-                  className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground disabled:opacity-20 active:scale-90"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground disabled:opacity-20 active:scale-90 sm:size-8"
                   aria-label="Next page"
                 >
                   <ChevronRight className="size-4" />
@@ -680,7 +740,7 @@ export const PdfStage = memo(function PdfStage({
                   type="button"
                   onClick={() => { setSearchOpen((v) => !v); setThumbsOpen(false); }}
                   className={cn(
-                    "flex size-8 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-white/10 hover:text-foreground active:scale-90",
+                    "flex size-9 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8",
                     searchOpen ? "text-primary" : "text-muted-foreground",
                   )}
                   aria-label="Search in document"
@@ -692,7 +752,7 @@ export const PdfStage = memo(function PdfStage({
                   type="button"
                   onClick={() => { setThumbsOpen((v) => !v); setSearchOpen(false); }}
                   className={cn(
-                    "flex size-8 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-white/10 hover:text-foreground active:scale-90",
+                    "flex size-9 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8",
                     thumbsOpen ? "text-primary" : "text-muted-foreground",
                   )}
                   aria-label="Page thumbnails"
@@ -703,7 +763,7 @@ export const PdfStage = memo(function PdfStage({
               </div>
             </div>
           )}
-        </>
+        </PdfEngineBoundary>
       )}
 
       {/* Watermark overlay — cosmetic deterrent, covers BOTH render modes */}
@@ -904,6 +964,7 @@ function ThumbnailsRail({
             >
               {shouldRender ? (
                 <PdfPage
+                  pdf={doc}
                   pageNumber={page}
                   width={80}
                   renderTextLayer={false}
