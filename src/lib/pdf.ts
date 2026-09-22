@@ -46,4 +46,40 @@ export async function extractPdfText(
   }
 }
 
+/**
+ * Extract plain text from a page range of an ALREADY-LOADED pdf.js
+ * PDFDocumentProxy (the one react-pdf hands us via onLoadSuccess).
+ *
+ * This powers the reader's AI quick actions ("Explain this page",
+ * "Summarize", "Quiz me") and flashcard generation from the current
+ * page range — no extra network fetch, the document is already in the
+ * worker. Range requests pull only the missing page chunks.
+ */
+export async function extractPageTextFromProxy(
+  doc: { numPages: number; getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }> },
+  startPage: number,
+  endPage: number,
+  maxChars = 1400,
+): Promise<string> {
+  const from = Math.max(1, startPage);
+  const to = Math.min(doc.numPages, endPage);
+  const parts: string[] = [];
+  for (let pageNumber = from; pageNumber <= to; pageNumber++) {
+    try {
+      const page = await doc.getPage(pageNumber);
+      const content = await page.getTextContent();
+      let pageText = "";
+      for (const item of content.items) {
+        const str = (item as { str?: string }).str;
+        if (typeof str === "string") pageText += str + " ";
+      }
+      parts.push(pageText.replace(/\s+/g, " ").trim());
+      if (parts.join("\n").length >= maxChars) break;
+    } catch {
+      // Skip pages that fail to extract — never break the caller.
+    }
+  }
+  return parts.join("\n").slice(0, maxChars);
+}
+
 export { pdfjs };

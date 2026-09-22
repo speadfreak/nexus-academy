@@ -1,50 +1,55 @@
 // In-app reader — /read/:contentId
 //
-// Cinematic PDF reader with AI companion, YouTube videos, scratchpad.
-// PDF worker: react-pdf v10 bundles pdfjs-dist@5.x internally. We MUST import
-// pdfjs from react-pdf (not the top-level package) and point the worker at
-// a CDN URL — the relative 'pdf.worker.mjs' path react-pdf sets by default
-// breaks on Render's static hosting.
+// LEARNYX SMART READER — "a textbook that teaches with you".
+//
+// Architecture (split for speed):
+//   • PdfStage (memoized) — the PDF canvas, streaming loader, floating
+//     controls, thumbnails, search. Chat keystrokes never re-render it.
+//   • AiCompanion — cyan AI Reading Companion with page-aware quick actions.
+//   • StudyDock — slide-up Notes / Highlights / Flashcards / AI.
+//   • This file — top bar, study context header, selection popup, study
+//     mode, fullscreen, exam/practice overlays, premium + guest flows.
+//
+// Perf contract with big PDFs (the 171 MB Biology textbook): pdf.js streams
+// the document via range requests, fetches pages on demand, and the
+// watchdog only falls back to the native viewer when NO bytes flow — see
+// PdfStage.tsx header for the full model.
 
 import { api } from "@/convex/_generated/api";
 import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { evaluate } from "mathjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { Document, Page as PdfPage, pdfjs } from "react-pdf";
-import { extractPdfText } from "@/lib/pdf";
+import { Link, useParams, useSearchParams } from "react-router";
+import { extractPdfText, extractPageTextFromProxy } from "@/lib/pdf";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  BookOpen,
   Bookmark,
   BookmarkCheck,
-  Bot,
+  Brain,
   Calculator,
-  ChevronLeft,
-  ChevronRight,
   ExternalLink,
+  GalleryVerticalEnd,
+  Highlighter,
+  Languages,
+  Lightbulb,
   Loader2,
   Lock,
+  Maximize2,
   MessageSquare,
+  Minimize2,
+  NotebookPen,
   PanelRightClose,
   PanelRightOpen,
+  Play,
   RefreshCw,
-  Send,
   Sparkles,
+  Timer,
   X,
   Youtube,
-  ZoomIn,
-  ZoomOut,
-  BookOpen,
-  Crown,
-  RotateCcw,
-  FileText,
-  Maximize2,
-  Play,
-  Scan,
-  Highlighter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,29 +64,21 @@ import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderEx
 import { PracticeSessionPanel } from "@/components/reader/PracticePanel";
 import type { SessionHighlights } from "@/components/reader/QuestionNavigator";
 import { GuestLockOverlay } from "@/components/GuestLockOverlay";
-
-// ─── PDF.js worker setup ───────────────────────────────────────────────
-// react-pdf bundles its own pdfjs-dist (currently 5.4.296, pinned in
-// node_modules/react-pdf/node_modules/pdfjs-dist). The worker is served
-// same-origin (public/pdf.worker.min.mjs) so we avoid CDN/CORS issues.
-//
-// We deliberately set ONLY the workerSrc here — no other pdf.js options.
-// The previous attempt to add cMapUrl + standardFontDataUrl + streaming
-// options caused regressions where pdf.js silently failed to render and
-// the loading skeleton stayed forever. We're back to the simplest path
-// that was working before the perf commits. We can re-add options one
-// at a time after we confirm rendering works.
-//
-// The worker file in public/ is auto-synced to the installed pdfjs-dist
-// version by scripts/sync-pdfjs.mjs (runs on every `bun install` via the
-// postinstall hook). This prevents the version-mismatch bug that previously
-// broke all PDF rendering.
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-
+import { PdfStage, type OutlineChapter } from "@/components/reader/PdfStage";
+import { AiCompanion, type ChatMessage, type CompanionQuickAction } from "@/components/reader/AiCompanion";
+import { StudyDock } from "@/components/reader/StudyDock";
+import {
+  loadHighlights,
+  loadReadingProgress,
+  saveHighlights,
+  saveReadingProgress,
+  type ReaderHighlight,
+} from "@/lib/readerStorage";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 type PanelTab = "companion" | "videos" | "scratchpad";
-type IframeZoomMode = "fit-width" | "fit-page" | "100" | "125" | "150" | "200";
+type DockTab = "notes" | "highlights" | "flashcards";
+type SelectionAction = "explain" | "simplify" | "translate" | "quiz" | "flashcard" | "highlight";
 
 function subjectHue(subjectSlug: string): string {
   const hues: Record<string, string> = {
@@ -103,267 +100,141 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
+function formatLeftMinutes(minutes: number): string {
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m left`;
+  return `≈${minutes}m left`;
+}
+
+function formatClock(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/** ≤2000 chars total — the readerAI action's hard cap. */
+function clipPrompt(prompt: string, max = 2000): string {
+  return prompt.length <= max ? prompt : prompt.slice(0, max - 1) + "…";
 }
 
 export default function Reader() {
   const { contentId } = useParams<{ contentId: string }>();
-  const navigate = useNavigate();
   const reader = useQuery(api.content.getReaderContent, {
     contentId: contentId as never,
   });
   const related = useQuery(api.content.getRelatedContent, {
     contentId: contentId as never,
   });
-  // User profile — used for the watermark overlay on the iframe.
-  // This is a purely cosmetic sibling element layered on top of the
-  // iframe (pointer-events: none). It does NOT modify or interact with
-  // the iframe's content or rendering in any way.
   const { profile } = useAppBootstrap(); // shared subscription (AppBootstrap)
   const getDownloadUrl = useAction(api.contentAdmin.getDownloadUrl);
-  const [pdfDocProxy, setPdfDocProxy] = useState<any>(null);
-  // Pre-render cache: stores rendered page canvases as blob URLs for instant back-nav
-  const pageCache = useRef<Map<number, string>>(new Map());
   const toggleBookmark = useMutation(api.bookmarks.toggleBookmark);
   const askReaderQuestion = useAction(api.readerAI.askReaderQuestion);
   const searchYouTubeVideos = useAction(api.media.searchYouTubeVideos);
   const generateFlashcards = useAction(api.flashcards.generateFromContent as never);
-  const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
   const scratchpad = useQuery(api.scratchpads.getScratchpad, {
     contentId: contentId as never,
   });
   const saveScratchpad = useMutation(api.scratchpads.saveScratchpad);
 
   const item: ContentItemWithSubject | null = reader?.item ?? null;
+  const readerItemId = reader?.item?._id;
 
-  // --- PDF viewing state -------------------------------------------------
+  // --- PDF pipeline state (owned here, rendered by the memoized stage) ---
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  const [useUrlFallback, setUseUrlFallback] = useState(false);
-  const [useIframeFallback, setUseIframeFallback] = useState(false);
+  const [loadingPdf, setLoadingPdf] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [pageInput, setPageInput] = useState("1");
   const [scale, setScale] = useState(1.0);
-  // Deferred text-layer: render canvas first for instant visual, then text after delay
-  const [showTextLayers, setShowTextLayers] = useState(false);
-  const textLayerTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const [iframeZoom, setIframeZoom] = useState<IframeZoomMode>("fit-width");
-  const [loadingPdf, setLoadingPdf] = useState(false);
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [pageAnimating, setPageAnimating] = useState(false);
-  // Track whether we've already attempted the ArrayBuffer fallback
-  // to prevent infinite loops between URL → ArrayBuffer → iframe.
-  const arrayBufferAttempted = useRef(false);
-  const readerItemId = reader?.item?._id;
+  const [docProxy, setDocProxy] = useState<any>(null);
+  const [outlineChapters, setOutlineChapters] = useState<OutlineChapter[] | null>(null);
 
-  // ── Render timeout safety net ─────────────────────────────────────────
-  // If pdf.js hasn't fired onLoadSuccess within the timeout window, fall
-  // back to the iframe viewer. The iframe uses the browser's native PDF
-  // viewer (no JS worker, no cmaps) and always works — it's our last-
-  // resort fallback that should never leave the user staring at a
-  // "Rendering page…" skeleton forever.
-  //
-  // TIMEOUT IS VIEWPORT-AWARE:
-  //   • Mobile (default): 15 seconds — mobile devices are slower, mobile
-  //     networks are slower, and pdfjs workers can be flaky on mobile
-  //     Safari. 15s gives react-pdf enough time to spin up the worker,
-  //     fetch the first page via range request, and render. Without this
-  //     margin, mobile users were hitting the 8s timeout and falling
-  //     back to the iframe (browser's native PDF viewer) which looks
-  //     "external" and unattractive.
-  //   • Desktop: 8 seconds — fast devices + fast networks, the original
-  //     behavior. 8s is enough for the worker to spin up on a desktop.
-  //
-  // The timeout resets every time the document URL changes. If
-  // onLoadSuccess fires first, the cleanup function clears the timer.
-  const renderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    // Only start the timer when we have a URL/data to render AND we're
-    // not already in iframe mode AND we're not in the loading-pdf
-    // (premium URL fetch) phase.
-    if (!pdfUrl && !pdfData) return;
-    if (useIframeFallback) return;
-    if (loadingPdf) return;
-    if (pdfError) return;
-
-    // Clear any existing timer (e.g. from a previous document).
-    if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-
-    // Viewport-aware timeout — mobile gets more headroom.
-    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
-    const timeoutMs = isMobile ? 15000 : 8000;
-
-    renderTimeoutRef.current = setTimeout(() => {
-      console.warn(
-        `[Reader] PDF.js render timed out after ${timeoutMs / 1000}s — falling back to iframe.`,
-      );
-      setUseIframeFallback(true);
-    }, timeoutMs);
-
-    return () => {
-      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfUrl, pdfData, useIframeFallback, loadingPdf, pdfError, numPages]);
-
-  // ── PDF loading: URL-first for range requests, ArrayBuffer fallback ──────
-  // PERFORMANCE CRITICAL: We pass the URL to react-pdf FIRST so that
-  // PDF.js can use HTTP range requests (206 Partial Content) to fetch
-  // only the pages it needs. This means a 50 MB PDF shows page 1 in
-  // ~500ms instead of downloading all 50 MB first.
-  //
-  // Fallback chain: URL mode (range requests) → ArrayBuffer (full download
-  // with progress bar) → iframe (native browser PDF viewer).
-  //
-  // The previous code fetched the entire PDF as an ArrayBuffer BEFORE
-  // passing it to react-pdf, which defeated range requests entirely.
-
-  /** ArrayBuffer fallback: downloads the full PDF with progress tracking. */
-  const loadAsArrayBuffer = useCallback(async (url: string) => {
-    setLoadingPdf(true);
-    setLoadProgress(0);
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      const contentLength = res.headers.get('content-length');
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error('No readable stream');
-      const chunks: Uint8Array[] = [];
-      let received = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-        if (total > 0) {
-          const pct = Math.min(99, Math.round((received / total) * 100));
-          setLoadProgress(pct);
-        }
-      }
-      // Combine chunks into a single ArrayBuffer
-      const totalLen = chunks.reduce((s, c) => s + c.length, 0);
-      const combined = new Uint8Array(totalLen);
-      let off = 0;
-      for (const chunk of chunks) {
-        combined.set(chunk, off);
-        off += chunk.length;
-      }
-      // Validate PDF magic bytes
-      if (combined[0] === 0x25 && combined[1] === 0x50 && combined[2] === 0x44 && combined[3] === 0x46) {
-        setPdfData(combined.buffer as ArrayBuffer);
-        setUseUrlFallback(false);
-      } else {
-        console.warn('[Reader] ArrayBuffer data is not a valid PDF, falling back to iframe');
-        setUseIframeFallback(true);
-      }
-    } catch (err) {
-      console.warn('[Reader] ArrayBuffer download failed, falling back to iframe:', err);
-      setUseIframeFallback(true);
-    } finally {
-      setLoadProgress(100);
-      setLoadingPdf(false);
-    }
-  }, []);
-
-  // Deferred text-layer effect: hide text layers during page transition for faster
-  // canvas-only first paint, then reveal after 120ms.
-  useEffect(() => {
-    setShowTextLayers(false);
-    clearTimeout(textLayerTimer.current);
-    textLayerTimer.current = setTimeout(() => setShowTextLayers(true), 120);
-    return () => clearTimeout(textLayerTimer.current);
-  }, [pageNumber, scale]);
-
-  // Clean up page cache on document change
-  useEffect(() => {
-    pageCache.current.forEach((url) => URL.revokeObjectURL(url));
-    pageCache.current.clear();
-    setPdfDocProxy(null);
-  }, [readerItemId]);
-
-  useEffect(() => {
-    if (!readerItemId || !item) {
-      setPdfUrl(null);
-      setPdfData(null);
-      return;
-    }
-    let cancelled = false;
-    setPdfError(null);
-    setPdfUrl(null);
-    setPdfData(null);
-    setUseUrlFallback(false);
-    setUseIframeFallback(false);
-    setNumPages(null);
-    setPageNumber(1);
-    setPageInput('1');
-    setLoadProgress(0);
-    arrayBufferAttempted.current = false;
-
-    if (item.isPremium) {
-      // Premium content: server-side subscription check required
-      setLoadingPdf(true);
-      const load = async () => {
-        try {
-          const { url } = await getDownloadUrl({ contentId: readerItemId });
-          if (cancelled) return;
-          setPdfUrl(url);
-          setUseUrlFallback(true);
-        } catch (error) {
-          if (!cancelled) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[Reader] PDF load failed:', msg);
-            if (msg.includes('Premium') || msg.includes('premium') || msg.includes('trial')) {
-              setPdfError('premium_required');
-            } else {
-              setPdfError(msg);
-            }
-          }
-        } finally {
-          if (!cancelled) setLoadingPdf(false);
-        }
-      };
-      void load();
-    } else {
-      // Non-premium: use fileUrl directly — NO Convex action round-trip.
-      // Saves 200-500ms on every document open.
-      setPdfUrl(item.fileUrl);
-      setUseUrlFallback(true);
-      setLoadingPdf(false);
-    }
-    return () => { cancelled = true; };
-  }, [readerItemId, item, getDownloadUrl]);
-
-  // --- Panel -------------------------------------------------------------
-  // Default CLOSED on mobile so the PDF viewer is visible immediately on
-  // open (the panel covers the entire viewer on mobile when open). Default
-  // OPEN on desktop where it sits beside the viewer as a 380px sidebar.
-  // The user can always toggle via the PanelRightOpen/Close button in the
-  // header — this is just the sensible initial state per viewport.
+  // --- Panel / dock -------------------------------------------------------
+  // Default CLOSED on mobile (PDF visible immediately), OPEN on desktop.
   const [panelOpen, setPanelOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     return window.matchMedia("(min-width: 640px)").matches;
   });
   const [panelTab, setPanelTab] = useState<PanelTab>("companion");
+  const [dockOpen, setDockOpen] = useState<DockTab | null>(null);
 
-  // --- Exam Mode (Feature 1) --------------------------------------------
-  // Only relevant when item.contentType === "past_exam". When active, hides
-  // the sidebar/nav and shows a fullscreen focused timed view over the
-  // same PDF. See src/components/reader/ReaderExamMode.tsx for the overlay.
-  // The Exam Prep hub deep-links here with ?exam=1 to launch straight into
-  // the strict-timed flow (still showing the ready-check first — the timer
-  // only starts once the student clicks Begin).
+  // --- Study mode + fullscreen --------------------------------------------
+  const [studyMode, setStudyMode] = useState(false);
+  const [studySeconds, setStudySeconds] = useState(0);
+  const pagesVisitedRef = useRef<Set<number>>(new Set());
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  // Study-mode side effects on ENTER (both the button and the "m" key land
+  // here): fresh timer, fresh pages-visited set, hide panels/dock.
+  const prevStudyModeRef = useRef(false);
+  useEffect(() => {
+    if (studyMode && !prevStudyModeRef.current) {
+      pagesVisitedRef.current = new Set([pageNumber]);
+      setStudySeconds(0);
+      setPanelOpen(false);
+      setDockOpen(null);
+    }
+    prevStudyModeRef.current = studyMode;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studyMode]);
+
+  // Global shortcuts: f = fullscreen, m = study mode toggle.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (event.key === "f" || event.key === "F") {
+        if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+        else rootRef.current?.requestFullscreen?.().catch(() => undefined);
+      } else if (event.key === "m" || event.key === "M") {
+        setStudyMode((on) => !on);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+    } else {
+      rootRef.current?.requestFullscreen?.().catch(() =>
+        toast.error("Fullscreen isn't available right now."),
+      );
+    }
+  }, []);
+
+  const enterStudyMode = useCallback(() => {
+    setStudyMode(true);
+  }, []);
+
+  const exitStudyMode = useCallback(() => {
+    setStudyMode(false);
+    const minutes = Math.max(1, Math.round(studySeconds / 60));
+    const pages = pagesVisitedRef.current.size;
+    toast.success(`Study session · ${minutes} min · ${pages} page${pages === 1 ? "" : "s"}`, {
+      description: "Keep the streak going — one page at a time.",
+    });
+  }, [studySeconds]);
+
+  useEffect(() => {
+    if (!studyMode) return;
+    const iv = setInterval(() => setStudySeconds((s) => s + 1), 1000);
+    return () => clearInterval(iv);
+  }, [studyMode]);
+
+  // --- Exam Mode (Feature 1) ----------------------------------------------
   const [examMode, setExamMode] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const answerKey: AnswerKeyInfo | null = reader?.answerKey ?? null;
 
-  // Deep-link auto-launch: /read/:id?exam=1 opens the exam-mode warning
-  // immediately for past exams. The query param is consumed on launch so a
-  // manual exit doesn't re-trigger it on re-render.
   const examParamConsumedRef = useRef(false);
   useEffect(() => {
     if (examParamConsumedRef.current) return;
@@ -372,8 +243,7 @@ export default function Reader() {
     if (searchParams.get("exam") !== "1") return;
     examParamConsumedRef.current = true;
     // Guest policy: guests can browse but not open resources (the
-    // GuestLockOverlay is the response) — never auto-launch exam mode for
-    // them. It would render the paper above the lock and bypass the gate.
+    // GuestLockOverlay is the response) — never auto-launch exam mode.
     if (reader.item.contentType === "past_exam" && !profile?.isAnonymous) {
       setExamMode(true);
       searchParams.delete("exam");
@@ -381,21 +251,16 @@ export default function Reader() {
     }
   }, [reader?.item, searchParams, setSearchParams, profile]);
 
-  // --- Practice session (Exam Prep hub deep-link) -----------------------
-  // /read/:id?practice=1 mounts the UNTIMED practice layer on top of the
-  // normal Reader for past exams: question tracker, session highlights,
-  // answer-key checking and Finish-and-log. Mutually exclusive with exam
-  // mode by construction (the hub links one or the other).
+  // --- Practice session (Exam Prep hub deep-link) --------------------------
   const [practiceActive, setPracticeActive] = useState(false);
   const [practiceHighlights, setPracticeHighlights] = useState<SessionHighlights[]>([]);
   const practiceParamConsumedRef = useRef(false);
   useEffect(() => {
     if (practiceParamConsumedRef.current) return;
     if (!reader?.item) return;
-    if (profile === undefined) return; // wait — the guest check needs the loaded profile
+    if (profile === undefined) return;
     if (searchParams.get("practice") !== "1") return;
     practiceParamConsumedRef.current = true;
-    // Guest policy — same as exam mode above: the lock is the response.
     if (reader.item.contentType === "past_exam" && !profile?.isAnonymous) {
       setPracticeActive(true);
       searchParams.delete("practice");
@@ -415,82 +280,309 @@ export default function Reader() {
     });
   };
 
-  // --- AI companion ------------------------------------------------------
+  // --- AI companion ---------------------------------------------------------
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const [pendingQuickAction, setPendingQuickAction] = useState<CompanionQuickAction | null>(null);
 
-  // Highlight-to-ask: when the student selects text in the PDF, we show
-  // a floating "Ask about this" button. Clicking it sends the highlighted
-  // text as context to the AI companion.
+  // Highlight-to-ask: text selection inside the PDF text layer shows a
+  // floating "Ask Learnyx AI" popup with real actions.
   const [highlightedText, setHighlightedText] = useState<string | null>(null);
+  const [selectionPoint, setSelectionPoint] = useState<{ x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+  // --- Flashcard generation (top bar + dock + selection popup) --------------
+  const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
+  const [flashcardResult, setFlashcardResult] = useState<{ deckId: string; cardCount: number } | null>(null);
 
-  // Listen for text selection on the entire document — the PDF text layer
-  // enables native browser selection. When the user selects text, we
-  // capture it and show the floating button.
+  const handleGenerateFlashcards = useCallback(
+    async (startPage?: number, endPage?: number, selectionText?: string) => {
+      if (!item || !item.subjectId || generatingFlashcards) return;
+      setGeneratingFlashcards(true);
+      setFlashcardResult(null);
+      try {
+        // Text strategies: (1) selection text, (2) loaded pdf.js proxy via
+        // range requests, (3) fetch + standalone extraction for image-
+        // heavy/odd files. Same 3-tier thinking as before, now shared.
+        let pageText = "";
+        const from = startPage ?? Math.max(1, pageNumber - 3);
+        const to = endPage ?? pageNumber + 3;
+        if (selectionText) {
+          pageText = selectionText;
+        } else if (docProxy) {
+          pageText = await extractPageTextFromProxy(docProxy, from, to, 6000);
+        }
+        if (!pageText.trim() && !selectionText && (pdfUrl || item.fileUrl)) {
+          toast.info("Extracting text from PDF…");
+          try {
+            const response = await fetch(pdfUrl || item.fileUrl);
+            if (response.ok) {
+              const blob = await response.blob();
+              const file = new File([blob], item.title || "document.pdf", { type: "application/pdf" });
+              pageText = await extractPdfText(file, 8, 6000);
+            }
+          } catch {
+            // fall through to the image-based toast below
+          }
+        }
+        if (!pageText.trim() || pageText.trim().length < 20) {
+          toast.info(
+            "This PDF appears to be image-based (scanned). Text extraction needs a text-based PDF. We're working on OCR support for scanned documents.",
+          );
+          return;
+        }
+        const result = (await generateFlashcards({
+          contentId: item._id as never,
+          subjectId: item.subjectId as never,
+          pageText: pageText as never,
+          pageRange: (selectionText
+            ? `page ${pageNumber} (selection)`
+            : `pages ${Math.min(from, to)}–${Math.max(from, to)}`) as never,
+        })) as { deckId: string; cardCount: number };
+        setFlashcardResult(result);
+        setDockOpen("flashcards");
+        toast.success(`Created ${result.cardCount} flashcards from this content!`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Generation failed.";
+        if (msg.includes("premium")) {
+          toast.error("Flashcard generation is a premium feature. Start your free trial to try it!");
+        } else {
+          toast.error(msg);
+        }
+      } finally {
+        setGeneratingFlashcards(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [item, docProxy, pageNumber, pdfUrl, generatingFlashcards, generateFlashcards],
+  );
+
+  const handleAsk = useCallback(
+    async (override?: string) => {
+      const text = (override ?? question).trim();
+      if (!contentId || !text || asking) return;
+      setMessages((prev) => [...prev, { role: "user", content: text }]);
+      setQuestion("");
+      setAsking(true);
+      try {
+        const result = await askReaderQuestion({ contentId: contentId as never, question: text });
+        setMessages((prev) => [...prev, { role: "assistant", content: result.reply }]);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "The reading companion could not answer right now.";
+        setMessages((prev) => [...prev, { role: "assistant", content: message }]);
+      } finally {
+        setAsking(false);
+      }
+    },
+    [contentId, question, asking, askReaderQuestion],
+  );
+
+  const openCompanion = useCallback(() => {
+    setDockOpen(null);
+    if (!panelOpen) setPanelOpen(true);
+    if (panelTab !== "companion") setPanelTab("companion");
+  }, [panelOpen, panelTab]);
+
+  // Selection listener — capture text + position for the action popup.
   useEffect(() => {
     const handleSelection = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
         setHighlightedText(null);
+        setSelectionPoint(null);
         return;
       }
       const text = sel.toString().trim();
       if (text.length < 5 || text.length > 2000) {
         setHighlightedText(null);
+        setSelectionPoint(null);
         return;
       }
-      // Check if the selection is inside the PDF viewer area. The scroll
-      // wrapper is the stable anchor across every render mode (data, URL,
-      // iframe fallback); the older page/document selectors stay as
-      // fallbacks for first-paint ordering races.
-      const range = sel.getRangeAt(0);
       const container =
         document.querySelector("#pdf-scroll-area") ??
         document.querySelector("[data-page='read']") ??
         document.querySelector(".react-pdf__Page");
-      if (container && container.contains(range.commonAncestorContainer)) {
+      const range = sel.getRangeAt(0);
+      const pdfContainer = document.querySelector(".react-pdf__Document");
+      if (
+        (container && container.contains(range.commonAncestorContainer)) ||
+        (pdfContainer && pdfContainer.contains(range.commonAncestorContainer))
+      ) {
         setHighlightedText(text);
+        const rect = range.getBoundingClientRect();
+        setSelectionPoint({ x: rect.left + rect.width / 2, y: rect.top });
       } else {
-        // Also check if it's in the PDF Document container
-        const pdfContainer = document.querySelector(".react-pdf__Document");
-        if (pdfContainer && pdfContainer.contains(range.commonAncestorContainer)) {
-          setHighlightedText(text);
-        } else {
-          setHighlightedText(null);
-        }
+        setHighlightedText(null);
+        setSelectionPoint(null);
       }
     };
     document.addEventListener("selectionchange", handleSelection);
     return () => document.removeEventListener("selectionchange", handleSelection);
   }, []);
 
-  const handleAsk = async () => {
-    if (!contentId || !question.trim() || asking) return;
-    const text = question.trim();
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setQuestion("");
-    setAsking(true);
-    try {
-      const result = await askReaderQuestion({ contentId: contentId as never, question: text });
-      setMessages((prev) => [...prev, { role: "assistant", content: result.reply }]);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "The reading companion could not answer right now.";
-      setMessages((prev) => [...prev, { role: "assistant", content: message }]);
-    } finally {
-      setAsking(false);
-    }
+  const dismissSelection = useCallback(() => {
+    setHighlightedText(null);
+    setSelectionPoint(null);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
+  // --- Page-aware AI quick actions ------------------------------------------
+  const handleQuickAction = useCallback(
+    async (action: CompanionQuickAction) => {
+      if (!item) return;
+      if (action === "make_flashcards") {
+        await handleGenerateFlashcards();
+        return;
+      }
+      setPendingQuickAction(action);
+      try {
+        const grade = item.grade;
+        const pageText = docProxy
+          ? await extractPageTextFromProxy(
+              docProxy,
+              action === "summarize" ? Math.max(1, pageNumber - 1) : pageNumber,
+              action === "summarize" ? pageNumber + 1 : pageNumber,
+              1250,
+            )
+          : "";
+        const quote = pageText.trim();
+        if (docProxy && (!quote || quote.length < 20)) {
+          toast.info("This page looks image-based (scanned), so I can't read its text yet.", {
+            description: "Try asking a general question instead.",
+          });
+          return;
+        }
+        let prompt: string;
+        switch (action) {
+          case "explain_page":
+            prompt = `Explain page ${pageNumber} of my "${item.title}" in simple terms${grade ? ` for a Grade ${grade} student` : ""}. Walk through the key ideas step by step:\n"""${quote}"""`;
+            break;
+          case "summarize":
+            prompt = `Summarize the key points from pages ${Math.max(1, pageNumber - 1)}–${pageNumber + 1} of "${item.title}" as tight revision bullets:\n"""${quote}"""`;
+            break;
+          case "quiz_me":
+            prompt = `Quiz me on page ${pageNumber} of "${item.title}". Give me 3 exam-style questions, then the answers at the end:\n"""${quote}"""`;
+            break;
+          case "make_notes":
+            prompt = `Turn page ${pageNumber} of "${item.title}" into concise revision notes with memorizable bullets:\n"""${quote}"""`;
+            break;
+          default:
+            return;
+        }
+        if (!panelOpen) setPanelOpen(true);
+        if (panelTab !== "companion") setPanelTab("companion");
+        await handleAsk(clipPrompt(prompt));
+      } finally {
+        setPendingQuickAction(null);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [item, docProxy, pageNumber, panelOpen, panelTab, handleAsk, handleGenerateFlashcards, generatingFlashcards],
+  );
+
+  // --- Selection action popup handlers --------------------------------------
+  const runSelectionAction = useCallback(
+    (action: SelectionAction) => {
+      const text = highlightedText;
+      if (!text || !item) return;
+      const short = text.length > 1400 ? text.slice(0, 1400) + "…" : text;
+      if (action === "highlight") {
+        if (practiceActive && item.contentType === "past_exam") {
+          addPracticeHighlight(text);
+        } else {
+          const newHighlight: ReaderHighlight = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            text: text.length > 300 ? text.slice(0, 300) + "…" : text,
+            page: pageNumber,
+            createdAt: Date.now(),
+          };
+          setReaderHighlights((prev) => {
+            const next = [newHighlight, ...prev];
+            if (readerItemId) saveHighlights(readerItemId, next);
+            return next;
+          });
+          setDockOpen("highlights");
+          toast.success(`Highlighted — page ${pageNumber}.`, {
+            description: "Saved on this device. Find it in the Study Dock.",
+          });
+        }
+        dismissSelection();
+        return;
+      }
+      if (action === "flashcard") {
+        void handleGenerateFlashcards(pageNumber, pageNumber, text);
+        dismissSelection();
+        return;
+      }
+      let prompt: string;
+      switch (action) {
+        case "explain":
+          prompt = `Explain this passage from page ${pageNumber} of "${item.title}" in simple terms:\n"""${short}"""`;
+          break;
+        case "simplify":
+          prompt = `Simplify this passage so a ${item.grade ? `Grade ${item.grade}` : "high-school"} student can understand it instantly. Use short sentences:\n"""${short}"""`;
+          break;
+        case "translate":
+          prompt = `Translate this passage to Amharic. Keep scientific and technical terms in English in parentheses:\n"""${short}"""`;
+          break;
+        case "quiz":
+          prompt = `Create 3 short exam-style questions from this passage (put the answers at the end):\n"""${short}"""`;
+          break;
+        default:
+          return;
+      }
+      openCompanion();
+      void handleAsk(clipPrompt(prompt));
+      dismissSelection();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [highlightedText, item, pageNumber, practiceActive, readerItemId, handleAsk, openCompanion, dismissSelection, handleGenerateFlashcards],
+  );
+
+  // --- Session highlights (localStorage — zero backend) ---------------------
+  const [readerHighlights, setReaderHighlights] = useState<ReaderHighlight[]>([]);
+  useEffect(() => {
+    setReaderHighlights(readerItemId ? loadHighlights(readerItemId) : []);
+    setDockOpen(null);
+  }, [readerItemId]);
+
+  const removeHighlight = (id: string) => {
+    setReaderHighlights((prev) => {
+      const next = prev.filter((h) => h.id !== id);
+      if (readerItemId) saveHighlights(readerItemId, next);
+      return next;
+    });
   };
 
-  // --- YouTube -----------------------------------------------------------
+  const clearHighlights = () => {
+    setReaderHighlights([]);
+    if (readerItemId) saveHighlights(readerItemId, []);
+    toast.success("All highlights cleared.");
+  };
+
+  // --- Reading progress (localStorage resume) -------------------------------
+  const progressRestoredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (numPages === null || !readerItemId) return;
+    if (progressRestoredRef.current === readerItemId) return;
+    progressRestoredRef.current = readerItemId;
+    const saved = loadReadingProgress(readerItemId);
+    if (saved && saved > 1 && saved <= numPages) {
+      setPageNumber(saved);
+      toast("Picking up where you left off", {
+        description: `Continuing from page ${saved}.`,
+      });
+    }
+  }, [numPages, readerItemId]);
+
+  useEffect(() => {
+    if (!readerItemId || numPages === null) return;
+    const t = setTimeout(() => saveReadingProgress(readerItemId, pageNumber), 800);
+    return () => clearTimeout(t);
+  }, [readerItemId, pageNumber, numPages]);
+
+  // --- YouTube ---------------------------------------------------------------
   type VideoItem = { id: string; title: string; channel: string; thumbnail: string; isPriority?: boolean };
   const [videos, setVideos] = useState<VideoItem[] | null>(null);
   const [youtubeConfigured, setYoutubeConfigured] = useState<boolean | null>(null);
@@ -519,12 +611,16 @@ export default function Reader() {
       .finally(() => {
         if (!cancelled) setSearchingVideos(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [item, searchingVideos, searchYouTubeVideos]);
 
-  useEffect(() => { fetchVideos(); }, [fetchVideos]);
+  useEffect(() => {
+    fetchVideos();
+  }, [fetchVideos]);
 
-  // --- Scratchpad --------------------------------------------------------
+  // --- Scratchpad (shared: right-panel Calc tab + Study Dock notes) ----------
   const [scratchText, setScratchText] = useState("");
   const [scratchSaved, setScratchSaved] = useState(true);
   const [savingScratch, setSavingScratch] = useState(false);
@@ -552,27 +648,6 @@ export default function Reader() {
     }
   };
 
-  const goToPage = (value: string) => {
-    const parsed = Number.parseInt(value, 10);
-    if (!Number.isFinite(parsed) || !numPages) {
-      setPageInput(String(pageNumber));
-      return;
-    }
-    const next = Math.min(numPages, Math.max(1, parsed));
-    setPageNumber(next);
-    setPageInput(String(next));
-  };
-
-  const handlePageChange = useCallback((direction: "prev" | "next") => {
-    setPageAnimating(true);
-    setTimeout(() => setPageAnimating(false), 200);
-    if (direction === "prev") {
-      setPageNumber((p) => Math.max(1, p - 1));
-    } else {
-      setPageNumber((p) => (numPages ? Math.min(numPages, p + 1) : p + 1));
-    }
-  }, [numPages]);
-
   const handleEvaluate = () => {
     try {
       const result = evaluate(scratchInput);
@@ -592,17 +667,108 @@ export default function Reader() {
 
   const relatedItems = useMemo(() => related ?? [], [related]);
 
+  // --- Study context header derived data --------------------------------------
+  const currentChapter = useMemo(() => {
+    if (!outlineChapters || outlineChapters.length === 0) return null;
+    let found: OutlineChapter | null = null;
+    for (const chapter of outlineChapters) {
+      if (chapter.page <= pageNumber) found = chapter;
+      else break;
+    }
+    return found;
+  }, [outlineChapters, pageNumber]);
+
+  const readingLeft = useMemo(() => {
+    if (numPages === null) return null;
+    return formatLeftMinutes(Math.max(1, Math.round((numPages - pageNumber + 1) * 0.75)));
+  }, [numPages, pageNumber]);
+
+  const watermark = useMemo(() => {
+    if (!profile) return null;
+    const who =
+      profile?.name && profile?.email
+        ? `${profile.name} · ${profile.email}`
+        : profile?.email ?? profile?.name ?? "";
+    if (!who) return null;
+    return `${who} · ${new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
+  }, [profile]);
+
+  // Stable callbacks for the memoized stage (identity never changes).
+  const handleStagePageChange = useCallback((page: number) => setPageNumber(page), []);
+  const handleStageNumPages = useCallback((n: number | null) => setNumPages(n), []);
+  const handleStageDocProxy = useCallback((doc: unknown) => setDocProxy(doc), []);
+  const handleStageOutline = useCallback((chapters: OutlineChapter[] | null) => setOutlineChapters(chapters), []);
+  const handleStagePdfData = useCallback((data: ArrayBuffer) => setPdfData(data), []);
+
+  // Reset document-local UI state when the content changes.
+  useEffect(() => {
+    setPdfUrl(null);
+    setPdfData(null);
+    setPdfError(null);
+    setNumPages(null);
+    setPageNumber(1);
+    setDocProxy(null);
+    setOutlineChapters(null);
+    setFlashcardResult(null);
+    setMessages([]);
+    setQuestion("");
+    setStudyMode(false);
+    setExamMode(false);
+  }, [readerItemId]);
+
+  useEffect(() => {
+    if (!readerItemId || !item) {
+      setPdfUrl(null);
+      setPdfData(null);
+      return;
+    }
+    let cancelled = false;
+    setPdfError(null);
+    if (item.isPremium) {
+      // Premium content: server-side subscription check required
+      setLoadingPdf(true);
+      const load = async () => {
+        try {
+          const { url } = await getDownloadUrl({ contentId: readerItemId });
+          if (cancelled) return;
+          setPdfUrl(url);
+        } catch (error) {
+          if (!cancelled) {
+            const msg = error instanceof Error ? error.message : String(error);
+            console.error("[Reader] PDF load failed:", msg);
+            if (msg.includes("Premium") || msg.includes("premium") || msg.includes("trial")) {
+              setPdfError("premium_required");
+            } else {
+              setPdfError(msg);
+            }
+          }
+        } finally {
+          if (!cancelled) setLoadingPdf(false);
+        }
+      };
+      void load();
+    } else {
+      // Non-premium: use fileUrl directly — NO Convex action round-trip.
+      // Saves 200-500ms on every document open.
+      setPdfUrl(item.fileUrl);
+      setLoadingPdf(false);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [readerItemId, item, getDownloadUrl]);
+
   // ─── Loading state ────────────────────────────────────────────────────
   if (reader === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#080c14]">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            <div className="absolute -inset-4 animate-spin rounded-full border-2 border-transparent border-t-primary/60" style={{ animationDuration: '2s' }} />
-            <div className="absolute -inset-8 animate-spin rounded-full border border-transparent border-t-primary/20" style={{ animationDuration: '3s', animationDirection: 'reverse' }} />
+            <div className="absolute -inset-4 animate-spin rounded-full border-2 border-transparent border-t-primary/60" style={{ animationDuration: "2s" }} />
+            <div className="absolute -inset-8 animate-spin rounded-full border border-transparent border-t-primary/20" style={{ animationDuration: "3s", animationDirection: "reverse" }} />
             <BookOpen className="size-8 text-primary" />
           </div>
-          <p className="type-mono text-sm tracking-widest text-muted-foreground uppercase">Loading reader…</p>
+          <p className="type-mono text-sm uppercase tracking-widest text-muted-foreground">Loading reader…</p>
         </div>
       </div>
     );
@@ -635,1084 +801,717 @@ export default function Reader() {
     );
   }
 
+  const docReady = Boolean(docProxy) && numPages !== null;
+
   // ─── Main reader ──────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen flex-col bg-[#080c14] overflow-hidden">
-      {/* ═══ TOP CHROME BAR ═══ */}
-      <header className="relative flex h-14 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-black/40 px-3 backdrop-blur-2xl sm:px-5 z-30">
-        {/* Subtle top glow line */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+    <div ref={rootRef} className="flex h-screen flex-col overflow-hidden bg-[#080c14]">
+      {/* ═══ TOP CHROME BAR (hidden in study mode) ═══ */}
+      {!studyMode && (
+        <header className="relative z-30 flex h-14 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-black/40 px-3 backdrop-blur-2xl sm:px-5">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
 
-        <Button asChild variant="ghost" size="icon" className="size-9 shrink-0 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200">
-          <Link to="/dashboard" aria-label="Back to the library">
-            <ArrowLeft className="size-4" />
-          </Link>
-        </Button>
-
-        <div className="min-w-0 flex-1">
-          <p className="type-h3 truncate text-foreground">{item.title}</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="type-caption text-muted-foreground">{item.subjectName}</span>
-            <span className="size-1 rounded-full bg-white/20" />
-            <span className="type-caption text-muted-foreground">Grade {item.grade}</span>
-            {item.examYear && (<>
-              <span className="size-1 rounded-full bg-white/20" />
-              <span className="type-caption text-muted-foreground">{item.examYear}</span>
-            </>)}
-            <span className="size-1 rounded-full bg-white/20" />
-            <span className={cn("type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase text-[10px]", subjectHue(item.subjectSlug ?? ""))}>
-              {CONTENT_TYPE_LABELS[item.contentType as ContentType] ?? item.contentType}
-            </span>
-            {item.sourceName && (
-              <>
-                <span className="size-1 rounded-full bg-white/20" />
-                {item.sourceUrl ? (
-                  <a
-                    href={item.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="max-w-[240px] truncate type-caption font-semibold text-emerald-200 hover:text-emerald-100"
-                  >
-                    Source: {item.sourceName}
-                  </a>
-                ) : (
-                  <span className="max-w-[240px] truncate type-caption font-semibold text-emerald-200">
-                    Source: {item.sourceName}
-                  </span>
-                )}
-              </>
-            )}
-            {item.fileSizeBytes && (<>
-              <span className="size-1 rounded-full bg-white/20" />
-              <span className="type-caption text-muted-foreground/60">{formatBytes(item.fileSizeBytes)}</span>
-            </>)}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1">
           <Button
+            asChild
             variant="ghost"
             size="icon"
-            className="size-9 rounded-xl text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all duration-200"
-            onClick={() => void toggleBookmark({ contentId: item._id })}
-            aria-label={reader?.bookmarked ? "Remove bookmark" : "Bookmark this document"}
+            className="size-9 shrink-0 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-white/5 hover:text-foreground"
           >
-            {reader?.bookmarked ? (
-              <BookmarkCheck className="size-4 text-primary" />
-            ) : (
-              <Bookmark className="size-4" />
-            )}
+            <Link to="/dashboard" aria-label="Back to the library">
+              <ArrowLeft className="size-4" />
+            </Link>
           </Button>
-          {/* Download button removed — resources are for in-app reading
-              only. Applies to all users regardless of trial/premium status.
-              The iframe-based viewer is untouched and remains the only
-              rendering path. */}
-          {item.subjectId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 rounded-xl text-amber-300 hover:bg-amber-400/10 hover:text-amber-200"
-              onClick={async () => {
-                if (generatingFlashcards) return;
-                setGeneratingFlashcards(true);
-                try {
-                  // ── Text extraction strategy (3-tier fallback) ────────
-                  // 1. Try react-pdf's pdfDocProxy (already loaded PDF)
-                  // 2. Fallback: fetch the PDF URL + use extractPdfText
-                  //    (standalone pdfjs-dist, same as admin bulk upload)
-                  // 3. Last resort: toast error for truly image-only PDFs
-                  let pageText = "";
 
-                  // Strategy 1: react-pdf proxy (fastest — PDF already loaded)
-                  if (pdfDocProxy) {
-                    const currentPage = pageNumber || 1;
-                    const startPage = Math.max(1, currentPage - 3);
-                    const endPage = Math.min(pdfDocProxy.numPages, currentPage + 3);
-                    for (let p = startPage; p <= endPage; p++) {
-                      try {
-                        const page = await pdfDocProxy.getPage(p);
-                        const textContent = await page.getTextContent();
-                        const text = textContent.items
-                          .map((item: { str?: string }) => item.str || "")
-                          .join(" ");
-                        pageText += text + "\n";
-                      } catch {
-                        // skip pages that fail
-                      }
-                    }
-                  }
-
-                  // Strategy 2: fetch + standalone pdfjs extraction
-                  // Used when pdfDocProxy is null (iframe fallback mode,
-                  // or react-pdf hasn't loaded yet)
-                  if (!pageText.trim() && (pdfUrl || item.fileUrl)) {
-                    toast.info("Extracting text from PDF…");
-                    try {
-                      const response = await fetch(pdfUrl || item.fileUrl);
-                      if (response.ok) {
-                        const blob = await response.blob();
-                        const file = new File([blob], item.title || "document.pdf", { type: "application/pdf" });
-                        // Extract up to 8 pages (current ± 4) using the
-                        // standalone pdfjs-dist — same engine as admin upload
-                        pageText = await extractPdfText(file, 8, 6000);
-                      }
-                    } catch {
-                      // Network or extraction error — fall through to error toast
-                    }
-                  }
-
-                  if (!pageText.trim() || pageText.trim().length < 20) {
-                    toast.info("This PDF appears to be image-based (scanned). Text extraction needs a text-based PDF. We're working on OCR support for scanned documents.");
-                    setGeneratingFlashcards(false);
-                    return;
-                  }
-
-                  const result = await generateFlashcards({
-                    contentId: item._id as never,
-                    subjectId: item.subjectId as never,
-                    pageText: pageText as never,
-                    pageRange: `pages ${Math.max(1, (pageNumber || 1) - 3)}–${(pageNumber || 1) + 3}` as never,
-                  }) as { deckId: string; cardCount: number };
-
-                  toast.success(`Created ${result.cardCount} flashcards from this content! Open the Flashcards tab to study them.`);
-                } catch (err) {
-                  const msg = err instanceof Error ? err.message : "Generation failed.";
-                  if (msg.includes("premium")) {
-                    toast.error("Flashcard generation is a premium feature. Start your free trial to try it!");
-                  } else {
-                    toast.error(msg);
-                  }
-                } finally {
-                  setGeneratingFlashcards(false);
-                }
-              }}
-              disabled={generatingFlashcards}
-              aria-label="Generate flashcards from this page"
-              title="Generate flashcards from the text you're reading right now"
-            >
-              {generatingFlashcards ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
+          <div className="min-w-0 flex-1">
+            <p className="type-h3 truncate text-foreground">{item.title}</p>
+            <div className="mt-0.5 flex items-center gap-2">
+              <span className="type-caption text-muted-foreground">{item.subjectName}</span>
+              <span className="size-1 rounded-full bg-white/20" />
+              <span className="type-caption text-muted-foreground">Grade {item.grade}</span>
+              {item.examYear && (
+                <>
+                  <span className="size-1 rounded-full bg-white/20" />
+                  <span className="type-caption text-muted-foreground">{item.examYear}</span>
+                </>
               )}
-              <span className="hidden text-xs font-semibold sm:inline">
-                {generatingFlashcards ? "Generating…" : "Make Flashcards"}
+              <span className="size-1 rounded-full bg-white/20" />
+              <span
+                className={cn(
+                  "type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 text-[10px] uppercase",
+                  subjectHue(item.subjectSlug ?? ""),
+                )}
+              >
+                {CONTENT_TYPE_LABELS[item.contentType as ContentType] ?? item.contentType}
               </span>
-            </Button>
-          )}
-          {item.contentType === "past_exam" && !profile?.isAnonymous && (
+              {item.fileSizeBytes && (
+                <>
+                  <span className="size-1 rounded-full bg-white/20" />
+                  <span className="type-caption text-muted-foreground/60">{formatBytes(item.fileSizeBytes)}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setExamMode(true)}
-              aria-label="Enter exam mode"
-              title="Exam mode — timed, no pausing"
-              className="size-9 rounded-xl text-amber-300 hover:bg-amber-400/10 hover:text-amber-200 transition-all duration-200"
+              className="size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-white/5 hover:text-foreground"
+              onClick={() => void toggleBookmark({ contentId: item._id })}
+              aria-label={reader?.bookmarked ? "Remove bookmark" : "Bookmark this document"}
             >
-              <Maximize2 className="size-4" />
+              {reader?.bookmarked ? <BookmarkCheck className="size-4 text-primary" /> : <Bookmark className="size-4" />}
             </Button>
-          )}
-          <div className="mx-1 h-5 w-px bg-white/10" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "size-9 rounded-xl transition-all duration-200",
-              panelOpen
-                ? "bg-primary/10 text-primary hover:bg-primary/15"
-                : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+
+            {/* STUDY MODE — the distraction-free study session */}
+            <Button
+              size="sm"
+              onClick={enterStudyMode}
+              className="gap-1.5 rounded-xl border border-amber-300/25 bg-gradient-to-b from-amber-300/15 to-amber-400/[0.06] text-amber-200 shadow-[0_0_20px_-6px_rgba(251,191,36,0.35)] transition-all hover:from-amber-300/25 hover:to-amber-400/10"
+              aria-label="Enter Study Mode"
+              title="Study Mode — focused session with timer and quick actions"
+            >
+              <Brain className="size-4" />
+              <span className="hidden text-xs font-semibold sm:inline">Study Mode</span>
+            </Button>
+
+            {item.subjectId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 rounded-xl text-amber-300 hover:bg-amber-400/10 hover:text-amber-200"
+                onClick={() => void handleGenerateFlashcards()}
+                disabled={generatingFlashcards}
+                aria-label="Generate flashcards from this page"
+                title="Generate flashcards from the text you're reading right now"
+              >
+                {generatingFlashcards ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                <span className="hidden text-xs font-semibold sm:inline">
+                  {generatingFlashcards ? "Generating…" : "Make Flashcards"}
+                </span>
+              </Button>
             )}
-            onClick={() => setPanelOpen((open) => !open)}
-            aria-label={panelOpen ? "Hide side panel" : "Show side panel"}
-          >
-            {panelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
-          </Button>
+            {item.contentType === "past_exam" && !profile?.isAnonymous && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setExamMode(true)}
+                aria-label="Enter exam mode"
+                title="Exam mode — timed, no pausing"
+                className="size-9 rounded-xl text-amber-300 transition-all duration-200 hover:bg-amber-400/10 hover:text-amber-200"
+              >
+                <Maximize2 className="size-4" />
+              </Button>
+            )}
+            <div className="mx-1 h-5 w-px bg-white/10" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-white/5 hover:text-foreground sm:flex"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"}
+            >
+              {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "size-9 rounded-xl transition-all duration-200",
+                panelOpen ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+              )}
+              onClick={() => setPanelOpen((open) => !open)}
+              aria-label={panelOpen ? "Hide side panel" : "Show side panel"}
+            >
+              {panelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+            </Button>
+          </div>
+        </header>
+      )}
+
+      {/* ═══ STUDY CONTEXT HEADER — the learning-journey strip ═══ */}
+      {!studyMode && docReady && (
+        <div className="relative z-20 flex h-9 shrink-0 items-center gap-2.5 border-b border-white/[0.04] bg-black/30 px-3 backdrop-blur-xl sm:px-5">
+          {currentChapter ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="type-mono shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                Chapter
+              </span>
+              <span className="type-caption truncate font-semibold text-foreground/80">{currentChapter.title}</span>
+            </span>
+          ) : (
+            <span className="type-caption truncate font-semibold text-foreground/70">
+              {item.subjectName} · Grade {item.grade}
+            </span>
+          )}
+          <span className="size-1 shrink-0 rounded-full bg-white/20" />
+          <span className="type-mono shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
+            Page {pageNumber} of {numPages}
+          </span>
+          {readingLeft && (
+            <>
+              <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+              <span className="type-mono hidden shrink-0 text-[10px] text-muted-foreground/50 sm:block">{readingLeft}</span>
+            </>
+          )}
+          {numPages && numPages > 1 && (
+            <div className="ml-auto hidden w-36 items-center gap-2 sm:flex">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-300 ease-out"
+                  style={{ width: `${(pageNumber / numPages) * 100}%` }}
+                />
+              </div>
+              <span className="type-mono text-[9px] tabular-nums text-muted-foreground/40">
+                {Math.round((pageNumber / numPages) * 100)}%
+              </span>
+            </div>
+          )}
         </div>
-      </header>
+      )}
 
       <div className="relative flex min-h-0 flex-1">
         {/* ═══ PDF VIEWER ═══ */}
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Ambient background */}
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(56,189,248,0.03),transparent_60%)]" />
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_80%_100%,rgba(168,85,247,0.02),transparent_50%)]" />
-          {/* Subtle dot grid */}
-          <div className="pointer-events-none absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle, white 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
-
-          {/* ─── Page toolbar (react-pdf mode only) ─── */}
-          {!useIframeFallback && (
-          <div className="relative flex h-12 shrink-0 items-center justify-center gap-1 border-b border-white/[0.04] bg-black/30 backdrop-blur-xl px-3 z-10">
-            {/* Zoom presets */}
-            <div className="hidden sm:flex items-center gap-1 mr-2">
-              {([0.8, 1, 1.4, 2] as const).map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setScale(preset)}
-                  className={cn(
-                    "h-7 rounded-lg px-2 text-[11px] font-medium transition-all duration-150 active:scale-95",
-                    Math.abs(scale - preset) < 0.01
-                      ? "bg-primary/15 text-primary border border-primary/25"
-                      : "text-muted-foreground/70 hover:bg-white/[0.06] hover:text-foreground border border-transparent"
-                  )}
-                >
-                  {Math.round(preset * 100)}%
-                </button>
-              ))}
-            </div>
-            <div className="mx-2 h-5 w-px bg-white/[0.08]" />
-            <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-1.5 py-1">
-              <button
-                type="button"
-                onClick={() => setScale((s) => Math.max(0.5, Math.round((s - 0.15) * 100) / 100))}
-                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground active:scale-90"
-                aria-label="Zoom out"
-              >
-                <ZoomOut className="size-3.5" />
-              </button>
-              <span className="w-11 text-center type-mono text-xs tabular-nums text-muted-foreground/80">
-                {Math.round(scale * 100)}%
-              </span>
-              <button
-                type="button"
-                onClick={() => setScale((s) => Math.min(3, Math.round((s + 0.15) * 100) / 100))}
-                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground active:scale-90"
-                aria-label="Zoom in"
-              >
-                <ZoomIn className="size-3.5" />
-              </button>
-            </div>
-
-            <div className="mx-3 h-5 w-px bg-white/[0.08]" />
-
-            <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-1.5 py-1">
-              <button
-                type="button"
-                onClick={() => handlePageChange("prev")}
-                disabled={pageNumber <= 1}
-                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground disabled:cursor-default disabled:opacity-20 active:scale-90"
-                aria-label="Previous page"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <label htmlFor="reader-page-number" className="sr-only">Page number</label>
-              <Input
-                id="reader-page-number"
-                type="number"
-                min={1}
-                max={numPages ?? undefined}
-                value={pageInput}
-                onChange={(event) => setPageInput(event.target.value)}
-                onBlur={() => goToPage(pageInput)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    goToPage(pageInput);
-                    event.currentTarget.blur();
-                  }
-                }}
-                disabled={!numPages}
-                className="h-8 w-11 rounded-lg border-white/[0.08] bg-transparent px-1 text-center type-mono text-xs tabular-nums text-foreground/90 focus:border-primary/40 focus:ring-0"
-              />
-              <span className="type-mono text-xs tabular-nums text-muted-foreground/60">/ {numPages ?? "—"}</span>
-              <button
-                type="button"
-                onClick={() => handlePageChange("next")}
-                disabled={numPages !== null && pageNumber >= numPages}
-                className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-white/10 hover:text-foreground disabled:cursor-default disabled:opacity-20 active:scale-90"
-                aria-label="Next page"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-
-            {numPages && numPages > 1 && (
-              <>
-                <div className="mx-3 h-5 w-px bg-white/[0.08]" />
-                {/* Mini page progress bar */}
-                <div className="hidden sm:flex items-center gap-2">
-                  <div className="h-1 w-24 rounded-full bg-white/[0.06] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
-                      style={{ width: `${(pageNumber / numPages) * 100}%` }}
-                    />
-                  </div>
-                  <span className="type-mono text-[10px] tabular-nums text-muted-foreground/50">
-                    {Math.round((pageNumber / numPages) * 100)}%
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-          )}
-
-          {/* ─── PDF body ─── */}
-          {/* Guest lock: if the user is signed in as a guest (anonymous),
-              show the lock overlay instead of the PDF. Guest users can
-              browse the library but can't open resources until they
-              provide an email and convert to a real account. */}
           {profile?.isAnonymous ? (
             <GuestLockOverlay resourceTitle={item?.title} />
           ) : (
-          <div className="relative flex-1 overflow-hidden" id="pdf-scroll-area">
-            {/* ══ IFRAME MODE — full-width, outside max-w-fit ══ */}
-            {useIframeFallback && pdfUrl && !pdfError ? (
-              <div className="flex h-full flex-col">
-                {/* Iframe zoom toolbar */}
-                <div className="relative flex shrink-0 items-center justify-center gap-1.5 border-b border-white/[0.04] bg-black/30 backdrop-blur-xl px-3 py-2 z-10">
-                  <span className="type-caption text-[10px] tracking-widest text-muted-foreground/50 uppercase mr-2">Native viewer</span>
+            <PdfStage
+              contentId={readerItemId ?? "none"}
+              pdfUrl={pdfUrl}
+              pdfData={pdfData}
+              onPdfData={handleStagePdfData}
+              pdfError={pdfError}
+              loadingPdf={loadingPdf}
+              pageNumber={pageNumber}
+              numPages={numPages}
+              scale={scale}
+              onPageChange={handleStagePageChange}
+              onNumPages={handleStageNumPages}
+              onScaleChange={setScale}
+              onDocProxy={handleStageDocProxy}
+              onOutline={handleStageOutline}
+              watermark={watermark}
+            />
+          )}
+
+          {/* ═══ STUDY MODE HUD ═══ */}
+          {studyMode && (
+            <>
+              <motion.div
+                initial={{ y: -30, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="pointer-events-none absolute inset-x-0 top-0 z-40 flex justify-center px-3 pt-3"
+              >
+                <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-amber-300/20 bg-black/70 py-1.5 pl-4 pr-1.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+                  <Brain className="size-4 shrink-0 text-amber-300" />
+                  <span className="type-caption max-w-[180px] truncate font-semibold text-foreground/85 sm:max-w-xs">{item.title}</span>
+                  <span className="type-mono flex items-center gap-1 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[11px] tabular-nums text-amber-200">
+                    <Timer className="size-3" /> {formatClock(studySeconds)}
+                  </span>
+                  <span className="type-mono hidden text-[10px] tabular-nums text-muted-foreground/50 sm:block">
+                    {pagesVisitedRef.current.size} pages
+                  </span>
+                  <button
+                    type="button"
+                    onClick={exitStudyMode}
+                    className="flex size-7 cursor-pointer items-center justify-center rounded-lg text-amber-200/80 transition-all hover:bg-amber-300/15 hover:text-amber-100"
+                    aria-label="Exit Study Mode"
+                    title="Exit Study Mode"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              </motion.div>
+              {/* Quick study actions */}
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.08 }}
+                className="pointer-events-none absolute inset-x-0 top-16 z-30 flex justify-center px-3"
+              >
+                <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-1.5">
                   {(
                     [
-                      { id: "fit-width" as const, label: "Fit Width", icon: Scan },
-                      { id: "fit-page" as const, label: "Fit Page", icon: Maximize2 },
-                      { id: "100" as const, label: "100%", icon: null },
-                      { id: "125" as const, label: "125%", icon: null },
-                      { id: "150" as const, label: "150%", icon: null },
-                      { id: "200" as const, label: "200%", icon: null },
-                    ] as const
-                  ).map((preset) => (
+                      { id: "explain_page" as const, label: "Explain page", icon: Lightbulb },
+                      { id: "summarize" as const, label: "Summarize", icon: NotebookPen },
+                      { id: "quiz_me" as const, label: "Quiz me", icon: Sparkles },
+                    ]
+                  ).map((action) => (
                     <button
-                      key={preset.id}
+                      key={action.id}
                       type="button"
-                      onClick={() => setIframeZoom(preset.id)}
-                      className={cn(
-                        "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium transition-all duration-150 active:scale-95",
-                        iframeZoom === preset.id
-                          ? "bg-primary/15 text-primary border border-primary/25"
-                          : "text-muted-foreground/70 hover:bg-white/[0.06] hover:text-foreground border border-transparent"
-                      )}
+                      onClick={() => void handleQuickAction(action.id)}
+                      disabled={asking}
+                      className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-black/60 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 backdrop-blur-2xl transition-all hover:bg-cyan-400/10 disabled:opacity-40 active:scale-95"
                     >
-                      {preset.icon && <preset.icon className="size-3" />}
-                      {preset.label}
+                      <action.icon className="size-3" /> {action.label}
                     </button>
                   ))}
                 </div>
-                {/* Iframe — takes FULL available height and width */}
-                {/* toolbar=0 hides Chrome/Edge's native PDF viewer toolbar
-                    (which includes download + print buttons). navpanes=0
-                    hides the bookmarks sidebar. This is a best-effort
-                    deterrent — Firefox and some mobile browsers may ignore
-                    these URL fragment parameters and still show their own
-                    toolbar. The iframe element itself and its loading
-                    logic are unchanged from the known-working state. */}
-                <iframe
-                  key={`${pdfUrl}#${iframeZoom}`}
-                  src={`${pdfUrl}#${iframeZoom === "fit-width" ? "view=FitW&toolbar=0&navpanes=0" : iframeZoom === "fit-page" ? "view=FitH&toolbar=0&navpanes=0" : `zoom=${iframeZoom}&toolbar=0&navpanes=0`}`}
-                  title={item?.title || "PDF document"}
-                  className="flex-1 w-full border-0 bg-white/5"
-                  style={{ minHeight: 0 }}
-                />
-                {/* Watermark overlay — purely cosmetic sibling element.
-                    Absolutely positioned, pointer-events: none, high z-index.
-                    Does NOT modify or interact with the iframe's content
-                    or rendering in any way. Shows the viewing student's
-                    name/email as a deterrent against redistribution. */}
-                <div
-                  className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
-                  aria-hidden="true"
-                  style={{ userSelect: "none" }}
-                >
-                  <div
-                    className="rotate-[-28deg] text-[11px] font-mono font-bold uppercase tracking-wider text-black/[0.08] whitespace-nowrap"
-                    style={{ userSelect: "none" }}
-                  >
-                    {profile?.name && profile?.email
-                      ? `${profile.name} · ${profile.email}`
-                      : profile?.email ?? profile?.name ?? ""}
-                    {" · "}
-                    {new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
-                  </div>
-                </div>
-              </div>
-            ) : (
-            /* ══ REACT-PDF MODE — inside max-w-fit for centered pages ══ */
-            <div className="relative mx-auto flex h-full min-h-full max-w-fit flex-col items-center gap-4 p-4 sm:p-8 overflow-y-auto" data-lenis-prevent-wheel>
-              {/* Loading state */}
-              {loadingPdf && !pdfUrl && (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-6">
-                  <div className="relative">
-                    {/* Cinematic loading orb */}
-                    <div className="absolute -inset-8 rounded-full bg-primary/5 blur-2xl animate-pulse" />
-                    <div className="absolute -inset-4 rounded-full border border-primary/10 animate-spin" style={{ animationDuration: '4s' }} />
-                    <div className="relative flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
-                      <Loader2 className="size-6 animate-spin text-primary" />
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <p className="type-mono text-sm tracking-widest text-muted-foreground/80 uppercase">
-                      Opening document
-                    </p>
-                    <div className="mt-3 mx-auto h-0.5 w-32 overflow-hidden rounded-full bg-white/[0.06]">
-                      <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-transparent via-primary to-transparent animate-[shimmer-slide_1.5s_ease-in-out_infinite]" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ArrayBuffer download progress bar (shown during fallback download) */}
-              {loadingPdf && pdfUrl && loadProgress > 0 && (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-6">
-                  <div className="relative">
-                    <div className="absolute -inset-8 rounded-full bg-primary/5 blur-2xl animate-pulse" />
-                    <div className="relative flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
-                      <Loader2 className="size-6 animate-spin text-primary" />
-                    </div>
-                  </div>
-                  <div className="w-64 text-center">
-                    <p className="type-mono text-sm tracking-widest text-muted-foreground/80 uppercase">
-                      Downloading… {loadProgress}%
-                    </p>
-                    <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
-                        style={{ width: `${loadProgress}%` }}
-                      />
-                    </div>
-                    <p className="mt-2 type-mono text-[10px] text-muted-foreground/40">
-                      {loadProgress < 100 ? 'Loading via direct download (range requests unavailable)' : 'Preparing renderer…'}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Error state — cinematic + real error + fallback */ }
-              {pdfError && (
-                <div className="mx-auto mt-20 flex flex-col items-center gap-6">
-                  <div className="relative">
-                    <div className="absolute -inset-8 rounded-full bg-rose-500/10 blur-2xl" />
-                    <div className="relative flex size-20 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/[0.03] backdrop-blur-xl">
-                      {pdfError === "premium_required" ? (
-                        <Crown className="size-8 text-amber-400/80" />
-                      ) : (
-                        <Lock className="size-8 text-rose-400/80" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-center max-w-md">
-                    <h2 className={cn(
-                      "type-h2 bg-clip-text text-transparent",
-                      pdfError === "premium_required"
-                        ? "from-amber-300 to-amber-400/70"
-                        : "from-rose-300 to-rose-400/70"
-                    )}>
-                      {pdfError === "premium_required"
-                        ? "Premium Content"
-                        : "Could not open this document"}
-                    </h2>
-                    <p className="type-body mt-2 text-muted-foreground/70 leading-relaxed">
-                      {pdfError === "premium_required"
-                        ? "This content requires a premium subscription. Upgrade to access all textbooks, past papers, and study materials."
-                        : pdfError}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-center gap-3">
-                    {pdfError === "premium_required" ? (
-                      <Button asChild size="sm" className="rounded-xl bg-premium text-background hover:bg-premium/90">
-                        <Link to="/upgrade">
-                          <Crown className="size-3.5" /> Upgrade to Premium
-                        </Link>
-                      </Button>
-                    ) : (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
-                          onClick={() => window.location.reload()}
-                        >
-                          <RotateCcw className="size-3.5" /> Refresh
-                        </Button>
-                        {/* "Open in new tab" link removed — it pointed at the
-                            raw file URL, which would expose the download path.
-                            The iframe-based viewer is the only rendering path. */}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* PDF document — URL mode (range requests) primary, ArrayBuffer fallback */}
-              {/* Hide Document during ArrayBuffer download so progress bar shows */}
-              {!loadingPdf && (pdfData || (pdfUrl && useUrlFallback)) && !pdfError && (
-                <div className={cn("transition-all duration-200", pageAnimating && "opacity-0 scale-[0.99]")}>
-                  <Document
-                    file={pdfData ? { data: pdfData } : { url: pdfUrl! }}
-                    // PDF.js options — keep this minimal. The previous
-                    // perf-tuning (cMapUrl, standardFontDataUrl, disableAutoFetch)
-                    // caused regressions where pdf.js silently failed to
-                    // render and the loading skeleton stayed forever.
-                    //
-                    // We deliberately OMIT options entirely now — pdf.js
-                    // runs on its pure defaults. This is the path that was
-                    // working before the perf commits. We can re-add options
-                    // one at a time after we confirm rendering works.
-                    onLoadProgress={(progress) => {
-                      try {
-                        if (progress && typeof progress.loaded === "number" && typeof progress.total === "number" && progress.total > 0) {
-                          const pct = Math.min(99, Math.round((progress.loaded / progress.total) * 100));
-                          setLoadProgress(pct);
-                        }
-                      } catch {
-                        // Non-fatal: progress callback errors must never break the render.
-                      }
-                    }}
-                    onLoadSuccess={(pdf) => {
-                      setNumPages(pdf.numPages);
-                      setPageNumber(1);
-                      setPageInput("1");
-                      setPdfDocProxy(pdf);
-                      setLoadProgress(100);
-                    }}
-                    onLoadError={(error) => {
-                      console.error("[Reader] PDF load failed:", error);
-                      const msg = error?.message || String(error);
-                      if (msg.includes("worker") || msg.includes("Worker")) {
-                        // Worker failed — try iframe fallback instead of
-                        // showing an error, since iframe always works.
-                        console.warn("[Reader] Worker issue — falling back to iframe.");
-                        setUseIframeFallback(true);
-                      } else if (useUrlFallback && !pdfData && !arrayBufferAttempted.current) {
-                        console.warn("[Reader] URL mode failed, trying ArrayBuffer fallback");
-                        arrayBufferAttempted.current = true;
-                        void loadAsArrayBuffer(pdfUrl!);
-                      } else if (pdfData) {
-                        console.warn("[Reader] ArrayBuffer render failed, falling back to iframe");
-                        setUseIframeFallback(true);
-                      } else {
-                        // Last resort: try the iframe. It uses the browser's
-                        // native PDF viewer and always works (just slower).
-                        console.warn("[Reader] All pdf.js paths failed — falling back to iframe.");
-                        setUseIframeFallback(true);
-                      }
-                    }}
-                    loading={
-                      // Real page-shaped skeleton (not a generic spinner).
-                      // Matches the eventual page render's size + position so
-                      // the layout doesn't shift when the page appears.
-                      // Uses a fixed width (not w-full) so it can't grow huge
-                      // and visually push the eventual page render off-screen.
-                      <div className="flex flex-col items-center justify-center gap-4 py-16">
-                        <div className="relative aspect-[1/1.414] w-64 max-w-full overflow-hidden rounded-md border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.04)]">
-                          {/* Animated skeleton lines mimicking page content */}
-                          <div className="absolute inset-0 flex flex-col gap-3 p-6">
-                            <div className="h-3 w-1/2 animate-pulse rounded bg-white/[0.06]" />
-                            <div className="mt-2 h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "60ms" }} />
-                            <div className="h-2 w-5/6 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "120ms" }} />
-                            <div className="h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "180ms" }} />
-                            <div className="h-2 w-3/4 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "240ms" }} />
-                            <div className="mt-2 h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "300ms" }} />
-                            <div className="h-2 w-4/5 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "360ms" }} />
-                          </div>
-                          {/* Top shimmer sweep */}
-                          <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer-slide_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />
-                        </div>
-                        <p className="type-mono text-xs tracking-widest text-muted-foreground/60 uppercase">
-                          {loadProgress > 0 && loadProgress < 100
-                            ? `Loading… ${loadProgress}%`
-                            : "Rendering page…"}
-                        </p>
-                      </div>
-                    }
-                    className="flex flex-col items-center gap-4"
-                  >
-                    <div className="group relative overflow-hidden rounded-lg shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)] transition-shadow duration-300 hover:shadow-[0_30px_100px_-20px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)]">
-                      <PdfPage
-                        pageNumber={pageNumber}
-                        scale={scale}
-                        renderTextLayer={showTextLayers}
-                        renderAnnotationLayer={showTextLayers}
-                        loading={
-                          // Page-shaped skeleton — matches the eventual page
-                          // size so layout doesn't shift on first render.
-                          <div className="relative aspect-[1/1.414] w-48 overflow-hidden rounded-md border border-white/[0.04] bg-white/[0.02]">
-                            <div className="absolute inset-0 flex flex-col gap-2 p-4">
-                              <div className="h-2 w-1/2 animate-pulse rounded bg-white/[0.06]" />
-                              <div className="mt-1 h-1.5 w-full animate-pulse rounded bg-white/[0.04]" />
-                              <div className="h-1.5 w-5/6 animate-pulse rounded bg-white/[0.04]" />
-                              <div className="h-1.5 w-full animate-pulse rounded bg-white/[0.04]" />
-                              <div className="h-1.5 w-3/4 animate-pulse rounded bg-white/[0.04]" />
-                              <div className="mt-1 h-1.5 w-full animate-pulse rounded bg-white/[0.04]" />
-                              <div className="h-1.5 w-4/5 animate-pulse rounded bg-white/[0.04]" />
-                            </div>
-                            <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer-slide_1.4s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-                          </div>
-                        }
-                      />
-                      {/* Pre-render next page in hidden container for instant forward navigation */}
-                      {numPages && pageNumber < numPages && (
-                        <div className="invisible absolute h-0 w-0 overflow-hidden pointer-events-none" aria-hidden="true">
-                          <PdfPage
-                            pageNumber={pageNumber + 1}
-                            scale={scale}
-                            renderTextLayer={false}
-                            renderAnnotationLayer={false}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </Document>
-                </div>
-              )}
-
-            </div>
-            )}
-          </div>
+              </motion.div>
+            </>
           )}
-        </main>
 
-        {/* Highlight-to-ask floating button — appears when the student
-            selects text in the PDF. Clicking it opens the companion
-            panel, prefills the question with "Explain: [highlighted
-            text]", and sends it with the highlightedText context. */}
-        {highlightedText && !examMode && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            type="button"
-            onClick={() => {
-              if (!panelOpen) setPanelOpen(true);
-              if (panelTab !== "companion") setPanelTab("companion");
-              const shortHighlight = highlightedText.length > 100
-                ? highlightedText.slice(0, 100) + "…"
-                : highlightedText;
-              setQuestion(`Explain this passage:\n"${shortHighlight}"`);
-              setHighlightedText(null);
-              window.getSelection()?.removeAllRanges();
-            }}
-            className={cn(
-              "fixed bottom-24 right-8 z-[60] flex items-center gap-2 rounded-full border border-primary/30 bg-primary/15 px-4 py-2.5 text-sm font-medium text-primary shadow-lg backdrop-blur-md transition-all hover:bg-primary/25 interactive-press",
-              practiceActive && item?.contentType === "past_exam" && "bottom-40",
-            )}
-            title="Ask the AI companion about the selected text"
-          >
-            <Sparkles className="size-4" />
-            Ask about this
-          </motion.button>
-        )}
-
-        {/* Practice-session highlight capture — keeps the selection as a
-            session highlight (page-referenced) instead of asking the AI. */}
-        {practiceActive && !examMode && item?.contentType === "past_exam" && highlightedText && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            type="button"
-            onClick={() => addPracticeHighlight(highlightedText)}
-            className="fixed bottom-24 right-8 z-[60] flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-300/15 px-4 py-2.5 text-sm font-medium text-amber-200 shadow-lg backdrop-blur-md transition-all hover:bg-amber-300/25 interactive-press"
-            title="Keep this selection as a session highlight"
-          >
-            <Highlighter className="size-4" />
-            Highlight
-          </motion.button>
-        )}
-
-        {/* ═══ SIDE PANEL ═══ */}
-        <AnimatePresence>
-        {panelOpen && (
-          <>
-            {/* Mobile backdrop — covers the PDF viewer when the panel is
-                open on mobile. Tapping the backdrop closes the panel. */}
-            <motion.button
-              type="button"
-              aria-label="Close reader panel"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm sm:hidden"
-              onClick={() => setPanelOpen(false)}
-            />
-            <motion.aside
-              key="reader-panel"
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", stiffness: 350, damping: 35 }}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="reader-panel-title"
-              // Mobile: absolute-positioned slide-over from the right, 85%
-              // width (max 380px), so the PDF viewer is still partially
-              // visible behind the backdrop. Prevents the panel from
-              // completely covering the viewer (which was the collision
-              // bug — panel + tabs covered the entire PDF on mobile).
-              // Desktop: static, 380px sidebar beside the PDF (no slide
-              // animation on desktop — sm:transform-none resets the
-              // spring animation's transform on desktop widths).
-              className="absolute right-0 top-0 bottom-0 z-20 flex w-[85%] max-w-[380px] flex-col border-l border-white/[0.06] bg-[#0a0e17]/95 backdrop-blur-2xl shadow-[-20px_0_60px_-20px_rgba(0,0,0,0.5)] sm:static sm:z-auto sm:w-[380px] sm:shadow-none sm:max-w-none [&]:sm:transform-none"
-            >
-              {/* Panel glow line */}
-              <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent sm:hidden" />
-
-              {/* Tab bar */}
-              <div className="relative flex shrink-0 items-center gap-1 border-b border-white/[0.06] px-2 py-2">
-                <span id="reader-panel-title" className="sr-only">Reader tools</span>
-                {(
-                  [
-                    { id: "companion" as const, label: "AI", icon: Bot, desc: "Companion" },
-                    { id: "videos" as const, label: "Videos", icon: Youtube, desc: "Videos" },
-                    { id: "scratchpad" as const, label: "Calc", icon: Calculator, desc: "Scratchpad" },
-                  ]
-                ).map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setPanelTab(tab.id)}
-                    role="tab"
-                    aria-selected={panelTab === tab.id}
-                    aria-controls={`reader-panel-${tab.id}`}
-                    title={tab.desc}
-                    className={cn(
-                      "interactive-press relative flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 type-caption font-semibold transition-all duration-200",
-                      panelTab === tab.id
-                        ? "text-primary"
-                        : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-white/[0.03]",
-                    )}
-                  >
-                    {panelTab === tab.id && (
-                      <div className="absolute inset-x-2 -bottom-[9px] h-0.5 rounded-full bg-primary/60" />
-                    )}
-                    <tab.icon className="size-3.5" />
-                    <span className="hidden sm:inline">{tab.label}</span>
-                  </button>
-                ))}
+          {/* ═══ SELECTION ACTION POPUP — "Ask Learnyx AI" ═══ */}
+          <AnimatePresence>
+            {highlightedText && selectionPoint && !examMode && (
+              <motion.div
+                key="selection-popup"
+                initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.16 }}
+                className="fixed z-[70] w-[300px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-400/25 bg-[#0a0e17]/95 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.9),0_0_30px_-10px_rgba(34,211,238,0.3)] backdrop-blur-2xl"
+                style={{
+                  left: Math.max(8, Math.min(selectionPoint.x - 150, (typeof window !== "undefined" ? window.innerWidth : 400) - 308)),
+                  top: Math.max(8, selectionPoint.y - 96),
+                }}
+              >
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/50 to-transparent" />
+                <p className="type-mono flex items-center gap-1.5 px-3 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-300/80">
+                  <Sparkles className="size-3" /> Ask Learnyx AI
+                </p>
+                <p className="line-clamp-2 px-3 pb-2 text-[11px] leading-snug text-muted-foreground/50">“{highlightedText.slice(0, 120)}{highlightedText.length > 120 ? "…" : ""}”</p>
+                <div className="grid grid-cols-3 gap-1 px-2 pb-2">
+                  {(
+                    [
+                      { id: "explain" as const, label: "Explain", icon: Lightbulb },
+                      { id: "simplify" as const, label: "Simplify", icon: BookOpen },
+                      { id: "translate" as const, label: "Translate", icon: Languages },
+                      { id: "quiz" as const, label: "Quiz me", icon: NotebookPen },
+                      { id: "flashcard" as const, label: "Flashcard", icon: GalleryVerticalEnd },
+                      { id: "highlight" as const, label: "Highlight", icon: Highlighter },
+                    ]
+                  ).map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={() => runSelectionAction(action.id)}
+                      disabled={generatingFlashcards && action.id === "flashcard"}
+                      className={cn(
+                        "flex cursor-pointer flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[10px] font-semibold transition-all active:scale-95 disabled:opacity-40",
+                        action.id === "highlight"
+                          ? "border-amber-300/25 bg-amber-300/[0.06] text-amber-200 hover:bg-amber-300/[0.14]"
+                          : action.id === "flashcard"
+                            ? "border-primary/25 bg-primary/[0.07] text-primary hover:bg-primary/[0.14]"
+                            : "border-white/[0.07] bg-white/[0.03] text-foreground/75 hover:border-cyan-400/30 hover:bg-cyan-400/[0.08] hover:text-cyan-200",
+                      )}
+                    >
+                      {generatingFlashcards && action.id === "flashcard" ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <action.icon className="size-3.5" />
+                      )}
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground/60 hover:bg-white/5 hover:text-foreground sm:hidden transition-all"
-                  onClick={() => setPanelOpen(false)}
-                  aria-label="Close reader tools"
+                  onClick={dismissSelection}
+                  className="absolute right-1.5 top-1.5 flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/40 hover:bg-white/10 hover:text-foreground"
+                  aria-label="Dismiss"
                 >
-                  <X className="size-4" />
+                  <X className="size-3" />
                 </button>
-              </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Tab content */}
-              <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-lenis-prevent-wheel>
-                {/* ── AI Companion ── */}
-                {panelTab === "companion" && (
-                  <div id="reader-panel-companion" className="flex h-full flex-col">
-                    <div className="flex-1 space-y-3 overflow-y-auto p-3" data-lenis-prevent-wheel>
-                      {/* Info card */}
-                      <div className="relative overflow-hidden rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] to-transparent p-3.5">
-                        <div className="absolute -top-6 -right-6 size-20 rounded-full bg-primary/5 blur-2xl" />
-                        <p className="type-h3 flex items-center gap-2 text-foreground relative">
-                          <Sparkles className="size-3.5 text-primary" /> AI Reading Companion
-                        </p>
-                        <p className="type-caption mt-2 leading-relaxed text-muted-foreground/80 relative">
-                          Ask anything about <span className="text-foreground/80 font-medium">{item.title}</span>. The companion
-                          knows this item&apos;s subject, grade and linked topics.
-                        </p>
-                      </div>
+          {/* ═══ STUDY DOCK ═══ */}
+          {!profile?.isAnonymous && (
+            <StudyDock
+              docReady={docReady}
+              pageNumber={pageNumber}
+              numPages={numPages}
+              open={dockOpen}
+              onOpenChange={setDockOpen}
+              scratchText={scratchText}
+              onScratchTextChange={(v) => {
+                setScratchText(v);
+                setScratchSaved(false);
+              }}
+              scratchSaved={scratchSaved}
+              savingScratch={savingScratch}
+              onSaveScratch={() => void handleSaveScratch()}
+              highlights={readerHighlights}
+              onCaptureSelection={() => {
+                if (highlightedText) runSelectionAction("highlight");
+                else toast.info("Select some text in the textbook first, then tap “From selection”.");
+              }}
+              onRemoveHighlight={removeHighlight}
+              onClearHighlights={clearHighlights}
+              onJumpToPage={(page) => {
+                setPageNumber(Math.max(1, Math.min(numPages ?? page, page)));
+                setDockOpen(null);
+              }}
+              onGenerateFlashcards={(start, end) => void handleGenerateFlashcards(start, end)}
+              generatingFlashcards={generatingFlashcards}
+              flashcardResult={flashcardResult}
+              onFlashcardResultDismiss={() => setFlashcardResult(null)}
+              onOpenAI={openCompanion}
+              raised={practiceActive && item.contentType === "past_exam"}
+            />
+          )}
 
-                      {/* Messages */}
-                      {messages.map((message, index) => (
-                        <div
-                          key={index}
-                          className={cn(
-                            "rounded-xl px-3.5 py-2.5 text-[13px] leading-6 transition-all duration-200",
-                            message.role === "user"
-                              ? "ml-6 bg-primary/[0.08] border border-primary/10 text-foreground"
-                              : "mr-1 border border-white/[0.06] bg-white/[0.02] text-foreground/85",
-                          )}
-                        >
-                          <p className={cn("whitespace-pre-wrap", message.role === "assistant" && "text-[12.5px] leading-[1.7]")}>
-                            {message.content}
-                          </p>
-                        </div>
-                      ))}
+          {/* ═══ SIDE PANEL ═══ */}
+          <AnimatePresence>
+            {panelOpen && (
+              <>
+                {/* Mobile backdrop */}
+                <motion.button
+                  type="button"
+                  aria-label="Close reader panel"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm sm:hidden"
+                  onClick={() => setPanelOpen(false)}
+                />
+                <motion.aside
+                  key="reader-panel"
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "spring", stiffness: 350, damping: 35 }}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="reader-panel-title"
+                  className="absolute bottom-0 right-0 top-0 z-20 flex w-[85%] max-w-[380px] flex-col border-l border-white/[0.06] bg-[#0a0e17]/95 shadow-[-20px_0_60px_-20px_rgba(0,0,0,0.5)] backdrop-blur-2xl sm:static sm:z-auto sm:w-[380px] sm:max-w-none sm:shadow-none [&]:sm:transform-none"
+                >
+                  <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent sm:hidden" />
 
-                      {asking && (
-                        <div className="type-mono mr-1 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-muted-foreground/60">
-                          <div className="flex gap-1">
-                            <div className="size-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }} />
-                            <div className="size-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-                            <div className="size-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }} />
-                          </div>
-                          <span className="ml-1">thinking…</span>
-                        </div>
-                      )}
-                      <div ref={chatEndRef} />
-                    </div>
-
-                    {/* Chat input */}
-                    <div className="relative shrink-0 border-t border-white/[0.06] p-3">
-                      <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-1.5 transition-all duration-200 focus-within:border-primary/30 focus-within:bg-white/[0.05]">
-                        <label htmlFor="reader-question" className="sr-only">Ask the reading companion</label>
-                        <Input
-                          id="reader-question"
-                          value={question}
-                          onChange={(e) => setQuestion(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") void handleAsk(); }}
-                          placeholder="Ask about what you're reading…"
-                          className="h-8 flex-1 rounded-lg border-0 bg-transparent px-2 text-[13px] shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/40"
-                        />
-                        <Button
-                          size="icon"
-                          className="size-8 shrink-0 cursor-pointer rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-all duration-200"
-                          onClick={() => void handleAsk()}
-                          disabled={asking || !question.trim()}
-                          aria-label="Send"
-                        >
-                          <Send className="size-3.5" />
-                        </Button>
-                      </div>
-                    </div>
+                  {/* Tab bar */}
+                  <div className="relative flex shrink-0 items-center gap-1 border-b border-white/[0.06] px-2 py-2">
+                    <span id="reader-panel-title" className="sr-only">Reader tools</span>
+                    {(
+                      [
+                        { id: "companion" as const, label: "AI", desc: "Companion" },
+                        { id: "videos" as const, label: "Videos", desc: "Videos" },
+                        { id: "scratchpad" as const, label: "Calc", desc: "Scratchpad" },
+                      ]
+                    ).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setPanelTab(tab.id)}
+                        role="tab"
+                        aria-selected={panelTab === tab.id}
+                        aria-controls={`reader-panel-${tab.id}`}
+                        title={tab.desc}
+                        className={cn(
+                          "interactive-press relative flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 py-2 type-caption font-semibold transition-all duration-200",
+                          panelTab === tab.id
+                            ? tab.id === "companion"
+                              ? "text-cyan-300"
+                              : "text-primary"
+                            : "text-muted-foreground/60 hover:bg-white/[0.03] hover:text-muted-foreground",
+                        )}
+                      >
+                        {panelTab === tab.id && (
+                          <div className={cn("absolute inset-x-2 -bottom-[9px] h-0.5 rounded-full", tab.id === "companion" ? "bg-cyan-300/60" : "bg-primary/60")} />
+                        )}
+                        {tab.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground/60 transition-all hover:bg-white/5 hover:text-foreground sm:hidden"
+                      onClick={() => setPanelOpen(false)}
+                      aria-label="Close reader tools"
+                    >
+                      <X className="size-4" />
+                    </button>
                   </div>
-                )}
 
-                {/* ── Videos ── */}
-                {panelTab === "videos" && (
-                  <div id="reader-panel-videos" className="space-y-3 p-3">
-                    <div className="relative overflow-hidden rounded-xl border border-rose-500/15 bg-gradient-to-br from-rose-500/[0.05] to-transparent p-3.5">
-                      <div className="absolute -top-4 -right-4 size-16 rounded-full bg-rose-500/5 blur-xl" />
-                      <p className="type-h3 flex items-center gap-2 text-foreground relative">
-                        <Youtube className="size-3.5 text-rose-400" /> Topic Videos
-                      </p>
-                      <p className="type-caption mt-2 leading-relaxed text-muted-foreground/80 relative">
-                        Videos matched to <span className="text-foreground/80 font-medium">{item.subjectName} · Grade {item.grade}</span>. Opens in a new tab.
-                      </p>
-                    </div>
+                  {/* Tab content */}
+                  <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-lenis-prevent-wheel>
+                    {/* ── AI Companion ── */}
+                    {panelTab === "companion" && (
+                      <div id="reader-panel-companion" className="h-full">
+                        <AiCompanion
+                          itemTitle={item.title}
+                          subjectName={item.subjectName}
+                          grade={item.grade}
+                          pageNumber={pageNumber}
+                          docReady={docReady}
+                          messages={messages}
+                          asking={asking}
+                          question={question}
+                          onQuestionChange={setQuestion}
+                          onAsk={(override) => void handleAsk(override)}
+                          onQuickAction={(action) => void handleQuickAction(action)}
+                          pendingAction={pendingQuickAction}
+                          generatingFlashcards={generatingFlashcards}
+                        />
+                      </div>
+                    )}
 
-                    {searchingVideos && videos === null ? (
-                      <div className="flex flex-col items-center gap-3 py-12">
-                        <div className="relative">
-                          <div className="absolute inset-0 animate-ping rounded-full bg-rose-400/20" />
-                          <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-400/10 ring-1 ring-rose-400/20">
-                            <Loader2 className="size-5 animate-spin text-rose-400" />
+                    {/* ── Videos ── */}
+                    {panelTab === "videos" && (
+                      <div id="reader-panel-videos" className="space-y-3 p-3">
+                        <div className="relative overflow-hidden rounded-xl border border-rose-500/15 bg-gradient-to-br from-rose-500/[0.05] to-transparent p-3.5">
+                          <div className="absolute -right-4 -top-4 size-16 rounded-full bg-rose-500/5 blur-xl" />
+                          <p className="type-h3 relative flex items-center gap-2 text-foreground">
+                            <Youtube className="size-3.5 text-rose-400" /> Topic Videos
+                          </p>
+                          <p className="type-caption relative mt-2 leading-relaxed text-muted-foreground/80">
+                            Videos matched to <span className="font-medium text-foreground/80">{item.subjectName} · Grade {item.grade}</span>. Opens in a new tab.
+                          </p>
+                        </div>
+
+                        {searchingVideos && videos === null ? (
+                          <div className="flex flex-col items-center gap-3 py-12">
+                            <div className="relative">
+                              <div className="absolute inset-0 animate-ping rounded-full bg-rose-400/20" />
+                              <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-400/10 ring-1 ring-rose-400/20">
+                                <Loader2 className="size-5 animate-spin text-rose-400" />
+                              </div>
+                            </div>
+                            <p className="type-mono text-[11px] text-muted-foreground/50">Finding relevant videos…</p>
                           </div>
-                        </div>
-                        <p className="type-mono text-[11px] text-muted-foreground/50">Finding relevant videos…</p>
-                      </div>
-                    ) : youtubeConfigured === false ? (
-                      <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] px-5 py-10">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/10 ring-1 ring-amber-400/20">
-                          <Youtube className="size-5 text-amber-400" />
-                        </div>
-                        <div className="text-center">
-                          <p className="type-caption font-medium text-foreground/70">YouTube API key needed</p>
-                          <p className="mt-1.5 type-caption text-[11px] leading-relaxed text-muted-foreground/50 max-w-[200px]">
-                            Ask your admin to add <code className="rounded bg-white/[0.06] px-1 py-0.5 text-[10px] text-amber-300/80">YOUTUBE_API_KEY</code> in the Keys tab
-                          </p>
-                        </div>
-                      </div>
-                    ) : quotaExhausted ? (
-                      <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-amber-400/10 bg-amber-400/[0.02] px-5 py-10">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/10 ring-1 ring-amber-400/20">
-                          <RefreshCw className="size-5 text-amber-400" />
-                        </div>
-                        <div className="text-center">
-                          <p className="type-caption font-medium text-foreground/70">Daily video limit reached</p>
-                          <p className="mt-1.5 type-caption text-[11px] leading-relaxed text-muted-foreground/50 max-w-[200px]">
-                            YouTube's free quota resets tomorrow. Videos will appear again then.
-                          </p>
-                        </div>
-                      </div>
-                    ) : videos && videos.length === 0 ? (
-                      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/[0.04] px-5 py-10">
-                        <Youtube className="size-8 text-muted-foreground/20" />
-                        <p className="type-caption text-muted-foreground/40">No videos found for this topic yet.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {/* Priority channel section */}
-                        {videos && videos.some((v) => v.isPriority) && (
-                          <div>
-                            <p className="mb-2 flex items-center gap-1.5 type-mono text-[9px] uppercase tracking-[0.15em] text-rose-400/60">
-                              <Badge className="h-4 gap-1 rounded-md bg-rose-400/10 px-1.5 py-0 text-[9px] font-mono text-rose-400/80 border-0">✦ curated</Badge>
-                              Ethiopian education
-                            </p>
-                            <div className="space-y-2">
-                              {videos?.filter((v) => v.isPriority).map((video) => (
-                                <a
-                                  key={`p-${video.id}`}
-                                  href={`https://www.youtube.com/watch?v=${video.id}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group relative flex cursor-pointer gap-3 rounded-2xl border border-rose-400/10 bg-rose-400/[0.03] p-2.5 transition-all duration-300 hover:border-rose-400/25 hover:bg-rose-400/[0.06] hover:shadow-lg hover:shadow-rose-400/5"
-                                >
-                                  {video.thumbnail ? (
-                                    <div className="relative h-[68px] w-[110px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.08]">
-                                      <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
-                                        <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex h-[68px] w-[110px] shrink-0 items-center justify-center rounded-xl bg-rose-400/10 ring-1 ring-white/[0.08]">
-                                      <Youtube className="size-5 text-rose-400/50" />
-                                    </div>
-                                  )}
-                                  <div className="min-w-0 flex-1 py-0.5">
-                                    <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/80 group-hover:text-foreground transition-colors">
-                                      {video.title}
-                                    </p>
-                                    <p className="mt-2 flex items-center gap-1.5 type-caption text-[10px] text-muted-foreground/40">
-                                      <ExternalLink className="size-2.5" /> {video.channel}
-                                    </p>
-                                  </div>
-                                </a>
-                              ))}
+                        ) : youtubeConfigured === false ? (
+                          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] px-5 py-10">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/10 ring-1 ring-amber-400/20">
+                              <Youtube className="size-5 text-amber-400" />
+                            </div>
+                            <div className="text-center">
+                              <p className="type-caption font-medium text-foreground/70">YouTube API key needed</p>
+                              <p className="mt-1.5 type-caption max-w-[200px] text-[11px] leading-relaxed text-muted-foreground/50">
+                                Ask your admin to add <code className="rounded bg-white/[0.06] px-1 py-0.5 text-[10px] text-amber-300/80">YOUTUBE_API_KEY</code> in the Keys tab
+                              </p>
                             </div>
                           </div>
-                        )}
-
-                        {/* General section */}
-                        {videos && videos.some((v) => !v.isPriority) && (
-                          <div>
-                            {videos.some((v) => v.isPriority) && (
-                              <div className="my-3 flex items-center gap-2">
-                                <div className="h-px flex-1 bg-white/[0.06]" />
-                                <p className="type-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground/30">more results</p>
-                                <div className="h-px flex-1 bg-white/[0.06]" />
+                        ) : quotaExhausted ? (
+                          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-amber-400/10 bg-amber-400/[0.02] px-5 py-10">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/10 ring-1 ring-amber-400/20">
+                              <RefreshCw className="size-5 text-amber-400" />
+                            </div>
+                            <div className="text-center">
+                              <p className="type-caption font-medium text-foreground/70">Daily video limit reached</p>
+                              <p className="mt-1.5 type-caption max-w-[200px] text-[11px] leading-relaxed text-muted-foreground/50">
+                                YouTube's free quota resets tomorrow. Videos will appear again then.
+                              </p>
+                            </div>
+                          </div>
+                        ) : videos && videos.length === 0 ? (
+                          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/[0.04] px-5 py-10">
+                            <Youtube className="size-8 text-muted-foreground/20" />
+                            <p className="type-caption text-muted-foreground/40">No videos found for this topic yet.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {videos && videos.some((v) => v.isPriority) && (
+                              <div>
+                                <p className="mb-2 flex items-center gap-1.5 type-mono text-[9px] uppercase tracking-[0.15em] text-rose-400/60">
+                                  <Badge className="h-4 gap-1 rounded-md border-0 bg-rose-400/10 px-1.5 py-0 text-[9px] font-mono text-rose-400/80">✦ curated</Badge>
+                                  Ethiopian education
+                                </p>
+                                <div className="space-y-2">
+                                  {videos?.filter((v) => v.isPriority).map((video) => (
+                                    <a
+                                      key={`p-${video.id}`}
+                                      href={`https://www.youtube.com/watch?v=${video.id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="group relative flex cursor-pointer gap-3 rounded-2xl border border-rose-400/10 bg-rose-400/[0.03] p-2.5 transition-all duration-300 hover:border-rose-400/25 hover:bg-rose-400/[0.06] hover:shadow-lg hover:shadow-rose-400/5"
+                                    >
+                                      {video.thumbnail ? (
+                                        <div className="relative h-[68px] w-[110px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.08]">
+                                          <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
+                                            <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex h-[68px] w-[110px] shrink-0 items-center justify-center rounded-xl bg-rose-400/10 ring-1 ring-white/[0.08]">
+                                          <Youtube className="size-5 text-rose-400/50" />
+                                        </div>
+                                      )}
+                                      <div className="min-w-0 flex-1 py-0.5">
+                                        <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/80 transition-colors group-hover:text-foreground">
+                                          {video.title}
+                                        </p>
+                                        <p className="mt-2 flex items-center gap-1.5 type-caption text-[10px] text-muted-foreground/40">
+                                          <ExternalLink className="size-2.5" /> {video.channel}
+                                        </p>
+                                      </div>
+                                    </a>
+                                  ))}
+                                </div>
                               </div>
                             )}
-                            <div className="space-y-2">
-                              {videos?.filter((v) => !v.isPriority).map((video) => (
-                                <a
-                                  key={`g-${video.id}`}
-                                  href={`https://www.youtube.com/watch?v=${video.id}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group relative flex cursor-pointer gap-3 rounded-2xl border border-white/[0.05] bg-white/[0.015] p-2.5 transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-black/10"
-                                >
-                                  {video.thumbnail ? (
-                                    <div className="relative h-[60px] w-[100px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.06]">
-                                      <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
-                                        <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex h-[60px] w-[100px] shrink-0 items-center justify-center rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                                      <Youtube className="size-5 text-muted-foreground/20" />
-                                    </div>
-                                  )}
-                                  <div className="min-w-0 flex-1 py-0.5">
-                                    <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/70 group-hover:text-foreground transition-colors">
-                                      {video.title}
-                                    </p>
-                                    <p className="mt-2 flex items-center gap-1.5 type-caption text-[10px] text-muted-foreground/35">
-                                      <ExternalLink className="size-2.5" /> {video.channel}
-                                    </p>
+
+                            {videos && videos.some((v) => !v.isPriority) && (
+                              <div>
+                                {videos.some((v) => v.isPriority) && (
+                                  <div className="my-3 flex items-center gap-2">
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <p className="type-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground/30">more results</p>
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
                                   </div>
-                                </a>
-                              ))}
-                            </div>
+                                )}
+                                <div className="space-y-2">
+                                  {videos?.filter((v) => !v.isPriority).map((video) => (
+                                    <a
+                                      key={`g-${video.id}`}
+                                      href={`https://www.youtube.com/watch?v=${video.id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="group relative flex cursor-pointer gap-3 rounded-2xl border border-white/[0.05] bg-white/[0.015] p-2.5 transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-black/10"
+                                    >
+                                      {video.thumbnail ? (
+                                        <div className="relative h-[60px] w-[100px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.06]">
+                                          <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
+                                            <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex h-[60px] w-[100px] shrink-0 items-center justify-center rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                                          <Youtube className="size-5 text-muted-foreground/20" />
+                                        </div>
+                                      )}
+                                      <div className="min-w-0 flex-1 py-0.5">
+                                        <p className="line-clamp-2 type-caption font-semibold leading-[1.5] text-foreground/70 transition-colors group-hover:text-foreground">
+                                          {video.title}
+                                        </p>
+                                        <p className="mt-2 flex items-center gap-1.5 type-caption text-[10px] text-muted-foreground/35">
+                                          <ExternalLink className="size-2.5" /> {video.channel}
+                                        </p>
+                                      </div>
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full cursor-pointer rounded-xl text-muted-foreground/50 hover:text-foreground"
+                              onClick={() => {
+                                setVideos(null);
+                                setSearchingVideos(false);
+                              }}
+                            >
+                              <RefreshCw className="size-3.5" /> Refresh videos
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Scratchpad ── */}
+                    {panelTab === "scratchpad" && (
+                      <div id="reader-panel-scratchpad" className="flex h-full flex-col">
+                        <div className="flex items-center justify-between px-3 pb-1 pt-3">
+                          <div className="flex items-center gap-2">
+                            <div className="size-1.5 rounded-full bg-emerald-400/60" />
+                            <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60">
+                              Workings · auto-saved
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 cursor-pointer rounded-lg px-2 type-caption text-muted-foreground/50 hover:text-foreground"
+                            onClick={() => {
+                              setScratchText("");
+                              setScratchResult(null);
+                              setScratchSaved(false);
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+
+                        <div className="flex gap-2 px-3 pt-2">
+                          <label htmlFor="scratch-expression" className="sr-only">Expression to evaluate</label>
+                          <div className="flex flex-1 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 transition-all duration-200 focus-within:border-emerald-400/30">
+                            <Input
+                              id="scratch-expression"
+                              value={scratchInput}
+                              onChange={(e) => setScratchInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleEvaluate();
+                              }}
+                              placeholder="e.g. sqrt(144) or (2*3.14*6371)/(24)"
+                              className="h-7 flex-1 rounded-lg border-0 bg-transparent px-0 type-mono text-xs shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/30"
+                            />
+                            <Button
+                              size="sm"
+                              className="h-7 shrink-0 cursor-pointer rounded-lg border-0 bg-emerald-400/10 px-2 text-emerald-400 hover:bg-emerald-400/20"
+                              onClick={handleEvaluate}
+                            >
+                              <Calculator className="size-3" /> =
+                            </Button>
+                          </div>
+                        </div>
+
+                        {scratchResult && (
+                          <div className="mx-3 mt-2">
+                            <p
+                              className={cn(
+                                "rounded-lg border px-3 py-2 type-mono text-xs transition-all duration-200",
+                                scratchResult.startsWith("⚠")
+                                  ? "border-rose-400/20 bg-rose-400/[0.05] text-rose-300"
+                                  : "border-emerald-400/20 bg-emerald-400/[0.05] text-emerald-300",
+                              )}
+                            >
+                              {scratchResult}
+                            </p>
                           </div>
                         )}
 
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full cursor-pointer rounded-xl text-muted-foreground/50 hover:text-foreground"
-                          onClick={() => { setVideos(null); setSearchingVideos(false); }}
-                        >
-                          <RefreshCw className="size-3.5" /> Refresh videos
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ── Scratchpad ── */}
-                {panelTab === "scratchpad" && (
-                  <div id="reader-panel-scratchpad" className="flex h-full flex-col">
-                    <div className="flex items-center justify-between px-3 pt-3 pb-1">
-                      <div className="flex items-center gap-2">
-                        <div className="size-1.5 rounded-full bg-emerald-400/60" />
-                        <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60">
-                          Workings · auto-saved
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 cursor-pointer rounded-lg px-2 type-caption text-muted-foreground/50 hover:text-foreground"
-                        onClick={() => { setScratchText(""); setScratchResult(null); setScratchSaved(false); }}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-
-                    <div className="flex gap-2 px-3 pt-2">
-                      <label htmlFor="scratch-expression" className="sr-only">Expression to evaluate</label>
-                      <div className="flex flex-1 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 transition-all duration-200 focus-within:border-emerald-400/30">
-                        <Input
-                          id="scratch-expression"
-                          value={scratchInput}
-                          onChange={(e) => setScratchInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleEvaluate(); }}
-                          placeholder="e.g. sqrt(144) or (2*3.14*6371)/(24)"
-                          className="h-7 flex-1 rounded-lg border-0 bg-transparent px-0 type-mono text-xs shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/30"
+                        <textarea
+                          aria-label="Scratchpad notes"
+                          value={scratchText}
+                          onChange={(e) => {
+                            setScratchText(e.target.value);
+                            setScratchSaved(false);
+                          }}
+                          placeholder="Write workings, formulas, summaries…"
+                          className="mx-3 mt-2.5 min-h-0 flex-1 resize-none rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 font-mono text-[12px] leading-[1.7] text-foreground/85 outline-none transition-all duration-200 placeholder:text-muted-foreground/30 focus:border-primary/30"
                         />
-                        <Button
-                          size="sm"
-                          className="h-7 shrink-0 cursor-pointer rounded-lg bg-emerald-400/10 text-emerald-400 hover:bg-emerald-400/20 border-0 px-2"
-                          onClick={handleEvaluate}
-                        >
-                          <Calculator className="size-3" /> =
-                        </Button>
-                      </div>
-                    </div>
 
-                    {scratchResult && (
-                      <div className="mx-3 mt-2">
-                        <p
-                          className={cn(
-                            "rounded-lg border px-3 py-2 type-mono text-xs transition-all duration-200",
-                            scratchResult.startsWith("⚠")
-                              ? "border-rose-400/20 bg-rose-400/[0.05] text-rose-300"
-                              : "border-emerald-400/20 bg-emerald-400/[0.05] text-emerald-300",
-                          )}
-                        >
-                          {scratchResult}
-                        </p>
+                        <div className="flex items-center justify-between gap-2 p-3">
+                          <p className={cn("type-caption transition-colors", scratchSaved ? "text-emerald-400/50" : "text-amber-400/60")}>
+                            {scratchSaved ? "● saved" : "○ unsaved changes"}
+                          </p>
+                          <Button
+                            size="sm"
+                            className="h-8 cursor-pointer rounded-xl"
+                            onClick={() => void handleSaveScratch()}
+                            disabled={scratchSaved || savingScratch}
+                          >
+                            {savingScratch ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : scratchSaved ? (
+                              <BookmarkCheck className="size-3.5" />
+                            ) : null}
+                            {savingScratch ? "Saving…" : scratchSaved ? "Saved" : "Save notes"}
+                          </Button>
+                        </div>
                       </div>
                     )}
-
-                    <textarea
-                      aria-label="Scratchpad notes"
-                      value={scratchText}
-                      onChange={(e) => { setScratchText(e.target.value); setScratchSaved(false); }}
-                      placeholder="Write workings, formulas, summaries…"
-                      className="mx-3 mt-2.5 min-h-0 flex-1 resize-none rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 font-mono text-[12px] leading-[1.7] text-foreground/85 outline-none placeholder:text-muted-foreground/30 transition-all duration-200 focus:border-primary/30"
-                    />
-
-                    <div className="flex items-center justify-between gap-2 p-3">
-                      <p className={cn("type-caption transition-colors", scratchSaved ? "text-emerald-400/50" : "text-amber-400/60")}>
-                        {scratchSaved ? "● saved" : "○ unsaved changes"}
-                      </p>
-                      <Button
-                        size="sm"
-                        className="h-8 cursor-pointer rounded-xl"
-                        onClick={() => void handleSaveScratch()}
-                        disabled={scratchSaved || savingScratch}
-                      >
-                        {savingScratch ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : scratchSaved ? (
-                          <BookmarkCheck className="size-3.5" />
-                        ) : null}
-                        {savingScratch ? "Saving…" : scratchSaved ? "Saved" : "Save notes"}
-                      </Button>
-                    </div>
                   </div>
-                )}
-              </div>
-            </motion.aside>
-          </>
-        )}
-        </AnimatePresence>
+                </motion.aside>
+              </>
+            )}
+          </AnimatePresence>
+        </main>
       </div>
 
       {/* ═══ RELATED RESOURCES STRIP ═══ */}
-      {relatedItems.length > 0 && (
-        <footer className="relative shrink-0 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl z-20">
-          {/* Top glow line */}
+      {!studyMode && relatedItems.length > 0 && (
+        <footer className="relative z-20 shrink-0 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
           <div className="px-4 py-3 sm:px-5">
-            <p className="type-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/40 mb-2.5">
+            <p className="type-mono mb-2.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/40">
               related resources · shared topics
             </p>
             <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
@@ -1723,17 +1522,12 @@ export default function Reader() {
                   className="group flex shrink-0 cursor-pointer items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 transition-all duration-200 hover:border-primary/20 hover:bg-white/[0.04]"
                 >
                   <div className="flex size-7 items-center justify-center rounded-lg bg-primary/[0.08]">
-                    <MessageSquare className="size-3.5 text-primary/70 group-hover:text-primary transition-colors" />
+                    <MessageSquare className="size-3.5 text-primary/70 transition-colors group-hover:text-primary" />
                   </div>
-                  <span className="type-caption max-w-48 truncate font-semibold text-foreground/70 group-hover:text-foreground/90 transition-colors">
+                  <span className="type-caption max-w-48 truncate font-semibold text-foreground/70 transition-colors group-hover:text-foreground/90">
                     {relatedItem.title}
                   </span>
-                  <span
-                    className={cn(
-                      "type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 uppercase text-[9px]",
-                      subjectHue(relatedItem.subjectSlug),
-                    )}
-                  >
+                  <span className={cn("type-mono rounded-md border bg-gradient-to-b px-1.5 py-0.5 text-[9px] uppercase", subjectHue(relatedItem.subjectSlug))}>
                     {relatedItem.subjectSlug}
                   </span>
                 </Link>
@@ -1775,9 +1569,6 @@ export default function Reader() {
           contentTitle={item.title}
           subjectName={item.subjectName}
           answerKey={answerKey}
-          // Per-paper duration set by the admin (default 120 for past
-          // exams); falls back to the overlay's own 50-minute default for
-          // legacy rows without a duration.
           durationSeconds={item.durationMinutes ? item.durationMinutes * 60 : undefined}
           onClose={() => setExamMode(false)}
         />
