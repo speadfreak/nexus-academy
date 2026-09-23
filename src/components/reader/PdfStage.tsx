@@ -4,20 +4,23 @@
 // re-render the canvas tree (this component is React.memo'd — chat
 // keystrokes don't touch the document).
 //
-// PERFORMANCE MODEL (the "big PDF" fix):
-//   1. URL-first loading → pdf.js issues HTTP range requests and fetches
-//      only the chunks it needs. A 171 MB textbook renders page 1 from a
-//      few hundred KB instead of the full download.
-//   2. `disableAutoFetch: true` stops pdf.js from eagerly buffering the
-//      whole document in the background — pages are fetched on demand.
-//   3. `rangeChunkSize: 262144` (256 KB) — 4× fewer round-trips than the
-//      64 KB default, materially faster on high-latency mobile networks.
-//   4. PROGRESS-AWARE WATCHDOG: the old reader fell back to the browser's
-//      native viewer after a fixed 8s/15s timeout — which bounced huge
-//      documents into the "NATIVE VIEWER" (full download in an iframe,
-//      the exact slowness users complained about). Now the watchdog only
-//      fires when NO bytes have flowed for the timeout window. A slow-
-//      but-flowing stream keeps rendering with a live progress bar.
+// PERFORMANCE MODEL — FULL LOADING (the user's explicit, final decision):
+//   "Change the system to full loading — not part-by-part."
+//   Every document is loaded COMPLETELY, exactly once, then owned forever:
+//
+//   1. DEVICE CACHE FIRST — the whole file lives in IndexedDB after the
+//      first load. Re-opening any textbook is instant: 0 network bytes,
+//      0 waiting, works offline.
+//   2. PARALLEL SEGMENTED DOWNLOAD — a cold download fetches the ENTIRE
+//      file as up to 16 concurrent HTTP range segments (see fullLoader.ts)
+//      and streams them into one preallocated buffer. A 171.8MB textbook
+//      arrives in a fraction of the sequential-stream time.
+//   3. ONE pdf.js PARSE — the complete document is handed to pdf.js exactly
+//      once (fresh buffer, detached-ArrayBuffer contract below). Every page
+//      flip, thumbnail, search and jump afterwards is pure memory work.
+//   4. CALM FULL-LOAD UI — one honest percentage on a slim bar. No byte
+//      counters, no per-part messages.
+//
 //   5. Single-page rendering with pre-rendered ±1 neighbours → instant
 //      page flips, bounded memory.
 //   6. Thumbnails render lazily via IntersectionObserver with a small
@@ -25,8 +28,14 @@
 //   7. Search extracts page text incrementally (cached per session) and
 //      yields to the UI thread, so searching never janks the reader.
 //
-// Safety net chain (unchanged philosophy): URL range mode → ArrayBuffer
-// full download (with progress) → iframe (browser native viewer).
+// THE DETACHED-ARRAYBUFFER CONTRACT (this file's #1 invariant):
+//   pdf.js CONSTRUCTS a view over any ArrayBuffer it receives, then
+//   TRANSFERS it into its worker (GetDocRequest → `[data.buffer]`) — the
+//   main-thread copy dies on first use. Therefore `fullBuffer` is handed
+//   to pdf.js EXACTLY ONCE per load run, and every reload/retry derives a
+//   PROVABLY fresh buffer (Blob.arrayBuffer() returns a new copy per call
+//   by spec). The Blob (never the ArrayBuffer) is mirrored up to Reader,
+//   so exam mode can always mint its own fresh buffer.
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Component, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,19 +46,16 @@ import { Document, Page as PdfPage, pdfjs } from "react-pdf";
 // (the "Ask Learnyx AI" popup) is completely broken.
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
-import type { PdfChunkManifest } from "@/convex/schema";
-import { getCachedChunk, putCachedChunk } from "@/lib/pdfChunkCache";
-import { SPLIT_THRESHOLD_BYTES } from "@/convex/constants";
+import { downloadEntirePdf } from "@/lib/fullLoader";
+import { getCachedFile, putCachedFile } from "@/lib/pdfFullCache";
 import {
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Crown,
   Layers,
-  Loader2,
   Lock,
-  Maximize2,
   RotateCcw,
-  Scan,
   Search,
   X,
   ZoomIn,
@@ -65,15 +71,12 @@ import { cn } from "@/lib/utils";
 // (postinstall) — prevents the worker-version mismatch bug.
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-// Deliberately minimal: only pure pdf.js parameters, no cMapUrl /
-// standardFontDataUrl asset options (those caused silent render failures
-// when pointed at CDNs). These two are safe and are the core of the
-// big-PDF speedup. Defined at module level so the `options` object
-// identity never changes (a new object would remount the document).
-const PDF_OPTIONS = {
-  rangeChunkSize: 262144, // 256 KB range chunks
-  disableAutoFetch: true, // fetch pages on demand — never buffer 170 MB
-} as const;
+// Deliberately minimal: only pure pdf.js parameters. Defined at module level
+// so the `options` object identity never changes (a new object would remount
+// the document). Range/stream options are irrelevant here — the full-loading
+// engine hands pdf.js a COMPLETE in-memory document, which is why every
+// page flip, thumbnail and search is instant with zero further fetching.
+const PDF_OPTIONS = {};
 
 export interface OutlineChapter {
   title: string;
@@ -111,19 +114,12 @@ class PdfEngineBoundary extends Component<
   }
 }
 
-interface LoadProgress {
-  loaded: number;
-  total: number;
-}
-
 interface PdfStageProps {
   pdfUrl: string | null;
-  /** Mirrors the ArrayBuffer up to Reader (exam mode needs it). The Reader
-   * stores it in a REF — a state mirror here once re-created the `file`
-   * object mid-flight and re-ran getDocument() on a buffer pdf.js had
-   * already transferred (detached) into its worker, crashing with
-   * "Cannot perform Construct on a detached ArrayBuffer" (blue blank page). */
-  onPdfData: (data: ArrayBuffer) => void;
+  /** Mirrors the COMPLETE file up to Reader as a BLOB (exam mode mints its
+   * own fresh ArrayBuffer from it — see the detached-ArrayBuffer contract
+   * in the header). The Reader stores it in a REF — never state. */
+  onPdfData: (data: Blob) => void;
   pdfError: string | null;
   loadingPdf: boolean;
   pageNumber: number;
@@ -138,54 +134,10 @@ interface PdfStageProps {
   watermark?: string | null;
   /** Content id — used to reset per-document caches. */
   contentId: string;
-  /** Large-PDF chunk manifest — when present the stage fetches ONLY the
-   * chunk containing the current page (IndexedDB-cached + pre-fetched). */
-  chunkManifest?: PdfChunkManifest | null;
-  /** Original file size — files at/above the split threshold get a
-   * gentler fallback policy (never buffer a huge file into RAM). */
+  /** True file size (content metadata) — lets the full-loader plan its
+   * parallel segments without a HEAD probe, and validates cache entries. */
   fileSizeBytes?: number | null;
 }
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/**
- * Background pre-fetch of the NEXT chunk (Priority 5). By the time the
- * student reaches the chunk boundary, the next pages are usually already
- * in IndexedDB — page-turns feel instant even in a 180MB textbook.
- * Cache-only priority: if it's already cached this is a no-op. Failures
- * are silently ignored (the real load path handles errors when needed).
- */
-async function prefetchNextChunk(
-  contentId: string,
-  manifest: PdfChunkManifest,
-  currentIndex: number,
-): Promise<void> {
-  const next = currentIndex + 1;
-  if (next >= manifest.chunks.length) return;
-  try {
-    const cached = await getCachedChunk(contentId, next);
-    if (cached) return;
-    const res = await fetch(manifest.chunks[next].url);
-    if (!res.ok) return;
-    const blob = await res.blob();
-    if (blob.size > 4) await putCachedChunk(contentId, next, blob);
-  } catch {
-    // Silent — pre-fetch is best-effort.
-  }
-}
-
-/** Rotating, reassuring loader lines — Step 3's calm progress UI. The old
- * byte counter ("169.9 MB of 171.8 MB") actively created dread even when
- * the real wait was short. */
-const CALM_LOADING_MESSAGES = [
-  "Preparing your textbook…",
-  "Opening the pages…",
-  "Almost there — thanks for waiting…",
-  "Polishing the pages…",
-];
 
 export const PdfStage = memo(function PdfStage({
   pdfUrl,
@@ -202,28 +154,31 @@ export const PdfStage = memo(function PdfStage({
   onOutline,
   watermark,
   contentId,
-  chunkManifest = null,
   fileSizeBytes = null,
 }: PdfStageProps) {
-  // ── Fallback chain state ────────────────────────────────────────────
-  const [useIframeFallback, setUseIframeFallback] = useState(false);
-  const [iframeZoom, setIframeZoom] = useState<string>("fit-width");
-  const arrayBufferAttempted = useRef(false);
-  const [localBufferLoading, setLocalBufferLoading] = useState(false);
-  const [localBufferProgress, setLocalBufferProgress] = useState(0);
-  // The ArrayBuffer fallback lives HERE (not mirrored from Reader):
-  // pdf.js DETACHES every ArrayBuffer it receives — it is transferred into
-  // the worker unconditionally (pdf.mjs GetDocRequest: `data ? [data.buffer]
-  // : null`). Owning it locally guarantees each buffer is handed to pdf.js
-  // exactly once, and that `file` identity only changes when a genuinely
-  // NEW buffer arrives.
-  const [bufferData, setBufferData] = useState<ArrayBuffer | null>(null);
+  // ── FULL LOADING state (the entire document, one way or the other) ──
+  // fullBuffer: the COMPLETE document as one ArrayBuffer. It is produced
+  // fresh per load run (cache decode or segmented download) and handed to
+  // pdf.js EXACTLY ONCE — pdf.js transfers it into the worker (detaching
+  // it), so it is never reused, re-wrapped or mirrored as a buffer.
+  const [fullBuffer, setFullBuffer] = useState<ArrayBuffer | null>(null);
+  const [loadPhase, setLoadPhase] = useState<"idle" | "checking" | "downloading" | "opening" | "ready" | "error">("idle");
+  const [loadPercent, setLoadPercent] = useState(0);
+  const [loadFromCache, setLoadFromCache] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // The complete file as an immutable Blob — mirrored up to Reader (exam
+  // mode) and written to the device cache. Blobs are safe to keep forever;
+  // ArrayBuffers are not (pdf.js detaches what it receives).
+  const fullBlobRef = useRef<Blob | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const loadRunRef = useRef(0);
+  const lastProgressAtRef = useRef(0);
+  // Bumped to force a clean engine remount (retry / crash recovery) — part
+  // of the boundary resetKey so a crashed boundary actually recovers.
+  const [engineNonce, setEngineNonce] = useState(0);
 
   // ── Loading / render state ─────────────────────────────────────────
   const [docLoaded, setDocLoaded] = useState(false);
-  const [loadProgress, setLoadProgress] = useState<LoadProgress>({ loaded: 0, total: 0 });
-  const lastActivityRef = useRef(0);
-  const lastUiProgressRef = useRef(0);
   const [showTextLayers, setShowTextLayers] = useState(false);
   const textLayerTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [pageDirection, setPageDirection] = useState(1);
@@ -235,59 +190,34 @@ export const PdfStage = memo(function PdfStage({
   // ── Stage-local doc proxy (mirrored up to Reader) ───────────────────
   const [docProxy, setDocProxy] = useState<any>(null);
 
-  // ── CHUNKED MODE (large files) ─────────────────────────────────────
-  // The stage fetches ONLY the chunk containing the current page. Chunks
-  // are ~12MB, cached in IndexedDB, with the next chunk pre-fetched in
-  // the background so page-turns across chunk boundaries stay smooth.
-  const isChunked = Boolean(chunkManifest);
-  const [chunkIndex, setChunkIndex] = useState(0); // which chunk buffer holds
-  const [chunkBuffer, setChunkBuffer] = useState<ArrayBuffer | null>(null);
-  const [chunkLoading, setChunkLoading] = useState(false);
-  const [chunkError, setChunkError] = useState<string | null>(null);
-  const chunkLoadRunRef = useRef(0); // stale-load guard
-  // Bumped to force a clean engine remount (retry / crash recovery) — part
-  // of the boundary resetKey so a crashed boundary actually recovers.
-  const [engineNonce, setEngineNonce] = useState(0);
+  /** While the engine is opening the document, clamp the rendered page so
+   * the student never sees an out-of-range skeleton. */
+  const renderPage = pageNumber;
 
-  /** Which manifest chunk contains this global page? */
-  const chunkIndexForPage = useCallback(
-    (page: number): number => {
-      if (!chunkManifest) return -1;
-      const idx = chunkManifest.chunks.findIndex(
-        (c) => page >= c.startPage && page <= c.endPage,
-      );
-      return idx === -1 ? 0 : idx;
-    },
-    [chunkManifest],
-  );
-
-  const desiredChunkIndex = isChunked ? chunkIndexForPage(pageNumber) : -1;
-  const activeChunk = isChunked && chunkManifest ? chunkManifest.chunks[chunkIndex] : null;
-  /** Local (chunk-relative) page for the PdfPage element. */
-  const localPage = activeChunk ? pageNumber - activeChunk.startPage + 1 : pageNumber;
-  /** Page offset for thumbnails/search jump mapping. */
-  const pageOffset = activeChunk ? activeChunk.startPage - 1 : 0;
-  const chunkPageCount = activeChunk ? activeChunk.endPage - activeChunk.startPage + 1 : null;
-  /** While a chunk-boundary crossing is loading, clamp to the last page of
-   * the CURRENT chunk so the student never sees an out-of-range skeleton. */
-  const renderPage = Math.min(localPage, chunkPageCount ?? localPage);
-
-  // Chunk loader — cache-first, IndexedDB-backed, error-tolerant.
-  // `chunkIndex` + `engineNonce` in deps: both are how a retry forces the
-  // reload (the old retry button set chunkIndex(-1) but the effect never
-  // re-ran — its deps didn't include it — so "Try again" did nothing).
+  // ═══════════════════════════════════════════════════════════════════
+  // THE FULL-LOADING ENGINE — cache-first, parallel-download, one parse.
+  //   1. Device cache (IndexedDB) → instant open, zero network.
+  //   2. Otherwise downloadEntirePdf(): the COMPLETE file via parallel
+  //      HTTP range segments (see fullLoader.ts) with smooth % progress.
+  //   3. The verified bytes become a Blob (cache + exam-mode mirror) and
+  //      a FRESH ArrayBuffer for pdf.js — handed over exactly once.
+  // `engineNonce` in deps is how a retry forces a genuine reload: the
+  // effect re-runs and re-derives a provably fresh buffer.
+  // ═══════════════════════════════════════════════════════════════════
   useEffect(() => {
-    if (!isChunked || !chunkManifest || desiredChunkIndex < 0) return;
-    if (chunkIndex === desiredChunkIndex && (chunkBuffer || chunkLoading)) return;
-    const runId = ++chunkLoadRunRef.current;
+    if (!pdfUrl) {
+      setLoadPhase("idle");
+      return;
+    }
+    const runId = ++loadRunRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
     let cancelled = false;
 
     // The live docProxy belongs to the buffer we're about to replace, and
     // dies with the old Document. Drop it BEFORE the swap: the ±1 pre-render
     // pages call docProxy.getPage() synchronously — on a destroyed proxy that
     // throws "Cannot read properties of null (reading 'sendWithPromise')".
-    // Steady-state re-runs early-return above, so this only fires on
-    // genuine loads and retries.
     if (docProxy) {
       setDocProxy(null);
       onDocProxy(null);
@@ -295,66 +225,89 @@ export const PdfStage = memo(function PdfStage({
     }
 
     void (async () => {
-      setChunkLoading(true);
-      setChunkError(null);
-      const entry = chunkManifest.chunks[desiredChunkIndex];
+      setLoadError(null);
+      setLoadFromCache(false);
+      setLoadPercent(0);
       try {
-        // 1. IndexedDB cache first — re-visits are instant.
-        const cached = await getCachedChunk(contentId, desiredChunkIndex);
-        if (cancelled || runId !== chunkLoadRunRef.current) return;
+        // 1. Device cache first — re-opening any textbook is INSTANT.
+        setLoadPhase("checking");
+        const cached = await getCachedFile(contentId, fileSizeBytes);
+        if (cancelled || runId !== loadRunRef.current) return;
         if (cached) {
-          // .slice(0) — MANDATORY: Blob.arrayBuffer() returns the SAME cached
-          // backing buffer on every call, and pdf.js DETACHES whatever it
-          // receives. Handing it the shared buffer would poison the cache
-          // copy for the next mount (detached-ArrayBuffer crash).
-          setChunkBuffer((await cached.arrayBuffer()).slice(0));
-          setChunkIndex(desiredChunkIndex);
-          setChunkLoading(false);
-          void prefetchNextChunk(contentId, chunkManifest, desiredChunkIndex);
+          setLoadFromCache(true);
+          fullBlobRef.current = cached;
+          onPdfData(cached);
+          // Blob.arrayBuffer() returns a NEW ArrayBuffer per call (spec:
+          // it copies the blob's byte sequence) — exactly what the
+          // detached-ArrayBuffer contract requires. The byteLength
+          // sanity check guards against any engine quirk.
+          const ab = await cached.arrayBuffer();
+          const fresh = ab.byteLength > 0 ? ab : ab.slice(0);
+          if (cancelled || runId !== loadRunRef.current) return;
+          setLoadPhase("opening");
+          setFullBuffer(fresh);
           return;
         }
-        // 2. Network fetch.
-        const res = await fetch(entry.url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        if (cancelled || runId !== chunkLoadRunRef.current) return;
-        if (blob.size < 4) throw new Error("Empty chunk");
-        // 3. Store for future visits — never blocks the render path.
-        void putCachedChunk(contentId, desiredChunkIndex, blob);
-        setChunkBuffer(await blob.arrayBuffer());
-        setChunkIndex(desiredChunkIndex);
-        setChunkLoading(false);
-        // 4. Background pre-fetch of the next chunk (Priority 5).
-        void prefetchNextChunk(contentId, chunkManifest, desiredChunkIndex);
+        // 2. Full parallel download of the COMPLETE file.
+        setLoadPhase("downloading");
+        lastProgressAtRef.current = Date.now();
+        const result = await downloadEntirePdf(pdfUrl, {
+          expectedSize: fileSizeBytes,
+          signal: controller.signal,
+          onProgress: (p) => {
+            lastProgressAtRef.current = Date.now();
+            if (!p.probing && p.totalBytes > 0) {
+              setLoadPercent(Math.min(99, p.percent));
+            }
+          },
+        });
+        if (cancelled || runId !== loadRunRef.current) return;
+        // 3. Cache + mirror the immutable Blob (safe to keep forever),
+        //    then hand pdf.js the complete buffer. The Blob constructor
+        //    snapshots the bytes, so the later pdf.js transfer/detach of
+        //    result.buffer cannot affect the cached copy.
+        const blob = new Blob([result.buffer], { type: "application/pdf" });
+        fullBlobRef.current = blob;
+        onPdfData(blob);
+        void putCachedFile(contentId, blob); // never blocks the render path
+        setLoadPercent(100);
+        setLoadPhase("opening");
+        setFullBuffer(result.buffer);
       } catch (err) {
-        if (cancelled || runId !== chunkLoadRunRef.current) return;
-        setChunkLoading(false);
-        setChunkError(
+        if (cancelled || runId !== loadRunRef.current || controller.signal.aborted) return;
+        console.error("[PdfStage] Full load failed:", err);
+        setLoadPhase("error");
+        setLoadError(
           err instanceof Error
-            ? `Couldn't load part ${desiredChunkIndex + 1} of this document. ${err.message}`
-            : "Couldn't load part of this document.",
+            ? `Couldn't finish loading this document. ${err.message}`
+            : "Couldn't finish loading this document.",
         );
       }
     })();
 
     return () => {
       cancelled = true;
+      controller.abort();
+      if (abortRef.current === controller) abortRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isChunked, desiredChunkIndex, chunkIndex, engineNonce, chunkManifest, contentId]);
+  }, [pdfUrl, contentId, engineNonce]);
 
-  // Chunked mode reports the TRUE total page count immediately — no need
-  // to wait for any document to parse.
+  // STALL WATCHDOG — if the download stops moving for a long window
+  // (dropped connection, dead radio), surface the retry card instead of
+  // an eternal spinner. Progress timestamps feed it on every tick.
   useEffect(() => {
-    if (isChunked && chunkManifest) onNumPages(chunkManifest.totalPageCount);
-  }, [isChunked, chunkManifest, onNumPages]);
-
-  // Mirror the chunk buffer up to Reader (exam mode reads it from a ref —
-  // NEVER from state: a state mirror re-renders this stage and could re-create
-  // the `file` object on an already-transferred (detached) buffer).
-  useEffect(() => {
-    if (isChunked && chunkBuffer) onPdfData(chunkBuffer);
-  }, [isChunked, chunkBuffer, onPdfData]);
+    if (loadPhase !== "downloading") return;
+    const STALL_MS = 20000;
+    const interval = setInterval(() => {
+      if (Date.now() - lastProgressAtRef.current > STALL_MS) {
+        abortRef.current?.abort();
+        setLoadPhase("error");
+        setLoadError("The download stopped moving (network stall). Check your connection and try again.");
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [loadPhase]);
 
   // ── Overlays ────────────────────────────────────────────────────────
   const [thumbsOpen, setThumbsOpen] = useState(false);
@@ -362,143 +315,41 @@ export const PdfStage = memo(function PdfStage({
 
   // Any crash inside the pdf.js engine degrades the render path for THIS
   // document only — the app itself keeps running, and the error card sits
-  // OUTSIDE the boundary so it stays visible. Chunked documents get a
-  // retry card instead of the iframe (Chrome-Android has no built-in PDF
-  // viewer, so an iframe there is a permanent blank page — the stuck-blank
-  // "Native Viewer" bug reported on the 171.8MB textbook).
+  // OUTSIDE the boundary so it stays visible.
   //
   // BOUNDED AUTO-RECOVERY: the classic crash cause was pdf.js re-receiving
-  // a buffer it had already transferred (detached). Reloading the current
-  // chunk produces a provably fresh buffer, which heals the render path
-  // without user action. If it crashes twice more, the retry card stays.
+  // a buffer it had already transferred (detached). A reload run derives a
+  // provably fresh buffer (cache decode or re-download), which heals the
+  // render path without user action. If it crashes twice more, the retry
+  // card stays.
   const autoRetryRef = useRef(0);
   const handleEngineCrash = useCallback(() => {
-    if (isChunked) {
-      setChunkError("The document engine hit an unexpected error on this part.");
-      if (autoRetryRef.current < 2) {
-        autoRetryRef.current += 1;
-        chunkLoadRunRef.current += 1;
-        setChunkBuffer(null);
-        setChunkIndex(-1);
-        setEngineNonce((n) => n + 1);
-      }
-    } else {
-      setUseIframeFallback(true);
+    setLoadPhase("error");
+    setLoadError("The document engine hit an unexpected error.");
+    if (autoRetryRef.current < 2) {
+      autoRetryRef.current += 1;
+      setFullBuffer(null);
+      setEngineNonce((n) => n + 1);
     }
-  }, [isChunked]);
+  }, []);
 
   // Reset per-document state when the content changes.
   useEffect(() => {
-    setUseIframeFallback(false);
-    setIframeZoom("fit-width");
-    arrayBufferAttempted.current = false;
     setDocLoaded(false);
-    setLoadProgress({ loaded: 0, total: 0 });
     setDocProxy(null);
     setThumbsOpen(false);
     setSearchOpen(false);
-    setChunkIndex(0);
-    setChunkBuffer(null);
-    setChunkLoading(false);
-    setChunkError(null);
-    setBufferData(null);
+    setFullBuffer(null);
+    fullBlobRef.current = null;
+    setLoadPhase("idle");
+    setLoadPercent(0);
+    setLoadFromCache(false);
+    setLoadError(null);
     autoRetryRef.current = 0;
     setEngineNonce(0);
     basePageWidthRef.current = null;
     autoFitDoneRef.current = false;
   }, [contentId]);
-
-  // ── ArrayBuffer fallback (full download with progress) ──────────────
-  const loadAsArrayBuffer = useCallback(
-    async (url: string) => {
-      setLocalBufferLoading(true);
-      setLocalBufferProgress(0);
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        const contentLength = res.headers.get("content-length");
-        const total = contentLength ? parseInt(contentLength, 10) : 0;
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error("No readable stream");
-        const chunks: Uint8Array[] = [];
-        let received = 0;
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          received += value.length;
-          setLocalBufferProgress(total > 0 ? Math.min(99, Math.round((received / total) * 100)) : 0);
-        }
-        const totalLen = chunks.reduce((s, c) => s + c.length, 0);
-        const combined = new Uint8Array(totalLen);
-        let off = 0;
-        for (const chunk of chunks) {
-          combined.set(chunk, off);
-          off += chunk.length;
-        }
-        if (combined[0] === 0x25 && combined[1] === 0x50 && combined[2] === 0x44 && combined[3] === 0x46) {
-          setBufferData(combined.buffer as ArrayBuffer);
-          onPdfData(combined.buffer as ArrayBuffer);
-        } else {
-          setUseIframeFallback(true);
-        }
-      } catch {
-        setUseIframeFallback(true);
-      } finally {
-        setLocalBufferLoading(false);
-      }
-    },
-    [onPdfData],
-  );
-
-  // ── Progress-aware watchdog ─────────────────────────────────────────
-  // Falls back ONLY when no bytes have flowed for the window (or the
-  // document never started loading). A slow-but-flowing stream keeps
-  // rendering — huge files no longer bounce to the native viewer.
-  //
-  // Gating (the Native-Viewer blank-page fix):
-  //   - CHUNKED files: no watchdog at all — the chunk fetch has its own
-  //     error handling and retry. Never bounce a chunked document.
-  //   - OVERSIZE non-chunked files (≥ split threshold, no manifest yet):
-  //     never attempt the ArrayBuffer fallback (buffering 170MB into RAM
-  //     on a phone is the exact disaster this whole pipeline fixes). If
-  //     the stream genuinely stalls, degrade straight to the iframe.
-  useEffect(() => {
-    if (useIframeFallback || pdfError || docLoaded) return;
-    if (!pdfUrl && !bufferData) return;
-    if (localBufferLoading) return;
-    if (isChunked) return; // chunked mode handles its own loading
-
-    const isOversize = typeof fileSizeBytes === "number" && fileSizeBytes >= SPLIT_THRESHOLD_BYTES;
-    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
-    const windowMs = isMobile ? 15000 : 9000;
-    lastActivityRef.current = Date.now();
-
-    const interval = setInterval(() => {
-      const idleFor = Date.now() - lastActivityRef.current;
-      if (idleFor < windowMs) return;
-      if (
-        !isOversize &&
-        shouldTryArrayBuffer(pdfUrl, bufferData) &&
-        pdfUrl &&
-        !arrayBufferAttempted.current
-      ) {
-        arrayBufferAttempted.current = true;
-        lastActivityRef.current = Date.now(); // keep watching during download
-        void loadAsArrayBuffer(pdfUrl);
-      } else {
-        console.warn("[PdfStage] No progress for watchdog window — falling back to iframe.");
-        setUseIframeFallback(true);
-        clearInterval(interval);
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfUrl, bufferData, useIframeFallback, pdfError, docLoaded, localBufferLoading, isChunked, fileSizeBytes]);
-
-  function shouldTryArrayBuffer(url: string | null, data: ArrayBuffer | null): boolean {
-    return Boolean(url) && !data;
-  }
 
   // ── Deferred text layer: canvas first, text 120ms later ─────────────
   useEffect(() => {
@@ -514,20 +365,13 @@ export const PdfStage = memo(function PdfStage({
   //   TRANSFERS it into its worker (GetDocRequest → `[data.buffer]`) — the
   //   main-thread copy dies on first use. react-pdf re-runs getDocument()
   //   whenever the `file` OBJECT identity changes. Therefore `file` may
-  //   only be rebuilt from a PROVABLY fresh buffer (new chunkBuffer / new
-  //   bufferData) — never re-wrapped from one pdf.js already consumed.
-  //   `chunkIndex` is deliberately NOT a dep: the -1→0 retry transition
-  //   would re-wrap a consumed buffer → "Cannot perform Construct on a
-  //   detached ArrayBuffer" → permanent blank stage.
+  //   only be rebuilt from a PROVABLY fresh buffer (a new fullBuffer from
+  //   the load engine — cache decode or fresh download) — never re-wrapped
+  //   from one pdf.js already consumed.
   const file = useMemo(() => {
-    if (isChunked) {
-      if (chunkBuffer) return { data: chunkBuffer };
-      return null;
-    }
-    if (bufferData) return { data: bufferData };
-    if (pdfUrl) return { url: pdfUrl };
+    if (fullBuffer) return { data: fullBuffer };
     return null;
-  }, [isChunked, chunkBuffer, bufferData, pdfUrl]);
+  }, [fullBuffer]);
 
   // ── Page navigation with direction for the flip animation ───────────
   const goToPage = useCallback(
@@ -615,9 +459,13 @@ export const PdfStage = memo(function PdfStage({
     };
   }, [docProxy, onOutline]);
 
-  const busyBuffer = loadingPdf || localBufferLoading || (isChunked && chunkLoading);
+  const busyBuffer =
+    loadingPdf ||
+    loadPhase === "checking" ||
+    loadPhase === "downloading" ||
+    (loadPhase === "opening" && !docLoaded);
   const showProgressSplash =
-    busyBuffer || (!docLoaded && !useIframeFallback && !pdfError && !chunkError && Boolean(file));
+    busyBuffer || (Boolean(file) && !docLoaded && !pdfError && !loadError && loadPhase !== "error");
 
   // ════════════════════════════════════════════════════════════════════
   return (
@@ -630,59 +478,19 @@ export const PdfStage = memo(function PdfStage({
         style={{ backgroundImage: "radial-gradient(circle, white 0.5px, transparent 0.5px)", backgroundSize: "24px 24px" }}
       />
 
-      {/* ═══ IFRAME MODE — last-resort native viewer ═══ */}
-      {useIframeFallback && pdfUrl && !pdfError ? (
-        <div className="flex h-full flex-col">
-          <div className="relative z-10 flex shrink-0 items-center justify-center gap-1.5 border-b border-foreground/[0.04] bg-background/70 dark:bg-black/30 px-3 py-2 backdrop-blur-xl">
-            <span className="type-caption mr-2 text-[10px] uppercase tracking-widest text-muted-foreground/50">Native viewer</span>
-            {(
-              [
-                { id: "fit-width", label: "Fit Width", icon: Scan },
-                { id: "fit-page", label: "Fit Page", icon: Maximize2 },
-                { id: "100", label: "100%", icon: null },
-                { id: "150", label: "150%", icon: null },
-                { id: "200", label: "200%", icon: null },
-              ] as const
-            ).map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => setIframeZoom(preset.id)}
-                className={cn(
-                  "flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium transition-all duration-150 active:scale-95",
-                  iframeZoom === preset.id
-                    ? "border-primary/25 bg-primary/15 text-primary"
-                    : "border-transparent text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
-                )}
-              >
-                {preset.icon && <preset.icon className="size-3" />}
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <iframe
-            key={`${pdfUrl}#${iframeZoom}`}
-            src={`${pdfUrl}#${iframeZoom === "fit-width" ? "view=FitW&toolbar=0&navpanes=0" : iframeZoom === "fit-page" ? "view=FitH&toolbar=0&navpanes=0" : `zoom=${iframeZoom}&toolbar=0&navpanes=0`}`}
-            title="PDF document"
-            className="w-full flex-1 border-0 bg-foreground/5"
-            style={{ minHeight: 0 }}
-          />
-        </div>
-      ) : (
-        /* ═══ SMART READER MODE ═══
-           Loaders + error cards live OUTSIDE the engine boundary: when the
-           engine crashes, the boundary renders null — and the student must
-           STILL see the retry card. The old layout put them INSIDE, so a
-           crash hid every message and left the permanent blue blank page. */
-        <>
-          {/* Thumbnails rail (lazy) — chunked mode shows the CURRENT chunk
-              with true global page numbers (pageOffset) */}
+      {/* ═══ SMART READER MODE — full loading ═══
+          Loaders + error cards live OUTSIDE the engine boundary: when the
+          engine crashes, the boundary renders null — and the student must
+          STILL see the retry card. The old layout put them INSIDE, so a
+          crash hid every message and left the permanent blue blank page. */}
+      <>
+          {/* Thumbnails rail (lazy) — the FULL document, true page numbers */}
           <AnimatePresence>
             {thumbsOpen && docProxy && numPages && (
               <ThumbnailsRail
                 doc={docProxy}
-                numPages={chunkPageCount ?? numPages}
-                pageOffset={pageOffset}
+                numPages={numPages}
+                pageOffset={0}
                 pageNumber={pageNumber}
                 onJump={goToPage}
                 onClose={() => setThumbsOpen(false)}
@@ -690,15 +498,14 @@ export const PdfStage = memo(function PdfStage({
             )}
           </AnimatePresence>
 
-          {/* In-document search — chunked mode scans the current chunk; the
-              next chunk is usually pre-fetched by the time the student
-              reaches it, and search re-runs per chunk. */}
+          {/* In-document search — the FULL document is loaded, so search
+              scans every page with zero network access. */}
           <AnimatePresence>
             {searchOpen && docProxy && numPages && (
               <SearchOverlay
                 doc={docProxy}
-                numPages={chunkPageCount ?? numPages}
-                pageOffset={pageOffset}
+                numPages={numPages}
+                pageOffset={0}
                 onJump={goToPage}
                 onClose={() => setSearchOpen(false)}
               />
@@ -708,11 +515,17 @@ export const PdfStage = memo(function PdfStage({
           {/* Scrollable stage — centered page with soft shadow */}
           <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" data-lenis-prevent-wheel>
             <div className="mx-auto flex min-h-full w-fit flex-col items-center px-4 py-6 sm:px-10">
-              {/* Loading splash — CALM (Step 3). No byte counters: a raw
-                  MB counter against a 170MB total creates dread even when
-                  the wait is short. First 3s are silent; past that we show
-                  a rotating reassurance + elapsed seconds. */}
-              {showProgressSplash && <CalmLoader chunked={isChunked} />}
+              {/* Loading splash — the FULL-LOAD experience. One honest
+                  percentage on a slim bar while the entire document
+                  arrives (or is decoded from the device cache). No byte
+                  counters, no part numbers, no guilt. */}
+              {showProgressSplash && (
+                <FullLoadLoader
+                  phase={loadPhase === "checking" || loadPhase === "idle" ? "checking" : loadPhase === "downloading" ? "downloading" : "opening"}
+                  percent={loadPercent}
+                  fromCache={loadFromCache}
+                />
+              )}
 
               {/* Error state — cinematic + real error */}
               {pdfError && (
@@ -763,11 +576,10 @@ export const PdfStage = memo(function PdfStage({
                 </div>
               )}
 
-              {/* Chunk-load error — calm retry card. Chunked documents NEVER
-                  fall back to the iframe: on Chrome-Android that's a
-                  permanent blank page, and buffering a huge file into RAM
-                  is the disaster this mode exists to prevent. */}
-              {chunkError && !pdfError && (
+              {/* Load error — calm retry card. A failed or stalled load
+                  NEVER bounces anywhere else: the retry re-runs the full
+                  loading engine with a provably fresh buffer. */}
+              {loadError && !pdfError && (
                 <div className="mx-auto mt-20 flex flex-col items-center gap-6">
                   <div className="relative">
                     <div className="absolute -inset-8 rounded-full bg-amber-500/10 blur-2xl" />
@@ -777,21 +589,21 @@ export const PdfStage = memo(function PdfStage({
                   </div>
                   <div className="max-w-md text-center">
                     <h2 className="type-h2 bg-gradient-to-r from-amber-200 to-amber-400/70 bg-clip-text text-transparent">
-                      Having trouble turning the pages
+                      Having trouble opening this document
                     </h2>
-                    <p className="type-body mt-2 leading-relaxed text-muted-foreground/70">{chunkError}</p>
+                    <p className="type-body mt-2 leading-relaxed text-muted-foreground/70">{loadError}</p>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
                     className="rounded-xl border-foreground/10 bg-foreground/5 hover:bg-foreground/10"
                     onClick={() => {
-                      // Force a clean re-load of the current chunk with a
-                      // provably FRESH buffer + an engine remount.
-                      chunkLoadRunRef.current += 1;
-                      setChunkBuffer(null);
-                      setChunkIndex(-1);
-                      setChunkError(null);
+                      // Force a clean re-run of the full loading engine
+                      // with a provably FRESH buffer + an engine remount.
+                      loadRunRef.current += 1;
+                      setFullBuffer(null);
+                      setLoadError(null);
+                      setLoadPhase("checking");
                       setEngineNonce((n) => n + 1);
                     }}
                   >
@@ -802,69 +614,36 @@ export const PdfStage = memo(function PdfStage({
 
               {/* Document + page — the engine boundary wraps ONLY this
                   subtree, with a resetKey: any crash degrades to null and
-                  the boundary RECOVERS when the chunk/content changes or
-                  the student taps retry. NO key on the page wrapper — the
-                  Document mounts ONCE per chunk and stays mounted across
-                  page flips (remounting it re-ran getDocument() on a buffer
-                  pdf.js had already transferred/detached into its worker →
-                  "Cannot perform Construct on a detached ArrayBuffer" → the
+                  the boundary RECOVERS when the content changes or the
+                  student taps retry. NO key on the page wrapper — the
+                  Document mounts ONCE and stays mounted across page flips
+                  (remounting it re-ran getDocument() on a buffer pdf.js had
+                  already transferred/detached into its worker → "Cannot
+                  perform Construct on a detached ArrayBuffer" → the
                   permanent blank stage). Only the page-animator inside is
                   keyed by pageNumber. */}
-              {file && !pdfError && !chunkError && (
+              {file && !pdfError && !loadError && (
                 <PdfEngineBoundary
                   onCrash={handleEngineCrash}
-                  resetKey={`${contentId}:${isChunked ? `chunk-${chunkIndex}` : "doc"}:${engineNonce}`}
+                  resetKey={`${contentId}:doc:${engineNonce}`}
                 >
                   <div className="relative">
                     <Document
-                      key={isChunked ? `chunk-${chunkIndex}` : "doc"}
+                      key="doc"
                       file={file}
                       options={PDF_OPTIONS}
-                      onLoadProgress={(progress) => {
-                        try {
-                          if (!progress) return;
-                          // Any byte flow proves the stream is alive — feed the watchdog.
-                          lastActivityRef.current = Date.now();
-                          const now = Date.now();
-                          if (now - lastUiProgressRef.current < 250) return; // throttle re-renders
-                          lastUiProgressRef.current = now;
-                          setLoadProgress({
-                            loaded: typeof progress.loaded === "number" ? progress.loaded : 0,
-                            total: typeof progress.total === "number" ? progress.total : 0,
-                          });
-                        } catch {
-                          // Non-fatal: progress callback errors must never break the render.
-                        }
-                      }}
                       onLoadSuccess={(pdf) => {
-                        lastActivityRef.current = Date.now();
-                        // Chunked mode: the loaded "document" is one chunk —
-                        // report the TRUE total page count from the manifest.
-                        onNumPages(isChunked && chunkManifest ? chunkManifest.totalPageCount : pdf.numPages);
+                        onNumPages(pdf.numPages);
                         setDocProxy(pdf);
                         onDocProxy(pdf);
                         setDocLoaded(true);
-                        setLoadProgress({ loaded: 0, total: 0 });
+                        setLoadPhase("ready"); // full document parsed — drop the loader
                       }}
                       onLoadError={(error) => {
                         console.error("[PdfStage] PDF load failed:", error);
                         const msg = error?.message || String(error);
-                        if (isChunked) {
-                          setChunkError(`The document engine couldn't open this part. ${msg}`);
-                        } else if (msg.includes("worker") || msg.includes("Worker")) {
-                          setUseIframeFallback(true);
-                        } else if (
-                          pdfUrl &&
-                          !bufferData &&
-                          !arrayBufferAttempted.current &&
-                          !(typeof fileSizeBytes === "number" && fileSizeBytes >= SPLIT_THRESHOLD_BYTES)
-                        ) {
-                          // Small files only — never buffer an oversized file into RAM.
-                          arrayBufferAttempted.current = true;
-                          void loadAsArrayBuffer(pdfUrl);
-                        } else {
-                          setUseIframeFallback(true);
-                        }
+                        setLoadPhase("error");
+                        setLoadError(`The document engine couldn't open the file. ${msg}`);
                       }}
                       loading={null}
                       className="flex flex-col items-center"
@@ -933,15 +712,15 @@ export const PdfStage = memo(function PdfStage({
                       MANDATORY — without it react-pdf's Page invariant throws
                       "Invariant failed" and killed the whole app (the crash the
                       production app hit on every document open).
-                      Chunked mode: neighbour pages are clamped to the CURRENT
-                      chunk — crossing a boundary is the chunk loader's job. */}
+                      The FULL document is always loaded, so neighbours are
+                      plain page numbers — no chunk clamping, ever. */}
                   {numPages && docProxy && docLoaded && (
                     <div className="pointer-events-none absolute h-0 w-0 overflow-hidden" aria-hidden="true">
-                      {localPage > 1 && (
-                        <PdfPage pdf={docProxy} pageNumber={localPage - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                      {pageNumber > 1 && (
+                        <PdfPage pdf={docProxy} pageNumber={pageNumber - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
                       )}
-                      {localPage < (chunkPageCount ?? localPage + 1) && (
-                        <PdfPage pdf={docProxy} pageNumber={localPage + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                      {pageNumber < numPages && (
+                        <PdfPage pdf={docProxy} pageNumber={pageNumber + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
                       )}
                     </div>
                   )}
@@ -1036,7 +815,6 @@ export const PdfStage = memo(function PdfStage({
             </div>
           )}
         </>
-      )}
 
       {/* Watermark overlay — cosmetic deterrent, covers BOTH render modes */}
       {watermark && (
@@ -1108,50 +886,97 @@ function PageInput({
     />
   );
 }
+// ═══════════════════════════════════════════════════════════════════════
+// FullLoadLoader — the full-loading experience.
+// The ENTIRE document is arriving (or being decoded from the device
+// cache), so the UI says exactly that with ONE honest percentage on a
+// slim bar. No byte counters ("169.9 MB of 171.8 MB" created dread), no
+// per-part messages, no elapsed-seconds guilt — calm, premium, truthful
+// progress. Theme-aware via foreground/background tokens (light + dark).
+// ═══════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════
-// CalmLoader — the Step 3 progress experience.
-// "169.9 MB of 171.8 MB" was technically honest and emotionally terrible.
-// This replaces byte counts with: a quiet first 3 seconds, then rotating
-// reassurance + elapsed time + an indeterminate shimmer. Done well, a
-// short wait feels intentional instead of broken.
-// ═══════════════════════════════════════════════════════════════════
-
-function CalmLoader({ chunked }: { chunked: boolean }) {
-  const [elapsed, setElapsed] = useState(0);
+function FullLoadLoader({
+  phase,
+  percent,
+  fromCache,
+}: {
+  phase: "checking" | "downloading" | "opening";
+  percent: number;
+  fromCache: boolean;
+}) {
+  const [mountedAt] = useState(() => Date.now());
+  const [, forceTick] = useState(0);
   useEffect(() => {
-    const start = Date.now();
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    const t = setInterval(() => forceTick((n) => n + 1), 250);
     return () => clearInterval(t);
   }, []);
+  // Never flash a loader for an instant cache hit — only appear if the
+  // phase has actually lasted a beat.
+  const elapsed = Date.now() - mountedAt;
+  if (elapsed < 350) return null;
 
-  const slow = elapsed >= 3;
-  const message = CALM_LOADING_MESSAGES[Math.floor(elapsed / 2.5) % CALM_LOADING_MESSAGES.length];
+  const headline =
+    phase === "checking"
+      ? "Preparing your document"
+      : phase === "downloading"
+        ? "Loading your complete textbook"
+        : "Opening every page";
+  const subline =
+    phase === "downloading"
+      ? "The full document is on its way — nothing more to load after this"
+      : phase === "checking"
+        ? "One moment…"
+        : fromCache
+          ? "Loaded from your device — all pages instant"
+          : "Assembling the complete document";
+  const indeterminate = phase !== "downloading";
 
   return (
-    <div className="flex h-full min-h-[60vh] w-full flex-col items-center justify-center gap-6">
-      <div className="relative">
-        <div className="absolute -inset-8 animate-pulse rounded-full bg-primary/5 blur-2xl" />
-        <div className="absolute -inset-4 animate-spin rounded-full border border-primary/10" style={{ animationDuration: "4s" }} />
-        <div className="relative flex size-16 items-center justify-center rounded-2xl border border-foreground/10 bg-foreground/[0.03] backdrop-blur-xl">
-          <Loader2 className="size-6 animate-spin text-primary" />
+    <div className="flex h-full min-h-[60vh] w-full flex-col items-center justify-center gap-7 px-6">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        className="flex flex-col items-center gap-7"
+      >
+        {/* Emblem */}
+        <div className="relative">
+          <div className="absolute -inset-8 animate-pulse rounded-full bg-primary/[0.08] blur-2xl" />
+          <div
+            className="absolute -inset-3 animate-spin rounded-full border border-primary/15 border-t-primary/50"
+            style={{ animationDuration: "2.8s" }}
+          />
+          <div className="relative flex size-16 items-center justify-center rounded-2xl border border-foreground/10 bg-foreground/[0.03] shadow-[0_12px_40px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            <BookOpen className="size-6 text-primary" />
+          </div>
         </div>
-      </div>
-      <div className="w-64 text-center">
-        <p className="type-mono text-sm uppercase tracking-widest text-muted-foreground/80">
-          {chunked ? "Opening your textbook" : "Preparing your document"}
-        </p>
-        {slow ? (
-          <p className="type-mono mt-2 h-4 text-[10px] text-muted-foreground/40 transition-opacity">
-            {message} · {elapsed}s
+
+        {/* Percent + bar */}
+        <div className="flex w-[min(78vw,20rem)] flex-col items-center gap-3">
+          {!indeterminate ? (
+            <p className="type-h1 tabular-nums leading-none text-foreground">
+              {Math.max(1, Math.min(99, percent))}
+              <span className="type-mono ml-1 align-top text-xs text-muted-foreground/50">%</span>
+            </p>
+          ) : (
+            <p className="type-mono text-sm uppercase tracking-[0.25em] text-muted-foreground/80">{headline}</p>
+          )}
+          <div className="relative h-1 w-full overflow-hidden rounded-full bg-foreground/[0.07]">
+            {indeterminate ? (
+              <div className="absolute inset-y-0 left-0 w-1/3 animate-[shimmer-slide_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
+            ) : (
+              <motion.div
+                className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary/70 to-primary"
+                animate={{ width: `${Math.max(2, Math.min(99, percent))}%` }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+              />
+            )}
+          </div>
+          <p className="type-mono min-h-4 text-center text-[10px] text-muted-foreground/45">
+            {headline} · {subline}
           </p>
-        ) : (
-          <p className="type-mono mt-2 h-4 text-[10px] text-muted-foreground/20">just a moment</p>
-        )}
-        <div className="mx-auto mt-3 h-0.5 w-32 overflow-hidden rounded-full bg-foreground/[0.06]">
-          <div className="h-full w-1/3 animate-[shimmer-slide_1.5s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-primary to-transparent" />
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

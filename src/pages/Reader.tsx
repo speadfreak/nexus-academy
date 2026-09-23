@@ -58,7 +58,6 @@ import {
   type ContentType,
 } from "@/convex/constants";
 import type { ContentItemWithSubject } from "@/convex/content";
-import type { PdfChunkManifest } from "@/convex/schema";
 import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
 import { PracticeSessionPanel } from "@/components/reader/PracticePanel";
@@ -141,12 +140,12 @@ export default function Reader() {
 
   // --- PDF pipeline state (owned here, rendered by the memoized stage) ---
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  // Exam mode's PDF bytes live in a REF, never state: a state mirror used to
-  // re-render PdfStage with a new `file` object identity mid-flight, re-running
-  // getDocument() on an ArrayBuffer pdf.js had already transferred (detached)
-  // into its worker — the "Cannot perform Construct on a detached ArrayBuffer"
-  // crash behind the blue blank page.
-  const pdfDataRef = useRef<ArrayBuffer | null>(null);
+  // Exam mode's PDF bytes live in a REF as an immutable BLOB, never state
+  // and never an ArrayBuffer: pdf.js DETACHES every ArrayBuffer it receives
+  // (transferred into its worker), so the reader mirrors the file as a Blob
+  // and exam mode mints its OWN fresh ArrayBuffer from that Blob on entry —
+  // the bulletproof version of the detached-ArrayBuffer contract.
+  const pdfBlobRef = useRef<Blob | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -301,32 +300,15 @@ export default function Reader() {
   const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
   const [flashcardResult, setFlashcardResult] = useState<{ deckId: string; cardCount: number } | null>(null);
 
-  // ── Chunk-aware text extraction ─────────────────────────────────────
-  // In chunked mode docProxy wraps ONLY the current chunk (local pages),
-  // while callers think in GLOBAL page numbers. This maps the requested
-  // range into the loaded chunk and clamps it — and it never triggers a
-  // download of the full original file.
+  // ── Text extraction for AI/flashcards ───────────────────────────────
+  // The full document is always loaded, so docProxy spans EVERY page with
+  // real global page numbers — no chunk mapping anywhere.
   const extractTextForGlobalRange = useCallback(
     async (fromGlobal: number, toGlobal: number, maxChars: number): Promise<string> => {
       if (!docProxy) return "";
-      const manifest = (item as { pdfChunks?: PdfChunkManifest } | null | undefined)?.pdfChunks;
-      if (manifest) {
-        const chunk = manifest.chunks.find(
-          (c) => pageNumber >= c.startPage && pageNumber <= c.endPage,
-        );
-        if (chunk) {
-          const localFrom = Math.max(1, fromGlobal - chunk.startPage + 1);
-          const localTo = Math.min(
-            (docProxy as { numPages: number }).numPages ?? chunk.endPage - chunk.startPage + 1,
-            toGlobal - chunk.startPage + 1,
-          );
-          if (localTo < localFrom) return "";
-          return extractPageTextFromProxy(docProxy, localFrom, localTo, maxChars);
-        }
-      }
       return extractPageTextFromProxy(docProxy, fromGlobal, toGlobal, maxChars);
     },
-    [docProxy, item, pageNumber],
+    [docProxy],
   );
 
   const handleGenerateFlashcards = useCallback(
@@ -341,16 +323,14 @@ export default function Reader() {
         let pageText = "";
         const from = startPage ?? Math.max(1, pageNumber - 3);
         const to = endPage ?? pageNumber + 3;
-        const manifest = (item as { pdfChunks?: PdfChunkManifest } | null | undefined)?.pdfChunks;
         if (selectionText) {
           pageText = selectionText;
         } else if (docProxy) {
           pageText = await extractTextForGlobalRange(from, to, 6000);
         }
-        if (!pageText.trim() && !selectionText && (pdfUrl || item.fileUrl) && !manifest) {
-          // NOTE: full-file fetch fallback is SKIPPED for chunked documents —
-          // downloading the 171.8MB original to read a few pages of text is
-          // exactly the disaster the chunking pipeline exists to prevent.
+        if (!pageText.trim() && !selectionText && (pdfUrl || item.fileUrl)) {
+          // Rare fallback: only fires when the live docProxy can't provide
+          // text (the full document is normally already in memory).
           toast.info("Extracting text from PDF…");
           try {
             const response = await fetch(pdfUrl || item.fileUrl);
@@ -743,15 +723,15 @@ export default function Reader() {
   const handleStageNumPages = useCallback((n: number | null) => setNumPages(n), []);
   const handleStageDocProxy = useCallback((doc: unknown) => setDocProxy(doc), []);
   const handleStageOutline = useCallback((chapters: OutlineChapter[] | null) => setOutlineChapters(chapters), []);
-  const handleStagePdfData = useCallback((data: ArrayBuffer) => {
-    pdfDataRef.current = data; // ref write — never re-renders the stage
+  const handleStagePdfData = useCallback((data: Blob) => {
+    pdfBlobRef.current = data; // ref write — never re-renders the stage
   }, []);
 
 
   // Reset document-local UI state when the content changes.
   useEffect(() => {
     setPdfUrl(null);
-    pdfDataRef.current = null;
+    pdfBlobRef.current = null;
     setPdfError(null);
     setNumPages(null);
     setPageNumber(1);
@@ -767,7 +747,7 @@ export default function Reader() {
   useEffect(() => {
     if (!readerItemId || !item) {
       setPdfUrl(null);
-      pdfDataRef.current = null;
+      pdfBlobRef.current = null;
       return;
     }
     let cancelled = false;
@@ -1040,7 +1020,6 @@ export default function Reader() {
               onDocProxy={handleStageDocProxy}
               onOutline={handleStageOutline}
               watermark={watermark}
-              chunkManifest={item.pdfChunks ?? null}
               fileSizeBytes={item.fileSizeBytes ?? null}
             />
           )}
@@ -1620,7 +1599,7 @@ export default function Reader() {
       {/* ══════ Exam Mode overlay (Feature 1) ══════ */}
       {examMode && item && (
         <ReaderExamMode
-          pdfData={pdfDataRef.current}
+          pdfBlob={pdfBlobRef.current}
           pdfUrl={pdfUrl}
           numPages={numPages ?? 0}
           contentId={item._id}

@@ -70,9 +70,11 @@ export type AnswerKeyInfo = {
 };
 
 export type ExamModeProps = {
-  // The loaded PDF data + page state from the parent Reader. We don't
-  // duplicate the load — we reuse what the Reader already fetched.
-  pdfData: ArrayBuffer | null;
+  // The loaded PDF as an immutable BLOB from the parent Reader. Exam mode
+  // mints its OWN fresh ArrayBuffer from it on entry — pdf.js detaches any
+  // buffer it receives (transfers it into the worker), so exam mode must
+  // never reuse a buffer the main stage already handed over.
+  pdfBlob: Blob | null;
   pdfUrl: string | null;
   numPages: number;
   // The content item's identity — used to log the study session.
@@ -102,6 +104,32 @@ export function ReaderExamMode(props: ExamModeProps) {
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
   const [submitting, setSubmitting] = useState(false);
+
+  // ── Fresh buffer for this overlay's own pdf.js parse ──────────────────
+  // Blob.arrayBuffer() returns a NEW ArrayBuffer on every call (spec: it
+  // copies the byte sequence), so this buffer is provably untouched by
+  // whatever pdf.js did with the main stage's copy. Minted once per mount;
+  // handed to <Document> exactly once.
+  const [examBuffer, setExamBuffer] = useState<ArrayBuffer | null>(null);
+  const [examBufferError, setExamBufferError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setExamBuffer(null);
+    setExamBufferError(false);
+    if (!props.pdfBlob) return;
+    void props.pdfBlob
+      .arrayBuffer()
+      .then((ab) => {
+        if (!cancelled) setExamBuffer(ab.byteLength > 0 ? ab : ab.slice(0));
+      })
+      .catch(() => {
+        if (!cancelled) setExamBufferError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.pdfBlob]);
 
   // ── Session tracker (question palette + review flags + highlights) ──
   // Session-scoped by design: cross-session history lives in
@@ -583,9 +611,9 @@ export function ReaderExamMode(props: ExamModeProps) {
               )}
             >
               <div className="mx-auto w-fit shadow-2xl">
-                {props.pdfData ? (
+                {examBuffer ? (
                   <Document
-                    file={{ data: props.pdfData }}
+                    file={{ data: examBuffer }}
                     loading={
                       <div className="flex h-40 items-center justify-center">
                         <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -604,15 +632,21 @@ export function ReaderExamMode(props: ExamModeProps) {
                       className="rounded-sm"
                     />
                   </Document>
-                ) : props.pdfUrl ? (
-                  <iframe
-                    src={`${props.pdfUrl}#page=${pageNumber}&zoom=${Math.round(scale * 100)}`}
-                    title="Exam PDF"
-                    className="h-[80vh] w-[80vw] max-w-4xl rounded-md bg-white"
-                  />
+                ) : examBufferError || !props.pdfBlob ? (
+                  props.pdfUrl ? (
+                    <iframe
+                      src={`${props.pdfUrl}#page=${pageNumber}&zoom=${Math.round(scale * 100)}`}
+                      title="Exam PDF"
+                      className="h-[80vh] w-[80vw] max-w-4xl rounded-md bg-white"
+                    />
+                  ) : (
+                    <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
+                      Preparing the exam paper…
+                    </div>
+                  )
                 ) : (
-                  <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
-                    PDF not loaded.
+                  <div className="flex h-40 items-center justify-center">
+                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
                   </div>
                 )}
               </div>
