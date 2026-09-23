@@ -95,7 +95,7 @@ export function AiCompanion({
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
           <p className="relative flex items-center gap-2 type-h3 text-foreground">
             <span className="relative flex size-6 items-center justify-center rounded-lg bg-cyan-400/15 ring-1 ring-cyan-300/30">
-              <Sparkles className="size-3 text-cyan-300" />
+              <Sparkles className="size-3 text-cyan-700 dark:text-cyan-300" />
             </span>
             AI READING COMPANION
           </p>
@@ -126,8 +126,8 @@ export function AiCompanion({
                   "flex cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-2 text-left text-[11px] font-semibold transition-all duration-150 interactive-press disabled:opacity-50",
                   i === QUICK_ACTIONS.length - 1 && QUICK_ACTIONS.length % 2 === 1 && "col-span-2",
                   isFlashcards
-                    ? "border-amber-300/25 bg-amber-300/[0.07] text-amber-200 hover:bg-amber-300/[0.12]"
-                    : "border-cyan-400/15 bg-cyan-400/[0.05] text-cyan-200/90 hover:border-cyan-400/30 hover:bg-cyan-400/[0.1]",
+                    ? "border-amber-300/25 bg-amber-300/[0.07] text-amber-700 dark:text-amber-200 hover:bg-amber-300/[0.12]"
+                    : "border-cyan-400/15 bg-cyan-400/[0.05] text-cyan-700 dark:text-cyan-200/90 hover:border-cyan-400/30 hover:bg-cyan-400/[0.1]",
                 )}
               >
                 {isPending ? (
@@ -155,7 +155,7 @@ export function AiCompanion({
               "rounded-xl px-3.5 py-2.5 text-[13px] leading-6 transition-all duration-200",
               message.role === "user"
                 ? "ml-6 border border-cyan-400/15 bg-cyan-400/[0.07] text-foreground"
-                : "mr-1 border border-white/[0.06] bg-white/[0.02] text-foreground/85",
+                : "mr-1 border border-foreground/[0.06] bg-foreground/[0.02] text-foreground/85",
             )}
           >
             <p className={cn("whitespace-pre-wrap", message.role === "assistant" && "text-[12.5px] leading-[1.7]")}>
@@ -165,7 +165,7 @@ export function AiCompanion({
         ))}
 
         {asking && (
-          <div className="type-mono mr-1 flex items-center gap-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.03] px-4 py-3 text-cyan-200/60">
+          <div className="type-mono mr-1 flex items-center gap-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.03] px-4 py-3 text-cyan-700 dark:text-cyan-200/60">
             <div className="flex gap-1">
               <div className="size-1.5 animate-bounce rounded-full bg-cyan-300/70" style={{ animationDelay: "0ms" }} />
               <div className="size-1.5 animate-bounce rounded-full bg-cyan-300/70" style={{ animationDelay: "150ms" }} />
@@ -178,8 +178,8 @@ export function AiCompanion({
       </div>
 
       {/* Chat input */}
-      <div className="relative shrink-0 border-t border-white/[0.06] p-3">
-        <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-1.5 transition-all duration-200 focus-within:border-cyan-400/30 focus-within:bg-white/[0.05]">
+      <div className="relative shrink-0 border-t border-foreground/[0.06] p-3">
+        <div className="flex items-center gap-2 rounded-xl border border-foreground/[0.08] bg-foreground/[0.03] p-1.5 transition-all duration-200 focus-within:border-cyan-400/30 focus-within:bg-foreground/[0.05]">
           <label htmlFor="reader-question" className="sr-only">Ask the reading companion</label>
           <Input
             id="reader-question"
@@ -195,7 +195,7 @@ export function AiCompanion({
           />
           <Button
             size="icon"
-            className="size-8 shrink-0 cursor-pointer rounded-lg bg-cyan-400/20 text-cyan-200 hover:bg-cyan-400/30"
+            className="size-8 shrink-0 cursor-pointer rounded-lg bg-cyan-400/20 text-cyan-700 dark:text-cyan-200 hover:bg-cyan-400/30"
             onClick={() => onAsk()}
             disabled={asking || !question.trim()}
             aria-label="Send"

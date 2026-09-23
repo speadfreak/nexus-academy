@@ -105,7 +105,7 @@ export function StudyDock({
               "group relative flex size-10 cursor-pointer items-center justify-center rounded-xl border shadow-[0_8px_30px_-6px_rgba(0,0,0,0.7)] backdrop-blur-2xl transition-all duration-200 active:scale-90",
               open === tab.id
                 ? "border-primary/40 bg-primary/20 text-primary"
-                : "border-white/10 bg-black/60 text-muted-foreground hover:border-white/25 hover:text-foreground",
+                : "border-foreground/10 bg-background/80 dark:bg-black/60 text-muted-foreground hover:border-foreground/25 hover:text-foreground",
             )}
             title={`${tab.label}${tab.id === "notes" ? " · auto-saved" : ""}`}
             aria-label={`Study dock: ${tab.label}`}
@@ -121,7 +121,7 @@ export function StudyDock({
         <button
           type="button"
           onClick={onOpenAI}
-          className="flex size-10 cursor-pointer items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-400/15 text-cyan-200 shadow-[0_8px_30px_-6px_rgba(34,211,238,0.25)] backdrop-blur-2xl transition-all duration-200 hover:bg-cyan-400/25 active:scale-90"
+          className="flex size-10 cursor-pointer items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-400/15 text-cyan-700 dark:text-cyan-200 shadow-[0_8px_30px_-6px_rgba(34,211,238,0.25)] backdrop-blur-2xl transition-all duration-200 hover:bg-cyan-400/25 active:scale-90"
           title="AI Reading Companion"
           aria-label="Study dock: AI companion"
         >
@@ -141,12 +141,12 @@ export function StudyDock({
             role="dialog"
             aria-label={`Study dock — ${open}`}
             className={cn(
-              "absolute inset-x-3 z-40 flex max-h-[min(58vh,420px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a0e17]/95 shadow-[0_24px_80px_-12px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:inset-x-auto sm:right-3 sm:w-[400px]",
+              "absolute inset-x-3 z-40 flex max-h-[min(58vh,420px)] flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-background/95 dark:bg-[#0a0e17]/95 shadow-[0_24px_80px_-12px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:inset-x-auto sm:right-3 sm:w-[400px]",
               raised ? "bottom-64" : "bottom-36",
             )}
           >
             {/* Sheet header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-2">
+            <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-3 py-2">
               <div className="flex items-center gap-1">
                 {DOCK_TABS.map((tab) => (
                   <button
@@ -157,7 +157,7 @@ export function StudyDock({
                       "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all",
                       open === tab.id
                         ? "bg-primary/15 text-primary"
-                        : "text-muted-foreground/60 hover:bg-white/5 hover:text-foreground",
+                        : "text-muted-foreground/60 hover:bg-foreground/5 hover:text-foreground",
                     )}
                   >
                     <tab.icon className="size-3.5" />
@@ -168,7 +168,7 @@ export function StudyDock({
               <button
                 type="button"
                 onClick={() => onOpenChange(null)}
-                className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-white/10 hover:text-foreground"
+                className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground"
                 aria-label="Close study dock"
               >
                 <X className="size-3.5" />
@@ -198,7 +198,7 @@ export function StudyDock({
                   value={scratchText}
                   onChange={(e) => onScratchTextChange(e.target.value)}
                   placeholder="Write notes, formulas, summaries… (auto-syncs with the Calc tab)"
-                  className="mx-3 mb-3 min-h-0 flex-1 resize-none rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 font-mono text-[12px] leading-[1.7] text-foreground/85 outline-none transition-all placeholder:text-muted-foreground/30 focus:border-primary/30"
+                  className="mx-3 mb-3 min-h-0 flex-1 resize-none rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3 font-mono text-[12px] leading-[1.7] text-foreground/85 outline-none transition-all placeholder:text-muted-foreground/30 focus:border-primary/30"
                 />
               </div>
             )}
@@ -214,7 +214,7 @@ export function StudyDock({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 cursor-pointer rounded-lg gap-1 border border-amber-300/20 bg-amber-300/[0.06] px-2 text-[11px] text-amber-200 hover:bg-amber-300/[0.12]"
+                      className="h-6 cursor-pointer rounded-lg gap-1 border border-amber-300/20 bg-amber-300/[0.06] px-2 text-[11px] text-amber-700 dark:text-amber-200 hover:bg-amber-300/[0.12]"
                       onClick={onCaptureSelection}
                       title="Highlight the text you selected in the PDF"
                     >
@@ -239,7 +239,7 @@ export function StudyDock({
                       <Highlighter className="size-6 text-muted-foreground/20" />
                       <p className="type-caption max-w-[240px] leading-relaxed text-muted-foreground/40">
                         Select any text in the textbook and tap{" "}
-                        <span className="text-amber-200/70">Highlight</span> in the popup — or use “From selection”.
+                        <span className="text-amber-700 dark:text-amber-200/70">Highlight</span> in the popup — or use “From selection”.
                       </p>
                     </div>
                   ) : (
@@ -249,7 +249,7 @@ export function StudyDock({
                         className="group flex cursor-pointer items-start gap-2 rounded-xl border border-amber-300/10 bg-amber-300/[0.03] px-3 py-2 transition-all hover:border-amber-300/25"
                         onClick={() => onJumpToPage(highlight.page)}
                       >
-                        <span className="type-mono mt-0.5 shrink-0 rounded-md border border-amber-300/20 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-200">
+                        <span className="type-mono mt-0.5 shrink-0 rounded-md border border-amber-300/20 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-200">
                           p{highlight.page}
                         </span>
                         <p className="line-clamp-3 min-w-0 flex-1 text-[11.5px] leading-[1.6] text-foreground/75">
@@ -324,7 +324,7 @@ function FlashcardsTab({
         <div className="relative">
           <div className="absolute -inset-4 rounded-full bg-amber-400/10 blur-xl" />
           <div className="relative flex size-14 items-center justify-center rounded-2xl border border-amber-300/25 bg-amber-300/10">
-            <GalleryVerticalEnd className="size-6 text-amber-300" />
+            <GalleryVerticalEnd className="size-6 text-amber-700 dark:text-amber-300" />
           </div>
         </div>
         <p className="type-h3 text-foreground">{result.cardCount} flashcards ready</p>
@@ -335,7 +335,7 @@ function FlashcardsTab({
           <Button asChild size="sm" className="cursor-pointer rounded-xl bg-amber-300 text-black hover:bg-amber-200">
             <a href="/flashcards" target="_blank" rel="noopener noreferrer">Open Flashcards</a>
           </Button>
-          <Button size="sm" variant="outline" className="cursor-pointer rounded-xl border-white/10 bg-white/5" onClick={onDismissResult}>
+          <Button size="sm" variant="outline" className="cursor-pointer rounded-xl border-foreground/10 bg-foreground/5" onClick={onDismissResult}>
             Make another
           </Button>
         </div>
@@ -358,7 +358,7 @@ function FlashcardsTab({
             max={numPages ?? undefined}
             value={start}
             onChange={(e) => setStart(e.target.value)}
-            className="type-mono h-8 w-16 rounded-lg border-white/[0.08] bg-white/[0.02] text-center text-xs tabular-nums"
+            className="type-mono h-8 w-16 rounded-lg border-foreground/[0.08] bg-foreground/[0.02] text-center text-xs tabular-nums"
           />
         </label>
         <span className="text-muted-foreground/30">→</span>
@@ -370,7 +370,7 @@ function FlashcardsTab({
             max={numPages ?? undefined}
             value={end}
             onChange={(e) => setEnd(e.target.value)}
-            className="type-mono h-8 w-16 rounded-lg border-white/[0.08] bg-white/[0.02] text-center text-xs tabular-nums"
+            className="type-mono h-8 w-16 rounded-lg border-foreground/[0.08] bg-foreground/[0.02] text-center text-xs tabular-nums"
           />
         </label>
       </div>

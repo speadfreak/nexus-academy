@@ -67,6 +67,7 @@ import { GuestLockOverlay } from "@/components/GuestLockOverlay";
 import { PdfStage, type OutlineChapter } from "@/components/reader/PdfStage";
 import { AiCompanion, type ChatMessage, type CompanionQuickAction } from "@/components/reader/AiCompanion";
 import { StudyDock } from "@/components/reader/StudyDock";
+import { StudySoundtrack } from "@/components/reader/StudySoundtrack";
 import {
   loadHighlights,
   loadReadingProgress,
@@ -82,14 +83,14 @@ type SelectionAction = "explain" | "simplify" | "translate" | "quiz" | "flashcar
 
 function subjectHue(subjectSlug: string): string {
   const hues: Record<string, string> = {
-    physics: "from-sky-400/20 to-sky-400/5 border-sky-400/30 text-sky-300",
-    chemistry: "from-emerald-400/20 to-emerald-400/5 border-emerald-400/30 text-emerald-300",
-    biology: "from-lime-400/20 to-lime-400/5 border-lime-400/30 text-lime-300",
-    mathematics: "from-violet-400/20 to-violet-400/5 border-violet-400/30 text-violet-300",
-    english: "from-rose-400/20 to-rose-400/5 border-rose-400/30 text-rose-300",
-    history: "from-amber-400/20 to-amber-400/5 border-amber-400/30 text-amber-300",
-    geography: "from-teal-400/20 to-teal-400/5 border-teal-400/30 text-teal-300",
-    economics: "from-indigo-400/20 to-indigo-400/5 border-indigo-400/30 text-indigo-300",
+    physics: "from-sky-400/20 to-sky-400/5 border-sky-400/30 text-sky-700 dark:text-sky-300",
+    chemistry: "from-emerald-400/20 to-emerald-400/5 border-emerald-400/30 text-emerald-700 dark:text-emerald-300",
+    biology: "from-lime-400/20 to-lime-400/5 border-lime-400/30 text-lime-700 dark:text-lime-300",
+    mathematics: "from-violet-400/20 to-violet-400/5 border-violet-400/30 text-violet-700 dark:text-violet-300",
+    english: "from-rose-400/20 to-rose-400/5 border-rose-400/30 text-rose-700 dark:text-rose-300",
+    history: "from-amber-400/20 to-amber-400/5 border-amber-400/30 text-amber-700 dark:text-amber-300",
+    geography: "from-teal-400/20 to-teal-400/5 border-teal-400/30 text-teal-700 dark:text-teal-300",
+    economics: "from-indigo-400/20 to-indigo-400/5 border-indigo-400/30 text-indigo-700 dark:text-indigo-300",
   };
   return hues[subjectSlug] ?? "from-primary/20 to-primary/5 border-primary/30 text-primary";
 }
@@ -140,7 +141,12 @@ export default function Reader() {
 
   // --- PDF pipeline state (owned here, rendered by the memoized stage) ---
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
+  // Exam mode's PDF bytes live in a REF, never state: a state mirror used to
+  // re-render PdfStage with a new `file` object identity mid-flight, re-running
+  // getDocument() on an ArrayBuffer pdf.js had already transferred (detached)
+  // into its worker — the "Cannot perform Construct on a detached ArrayBuffer"
+  // crash behind the blue blank page.
+  const pdfDataRef = useRef<ArrayBuffer | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -737,13 +743,15 @@ export default function Reader() {
   const handleStageNumPages = useCallback((n: number | null) => setNumPages(n), []);
   const handleStageDocProxy = useCallback((doc: unknown) => setDocProxy(doc), []);
   const handleStageOutline = useCallback((chapters: OutlineChapter[] | null) => setOutlineChapters(chapters), []);
-  const handleStagePdfData = useCallback((data: ArrayBuffer) => setPdfData(data), []);
+  const handleStagePdfData = useCallback((data: ArrayBuffer) => {
+    pdfDataRef.current = data; // ref write — never re-renders the stage
+  }, []);
 
 
   // Reset document-local UI state when the content changes.
   useEffect(() => {
     setPdfUrl(null);
-    setPdfData(null);
+    pdfDataRef.current = null;
     setPdfError(null);
     setNumPages(null);
     setPageNumber(1);
@@ -759,7 +767,7 @@ export default function Reader() {
   useEffect(() => {
     if (!readerItemId || !item) {
       setPdfUrl(null);
-      setPdfData(null);
+      pdfDataRef.current = null;
       return;
     }
     let cancelled = false;
@@ -801,7 +809,7 @@ export default function Reader() {
   // ─── Loading state ────────────────────────────────────────────────────
   if (reader === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080c14]">
+      <div className="flex min-h-screen items-center justify-center bg-background dark:bg-[#080c14]">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
             <div className="absolute -inset-4 animate-spin rounded-full border-2 border-transparent border-t-primary/60" style={{ animationDuration: "2s" }} />
@@ -817,10 +825,10 @@ export default function Reader() {
   // ─── Not found ────────────────────────────────────────────────────────
   if (!item) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#080c14] px-6 text-center">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background dark:bg-[#080c14] px-6 text-center">
         <div className="relative">
           <div className="absolute -inset-6 rounded-2xl bg-gradient-to-br from-rose-500/20 to-amber-500/20 blur-xl" />
-          <div className="relative flex size-20 items-center justify-center rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl">
+          <div className="relative flex size-20 items-center justify-center rounded-2xl border border-foreground/10 bg-foreground/5 backdrop-blur-xl">
             <Lock className="size-8 text-rose-400" />
           </div>
         </div>
@@ -832,7 +840,7 @@ export default function Reader() {
             It may have been removed, or you need to sign in to read it.
           </p>
         </div>
-        <Button asChild variant="outline" className="rounded-xl border-white/10 bg-white/5">
+        <Button asChild variant="outline" className="rounded-xl border-foreground/10 bg-foreground/5">
           <Link to="/dashboard">
             <ArrowLeft className="size-4" /> Back to the library
           </Link>
@@ -845,17 +853,17 @@ export default function Reader() {
 
   // ─── Main reader ──────────────────────────────────────────────────────
   return (
-    <div ref={rootRef} className="flex h-screen flex-col overflow-hidden bg-[#080c14]">
+    <div ref={rootRef} className="flex h-screen flex-col overflow-hidden bg-background dark:bg-[#080c14]">
       {/* ═══ TOP CHROME BAR (hidden in study mode) ═══ */}
       {!studyMode && (
-        <header className="relative z-30 flex h-14 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-black/40 px-3 backdrop-blur-2xl sm:px-5">
+        <header className="relative z-30 flex h-14 shrink-0 items-center gap-3 border-b border-foreground/[0.06] bg-background/80 dark:bg-black/40 px-3 backdrop-blur-2xl sm:px-5">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
 
           <Button
             asChild
             variant="ghost"
             size="icon"
-            className="size-9 shrink-0 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-white/5 hover:text-foreground"
+            className="size-9 shrink-0 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-foreground/5 hover:text-foreground"
           >
             <Link to="/dashboard" aria-label="Back to the library">
               <ArrowLeft className="size-4" />
@@ -866,11 +874,11 @@ export default function Reader() {
             <p className="type-h3 truncate text-foreground">{item.title}</p>
             <div className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
               <span className="type-caption hidden truncate text-muted-foreground sm:inline">{item.subjectName}</span>
-              <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+              <span className="hidden size-1 shrink-0 rounded-full bg-foreground/20 sm:block" />
               <span className="type-caption hidden text-muted-foreground sm:inline">Grade {item.grade}</span>
               {item.examYear && (
                 <>
-                  <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+                  <span className="hidden size-1 shrink-0 rounded-full bg-foreground/20 sm:block" />
                   <span className="type-caption hidden text-muted-foreground sm:inline">{item.examYear}</span>
                 </>
               )}
@@ -884,7 +892,7 @@ export default function Reader() {
               </span>
               {item.fileSizeBytes && (
                 <>
-                  <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+                  <span className="hidden size-1 shrink-0 rounded-full bg-foreground/20 sm:block" />
                   <span className="type-caption hidden text-muted-foreground/60 sm:inline">{formatBytes(item.fileSizeBytes)}</span>
                 </>
               )}
@@ -895,7 +903,7 @@ export default function Reader() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-white/5 hover:text-foreground"
+              className="size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-foreground/5 hover:text-foreground"
               onClick={() => void toggleBookmark({ contentId: item._id })}
               aria-label={reader?.bookmarked ? "Remove bookmark" : "Bookmark this document"}
             >
@@ -906,7 +914,7 @@ export default function Reader() {
             <Button
               size="sm"
               onClick={enterStudyMode}
-              className="gap-1.5 rounded-xl border border-amber-300/25 bg-gradient-to-b from-amber-300/15 to-amber-400/[0.06] text-amber-200 shadow-[0_0_20px_-6px_rgba(251,191,36,0.35)] transition-all hover:from-amber-300/25 hover:to-amber-400/10"
+              className="gap-1.5 rounded-xl border border-amber-300/25 bg-gradient-to-b from-amber-300/15 to-amber-400/[0.06] text-amber-700 dark:text-amber-200 shadow-[0_0_20px_-6px_rgba(251,191,36,0.35)] transition-all hover:from-amber-300/25 hover:to-amber-400/10"
               aria-label="Enter Study Mode"
               title="Study Mode — focused session with timer and quick actions"
             >
@@ -918,7 +926,7 @@ export default function Reader() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 rounded-xl text-amber-300 hover:bg-amber-400/10 hover:text-amber-200"
+                className="gap-1.5 rounded-xl text-amber-700 dark:text-amber-300 hover:bg-amber-400/10 hover:text-amber-700 dark:hover:text-amber-700 dark:text-amber-200"
                 onClick={() => void handleGenerateFlashcards()}
                 disabled={generatingFlashcards}
                 aria-label="Generate flashcards from this page"
@@ -937,16 +945,16 @@ export default function Reader() {
                 onClick={() => setExamMode(true)}
                 aria-label="Enter exam mode"
                 title="Exam mode — timed, no pausing"
-                className="size-9 rounded-xl text-amber-300 transition-all duration-200 hover:bg-amber-400/10 hover:text-amber-200"
+                className="size-9 rounded-xl text-amber-700 dark:text-amber-300 transition-all duration-200 hover:bg-amber-400/10 hover:text-amber-700 dark:hover:text-amber-700 dark:text-amber-200"
               >
                 <Maximize2 className="size-4" />
               </Button>
             )}
-            <div className="mx-1 h-5 w-px bg-white/10" />
+            <div className="mx-1 h-5 w-px bg-foreground/10" />
             <Button
               variant="ghost"
               size="icon"
-              className="hidden size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-white/5 hover:text-foreground sm:flex"
+              className="hidden size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-foreground/5 hover:text-foreground sm:flex"
               onClick={toggleFullscreen}
               aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
               title={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"}
@@ -958,7 +966,7 @@ export default function Reader() {
               size="icon"
               className={cn(
                 "size-9 rounded-xl transition-all duration-200",
-                panelOpen ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                panelOpen ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
               )}
               onClick={() => setPanelOpen((open) => !open)}
               aria-label={panelOpen ? "Hide side panel" : "Show side panel"}
@@ -972,7 +980,7 @@ export default function Reader() {
 
       {/* ═══ STUDY CONTEXT HEADER — the learning-journey strip ═══ */}
       {!studyMode && docReady && (
-        <div className="relative z-20 flex h-9 shrink-0 items-center gap-2.5 border-b border-white/[0.04] bg-black/30 px-3 backdrop-blur-xl sm:px-5">
+        <div className="relative z-20 flex h-9 shrink-0 items-center gap-2.5 border-b border-foreground/[0.04] bg-background/70 dark:bg-black/30 px-3 backdrop-blur-xl sm:px-5">
           {currentChapter ? (
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="type-mono shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
@@ -985,19 +993,19 @@ export default function Reader() {
               {item.subjectName} · Grade {item.grade}
             </span>
           )}
-          <span className="size-1 shrink-0 rounded-full bg-white/20" />
+          <span className="size-1 shrink-0 rounded-full bg-foreground/20" />
           <span className="type-mono shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
             Page {pageNumber} of {numPages}
           </span>
           {readingLeft && (
             <>
-              <span className="hidden size-1 shrink-0 rounded-full bg-white/20 sm:block" />
+              <span className="hidden size-1 shrink-0 rounded-full bg-foreground/20 sm:block" />
               <span className="type-mono hidden shrink-0 text-[10px] text-muted-foreground/50 sm:block">{readingLeft}</span>
             </>
           )}
           {numPages && numPages > 1 && (
             <div className="ml-auto hidden w-36 items-center gap-2 sm:flex">
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-foreground/[0.06]">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-300 ease-out"
                   style={{ width: `${(pageNumber / numPages) * 100}%` }}
@@ -1020,7 +1028,6 @@ export default function Reader() {
             <PdfStage
               contentId={readerItemId ?? "none"}
               pdfUrl={pdfUrl}
-              pdfData={pdfData}
               onPdfData={handleStagePdfData}
               pdfError={pdfError}
               loadingPdf={loadingPdf}
@@ -1046,10 +1053,10 @@ export default function Reader() {
                 animate={{ y: 0, opacity: 1 }}
                 className="pointer-events-none absolute inset-x-0 top-0 z-40 flex justify-center px-3 pt-3"
               >
-                <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-amber-300/20 bg-black/70 py-1.5 pl-4 pr-1.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
-                  <Brain className="size-4 shrink-0 text-amber-300" />
+                <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-amber-300/20 bg-background/85 dark:bg-black/70 py-1.5 pl-4 pr-1.5 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+                  <Brain className="size-4 shrink-0 text-amber-700 dark:text-amber-300" />
                   <span className="type-caption max-w-[180px] truncate font-semibold text-foreground/85 sm:max-w-xs">{item.title}</span>
-                  <span className="type-mono flex items-center gap-1 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[11px] tabular-nums text-amber-200">
+                  <span className="type-mono flex items-center gap-1 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[11px] tabular-nums text-amber-700 dark:text-amber-200">
                     <Timer className="size-3" /> {formatClock(studySeconds)}
                   </span>
                   <span className="type-mono hidden text-[10px] tabular-nums text-muted-foreground/50 sm:block">
@@ -1058,7 +1065,7 @@ export default function Reader() {
                   <button
                     type="button"
                     onClick={exitStudyMode}
-                    className="flex size-7 cursor-pointer items-center justify-center rounded-lg text-amber-200/80 transition-all hover:bg-amber-300/15 hover:text-amber-100"
+                    className="flex size-7 cursor-pointer items-center justify-center rounded-lg text-amber-700 dark:text-amber-200/80 transition-all hover:bg-amber-300/15 hover:text-amber-700 dark:hover:text-amber-700 dark:text-amber-100"
                     aria-label="Exit Study Mode"
                     title="Exit Study Mode"
                   >
@@ -1066,6 +1073,9 @@ export default function Reader() {
                   </button>
                 </div>
               </motion.div>
+              {/* ═══ STUDY SOUNDTRACK — one tap to Bach while you study ═══ */}
+              {studyMode && <StudySoundtrack />}
+
               {/* Quick study actions */}
               <motion.div
                 initial={{ y: -20, opacity: 0 }}
@@ -1086,7 +1096,7 @@ export default function Reader() {
                       type="button"
                       onClick={() => void handleQuickAction(action.id)}
                       disabled={asking}
-                      className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-black/60 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 backdrop-blur-2xl transition-all hover:bg-cyan-400/10 disabled:opacity-40 active:scale-95"
+                      className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-background/80 dark:bg-black/60 px-3 py-1.5 text-[11px] font-semibold text-cyan-700 dark:text-cyan-200 backdrop-blur-2xl transition-all hover:bg-cyan-400/10 disabled:opacity-40 active:scale-95"
                     >
                       <action.icon className="size-3" /> {action.label}
                     </button>
@@ -1105,14 +1115,14 @@ export default function Reader() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ duration: 0.16 }}
-                className="fixed z-[70] w-[300px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-400/25 bg-[#0a0e17]/95 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.9),0_0_30px_-10px_rgba(34,211,238,0.3)] backdrop-blur-2xl"
+                className="fixed z-[70] w-[300px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-400/25 bg-background/95 dark:bg-[#0a0e17]/95 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.9),0_0_30px_-10px_rgba(34,211,238,0.3)] backdrop-blur-2xl"
                 style={{
                   left: Math.max(8, Math.min(selectionPoint.x - 150, (typeof window !== "undefined" ? window.innerWidth : 400) - 308)),
                   top: Math.max(8, selectionPoint.y - 96),
                 }}
               >
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/50 to-transparent" />
-                <p className="type-mono flex items-center gap-1.5 px-3 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-300/80">
+                <p className="type-mono flex items-center gap-1.5 px-3 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300/80">
                   <Sparkles className="size-3" /> Ask Learnyx AI
                 </p>
                 <p className="line-clamp-2 px-3 pb-2 text-[11px] leading-snug text-muted-foreground/50">“{highlightedText.slice(0, 120)}{highlightedText.length > 120 ? "…" : ""}”</p>
@@ -1135,10 +1145,10 @@ export default function Reader() {
                       className={cn(
                         "flex cursor-pointer flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[10px] font-semibold transition-all active:scale-95 disabled:opacity-40",
                         action.id === "highlight"
-                          ? "border-amber-300/25 bg-amber-300/[0.06] text-amber-200 hover:bg-amber-300/[0.14]"
+                          ? "border-amber-300/25 bg-amber-300/[0.06] text-amber-700 dark:text-amber-200 hover:bg-amber-300/[0.14]"
                           : action.id === "flashcard"
                             ? "border-primary/25 bg-primary/[0.07] text-primary hover:bg-primary/[0.14]"
-                            : "border-white/[0.07] bg-white/[0.03] text-foreground/75 hover:border-cyan-400/30 hover:bg-cyan-400/[0.08] hover:text-cyan-200",
+                            : "border-foreground/[0.07] bg-foreground/[0.03] text-foreground/75 hover:border-cyan-400/30 hover:bg-cyan-400/[0.08] hover:text-cyan-700 dark:hover:text-cyan-700 dark:text-cyan-200",
                       )}
                     >
                       {generatingFlashcards && action.id === "flashcard" ? (
@@ -1153,7 +1163,7 @@ export default function Reader() {
                 <button
                   type="button"
                   onClick={dismissSelection}
-                  className="absolute right-1.5 top-1.5 flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/40 hover:bg-white/10 hover:text-foreground"
+                  className="absolute right-1.5 top-1.5 flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/40 hover:bg-foreground/10 hover:text-foreground"
                   aria-label="Dismiss"
                 >
                   <X className="size-3" />
@@ -1227,12 +1237,12 @@ export default function Reader() {
                   transition={{ type: "spring", stiffness: 350, damping: 35 }}
                   role="complementary"
                   aria-labelledby="reader-panel-title"
-                  className="absolute bottom-0 right-0 top-0 z-50 flex w-[88%] max-w-[400px] flex-col border-l border-white/[0.08] bg-[#0a0e17]/95 shadow-[-24px_0_80px_-24px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:static sm:z-auto sm:w-[380px] sm:max-w-none sm:shadow-none xl:w-[410px]"
+                  className="absolute bottom-0 right-0 top-0 z-50 flex w-[88%] max-w-[400px] flex-col border-l border-foreground/[0.08] bg-background/95 dark:bg-[#0a0e17]/95 shadow-[-24px_0_80px_-24px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:static sm:z-auto sm:w-[380px] sm:max-w-none sm:shadow-none xl:w-[410px]"
                 >
                   <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent sm:hidden" />
 
                   {/* Tab bar */}
-                  <div className="relative flex shrink-0 items-center gap-1 border-b border-white/[0.06] px-2 py-2">
+                  <div className="relative flex shrink-0 items-center gap-1 border-b border-foreground/[0.06] px-2 py-2">
                     <span id="reader-panel-title" className="sr-only">Reader tools</span>
                     {(
                       [
@@ -1253,9 +1263,9 @@ export default function Reader() {
                           "interactive-press relative flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 py-2 type-caption font-semibold transition-all duration-200",
                           panelTab === tab.id
                             ? tab.id === "companion"
-                              ? "text-cyan-300"
+                              ? "text-cyan-700 dark:text-cyan-300"
                               : "text-primary"
-                            : "text-muted-foreground/60 hover:bg-white/[0.03] hover:text-muted-foreground",
+                            : "text-muted-foreground/60 hover:bg-foreground/[0.03] hover:text-muted-foreground",
                         )}
                       >
                         {panelTab === tab.id && (
@@ -1266,7 +1276,7 @@ export default function Reader() {
                     ))}
                     <button
                       type="button"
-                      className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground/60 transition-all hover:bg-white/5 hover:text-foreground sm:hidden"
+                      className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground/60 transition-all hover:bg-foreground/5 hover:text-foreground sm:hidden"
                       onClick={() => setPanelOpen(false)}
                       aria-label="Close reader tools"
                     >
@@ -1321,14 +1331,14 @@ export default function Reader() {
                             <p className="type-mono text-[11px] text-muted-foreground/50">Finding relevant videos…</p>
                           </div>
                         ) : youtubeConfigured === false ? (
-                          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] px-5 py-10">
+                          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-foreground/[0.06] bg-foreground/[0.01] px-5 py-10">
                             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/10 ring-1 ring-amber-400/20">
                               <Youtube className="size-5 text-amber-400" />
                             </div>
                             <div className="text-center">
                               <p className="type-caption font-medium text-foreground/70">YouTube API key needed</p>
                               <p className="mt-1.5 type-caption max-w-[200px] text-[11px] leading-relaxed text-muted-foreground/50">
-                                Ask your admin to add <code className="rounded bg-white/[0.06] px-1 py-0.5 text-[10px] text-amber-300/80">YOUTUBE_API_KEY</code> in the Keys tab
+                                Ask your admin to add <code className="rounded bg-foreground/[0.06] px-1 py-0.5 text-[10px] text-amber-700 dark:text-amber-300/80">YOUTUBE_API_KEY</code> in the Keys tab
                               </p>
                             </div>
                           </div>
@@ -1345,7 +1355,7 @@ export default function Reader() {
                             </div>
                           </div>
                         ) : videos && videos.length === 0 ? (
-                          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/[0.04] px-5 py-10">
+                          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-foreground/[0.04] px-5 py-10">
                             <Youtube className="size-8 text-muted-foreground/20" />
                             <p className="type-caption text-muted-foreground/40">No videos found for this topic yet.</p>
                           </div>
@@ -1367,14 +1377,14 @@ export default function Reader() {
                                       className="group relative flex cursor-pointer gap-3 rounded-2xl border border-rose-400/10 bg-rose-400/[0.03] p-2.5 transition-all duration-300 hover:border-rose-400/25 hover:bg-rose-400/[0.06] hover:shadow-lg hover:shadow-rose-400/5"
                                     >
                                       {video.thumbnail ? (
-                                        <div className="relative h-[68px] w-[110px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.08]">
+                                        <div className="relative h-[68px] w-[110px] shrink-0 overflow-hidden rounded-xl ring-1 ring-foreground/[0.08]">
                                           <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                                           <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
                                             <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
                                           </div>
                                         </div>
                                       ) : (
-                                        <div className="flex h-[68px] w-[110px] shrink-0 items-center justify-center rounded-xl bg-rose-400/10 ring-1 ring-white/[0.08]">
+                                        <div className="flex h-[68px] w-[110px] shrink-0 items-center justify-center rounded-xl bg-rose-400/10 ring-1 ring-foreground/[0.08]">
                                           <Youtube className="size-5 text-rose-400/50" />
                                         </div>
                                       )}
@@ -1396,9 +1406,9 @@ export default function Reader() {
                               <div>
                                 {videos.some((v) => v.isPriority) && (
                                   <div className="my-3 flex items-center gap-2">
-                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <div className="h-px flex-1 bg-foreground/[0.06]" />
                                     <p className="type-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground/30">more results</p>
-                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <div className="h-px flex-1 bg-foreground/[0.06]" />
                                   </div>
                                 )}
                                 <div className="space-y-2">
@@ -1408,17 +1418,17 @@ export default function Reader() {
                                       href={`https://www.youtube.com/watch?v=${video.id}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="group relative flex cursor-pointer gap-3 rounded-2xl border border-white/[0.05] bg-white/[0.015] p-2.5 transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-black/10"
+                                      className="group relative flex cursor-pointer gap-3 rounded-2xl border border-foreground/[0.05] bg-foreground/[0.015] p-2.5 transition-all duration-300 hover:border-foreground/[0.12] hover:bg-foreground/[0.04] hover:shadow-lg hover:shadow-black/10"
                                     >
                                       {video.thumbnail ? (
-                                        <div className="relative h-[60px] w-[100px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/[0.06]">
+                                        <div className="relative h-[60px] w-[100px] shrink-0 overflow-hidden rounded-xl ring-1 ring-foreground/[0.06]">
                                           <img src={video.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                                           <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/30">
                                             <Play className="size-5 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" fill="white" />
                                           </div>
                                         </div>
                                       ) : (
-                                        <div className="flex h-[60px] w-[100px] shrink-0 items-center justify-center rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                                        <div className="flex h-[60px] w-[100px] shrink-0 items-center justify-center rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.06]">
                                           <Youtube className="size-5 text-muted-foreground/20" />
                                         </div>
                                       )}
@@ -1478,7 +1488,7 @@ export default function Reader() {
 
                         <div className="flex gap-2 px-3 pt-2">
                           <label htmlFor="scratch-expression" className="sr-only">Expression to evaluate</label>
-                          <div className="flex flex-1 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 transition-all duration-200 focus-within:border-emerald-400/30">
+                          <div className="flex flex-1 items-center gap-2 rounded-xl border border-foreground/[0.08] bg-foreground/[0.03] px-2.5 py-1 transition-all duration-200 focus-within:border-emerald-400/30">
                             <Input
                               id="scratch-expression"
                               value={scratchInput}
@@ -1525,7 +1535,7 @@ export default function Reader() {
                             setScratchSaved(false);
                           }}
                           placeholder="Write workings, formulas, summaries…"
-                          className="mx-3 mt-2.5 min-h-0 flex-1 resize-none rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 font-mono text-[12px] leading-[1.7] text-foreground/85 outline-none transition-all duration-200 placeholder:text-muted-foreground/30 focus:border-primary/30"
+                          className="mx-3 mt-2.5 min-h-0 flex-1 resize-none rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3 font-mono text-[12px] leading-[1.7] text-foreground/85 outline-none transition-all duration-200 placeholder:text-muted-foreground/30 focus:border-primary/30"
                         />
 
                         <div className="flex items-center justify-between gap-2 p-3">
@@ -1557,8 +1567,8 @@ export default function Reader() {
 
       {/* ═══ RELATED RESOURCES STRIP ═══ */}
       {!studyMode && relatedItems.length > 0 && (
-        <footer className="relative z-20 shrink-0 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+        <footer className="relative z-20 shrink-0 border-t border-foreground/[0.06] bg-background/80 dark:bg-black/40 backdrop-blur-xl">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/[0.08] to-transparent" />
           <div className="px-4 py-3 sm:px-5">
             <p className="type-mono mb-2.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/40">
               related resources · shared topics
@@ -1568,7 +1578,7 @@ export default function Reader() {
                 <Link
                   key={relatedItem._id}
                   to={`/read/${relatedItem._id}`}
-                  className="group flex shrink-0 cursor-pointer items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 transition-all duration-200 hover:border-primary/20 hover:bg-white/[0.04]"
+                  className="group flex shrink-0 cursor-pointer items-center gap-2.5 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-3.5 py-2.5 transition-all duration-200 hover:border-primary/20 hover:bg-foreground/[0.04]"
                 >
                   <div className="flex size-7 items-center justify-center rounded-lg bg-primary/[0.08]">
                     <MessageSquare className="size-3.5 text-primary/70 transition-colors group-hover:text-primary" />
@@ -1610,7 +1620,7 @@ export default function Reader() {
       {/* ══════ Exam Mode overlay (Feature 1) ══════ */}
       {examMode && item && (
         <ReaderExamMode
-          pdfData={pdfData}
+          pdfData={pdfDataRef.current}
           pdfUrl={pdfUrl}
           numPages={numPages ?? 0}
           contentId={item._id}

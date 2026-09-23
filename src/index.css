@@ -1040,6 +1040,13 @@ html.lenis, html.lenis body {
   100% { transform: translateX(100%); }
 }
 
+/* Study Soundtrack equalizer — tiny bars dancing while music plays */
+@keyframes eq-bar {
+  0%, 100% { transform: scaleY(0.25); }
+  35% { transform: scaleY(1); }
+  70% { transform: scaleY(0.55); }
+}
+
 /* Light-mode auth overrides — keep it gorgeous in both themes */
 .light .auth-bg {
   display: none;

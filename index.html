@@ -23,6 +23,11 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
+  <!-- Speed: warm up the connection to the R2 asset host BEFORE the app
+       discovers any PDF URL — saves a full DNS+TLS round-trip (100-400ms)
+       on every first document open, especially on mobile networks. -->
+  <link rel="preconnect" href="https://pub-ed4ccd3a1b864e50a887a2ab1fc3dc18.r2.dev" crossorigin />
+  <link rel="dns-prefetch" href="https://pub-ed4ccd3a1b864e50a887a2ab1fc3dc18.r2.dev" />
   <title>Learnyx Academy ET 🇪🇹 — Ethiopian National Exam Prep Library</title>
 
   <!-- ═══════════════════════════════════════════════════════════════════

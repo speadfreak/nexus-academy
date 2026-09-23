@@ -87,7 +87,7 @@ export interface OutlineChapter {
 // viewer instead. Scoped so the outer app keeps running.
 // ═══════════════════════════════════════════════════════════════════════
 class PdfEngineBoundary extends Component<
-  { onCrash: (error: Error) => void; children: ReactNode },
+  { onCrash: (error: Error) => void; resetKey: string; children: ReactNode },
   { hasError: boolean }
 > {
   state = { hasError: false };
@@ -95,8 +95,16 @@ class PdfEngineBoundary extends Component<
     return { hasError: true };
   }
   componentDidCatch(error: Error) {
-    console.error("[PdfStage] PDF engine crashed — falling back to native viewer:", error);
+    console.error("[PdfStage] PDF engine crashed — degrading this document's render path:", error);
     this.props.onCrash(error);
+  }
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    // RESET-on-change: the old boundary rendered `null` forever after any
+    // crash — the blue blank page. When the document context genuinely
+    // changes (new content, new chunk), recover automatically.
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
   }
   render() {
     return this.state.hasError ? null : this.props.children;
@@ -110,8 +118,11 @@ interface LoadProgress {
 
 interface PdfStageProps {
   pdfUrl: string | null;
-  pdfData: ArrayBuffer | null;
-  /** Mirrors the ArrayBuffer up to Reader (exam mode needs it). */
+  /** Mirrors the ArrayBuffer up to Reader (exam mode needs it). The Reader
+   * stores it in a REF — a state mirror here once re-created the `file`
+   * object mid-flight and re-ran getDocument() on a buffer pdf.js had
+   * already transferred (detached) into its worker, crashing with
+   * "Cannot perform Construct on a detached ArrayBuffer" (blue blank page). */
   onPdfData: (data: ArrayBuffer) => void;
   pdfError: string | null;
   loadingPdf: boolean;
@@ -178,7 +189,6 @@ const CALM_LOADING_MESSAGES = [
 
 export const PdfStage = memo(function PdfStage({
   pdfUrl,
-  pdfData,
   onPdfData,
   pdfError,
   loadingPdf,
@@ -201,6 +211,13 @@ export const PdfStage = memo(function PdfStage({
   const arrayBufferAttempted = useRef(false);
   const [localBufferLoading, setLocalBufferLoading] = useState(false);
   const [localBufferProgress, setLocalBufferProgress] = useState(0);
+  // The ArrayBuffer fallback lives HERE (not mirrored from Reader):
+  // pdf.js DETACHES every ArrayBuffer it receives — it is transferred into
+  // the worker unconditionally (pdf.mjs GetDocRequest: `data ? [data.buffer]
+  // : null`). Owning it locally guarantees each buffer is handed to pdf.js
+  // exactly once, and that `file` identity only changes when a genuinely
+  // NEW buffer arrives.
+  const [bufferData, setBufferData] = useState<ArrayBuffer | null>(null);
 
   // ── Loading / render state ─────────────────────────────────────────
   const [docLoaded, setDocLoaded] = useState(false);
@@ -228,6 +245,9 @@ export const PdfStage = memo(function PdfStage({
   const [chunkLoading, setChunkLoading] = useState(false);
   const [chunkError, setChunkError] = useState<string | null>(null);
   const chunkLoadRunRef = useRef(0); // stale-load guard
+  // Bumped to force a clean engine remount (retry / crash recovery) — part
+  // of the boundary resetKey so a crashed boundary actually recovers.
+  const [engineNonce, setEngineNonce] = useState(0);
 
   /** Which manifest chunk contains this global page? */
   const chunkIndexForPage = useCallback(
@@ -253,11 +273,26 @@ export const PdfStage = memo(function PdfStage({
   const renderPage = Math.min(localPage, chunkPageCount ?? localPage);
 
   // Chunk loader — cache-first, IndexedDB-backed, error-tolerant.
+  // `chunkIndex` + `engineNonce` in deps: both are how a retry forces the
+  // reload (the old retry button set chunkIndex(-1) but the effect never
+  // re-ran — its deps didn't include it — so "Try again" did nothing).
   useEffect(() => {
     if (!isChunked || !chunkManifest || desiredChunkIndex < 0) return;
     if (chunkIndex === desiredChunkIndex && (chunkBuffer || chunkLoading)) return;
     const runId = ++chunkLoadRunRef.current;
     let cancelled = false;
+
+    // The live docProxy belongs to the buffer we're about to replace, and
+    // dies with the old Document. Drop it BEFORE the swap: the ±1 pre-render
+    // pages call docProxy.getPage() synchronously — on a destroyed proxy that
+    // throws "Cannot read properties of null (reading 'sendWithPromise')".
+    // Steady-state re-runs early-return above, so this only fires on
+    // genuine loads and retries.
+    if (docProxy) {
+      setDocProxy(null);
+      onDocProxy(null);
+      setDocLoaded(false);
+    }
 
     void (async () => {
       setChunkLoading(true);
@@ -268,7 +303,11 @@ export const PdfStage = memo(function PdfStage({
         const cached = await getCachedChunk(contentId, desiredChunkIndex);
         if (cancelled || runId !== chunkLoadRunRef.current) return;
         if (cached) {
-          setChunkBuffer(await cached.arrayBuffer());
+          // .slice(0) — MANDATORY: Blob.arrayBuffer() returns the SAME cached
+          // backing buffer on every call, and pdf.js DETACHES whatever it
+          // receives. Handing it the shared buffer would poison the cache
+          // copy for the next mount (detached-ArrayBuffer crash).
+          setChunkBuffer((await cached.arrayBuffer()).slice(0));
           setChunkIndex(desiredChunkIndex);
           setChunkLoading(false);
           void prefetchNextChunk(contentId, chunkManifest, desiredChunkIndex);
@@ -302,7 +341,7 @@ export const PdfStage = memo(function PdfStage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isChunked, desiredChunkIndex, chunkManifest, contentId]);
+  }, [isChunked, desiredChunkIndex, chunkIndex, engineNonce, chunkManifest, contentId]);
 
   // Chunked mode reports the TRUE total page count immediately — no need
   // to wait for any document to parse.
@@ -310,7 +349,9 @@ export const PdfStage = memo(function PdfStage({
     if (isChunked && chunkManifest) onNumPages(chunkManifest.totalPageCount);
   }, [isChunked, chunkManifest, onNumPages]);
 
-  // Mirror the chunk buffer up to Reader (exam mode) like pdfData would.
+  // Mirror the chunk buffer up to Reader (exam mode reads it from a ref —
+  // NEVER from state: a state mirror re-renders this stage and could re-create
+  // the `file` object on an already-transferred (detached) buffer).
   useEffect(() => {
     if (isChunked && chunkBuffer) onPdfData(chunkBuffer);
   }, [isChunked, chunkBuffer, onPdfData]);
@@ -320,13 +361,27 @@ export const PdfStage = memo(function PdfStage({
   const [searchOpen, setSearchOpen] = useState(false);
 
   // Any crash inside the pdf.js engine degrades the render path for THIS
-  // document only — the app itself keeps running. Chunked documents get a
+  // document only — the app itself keeps running, and the error card sits
+  // OUTSIDE the boundary so it stays visible. Chunked documents get a
   // retry card instead of the iframe (Chrome-Android has no built-in PDF
   // viewer, so an iframe there is a permanent blank page — the stuck-blank
   // "Native Viewer" bug reported on the 171.8MB textbook).
+  //
+  // BOUNDED AUTO-RECOVERY: the classic crash cause was pdf.js re-receiving
+  // a buffer it had already transferred (detached). Reloading the current
+  // chunk produces a provably fresh buffer, which heals the render path
+  // without user action. If it crashes twice more, the retry card stays.
+  const autoRetryRef = useRef(0);
   const handleEngineCrash = useCallback(() => {
     if (isChunked) {
       setChunkError("The document engine hit an unexpected error on this part.");
+      if (autoRetryRef.current < 2) {
+        autoRetryRef.current += 1;
+        chunkLoadRunRef.current += 1;
+        setChunkBuffer(null);
+        setChunkIndex(-1);
+        setEngineNonce((n) => n + 1);
+      }
     } else {
       setUseIframeFallback(true);
     }
@@ -346,6 +401,9 @@ export const PdfStage = memo(function PdfStage({
     setChunkBuffer(null);
     setChunkLoading(false);
     setChunkError(null);
+    setBufferData(null);
+    autoRetryRef.current = 0;
+    setEngineNonce(0);
     basePageWidthRef.current = null;
     autoFitDoneRef.current = false;
   }, [contentId]);
@@ -379,6 +437,7 @@ export const PdfStage = memo(function PdfStage({
           off += chunk.length;
         }
         if (combined[0] === 0x25 && combined[1] === 0x50 && combined[2] === 0x44 && combined[3] === 0x46) {
+          setBufferData(combined.buffer as ArrayBuffer);
           onPdfData(combined.buffer as ArrayBuffer);
         } else {
           setUseIframeFallback(true);
@@ -406,7 +465,7 @@ export const PdfStage = memo(function PdfStage({
   //     the stream genuinely stalls, degrade straight to the iframe.
   useEffect(() => {
     if (useIframeFallback || pdfError || docLoaded) return;
-    if (!pdfUrl && !pdfData) return;
+    if (!pdfUrl && !bufferData) return;
     if (localBufferLoading) return;
     if (isChunked) return; // chunked mode handles its own loading
 
@@ -420,7 +479,7 @@ export const PdfStage = memo(function PdfStage({
       if (idleFor < windowMs) return;
       if (
         !isOversize &&
-        shouldTryArrayBuffer(pdfUrl, pdfData) &&
+        shouldTryArrayBuffer(pdfUrl, bufferData) &&
         pdfUrl &&
         !arrayBufferAttempted.current
       ) {
@@ -435,7 +494,7 @@ export const PdfStage = memo(function PdfStage({
     }, 2000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfUrl, pdfData, useIframeFallback, pdfError, docLoaded, localBufferLoading, isChunked, fileSizeBytes]);
+  }, [pdfUrl, bufferData, useIframeFallback, pdfError, docLoaded, localBufferLoading, isChunked, fileSizeBytes]);
 
   function shouldTryArrayBuffer(url: string | null, data: ArrayBuffer | null): boolean {
     return Boolean(url) && !data;
@@ -450,17 +509,25 @@ export const PdfStage = memo(function PdfStage({
   }, [pageNumber, scale]);
 
   // ── Stable file prop (never re-creates the document on re-render) ───
-  // Chunked mode feeds the CURRENT CHUNK's buffer; the Document key
-  // (chunkIndex) remounts it cleanly across chunk boundaries.
+  // THE DETACHED-ARRAYBUFFER CONTRACT (this file's #1 invariant):
+  //   pdf.js constructs a view over ANY ArrayBuffer it receives, then
+  //   TRANSFERS it into its worker (GetDocRequest → `[data.buffer]`) — the
+  //   main-thread copy dies on first use. react-pdf re-runs getDocument()
+  //   whenever the `file` OBJECT identity changes. Therefore `file` may
+  //   only be rebuilt from a PROVABLY fresh buffer (new chunkBuffer / new
+  //   bufferData) — never re-wrapped from one pdf.js already consumed.
+  //   `chunkIndex` is deliberately NOT a dep: the -1→0 retry transition
+  //   would re-wrap a consumed buffer → "Cannot perform Construct on a
+  //   detached ArrayBuffer" → permanent blank stage.
   const file = useMemo(() => {
     if (isChunked) {
       if (chunkBuffer) return { data: chunkBuffer };
       return null;
     }
-    if (pdfData) return { data: pdfData };
+    if (bufferData) return { data: bufferData };
     if (pdfUrl) return { url: pdfUrl };
     return null;
-  }, [isChunked, chunkBuffer, chunkIndex, pdfData, pdfUrl]);
+  }, [isChunked, chunkBuffer, bufferData, pdfUrl]);
 
   // ── Page navigation with direction for the flip animation ───────────
   const goToPage = useCallback(
@@ -566,7 +633,7 @@ export const PdfStage = memo(function PdfStage({
       {/* ═══ IFRAME MODE — last-resort native viewer ═══ */}
       {useIframeFallback && pdfUrl && !pdfError ? (
         <div className="flex h-full flex-col">
-          <div className="relative z-10 flex shrink-0 items-center justify-center gap-1.5 border-b border-white/[0.04] bg-black/30 px-3 py-2 backdrop-blur-xl">
+          <div className="relative z-10 flex shrink-0 items-center justify-center gap-1.5 border-b border-foreground/[0.04] bg-background/70 dark:bg-black/30 px-3 py-2 backdrop-blur-xl">
             <span className="type-caption mr-2 text-[10px] uppercase tracking-widest text-muted-foreground/50">Native viewer</span>
             {(
               [
@@ -585,7 +652,7 @@ export const PdfStage = memo(function PdfStage({
                   "flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium transition-all duration-150 active:scale-95",
                   iframeZoom === preset.id
                     ? "border-primary/25 bg-primary/15 text-primary"
-                    : "border-transparent text-muted-foreground/70 hover:bg-white/[0.06] hover:text-foreground",
+                    : "border-transparent text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
                 )}
               >
                 {preset.icon && <preset.icon className="size-3" />}
@@ -597,13 +664,17 @@ export const PdfStage = memo(function PdfStage({
             key={`${pdfUrl}#${iframeZoom}`}
             src={`${pdfUrl}#${iframeZoom === "fit-width" ? "view=FitW&toolbar=0&navpanes=0" : iframeZoom === "fit-page" ? "view=FitH&toolbar=0&navpanes=0" : `zoom=${iframeZoom}&toolbar=0&navpanes=0`}`}
             title="PDF document"
-            className="w-full flex-1 border-0 bg-white/5"
+            className="w-full flex-1 border-0 bg-foreground/5"
             style={{ minHeight: 0 }}
           />
         </div>
       ) : (
-        /* ═══ SMART READER MODE ═══ */
-        <PdfEngineBoundary onCrash={handleEngineCrash}>
+        /* ═══ SMART READER MODE ═══
+           Loaders + error cards live OUTSIDE the engine boundary: when the
+           engine crashes, the boundary renders null — and the student must
+           STILL see the retry card. The old layout put them INSIDE, so a
+           crash hid every message and left the permanent blue blank page. */
+        <>
           {/* Thumbnails rail (lazy) — chunked mode shows the CURRENT chunk
               with true global page numbers (pageOffset) */}
           <AnimatePresence>
@@ -682,7 +753,7 @@ export const PdfStage = memo(function PdfStage({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
+                        className="rounded-xl border-foreground/10 bg-foreground/5 hover:bg-foreground/10"
                         onClick={() => window.location.reload()}
                       >
                         <RotateCcw className="size-3.5" /> Refresh
@@ -713,13 +784,15 @@ export const PdfStage = memo(function PdfStage({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
+                    className="rounded-xl border-foreground/10 bg-foreground/5 hover:bg-foreground/10"
                     onClick={() => {
-                      // Force a clean re-load of the current chunk.
+                      // Force a clean re-load of the current chunk with a
+                      // provably FRESH buffer + an engine remount.
                       chunkLoadRunRef.current += 1;
                       setChunkBuffer(null);
                       setChunkIndex(-1);
                       setChunkError(null);
+                      setEngineNonce((n) => n + 1);
                     }}
                   >
                     <RotateCcw className="size-3.5" /> Try again
@@ -727,16 +800,22 @@ export const PdfStage = memo(function PdfStage({
                 </div>
               )}
 
-              {/* Document + page */}
+              {/* Document + page — the engine boundary wraps ONLY this
+                  subtree, with a resetKey: any crash degrades to null and
+                  the boundary RECOVERS when the chunk/content changes or
+                  the student taps retry. NO key on the page wrapper — the
+                  Document mounts ONCE per chunk and stays mounted across
+                  page flips (remounting it re-ran getDocument() on a buffer
+                  pdf.js had already transferred/detached into its worker →
+                  "Cannot perform Construct on a detached ArrayBuffer" → the
+                  permanent blank stage). Only the page-animator inside is
+                  keyed by pageNumber. */}
               {file && !pdfError && !chunkError && (
-                <motion.div
-                  key={pageNumber}
-                  initial={{ opacity: 0, x: pageDirection * 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                  className="relative"
+                <PdfEngineBoundary
+                  onCrash={handleEngineCrash}
+                  resetKey={`${contentId}:${isChunked ? `chunk-${chunkIndex}` : "doc"}:${engineNonce}`}
                 >
-                  <div className="group relative overflow-hidden rounded-lg shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)] transition-shadow duration-300 hover:shadow-[0_30px_100px_-20px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)]">
+                  <div className="relative">
                     <Document
                       key={isChunked ? `chunk-${chunkIndex}` : "doc"}
                       file={file}
@@ -776,7 +855,7 @@ export const PdfStage = memo(function PdfStage({
                           setUseIframeFallback(true);
                         } else if (
                           pdfUrl &&
-                          !pdfData &&
+                          !bufferData &&
                           !arrayBufferAttempted.current &&
                           !(typeof fileSizeBytes === "number" && fileSizeBytes >= SPLIT_THRESHOLD_BYTES)
                         ) {
@@ -790,73 +869,83 @@ export const PdfStage = memo(function PdfStage({
                       loading={null}
                       className="flex flex-col items-center"
                     >
-                      <PdfPage
-                        pageNumber={renderPage}
-                        scale={scale}
-                        renderTextLayer={showTextLayers}
-                        renderAnnotationLayer={showTextLayers}
-                        onLoadSuccess={(page) => {
-                          try {
-                            const viewport = page.getViewport({ scale: 1 });
-                            basePageWidthRef.current = viewport.width;
-                            // Phones: auto-fit the FIRST page to the viewport
-                            // width — a 100% textbook page (often 700-1100px
-                            // wide) otherwise overflows a 390px screen. Floor
-                            // is 0.25 because large-format PDFs need <0.5.
-                            if (!autoFitDoneRef.current) {
-                              autoFitDoneRef.current = true;
-                              const container = stageRef.current;
-                              if (container && window.matchMedia("(max-width: 640px)").matches) {
-                                const available = container.clientWidth - 20;
-                                const fit = Math.max(0.25, Math.min(1, Math.round((available / viewport.width) * 100) / 100));
-                                if (fit < scale) onScaleChange(fit);
+                      <motion.div
+                        key={pageNumber}
+                        initial={{ opacity: 0, x: pageDirection * 24 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        className="relative"
+                      >
+                        <div className="group relative overflow-hidden rounded-lg shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)] transition-shadow duration-300 hover:shadow-[0_30px_100px_-20px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)]">
+                          <PdfPage
+                            pageNumber={renderPage}
+                            scale={scale}
+                            renderTextLayer={showTextLayers}
+                            renderAnnotationLayer={showTextLayers}
+                            onLoadSuccess={(page) => {
+                              try {
+                                const viewport = page.getViewport({ scale: 1 });
+                                basePageWidthRef.current = viewport.width;
+                                // Phones: auto-fit the FIRST page to the viewport
+                                // width — a 100% textbook page (often 700-1100px
+                                // wide) otherwise overflows a 390px screen. Floor
+                                // is 0.25 because large-format PDFs need <0.5.
+                                if (!autoFitDoneRef.current) {
+                                  autoFitDoneRef.current = true;
+                                  const container = stageRef.current;
+                                  if (container && window.matchMedia("(max-width: 640px)").matches) {
+                                    const available = container.clientWidth - 20;
+                                    const fit = Math.max(0.25, Math.min(1, Math.round((available / viewport.width) * 100) / 100));
+                                    if (fit < scale) onScaleChange(fit);
+                                  }
+                                }
+                              } catch {
+                                // Non-fatal — fit-to-width just stays unavailable.
                               }
+                            }}
+                            loading={
+                              <div className="relative aspect-[1/1.414] w-[min(64vw,28rem)] max-w-full overflow-hidden rounded-md border border-foreground/[0.06] bg-foreground/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9)]">
+                                <div className="absolute inset-0 flex flex-col gap-3 p-6">
+                                  <div className="h-3 w-1/2 animate-pulse rounded bg-foreground/[0.06]" />
+                                  <div className="mt-2 h-2 w-full animate-pulse rounded bg-foreground/[0.04]" style={{ animationDelay: "60ms" }} />
+                                  <div className="h-2 w-5/6 animate-pulse rounded bg-foreground/[0.04]" style={{ animationDelay: "120ms" }} />
+                                  <div className="h-2 w-full animate-pulse rounded bg-foreground/[0.04]" style={{ animationDelay: "180ms" }} />
+                                  <div className="h-2 w-3/4 animate-pulse rounded bg-foreground/[0.04]" style={{ animationDelay: "240ms" }} />
+                                </div>
+                                <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer-slide_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent" />
+                              </div>
                             }
-                          } catch {
-                            // Non-fatal — fit-to-width just stays unavailable.
-                          }
-                        }}
-                        loading={
-                          <div className="relative aspect-[1/1.414] w-[min(64vw,28rem)] max-w-full overflow-hidden rounded-md border border-white/[0.06] bg-white/[0.02] shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9)]">
-                            <div className="absolute inset-0 flex flex-col gap-3 p-6">
-                              <div className="h-3 w-1/2 animate-pulse rounded bg-white/[0.06]" />
-                              <div className="mt-2 h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "60ms" }} />
-                              <div className="h-2 w-5/6 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "120ms" }} />
-                              <div className="h-2 w-full animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "180ms" }} />
-                              <div className="h-2 w-3/4 animate-pulse rounded bg-white/[0.04]" style={{ animationDelay: "240ms" }} />
-                            </div>
-                            <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer-slide_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />
-                          </div>
-                        }
-                      />
+                          />
+                        </div>
+
+                        {/* Page number chip under the page */}
+                        {numPages && (
+                          <p className="type-mono mt-3 text-center text-[10px] tabular-nums text-muted-foreground/30">
+                            PAGE {pageNumber} · {numPages}
+                          </p>
+                        )}
+                      </motion.div>
                     </Document>
                   </div>
 
-                  {/* Page number chip under the page */}
-                  {numPages && (
-                    <p className="type-mono mt-3 text-center text-[10px] tabular-nums text-muted-foreground/30">
-                      PAGE {pageNumber} · {numPages}
-                    </p>
+                  {/* Hidden ±1 pre-render for instant page flips. NOTE: these
+                      render OUTSIDE <Document>, so the explicit `pdf` prop is
+                      MANDATORY — without it react-pdf's Page invariant throws
+                      "Invariant failed" and killed the whole app (the crash the
+                      production app hit on every document open).
+                      Chunked mode: neighbour pages are clamped to the CURRENT
+                      chunk — crossing a boundary is the chunk loader's job. */}
+                  {numPages && docProxy && docLoaded && (
+                    <div className="pointer-events-none absolute h-0 w-0 overflow-hidden" aria-hidden="true">
+                      {localPage > 1 && (
+                        <PdfPage pdf={docProxy} pageNumber={localPage - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                      )}
+                      {localPage < (chunkPageCount ?? localPage + 1) && (
+                        <PdfPage pdf={docProxy} pageNumber={localPage + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                      )}
+                    </div>
                   )}
-                </motion.div>
-              )}
-
-              {/* Hidden ±1 pre-render for instant page flips. NOTE: these
-                  render OUTSIDE <Document>, so the explicit `pdf` prop is
-                  MANDATORY — without it react-pdf's Page invariant throws
-                  "Invariant failed" and killed the whole app (the crash the
-                  production app hit on every document open).
-                  Chunked mode: neighbour pages are clamped to the CURRENT
-                  chunk — crossing a boundary is the chunk loader's job. */}
-              {file && !pdfError && !chunkError && numPages && docProxy && docLoaded && (
-                <div className="pointer-events-none absolute h-0 w-0 overflow-hidden" aria-hidden="true">
-                  {localPage > 1 && (
-                    <PdfPage pdf={docProxy} pageNumber={localPage - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
-                  )}
-                  {localPage < (chunkPageCount ?? localPage + 1) && (
-                    <PdfPage pdf={docProxy} pageNumber={localPage + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
-                  )}
-                </div>
+                </PdfEngineBoundary>
               )}
             </div>
           </div>
@@ -864,11 +953,11 @@ export const PdfStage = memo(function PdfStage({
           {/* ═══ FLOATING READER CONTROLS — above the iOS safe area ═══ */}
           {docProxy && !pdfError && (
             <div className="pointer-events-none absolute inset-x-0 bottom-[max(0.9rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-3">
-              <div className="pointer-events-auto flex items-center gap-0.5 rounded-2xl border border-white/10 bg-black/75 px-1.5 py-1 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+              <div className="pointer-events-auto flex items-center gap-0.5 rounded-2xl border border-foreground/10 bg-background/85 dark:bg-black/75 px-1.5 py-1 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
                 <button
                   type="button"
                   onClick={() => onScaleChange(Math.max(0.25, Math.round((scale - 0.15) * 100) / 100))}
-                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground active:scale-90 sm:size-8"
                   aria-label="Zoom out"
                 >
                   <ZoomOut className="size-3.5" />
@@ -884,19 +973,19 @@ export const PdfStage = memo(function PdfStage({
                 <button
                   type="button"
                   onClick={() => onScaleChange(Math.min(3, Math.round((scale + 0.15) * 100) / 100))}
-                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground active:scale-90 sm:size-8"
                   aria-label="Zoom in"
                 >
                   <ZoomIn className="size-3.5" />
                 </button>
 
-                <div className="mx-0.5 h-5 w-px bg-white/10" />
+                <div className="mx-0.5 h-5 w-px bg-foreground/10" />
 
                 <button
                   type="button"
                   onClick={() => goToPage(pageNumber - 1)}
                   disabled={pageNumber <= 1}
-                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground disabled:opacity-20 active:scale-90 sm:size-8"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground disabled:opacity-20 active:scale-90 sm:size-8"
                   aria-label="Previous page"
                 >
                   <ChevronLeft className="size-4" />
@@ -911,19 +1000,19 @@ export const PdfStage = memo(function PdfStage({
                   type="button"
                   onClick={() => goToPage(pageNumber + 1)}
                   disabled={numPages !== null && pageNumber >= numPages}
-                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-white/10 hover:text-foreground disabled:opacity-20 active:scale-90 sm:size-8"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground disabled:opacity-20 active:scale-90 sm:size-8"
                   aria-label="Next page"
                 >
                   <ChevronRight className="size-4" />
                 </button>
 
-                <div className="mx-0.5 h-5 w-px bg-white/10" />
+                <div className="mx-0.5 h-5 w-px bg-foreground/10" />
 
                 <button
                   type="button"
                   onClick={() => { setSearchOpen((v) => !v); setThumbsOpen(false); }}
                   className={cn(
-                    "flex size-9 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8",
+                    "flex size-9 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-foreground/10 hover:text-foreground active:scale-90 sm:size-8",
                     searchOpen ? "text-primary" : "text-muted-foreground",
                   )}
                   aria-label="Search in document"
@@ -935,7 +1024,7 @@ export const PdfStage = memo(function PdfStage({
                   type="button"
                   onClick={() => { setThumbsOpen((v) => !v); setSearchOpen(false); }}
                   className={cn(
-                    "flex size-9 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-white/10 hover:text-foreground active:scale-90 sm:size-8",
+                    "flex size-9 cursor-pointer items-center justify-center rounded-lg transition-all hover:bg-foreground/10 hover:text-foreground active:scale-90 sm:size-8",
                     thumbsOpen ? "text-primary" : "text-muted-foreground",
                   )}
                   aria-label="Page thumbnails"
@@ -946,7 +1035,7 @@ export const PdfStage = memo(function PdfStage({
               </div>
             </div>
           )}
-        </PdfEngineBoundary>
+        </>
       )}
 
       {/* Watermark overlay — cosmetic deterrent, covers BOTH render modes */}
@@ -1015,7 +1104,7 @@ function PageInput({
         }
         if (e.key === "Escape") setEditing(false);
       }}
-      className="type-mono h-8 w-14 rounded-lg border-white/[0.08] bg-transparent px-1 text-center text-xs tabular-nums shadow-none focus-visible:ring-0"
+      className="type-mono h-8 w-14 rounded-lg border-foreground/[0.08] bg-transparent px-1 text-center text-xs tabular-nums shadow-none focus-visible:ring-0"
     />
   );
 }
@@ -1044,7 +1133,7 @@ function CalmLoader({ chunked }: { chunked: boolean }) {
       <div className="relative">
         <div className="absolute -inset-8 animate-pulse rounded-full bg-primary/5 blur-2xl" />
         <div className="absolute -inset-4 animate-spin rounded-full border border-primary/10" style={{ animationDuration: "4s" }} />
-        <div className="relative flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
+        <div className="relative flex size-16 items-center justify-center rounded-2xl border border-foreground/10 bg-foreground/[0.03] backdrop-blur-xl">
           <Loader2 className="size-6 animate-spin text-primary" />
         </div>
       </div>
@@ -1059,7 +1148,7 @@ function CalmLoader({ chunked }: { chunked: boolean }) {
         ) : (
           <p className="type-mono mt-2 h-4 text-[10px] text-muted-foreground/20">just a moment</p>
         )}
-        <div className="mx-auto mt-3 h-0.5 w-32 overflow-hidden rounded-full bg-white/[0.06]">
+        <div className="mx-auto mt-3 h-0.5 w-32 overflow-hidden rounded-full bg-foreground/[0.06]">
           <div className="h-full w-1/3 animate-[shimmer-slide_1.5s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-primary to-transparent" />
         </div>
       </div>
@@ -1163,15 +1252,15 @@ function ThumbnailsRail({
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: "-100%", opacity: 0 }}
       transition={{ type: "spring", stiffness: 380, damping: 38 }}
-      className="absolute bottom-20 left-3 top-3 z-30 flex w-[104px] flex-col rounded-2xl border border-white/10 bg-black/70 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
+      className="absolute bottom-20 left-3 top-3 z-30 flex w-[104px] flex-col rounded-2xl border border-foreground/10 bg-background/85 dark:bg-black/70 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
       aria-label="Page thumbnails"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-3 py-2">
         <p className="type-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/50">Pages</p>
         <button
           type="button"
           onClick={onClose}
-          className="flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-white/10 hover:text-foreground"
+          className="flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground"
           aria-label="Close thumbnails"
         >
           <X className="size-3" />
@@ -1195,7 +1284,7 @@ function ThumbnailsRail({
                 "group relative block w-full cursor-pointer overflow-hidden rounded-lg border transition-all duration-200",
                 isActive
                   ? "border-primary/60 ring-1 ring-primary/40"
-                  : "border-white/[0.06] hover:border-white/25",
+                  : "border-foreground/[0.06] hover:border-foreground/25",
               )}
               title={`Page ${page}`}
             >
@@ -1207,17 +1296,17 @@ function ThumbnailsRail({
                   renderTextLayer={false}
                   renderAnnotationLayer={false}
                   onLoadSuccess={() => markRendered(page)}
-                  loading={<div className="aspect-[1/1.414] w-full bg-white/[0.03]" />}
+                  loading={<div className="aspect-[1/1.414] w-full bg-foreground/[0.03]" />}
                 />
               ) : (
-                <div className="flex aspect-[1/1.414] w-full items-center justify-center bg-white/[0.02]">
+                <div className="flex aspect-[1/1.414] w-full items-center justify-center bg-foreground/[0.02]">
                   <span className="type-mono text-[9px] tabular-nums text-muted-foreground/30">{page}</span>
                 </div>
               )}
               <span
                 className={cn(
                   "type-mono absolute inset-x-0 bottom-0 py-0.5 text-center text-[8px] tabular-nums backdrop-blur-sm",
-                  isActive ? "bg-primary/25 text-primary" : "bg-black/40 text-muted-foreground/60",
+                  isActive ? "bg-primary/25 text-primary" : "bg-background/80 dark:bg-black/40 text-muted-foreground/60",
                 )}
               >
                 {page}
@@ -1349,10 +1438,10 @@ function SearchOverlay({
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: "-100%", opacity: 0 }}
       transition={{ type: "spring", stiffness: 380, damping: 38 }}
-      className="absolute bottom-20 left-3 top-3 z-30 flex w-[300px] max-w-[80vw] flex-col rounded-2xl border border-white/10 bg-black/70 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl sm:w-[320px]"
+      className="absolute bottom-20 left-3 top-3 z-30 flex w-[300px] max-w-[80vw] flex-col rounded-2xl border border-foreground/10 bg-background/85 dark:bg-black/70 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.8)] backdrop-blur-2xl sm:w-[320px]"
       aria-label="Search in document"
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-3 py-2.5">
+      <div className="flex shrink-0 items-center gap-2 border-b border-foreground/[0.06] px-3 py-2.5">
         <Search className="size-3.5 shrink-0 text-primary/80" />
         <Input
           autoFocus
@@ -1364,7 +1453,7 @@ function SearchOverlay({
         <button
           type="button"
           onClick={onClose}
-          className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-white/10 hover:text-foreground"
+          className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground"
           aria-label="Close search"
         >
           <X className="size-3.5" />
@@ -1406,7 +1495,7 @@ function SearchOverlay({
               key={`${hit.page}-${i}`}
               type="button"
               onClick={() => onJump(hit.page)}
-              className="group block w-full cursor-pointer rounded-xl border border-white/[0.05] bg-white/[0.015] px-3 py-2 text-left transition-all hover:border-primary/25 hover:bg-white/[0.04]"
+              className="group block w-full cursor-pointer rounded-xl border border-foreground/[0.05] bg-foreground/[0.015] px-3 py-2 text-left transition-all hover:border-primary/25 hover:bg-foreground/[0.04]"
             >
               <span className="type-mono mb-1 inline-block rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-primary">
                 Page {hit.page}
