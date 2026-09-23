@@ -9,8 +9,8 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isAdmin } from "./admin";
-import { contentTypeValidator } from "./schema";
-import { BRANDING_VERSION } from "./constants";
+import { contentTypeValidator, pdfChunkManifest } from "./schema";
+import { BRANDING_VERSION, SPLIT_THRESHOLD_BYTES } from "./constants";
 
 export type ContentItem = Doc<"contentItems">;
 export type ContentItemWithSubject = ContentItem & {
@@ -53,6 +53,9 @@ export const insertContentItem = internalMutation({
     brandingApplied: v.optional(v.boolean()),
     brandingVersion: v.optional(v.number()),
     originalFileUrl: v.optional(v.string()),
+    // Large-PDF chunk manifest — set when the file was pre-split into
+    // sequential chunk PDFs (see pdfSplitter.ts / pdfSplitCore.ts).
+    pdfChunks: v.optional(pdfChunkManifest),
   },
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("contentItems", {
@@ -73,6 +76,7 @@ export const insertContentItem = internalMutation({
       brandingApplied: args.brandingApplied,
       brandingVersion: args.brandingVersion,
       originalFileUrl: args.originalFileUrl,
+      pdfChunks: args.pdfChunks,
       createdAt: Date.now(),
     });
 
@@ -98,6 +102,56 @@ export const insertContentItem = internalMutation({
     }
 
     return id;
+  },
+});
+
+// ── Large-PDF chunk manifest management ────────────────────────
+// Mutations live here because "use node" files (pdfSplitter.ts) may only
+// define actions. The manifest shape is validated by pdfChunkManifest.
+
+export const internalSetPdfChunks = internalMutation({
+  args: {
+    contentId: v.id("contentItems"),
+    manifest: pdfChunkManifest,
+  },
+  handler: async (ctx, { contentId, manifest }) => {
+    await ctx.db.patch(contentId, { pdfChunks: manifest });
+  },
+});
+
+export const internalClearPdfChunks = internalMutation({
+  args: { contentId: v.id("contentItems") },
+  handler: async (ctx, { contentId }) => {
+    await ctx.db.patch(contentId, { pdfChunks: undefined });
+  },
+});
+
+/**
+ * Retroactive-split backlog: items whose file is at/above the split
+ * threshold but which have no pdfChunks manifest yet. Powers the admin
+ * "Large PDF splitter" card. Small table scan — the library is small.
+ */
+export const listSplitBacklog = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.db.query("contentItems").collect();
+    return items
+      .filter(
+        (i) =>
+          !i.pdfChunks &&
+          typeof i.fileSizeBytes === "number" &&
+          i.fileSizeBytes >= SPLIT_THRESHOLD_BYTES,
+      )
+      .map((i) => ({
+        _id: i._id,
+        title: i.title,
+        contentType: i.contentType,
+        grade: i.grade,
+        fileSizeBytes: i.fileSizeBytes ?? 0,
+        pageCount: i.pageCount ?? null,
+        isPremium: i.isPremium,
+      }))
+      .sort((a, b) => b.fileSizeBytes - a.fileSizeBytes);
   },
 });
 

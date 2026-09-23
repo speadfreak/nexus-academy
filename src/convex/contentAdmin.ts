@@ -8,10 +8,17 @@ import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAdminAction } from "./admin";
 import { requireActiveSubscriptionAction } from "./subscriptions";
-import { contentTypeValidator } from "./schema";
+import { contentTypeValidator, pdfChunkManifest } from "./schema";
 import { CONTENT_TYPE_LABELS, CONTENT_TYPE_SLUGS } from "./constants";
 import { logEventAction } from "./systemEvents";
 import { brandPdf, BRANDING_VERSION } from "./pdfBranding";
+import {
+  chunkKeyFor,
+  computePagesPerChunk,
+  makeChunkToken,
+  shouldSplit,
+  splitPdfIntoChunkBuffers,
+} from "../lib/pdfSplitCore";
 import {
   deleteFile,
   ensureBucketCors,
@@ -122,6 +129,9 @@ export const finalizeUpload = action({
     durationMinutes: v.optional(v.number()),
     sourceName: v.optional(v.string()), sourceUrl: v.optional(v.string()),
     fileSizeBytes: v.number(), filename: v.string(), topicCandidates: v.optional(v.array(v.string())),
+    // Optional chunk manifest for large files the CLIENT pre-split before
+    // uploading (direct-to-R2 path). See src/lib/pdfSplitCore.ts.
+    pdfChunks: v.optional(pdfChunkManifest),
   },
   handler: async (ctx, args) => {
     const { user: adminUser } = await requireAdminAction(ctx);
@@ -132,6 +142,7 @@ export const finalizeUpload = action({
       title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
       examYear: args.examYear, fileUrl: args.fileUrl, fileSizeBytes: args.fileSizeBytes,
       uploadedBy: adminUser._id, isPremium: args.isPremium,
+      pdfChunks: args.pdfChunks,
       // Exam-prep classification: only stored for past_exam rows; the
       // 120-minute default applies to past exams without an explicit value.
       examPrepSubtype: args.contentType === "past_exam" ? args.examPrepSubtype : undefined,
@@ -255,6 +266,68 @@ export const adminUploadContent = action({
       const fileUrl = await uploadFile(key, bytes, contentTypeForFilename(args.filename), overrides);
       await ctx.storage.delete(storageId);
 
+      // ── LARGE-PDF CHUNKING (STEP 2 of the big-textbook fix) ─────────
+      // Files at/above the 30MB threshold are split ONCE here, at upload
+      // time, into sequential ~12MB chunk PDFs uploaded next to the
+      // original. The reader then fetches only the chunk containing the
+      // current page (IndexedDB-cached, next chunk pre-fetched) instead
+      // of streaming the whole file — measured evidence for why this is
+      // required lives in src/lib/pdfSplitCore.ts. Failure is NON-FATAL:
+      // the row is still created with the full original file, it just
+      // won't have a manifest (the retroactive splitter can retry later).
+      let pdfChunks: {
+        token: string; chunkCount: number; pagesPerChunk: number;
+        totalPageCount: number; totalChunkBytes: number;
+        chunks: { url: string; startPage: number; endPage: number; sizeBytes: number }[];
+        createdAt: number;
+      } | undefined = undefined;
+      if (shouldSplit(bytes.byteLength)) {
+        try {
+          // pagesPerChunk is computed INSIDE the split core from the REAL
+          // page count — caller-side density estimates proved unreliable.
+          const chunkBuffers = await splitPdfIntoChunkBuffers(bytes, {
+            title: args.title.trim(),
+          });
+          const pagesPerChunk = computePagesPerChunk(
+            chunkBuffers[chunkBuffers.length - 1].endPage,
+            bytes.byteLength,
+          );
+          const token = makeChunkToken();
+          const chunkRows: {
+            url: string; startPage: number; endPage: number; sizeBytes: number;
+          }[] = [];
+          let totalChunkBytes = 0;
+          for (let i = 0; i < chunkBuffers.length; i++) {
+            const c = chunkBuffers[i];
+            const chunkKey = chunkKeyFor(key, i, token);
+            const url = await uploadFile(chunkKey, c.bytes, "application/pdf", overrides);
+            totalChunkBytes += c.bytes.byteLength;
+            chunkRows.push({ url, startPage: c.startPage, endPage: c.endPage, sizeBytes: c.bytes.byteLength });
+          }
+          pdfChunks = {
+            token,
+            chunkCount: chunkRows.length,
+            pagesPerChunk,
+            totalPageCount: chunkRows[chunkRows.length - 1].endPage,
+            totalChunkBytes,
+            chunks: chunkRows,
+            createdAt: Date.now(),
+          };
+        } catch (err) {
+          await logEventAction(ctx, {
+            eventType: "content_event",
+            source: "contentAdmin.chunking_failed",
+            status: "error",
+            userId: adminUser._id,
+            metadata: {
+              filename: args.filename,
+              error: err instanceof Error ? err.message : "unknown chunking failure",
+            },
+            durationMs: 0,
+          });
+        }
+      }
+
       const createdId = await ctx.runMutation(internal.content.insertContentItem, {
         title: args.title.trim(), contentType: args.contentType, grade: args.grade, subjectId: args.subjectId,
         examYear: args.examYear, fileUrl, fileSizeBytes: bytes.byteLength, uploadedBy: adminUser._id, isPremium: args.isPremium,
@@ -269,6 +342,7 @@ export const adminUploadContent = action({
         needsReview: args.needsReview,
         brandingApplied,
         brandingVersion,
+        pdfChunks,
       });
 
       if (args.topicCandidates && args.topicCandidates.length > 0) {

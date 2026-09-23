@@ -105,6 +105,10 @@ type CorsRule = {
   AllowedOrigins: string[];
   AllowedMethods: string[];
   AllowedHeaders?: string[];
+  // Required for pdf.js range requests: without exposing these headers,
+  // cross-origin JS sees them as null and pdf.js silently disables ranges
+  // (the 171.8MB textbook full-download bug, 2026-09-23).
+  ExposeHeaders?: string[];
   MaxAgeSeconds?: number;
 };
 
@@ -236,6 +240,12 @@ export async function ensureCorsForOrigin(
     AllowedOrigins: [origin],
     AllowedMethods: ["PUT", "GET", "HEAD"],
     AllowedHeaders: ["*"],
+    // CRITICAL (the 171.8MB textbook bug, 2026-09-23): without
+    // ExposeHeaders the browser hides Accept-Ranges/Content-Range/
+    // Content-Length from JS, pdf.js reads them as null and silently
+    // disables range requests → huge files download fully before page 1
+    // renders. EVERY rule this app writes must expose these headers.
+    ExposeHeaders: ["Content-Range", "Accept-Ranges", "Content-Length", "ETag", "Content-Type"],
     MaxAgeSeconds: 86400,
   };
   const mergedRules = [newRule, ...existing];
@@ -364,6 +374,31 @@ export async function deleteFile(key: string, overrides?: R2ConfigOverrides): Pr
   await client.send(
     new DeleteObjectCommand({ Bucket: getBucket(overrides), Key: key }),
   );
+}
+
+/**
+ * Download an object's full contents (server-side actions). Used by the
+ * large-PDF splitter to pull the original file from R2 for processing.
+ * Streams the body into a single Buffer — fine for action memory limits
+ * (the branding engine already handles files this size in production).
+ */
+export async function downloadFile(
+  key: string,
+  overrides?: R2ConfigOverrides,
+): Promise<Buffer> {
+  const client = getClient(overrides);
+  const result = await client.send(
+    new GetObjectCommand({ Bucket: getBucket(overrides), Key: key }),
+  );
+  const body = result.Body;
+  if (!body) throw new Error(`R2 object ${key} has an empty body`);
+  // sdk v3 Body is a Readable (node stream) in node runtime.
+  const stream = body as unknown as NodeJS.ReadableStream;
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as Uint8Array));
+  }
+  return Buffer.concat(chunks);
 }
 
 /**

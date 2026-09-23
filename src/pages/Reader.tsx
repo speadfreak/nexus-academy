@@ -58,6 +58,7 @@ import {
   type ContentType,
 } from "@/convex/constants";
 import type { ContentItemWithSubject } from "@/convex/content";
+import type { PdfChunkManifest } from "@/convex/schema";
 import { cn } from "@/lib/utils";
 import { ReaderExamMode, type AnswerKeyInfo } from "@/components/reader/ReaderExamMode";
 import { PracticeSessionPanel } from "@/components/reader/PracticePanel";
@@ -294,6 +295,34 @@ export default function Reader() {
   const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
   const [flashcardResult, setFlashcardResult] = useState<{ deckId: string; cardCount: number } | null>(null);
 
+  // ── Chunk-aware text extraction ─────────────────────────────────────
+  // In chunked mode docProxy wraps ONLY the current chunk (local pages),
+  // while callers think in GLOBAL page numbers. This maps the requested
+  // range into the loaded chunk and clamps it — and it never triggers a
+  // download of the full original file.
+  const extractTextForGlobalRange = useCallback(
+    async (fromGlobal: number, toGlobal: number, maxChars: number): Promise<string> => {
+      if (!docProxy) return "";
+      const manifest = (item as { pdfChunks?: PdfChunkManifest } | null | undefined)?.pdfChunks;
+      if (manifest) {
+        const chunk = manifest.chunks.find(
+          (c) => pageNumber >= c.startPage && pageNumber <= c.endPage,
+        );
+        if (chunk) {
+          const localFrom = Math.max(1, fromGlobal - chunk.startPage + 1);
+          const localTo = Math.min(
+            (docProxy as { numPages: number }).numPages ?? chunk.endPage - chunk.startPage + 1,
+            toGlobal - chunk.startPage + 1,
+          );
+          if (localTo < localFrom) return "";
+          return extractPageTextFromProxy(docProxy, localFrom, localTo, maxChars);
+        }
+      }
+      return extractPageTextFromProxy(docProxy, fromGlobal, toGlobal, maxChars);
+    },
+    [docProxy, item, pageNumber],
+  );
+
   const handleGenerateFlashcards = useCallback(
     async (startPage?: number, endPage?: number, selectionText?: string) => {
       if (!item || !item.subjectId || generatingFlashcards) return;
@@ -306,12 +335,16 @@ export default function Reader() {
         let pageText = "";
         const from = startPage ?? Math.max(1, pageNumber - 3);
         const to = endPage ?? pageNumber + 3;
+        const manifest = (item as { pdfChunks?: PdfChunkManifest } | null | undefined)?.pdfChunks;
         if (selectionText) {
           pageText = selectionText;
         } else if (docProxy) {
-          pageText = await extractPageTextFromProxy(docProxy, from, to, 6000);
+          pageText = await extractTextForGlobalRange(from, to, 6000);
         }
-        if (!pageText.trim() && !selectionText && (pdfUrl || item.fileUrl)) {
+        if (!pageText.trim() && !selectionText && (pdfUrl || item.fileUrl) && !manifest) {
+          // NOTE: full-file fetch fallback is SKIPPED for chunked documents —
+          // downloading the 171.8MB original to read a few pages of text is
+          // exactly the disaster the chunking pipeline exists to prevent.
           toast.info("Extracting text from PDF…");
           try {
             const response = await fetch(pdfUrl || item.fileUrl);
@@ -353,7 +386,7 @@ export default function Reader() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [item, docProxy, pageNumber, pdfUrl, generatingFlashcards, generateFlashcards],
+    [item, docProxy, pageNumber, pdfUrl, generatingFlashcards, generateFlashcards, extractTextForGlobalRange],
   );
 
   const handleAsk = useCallback(
@@ -438,8 +471,7 @@ export default function Reader() {
       try {
         const grade = item.grade;
         const pageText = docProxy
-          ? await extractPageTextFromProxy(
-              docProxy,
+          ? await extractTextForGlobalRange(
               action === "summarize" ? Math.max(1, pageNumber - 1) : pageNumber,
               action === "summarize" ? pageNumber + 1 : pageNumber,
               1250,
@@ -706,6 +738,7 @@ export default function Reader() {
   const handleStageDocProxy = useCallback((doc: unknown) => setDocProxy(doc), []);
   const handleStageOutline = useCallback((chapters: OutlineChapter[] | null) => setOutlineChapters(chapters), []);
   const handleStagePdfData = useCallback((data: ArrayBuffer) => setPdfData(data), []);
+
 
   // Reset document-local UI state when the content changes.
   useEffect(() => {
@@ -1000,6 +1033,8 @@ export default function Reader() {
               onDocProxy={handleStageDocProxy}
               onOutline={handleStageOutline}
               watermark={watermark}
+              chunkManifest={item.pdfChunks ?? null}
+              fileSizeBytes={item.fileSizeBytes ?? null}
             />
           )}
 

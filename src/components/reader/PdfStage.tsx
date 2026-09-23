@@ -37,6 +37,9 @@ import { Document, Page as PdfPage, pdfjs } from "react-pdf";
 // (the "Ask Learnyx AI" popup) is completely broken.
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
+import type { PdfChunkManifest } from "@/convex/schema";
+import { getCachedChunk, putCachedChunk } from "@/lib/pdfChunkCache";
+import { SPLIT_THRESHOLD_BYTES } from "@/convex/constants";
 import {
   ChevronLeft,
   ChevronRight,
@@ -124,12 +127,54 @@ interface PdfStageProps {
   watermark?: string | null;
   /** Content id — used to reset per-document caches. */
   contentId: string;
+  /** Large-PDF chunk manifest — when present the stage fetches ONLY the
+   * chunk containing the current page (IndexedDB-cached + pre-fetched). */
+  chunkManifest?: PdfChunkManifest | null;
+  /** Original file size — files at/above the split threshold get a
+   * gentler fallback policy (never buffer a huge file into RAM). */
+  fileSizeBytes?: number | null;
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * Background pre-fetch of the NEXT chunk (Priority 5). By the time the
+ * student reaches the chunk boundary, the next pages are usually already
+ * in IndexedDB — page-turns feel instant even in a 180MB textbook.
+ * Cache-only priority: if it's already cached this is a no-op. Failures
+ * are silently ignored (the real load path handles errors when needed).
+ */
+async function prefetchNextChunk(
+  contentId: string,
+  manifest: PdfChunkManifest,
+  currentIndex: number,
+): Promise<void> {
+  const next = currentIndex + 1;
+  if (next >= manifest.chunks.length) return;
+  try {
+    const cached = await getCachedChunk(contentId, next);
+    if (cached) return;
+    const res = await fetch(manifest.chunks[next].url);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    if (blob.size > 4) await putCachedChunk(contentId, next, blob);
+  } catch {
+    // Silent — pre-fetch is best-effort.
+  }
+}
+
+/** Rotating, reassuring loader lines — Step 3's calm progress UI. The old
+ * byte counter ("169.9 MB of 171.8 MB") actively created dread even when
+ * the real wait was short. */
+const CALM_LOADING_MESSAGES = [
+  "Preparing your textbook…",
+  "Opening the pages…",
+  "Almost there — thanks for waiting…",
+  "Polishing the pages…",
+];
 
 export const PdfStage = memo(function PdfStage({
   pdfUrl,
@@ -147,6 +192,8 @@ export const PdfStage = memo(function PdfStage({
   onOutline,
   watermark,
   contentId,
+  chunkManifest = null,
+  fileSizeBytes = null,
 }: PdfStageProps) {
   // ── Fallback chain state ────────────────────────────────────────────
   const [useIframeFallback, setUseIframeFallback] = useState(false);
@@ -171,15 +218,119 @@ export const PdfStage = memo(function PdfStage({
   // ── Stage-local doc proxy (mirrored up to Reader) ───────────────────
   const [docProxy, setDocProxy] = useState<any>(null);
 
+  // ── CHUNKED MODE (large files) ─────────────────────────────────────
+  // The stage fetches ONLY the chunk containing the current page. Chunks
+  // are ~12MB, cached in IndexedDB, with the next chunk pre-fetched in
+  // the background so page-turns across chunk boundaries stay smooth.
+  const isChunked = Boolean(chunkManifest);
+  const [chunkIndex, setChunkIndex] = useState(0); // which chunk buffer holds
+  const [chunkBuffer, setChunkBuffer] = useState<ArrayBuffer | null>(null);
+  const [chunkLoading, setChunkLoading] = useState(false);
+  const [chunkError, setChunkError] = useState<string | null>(null);
+  const chunkLoadRunRef = useRef(0); // stale-load guard
+
+  /** Which manifest chunk contains this global page? */
+  const chunkIndexForPage = useCallback(
+    (page: number): number => {
+      if (!chunkManifest) return -1;
+      const idx = chunkManifest.chunks.findIndex(
+        (c) => page >= c.startPage && page <= c.endPage,
+      );
+      return idx === -1 ? 0 : idx;
+    },
+    [chunkManifest],
+  );
+
+  const desiredChunkIndex = isChunked ? chunkIndexForPage(pageNumber) : -1;
+  const activeChunk = isChunked && chunkManifest ? chunkManifest.chunks[chunkIndex] : null;
+  /** Local (chunk-relative) page for the PdfPage element. */
+  const localPage = activeChunk ? pageNumber - activeChunk.startPage + 1 : pageNumber;
+  /** Page offset for thumbnails/search jump mapping. */
+  const pageOffset = activeChunk ? activeChunk.startPage - 1 : 0;
+  const chunkPageCount = activeChunk ? activeChunk.endPage - activeChunk.startPage + 1 : null;
+  /** While a chunk-boundary crossing is loading, clamp to the last page of
+   * the CURRENT chunk so the student never sees an out-of-range skeleton. */
+  const renderPage = Math.min(localPage, chunkPageCount ?? localPage);
+
+  // Chunk loader — cache-first, IndexedDB-backed, error-tolerant.
+  useEffect(() => {
+    if (!isChunked || !chunkManifest || desiredChunkIndex < 0) return;
+    if (chunkIndex === desiredChunkIndex && (chunkBuffer || chunkLoading)) return;
+    const runId = ++chunkLoadRunRef.current;
+    let cancelled = false;
+
+    void (async () => {
+      setChunkLoading(true);
+      setChunkError(null);
+      const entry = chunkManifest.chunks[desiredChunkIndex];
+      try {
+        // 1. IndexedDB cache first — re-visits are instant.
+        const cached = await getCachedChunk(contentId, desiredChunkIndex);
+        if (cancelled || runId !== chunkLoadRunRef.current) return;
+        if (cached) {
+          setChunkBuffer(await cached.arrayBuffer());
+          setChunkIndex(desiredChunkIndex);
+          setChunkLoading(false);
+          void prefetchNextChunk(contentId, chunkManifest, desiredChunkIndex);
+          return;
+        }
+        // 2. Network fetch.
+        const res = await fetch(entry.url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled || runId !== chunkLoadRunRef.current) return;
+        if (blob.size < 4) throw new Error("Empty chunk");
+        // 3. Store for future visits — never blocks the render path.
+        void putCachedChunk(contentId, desiredChunkIndex, blob);
+        setChunkBuffer(await blob.arrayBuffer());
+        setChunkIndex(desiredChunkIndex);
+        setChunkLoading(false);
+        // 4. Background pre-fetch of the next chunk (Priority 5).
+        void prefetchNextChunk(contentId, chunkManifest, desiredChunkIndex);
+      } catch (err) {
+        if (cancelled || runId !== chunkLoadRunRef.current) return;
+        setChunkLoading(false);
+        setChunkError(
+          err instanceof Error
+            ? `Couldn't load part ${desiredChunkIndex + 1} of this document. ${err.message}`
+            : "Couldn't load part of this document.",
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChunked, desiredChunkIndex, chunkManifest, contentId]);
+
+  // Chunked mode reports the TRUE total page count immediately — no need
+  // to wait for any document to parse.
+  useEffect(() => {
+    if (isChunked && chunkManifest) onNumPages(chunkManifest.totalPageCount);
+  }, [isChunked, chunkManifest, onNumPages]);
+
+  // Mirror the chunk buffer up to Reader (exam mode) like pdfData would.
+  useEffect(() => {
+    if (isChunked && chunkBuffer) onPdfData(chunkBuffer);
+  }, [isChunked, chunkBuffer, onPdfData]);
+
   // ── Overlays ────────────────────────────────────────────────────────
   const [thumbsOpen, setThumbsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // Any crash inside the pdf.js engine degrades to the native viewer for
-  // THIS document only — the app itself keeps running.
+  // Any crash inside the pdf.js engine degrades the render path for THIS
+  // document only — the app itself keeps running. Chunked documents get a
+  // retry card instead of the iframe (Chrome-Android has no built-in PDF
+  // viewer, so an iframe there is a permanent blank page — the stuck-blank
+  // "Native Viewer" bug reported on the 171.8MB textbook).
   const handleEngineCrash = useCallback(() => {
-    setUseIframeFallback(true);
-  }, []);
+    if (isChunked) {
+      setChunkError("The document engine hit an unexpected error on this part.");
+    } else {
+      setUseIframeFallback(true);
+    }
+  }, [isChunked]);
 
   // Reset per-document state when the content changes.
   useEffect(() => {
@@ -191,6 +342,10 @@ export const PdfStage = memo(function PdfStage({
     setDocProxy(null);
     setThumbsOpen(false);
     setSearchOpen(false);
+    setChunkIndex(0);
+    setChunkBuffer(null);
+    setChunkLoading(false);
+    setChunkError(null);
     basePageWidthRef.current = null;
     autoFitDoneRef.current = false;
   }, [contentId]);
@@ -241,11 +396,21 @@ export const PdfStage = memo(function PdfStage({
   // Falls back ONLY when no bytes have flowed for the window (or the
   // document never started loading). A slow-but-flowing stream keeps
   // rendering — huge files no longer bounce to the native viewer.
+  //
+  // Gating (the Native-Viewer blank-page fix):
+  //   - CHUNKED files: no watchdog at all — the chunk fetch has its own
+  //     error handling and retry. Never bounce a chunked document.
+  //   - OVERSIZE non-chunked files (≥ split threshold, no manifest yet):
+  //     never attempt the ArrayBuffer fallback (buffering 170MB into RAM
+  //     on a phone is the exact disaster this whole pipeline fixes). If
+  //     the stream genuinely stalls, degrade straight to the iframe.
   useEffect(() => {
     if (useIframeFallback || pdfError || docLoaded) return;
     if (!pdfUrl && !pdfData) return;
     if (localBufferLoading) return;
+    if (isChunked) return; // chunked mode handles its own loading
 
+    const isOversize = typeof fileSizeBytes === "number" && fileSizeBytes >= SPLIT_THRESHOLD_BYTES;
     const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
     const windowMs = isMobile ? 15000 : 9000;
     lastActivityRef.current = Date.now();
@@ -253,7 +418,12 @@ export const PdfStage = memo(function PdfStage({
     const interval = setInterval(() => {
       const idleFor = Date.now() - lastActivityRef.current;
       if (idleFor < windowMs) return;
-      if (shouldTryArrayBuffer(pdfUrl, pdfData) && pdfUrl && !arrayBufferAttempted.current) {
+      if (
+        !isOversize &&
+        shouldTryArrayBuffer(pdfUrl, pdfData) &&
+        pdfUrl &&
+        !arrayBufferAttempted.current
+      ) {
         arrayBufferAttempted.current = true;
         lastActivityRef.current = Date.now(); // keep watching during download
         void loadAsArrayBuffer(pdfUrl);
@@ -265,7 +435,7 @@ export const PdfStage = memo(function PdfStage({
     }, 2000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfUrl, pdfData, useIframeFallback, pdfError, docLoaded, localBufferLoading]);
+  }, [pdfUrl, pdfData, useIframeFallback, pdfError, docLoaded, localBufferLoading, isChunked, fileSizeBytes]);
 
   function shouldTryArrayBuffer(url: string | null, data: ArrayBuffer | null): boolean {
     return Boolean(url) && !data;
@@ -280,11 +450,17 @@ export const PdfStage = memo(function PdfStage({
   }, [pageNumber, scale]);
 
   // ── Stable file prop (never re-creates the document on re-render) ───
+  // Chunked mode feeds the CURRENT CHUNK's buffer; the Document key
+  // (chunkIndex) remounts it cleanly across chunk boundaries.
   const file = useMemo(() => {
+    if (isChunked) {
+      if (chunkBuffer) return { data: chunkBuffer };
+      return null;
+    }
     if (pdfData) return { data: pdfData };
     if (pdfUrl) return { url: pdfUrl };
     return null;
-  }, [pdfData, pdfUrl]);
+  }, [isChunked, chunkBuffer, chunkIndex, pdfData, pdfUrl]);
 
   // ── Page navigation with direction for the flip animation ───────────
   const goToPage = useCallback(
@@ -372,8 +548,9 @@ export const PdfStage = memo(function PdfStage({
     };
   }, [docProxy, onOutline]);
 
-  const busyBuffer = loadingPdf || localBufferLoading;
-  const showProgressSplash = busyBuffer || (!docLoaded && !useIframeFallback && !pdfError && Boolean(file));
+  const busyBuffer = loadingPdf || localBufferLoading || (isChunked && chunkLoading);
+  const showProgressSplash =
+    busyBuffer || (!docLoaded && !useIframeFallback && !pdfError && !chunkError && Boolean(file));
 
   // ════════════════════════════════════════════════════════════════════
   return (
@@ -427,12 +604,14 @@ export const PdfStage = memo(function PdfStage({
       ) : (
         /* ═══ SMART READER MODE ═══ */
         <PdfEngineBoundary onCrash={handleEngineCrash}>
-          {/* Thumbnails rail (lazy) */}
+          {/* Thumbnails rail (lazy) — chunked mode shows the CURRENT chunk
+              with true global page numbers (pageOffset) */}
           <AnimatePresence>
             {thumbsOpen && docProxy && numPages && (
               <ThumbnailsRail
                 doc={docProxy}
-                numPages={numPages}
+                numPages={chunkPageCount ?? numPages}
+                pageOffset={pageOffset}
                 pageNumber={pageNumber}
                 onJump={goToPage}
                 onClose={() => setThumbsOpen(false)}
@@ -440,12 +619,15 @@ export const PdfStage = memo(function PdfStage({
             )}
           </AnimatePresence>
 
-          {/* In-document search */}
+          {/* In-document search — chunked mode scans the current chunk; the
+              next chunk is usually pre-fetched by the time the student
+              reaches it, and search re-runs per chunk. */}
           <AnimatePresence>
             {searchOpen && docProxy && numPages && (
               <SearchOverlay
                 doc={docProxy}
-                numPages={numPages}
+                numPages={chunkPageCount ?? numPages}
+                pageOffset={pageOffset}
                 onJump={goToPage}
                 onClose={() => setSearchOpen(false)}
               />
@@ -455,58 +637,11 @@ export const PdfStage = memo(function PdfStage({
           {/* Scrollable stage — centered page with soft shadow */}
           <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" data-lenis-prevent-wheel>
             <div className="mx-auto flex min-h-full w-fit flex-col items-center px-4 py-6 sm:px-10">
-              {/* Loading splash — progress-aware */}
-              {showProgressSplash && (
-                <div className="flex h-full min-h-[60vh] w-full flex-col items-center justify-center gap-6">
-                  <div className="relative">
-                    <div className="absolute -inset-8 animate-pulse rounded-full bg-primary/5 blur-2xl" />
-                    <div className="absolute -inset-4 animate-spin rounded-full border border-primary/10" style={{ animationDuration: "4s" }} />
-                    <div className="relative flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
-                      <Loader2 className="size-6 animate-spin text-primary" />
-                    </div>
-                  </div>
-                  <div className="w-64 text-center">
-                    <p className="type-mono text-sm uppercase tracking-widest text-muted-foreground/80">
-                      {localBufferLoading || (loadProgress.total > 0 && loadProgress.loaded < loadProgress.total)
-                        ? "Streaming document"
-                        : "Opening document"}
-                    </p>
-                    {localBufferLoading ? (
-                      <>
-                        <div className="mx-auto mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
-                            style={{ width: `${Math.max(4, localBufferProgress)}%` }}
-                          />
-                        </div>
-                        <p className="type-mono mt-2 text-[10px] text-muted-foreground/40">
-                          Direct download · {localBufferProgress}%
-                        </p>
-                      </>
-                    ) : loadProgress.total > 0 ? (
-                      <>
-                        <div className="mx-auto mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-300 ease-out"
-                            style={{ width: `${Math.min(99, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%` }}
-                          />
-                        </div>
-                        <p className="type-mono mt-2 text-[10px] text-muted-foreground/40">
-                          {formatBytes(loadProgress.loaded)} of {formatBytes(loadProgress.total)} — first page is ready before this finishes
-                        </p>
-                      </>
-                    ) : loadProgress.loaded > 0 ? (
-                      <p className="type-mono mt-2 text-[10px] text-muted-foreground/40">
-                        {formatBytes(loadProgress.loaded)} buffered…
-                      </p>
-                    ) : (
-                      <div className="mx-auto mt-3 h-0.5 w-32 overflow-hidden rounded-full bg-white/[0.06]">
-                        <div className="h-full w-1/3 animate-[shimmer-slide_1.5s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-primary to-transparent" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+              {/* Loading splash — CALM (Step 3). No byte counters: a raw
+                  MB counter against a 170MB total creates dread even when
+                  the wait is short. First 3s are silent; past that we show
+                  a rotating reassurance + elapsed seconds. */}
+              {showProgressSplash && <CalmLoader chunked={isChunked} />}
 
               {/* Error state — cinematic + real error */}
               {pdfError && (
@@ -557,8 +692,43 @@ export const PdfStage = memo(function PdfStage({
                 </div>
               )}
 
+              {/* Chunk-load error — calm retry card. Chunked documents NEVER
+                  fall back to the iframe: on Chrome-Android that's a
+                  permanent blank page, and buffering a huge file into RAM
+                  is the disaster this mode exists to prevent. */}
+              {chunkError && !pdfError && (
+                <div className="mx-auto mt-20 flex flex-col items-center gap-6">
+                  <div className="relative">
+                    <div className="absolute -inset-8 rounded-full bg-amber-500/10 blur-2xl" />
+                    <div className="relative flex size-20 items-center justify-center rounded-2xl border border-amber-400/20 bg-amber-400/[0.03] backdrop-blur-xl">
+                      <Lock className="size-8 text-amber-400/80" />
+                    </div>
+                  </div>
+                  <div className="max-w-md text-center">
+                    <h2 className="type-h2 bg-gradient-to-r from-amber-200 to-amber-400/70 bg-clip-text text-transparent">
+                      Having trouble turning the pages
+                    </h2>
+                    <p className="type-body mt-2 leading-relaxed text-muted-foreground/70">{chunkError}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10"
+                    onClick={() => {
+                      // Force a clean re-load of the current chunk.
+                      chunkLoadRunRef.current += 1;
+                      setChunkBuffer(null);
+                      setChunkIndex(-1);
+                      setChunkError(null);
+                    }}
+                  >
+                    <RotateCcw className="size-3.5" /> Try again
+                  </Button>
+                </div>
+              )}
+
               {/* Document + page */}
-              {file && !pdfError && (
+              {file && !pdfError && !chunkError && (
                 <motion.div
                   key={pageNumber}
                   initial={{ opacity: 0, x: pageDirection * 24 }}
@@ -568,6 +738,7 @@ export const PdfStage = memo(function PdfStage({
                 >
                   <div className="group relative overflow-hidden rounded-lg shadow-[0_25px_80px_-20px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)] transition-shadow duration-300 hover:shadow-[0_30px_100px_-20px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)]">
                     <Document
+                      key={isChunked ? `chunk-${chunkIndex}` : "doc"}
                       file={file}
                       options={PDF_OPTIONS}
                       onLoadProgress={(progress) => {
@@ -588,7 +759,9 @@ export const PdfStage = memo(function PdfStage({
                       }}
                       onLoadSuccess={(pdf) => {
                         lastActivityRef.current = Date.now();
-                        onNumPages(pdf.numPages);
+                        // Chunked mode: the loaded "document" is one chunk —
+                        // report the TRUE total page count from the manifest.
+                        onNumPages(isChunked && chunkManifest ? chunkManifest.totalPageCount : pdf.numPages);
                         setDocProxy(pdf);
                         onDocProxy(pdf);
                         setDocLoaded(true);
@@ -597,9 +770,17 @@ export const PdfStage = memo(function PdfStage({
                       onLoadError={(error) => {
                         console.error("[PdfStage] PDF load failed:", error);
                         const msg = error?.message || String(error);
-                        if (msg.includes("worker") || msg.includes("Worker")) {
+                        if (isChunked) {
+                          setChunkError(`The document engine couldn't open this part. ${msg}`);
+                        } else if (msg.includes("worker") || msg.includes("Worker")) {
                           setUseIframeFallback(true);
-                        } else if (pdfUrl && !pdfData && !arrayBufferAttempted.current) {
+                        } else if (
+                          pdfUrl &&
+                          !pdfData &&
+                          !arrayBufferAttempted.current &&
+                          !(typeof fileSizeBytes === "number" && fileSizeBytes >= SPLIT_THRESHOLD_BYTES)
+                        ) {
+                          // Small files only — never buffer an oversized file into RAM.
                           arrayBufferAttempted.current = true;
                           void loadAsArrayBuffer(pdfUrl);
                         } else {
@@ -610,7 +791,7 @@ export const PdfStage = memo(function PdfStage({
                       className="flex flex-col items-center"
                     >
                       <PdfPage
-                        pageNumber={pageNumber}
+                        pageNumber={renderPage}
                         scale={scale}
                         renderTextLayer={showTextLayers}
                         renderAnnotationLayer={showTextLayers}
@@ -664,14 +845,16 @@ export const PdfStage = memo(function PdfStage({
                   render OUTSIDE <Document>, so the explicit `pdf` prop is
                   MANDATORY — without it react-pdf's Page invariant throws
                   "Invariant failed" and killed the whole app (the crash the
-                  production app hit on every document open). */}
-              {file && !pdfError && numPages && docProxy && docLoaded && (
+                  production app hit on every document open).
+                  Chunked mode: neighbour pages are clamped to the CURRENT
+                  chunk — crossing a boundary is the chunk loader's job. */}
+              {file && !pdfError && !chunkError && numPages && docProxy && docLoaded && (
                 <div className="pointer-events-none absolute h-0 w-0 overflow-hidden" aria-hidden="true">
-                  {pageNumber > 1 && (
-                    <PdfPage pdf={docProxy} pageNumber={pageNumber - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                  {localPage > 1 && (
+                    <PdfPage pdf={docProxy} pageNumber={localPage - 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
                   )}
-                  {pageNumber < numPages && (
-                    <PdfPage pdf={docProxy} pageNumber={pageNumber + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                  {localPage < (chunkPageCount ?? localPage + 1) && (
+                    <PdfPage pdf={docProxy} pageNumber={localPage + 1} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
                   )}
                 </div>
               )}
@@ -837,22 +1020,73 @@ function PageInput({
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// CalmLoader — the Step 3 progress experience.
+// "169.9 MB of 171.8 MB" was technically honest and emotionally terrible.
+// This replaces byte counts with: a quiet first 3 seconds, then rotating
+// reassurance + elapsed time + an indeterminate shimmer. Done well, a
+// short wait feels intentional instead of broken.
+// ═══════════════════════════════════════════════════════════════════
+
+function CalmLoader({ chunked }: { chunked: boolean }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const slow = elapsed >= 3;
+  const message = CALM_LOADING_MESSAGES[Math.floor(elapsed / 2.5) % CALM_LOADING_MESSAGES.length];
+
+  return (
+    <div className="flex h-full min-h-[60vh] w-full flex-col items-center justify-center gap-6">
+      <div className="relative">
+        <div className="absolute -inset-8 animate-pulse rounded-full bg-primary/5 blur-2xl" />
+        <div className="absolute -inset-4 animate-spin rounded-full border border-primary/10" style={{ animationDuration: "4s" }} />
+        <div className="relative flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
+          <Loader2 className="size-6 animate-spin text-primary" />
+        </div>
+      </div>
+      <div className="w-64 text-center">
+        <p className="type-mono text-sm uppercase tracking-widest text-muted-foreground/80">
+          {chunked ? "Opening your textbook" : "Preparing your document"}
+        </p>
+        {slow ? (
+          <p className="type-mono mt-2 h-4 text-[10px] text-muted-foreground/40 transition-opacity">
+            {message} · {elapsed}s
+          </p>
+        ) : (
+          <p className="type-mono mt-2 h-4 text-[10px] text-muted-foreground/20">just a moment</p>
+        )}
+        <div className="mx-auto mt-3 h-0.5 w-32 overflow-hidden rounded-full bg-white/[0.06]">
+          <div className="h-full w-1/3 animate-[shimmer-slide_1.5s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-primary to-transparent" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Thumbnails rail — lazy-rendered page previews.
 // IntersectionObserver decides what *may* render; a 3-slot concurrency
 // gate decides what renders *now*. Rendered thumbs stay mounted (memory
 // at 80px width is trivial) so re-visiting is instant.
+// CHUNKED MODE: `numPages` is the CURRENT CHUNK's page count and
+// `pageOffset` shifts numbering so labels show true global pages.
 // ═══════════════════════════════════════════════════════════════════════
 
 function ThumbnailsRail({
   doc,
   numPages,
+  pageOffset,
   pageNumber,
   onJump,
   onClose,
 }: {
   doc: any;
   numPages: number;
+  pageOffset: number;
   pageNumber: number;
   onJump: (page: number) => void;
   onClose: () => void;
@@ -918,7 +1152,10 @@ function ThumbnailsRail({
     el?.scrollIntoView({ block: "nearest" });
   }, [pageNumber]);
 
-  const pages = useMemo(() => Array.from({ length: numPages }, (_, i) => i + 1), [numPages]);
+  const pages = useMemo(
+    () => Array.from({ length: numPages }, (_, i) => i + 1 + pageOffset),
+    [numPages, pageOffset],
+  );
 
   return (
     <motion.aside
@@ -965,7 +1202,7 @@ function ThumbnailsRail({
               {shouldRender ? (
                 <PdfPage
                   pdf={doc}
-                  pageNumber={page}
+                  pageNumber={page - pageOffset}
                   width={80}
                   renderTextLayer={false}
                   renderAnnotationLayer={false}
@@ -1008,11 +1245,13 @@ interface SearchHit {
 function SearchOverlay({
   doc,
   numPages,
+  pageOffset,
   onJump,
   onClose,
 }: {
   doc: any;
   numPages: number;
+  pageOffset: number;
   onJump: (page: number) => void;
   onClose: () => void;
 }) {
@@ -1082,7 +1321,7 @@ function SearchOverlay({
           const start = Math.max(0, idx - 46);
           const end = Math.min(text.length, idx + q.length + 64);
           found.push({
-            page: p,
+            page: p + pageOffset,
             snippet: `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`,
           });
           if (found.length >= 60) break;

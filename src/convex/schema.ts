@@ -43,6 +43,28 @@ export const streamValidator = v.union(...STREAMS.map((s) => v.literal(s)));
 // types are still seeded from CONTENT_TYPES in constants.ts.
 export const contentTypeValidator = v.string();
 
+// ── Large-PDF chunk manifest ─────────────────────────────────────────
+// Stored on contentItems.pdfChunks when a big PDF has been pre-split into
+// sequential chunk files in R2. Shape is documented in pdfSplitCore.ts.
+export const pdfChunkEntry = v.object({
+  url: v.string(),
+  startPage: v.number(), // 1-based, inclusive
+  endPage: v.number(), // inclusive
+  sizeBytes: v.number(),
+});
+
+export const pdfChunkManifest = v.object({
+  token: v.string(), // random per-item folder token (non-guessable chunk keys)
+  chunkCount: v.number(),
+  pagesPerChunk: v.number(), // nominal pages per chunk (last chunk may be smaller)
+  totalPageCount: v.number(),
+  totalChunkBytes: v.number(), // sum of chunk sizes (the reader's real download)
+  chunks: v.array(pdfChunkEntry),
+  createdAt: v.number(),
+});
+
+export type PdfChunkManifest = Infer<typeof pdfChunkManifest>;
+
 const schema = defineSchema(
   {
     // default auth tables using convex auth.
@@ -177,6 +199,13 @@ const schema = defineSchema(
       // uploaded to R2. So for new uploads, fileUrl IS the branded file
       // and originalFileUrl is undefined.
       originalFileUrl: v.optional(v.string()),
+      // ── LARGE-PDF CHUNKING ────────────────────────────────────────────
+      // Files above SPLIT_THRESHOLD_BYTES are pre-split at upload/processing
+      // time into sequential chunk PDFs stored separately in R2. The reader
+      // then fetches ONLY the chunk containing the current page (plus a
+      // background pre-fetch of the next chunk) instead of streaming a
+      // 170MB file. The original fileUrl stays valid as a fallback.
+      pdfChunks: v.optional(pdfChunkManifest),
       createdAt: v.number(), // epoch ms (mirrors a created_at timestamp column)
     })
       .index("by_subject", ["subjectId"])

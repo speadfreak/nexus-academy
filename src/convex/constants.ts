@@ -174,3 +174,14 @@ export const VIDEO_MAX_PER_SLICE = 4;
 // like content.getBrandingStats can report it without importing the
 // "use node" pdfBranding module. pdfBranding re-exports it.
 export const BRANDING_VERSION = 1;
+
+// ── Large-PDF chunking ────────────────────────────────────────────────
+// Tuning knobs for the large-PDF splitter (see src/lib/pdfSplitCore.ts).
+// Defined HERE (pure TS, import-safe from any runtime — browser, node,
+// Convex default/node) so the reader, the splitter pipeline and the admin
+// panel all share the exact same numbers without pdf-lib entering the
+// client bundle.
+export const SPLIT_THRESHOLD_BYTES = 30 * 1024 * 1024; // split files ≥ 30 MB
+export const TARGET_CHUNK_BYTES = 12 * 1024 * 1024; // aim for ~12 MB chunks
+export const MIN_PAGES_PER_CHUNK = 6;
+export const MAX_PAGES_PER_CHUNK = 30;

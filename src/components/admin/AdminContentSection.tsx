@@ -26,12 +26,14 @@ import {
   UploadCloud,
   Wand2,
   X,
+  Scissors,
 } from "lucide-react";
 import { extractPdfText } from "@/lib/pdf";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BulkUploadSection } from "@/components/admin/BulkUploadSection";
 import { BrandingPanel } from "@/components/admin/BrandingPanel";
+import { PdfSplitterPanel } from "@/components/admin/PdfSplitterPanel";
 import { CategoriesManagement } from "@/components/admin/CategoriesManagement";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -231,7 +233,7 @@ export function AdminContentSection() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [isPremium, setIsPremium] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadMode, setUploadMode] = useState<"single" | "bulk" | "categories" | "branding">("single");
+  const [uploadMode, setUploadMode] = useState<"single" | "bulk" | "categories" | "branding" | "splitter">("single");
 
   // Browser→Convex storage→R2 flow. Convex handles the browser-side CORS
   // for the upload POST (same project, no cross-origin signature issues),
@@ -943,6 +945,19 @@ export function AdminContentSection() {
           <Sparkles className="size-3.5" />
           Branding
         </button>
+        <button
+          type="button"
+          onClick={() => setUploadMode("splitter")}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors",
+            uploadMode === "splitter"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+          )}
+        >
+          <Scissors className="size-3.5" />
+          Splitter
+        </button>
       </div>
 
       {/* Bulk upload mode */}
@@ -953,6 +968,9 @@ export function AdminContentSection() {
 
       {/* Branding panel — branding stats + retroactive rebranding job */}
       {uploadMode === "branding" && <BrandingPanel />}
+
+      {/* Large-PDF splitter — retroactive chunking backlog */}
+      {uploadMode === "splitter" && <PdfSplitterPanel />}
 
       {/* Single upload form */}
       {uploadMode === "single" && (
