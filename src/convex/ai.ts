@@ -15,12 +15,76 @@ import {
   query,
   type ActionCtx,
 } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
-import { callGroq, getModelName } from "./groq";
+import { callGroq, getModelName, getVisionModelName } from "./groq";
+
+// ---------------------------------------------------------------------------
+// Tutor modes — the student picks an explicit learning mode before/while
+// chatting. The mode injects a focused behavior block into the system prompt
+// so "Explain photosynthesis" teaches, drills, quizzes or coaches depending
+// on what the student actually wants right now.
+// ---------------------------------------------------------------------------
+
+export const TUTOR_MODES = [
+  "learn",
+  "practice",
+  "exam",
+  "revision",
+  "solve",
+  "quiz",
+] as const;
+
+export const tutorModeValidator = v.union(
+  ...TUTOR_MODES.map((m) => v.literal(m)),
+);
+
+export type TutorMode = (typeof TUTOR_MODES)[number];
+
+const TUTOR_MODE_PROMPTS: Record<TutorMode, string> = {
+  learn:
+    "TUTOR MODE: LEARN — the student wants to deeply understand a concept. " +
+    "Teach it step by step: start from what they already know, define every new " +
+    "term the moment it appears, build the idea in clear ordered steps, then " +
+    "walk through one worked example. End with ONE quick check question so the " +
+    "student can confirm the idea stuck — then wait for their answer.",
+  practice:
+    "TUTOR MODE: PRACTICE — the student wants to practice, not listen. Ask ONE " +
+    "exam-style question at a time at their grade's national-exam difficulty, " +
+    "then STOP and wait for their answer. Never answer your own question. When " +
+    "they answer: grade it honestly, show the correct working briefly, then " +
+    "offer the next question. Adapt the next question to what they got wrong.",
+  exam:
+    "TUTOR MODE: EXAM — strict Ethiopian national exam (EHEEE/ESLCE) simulation. " +
+    "Serve multiple-choice questions in exact national-exam style with A-D " +
+    "options. No hints, no encouragement, no teaching mid-question — act like a " +
+    "strict examiner. Only after the student commits an answer, mark it strictly " +
+    "and show the model answer with brief working. If they ask for hints, refuse " +
+    "politely: a real exam doesn't give hints. Keep a running score.",
+  revision:
+    "TUTOR MODE: QUICK REVISION — the student is revising and needs speed. Answer " +
+    "in ultra-short form: key facts, formulas, definitions and the traps exams " +
+    "set. Maximum ~120 words, bullets over paragraphs, no headers, no long " +
+    "explanations. Bold the must-remember terms. End with a one-line memory hook " +
+    "when one exists.",
+  solve:
+    "TUTOR MODE: SOLVE WITH ME — the student brings a problem and wants guided " +
+    "reasoning, not a handed-over answer. Never reveal the final answer straight " +
+    "away. Break the problem into steps, demonstrate the reasoning for the first " +
+    "step, then ask the student to attempt the next step before continuing. Coach " +
+    "like a patient teacher: hint, check, correct, continue. Reveal the full " +
+    "solution at the end — or sooner if they've made two genuine attempts and are " +
+    "still stuck.",
+  quiz:
+    "TUTOR MODE: QUIZ ME — adaptive quiz engine. Ask one question at a time and " +
+    "wait for the answer. Track which sub-topics they miss: successful answers " +
+    "unlock harder questions, missed ones drop back and get retested from a " +
+    "different angle. After 5 questions, stop and give a score summary: X/5, " +
+    "which sub-topics were weak, and one specific thing to review next.",
+};
 
 const HISTORY_LIMIT = 15;
 
@@ -135,6 +199,7 @@ export const insertMessage = internalMutation({
     conversationId: v.id("conversations"),
     role: v.union(v.literal("user"), v.literal("assistant")),
     content: v.string(),
+    images: v.optional(v.array(v.string())),
     createdAt: v.number(),
   },
   handler: async (ctx, args) => await ctx.db.insert("messages", args),
@@ -162,6 +227,12 @@ async function buildSystemPrompt(
   userId: Id<"users">,
   subjectId?: Id<"subjects">,
   contentId?: Id<"contentItems">,
+  opts?: {
+    mode?: TutorMode;
+    grade?: number;
+    concise?: boolean;
+    hasImages?: boolean;
+  },
 ): Promise<string> {
   const lines = [
     "You are the Learnyx Academy ET 🇪🇹 AI tutor for Ethiopian students in grades 9–12 " +
@@ -221,6 +292,40 @@ async function buildSystemPrompt(
     `Today's date is ${new Date().toISOString().slice(0, 10)}.`,
     "",
   ];
+
+  // ── Active tutor mode ────────────────────────────────────────────────
+  // The mode block is injected RIGHT after the base voice rules so it
+  // frames every reply in this turn. Default is "learn" (general teaching).
+  const mode: TutorMode = opts?.mode ?? "learn";
+  lines.push(TUTOR_MODE_PROMPTS[mode], "");
+
+  // ── Academic memory — grade + conciseness preference ───────────────
+  // Grade grounds difficulty (a Grade 9 photosynthesis answer differs a
+  // lot from a Grade 12 one). Concise is a persisted student preference.
+  if (opts?.grade) {
+    lines.push(
+      `The student is in Grade ${opts.grade}. Pitch explanations, vocabulary ` +
+        `and question difficulty at the Ethiopian Grade ${opts.grade} syllabus level.`,
+      "",
+    );
+  }
+  if (opts?.concise) {
+    lines.push(
+      "This student prefers CONCISE answers: lead with the point, strip " +
+        "preamble, keep worked examples but compress prose around them.",
+      "",
+    );
+  }
+  if (opts?.hasImages) {
+    lines.push(
+      "The student attached one or more images (a textbook page, handwritten " +
+        "work, a past-paper question, a diagram or a screenshot). Read the image " +
+        "carefully: if it contains a question, solve it showing every step; if " +
+        "it contains notes or a diagram, explain what it shows. If the image is " +
+        "unclear or cut off, say exactly what you can and cannot read.",
+      "",
+    );
+  }
 
   // Personalization: the student's profile (stream + display name) and their
   // self-marked difficulty tags for this subject. Keep it light — the tutor
@@ -371,6 +476,18 @@ export const sendMessage = action({
     content: v.string(),
     subjectId: v.optional(v.id("subjects")),
     contentId: v.optional(v.id("contentItems")),
+    mode: v.optional(tutorModeValidator),
+    grade: v.optional(v.union(
+      v.literal(9),
+      v.literal(10),
+      v.literal(11),
+      v.literal(12),
+    )),
+    // Downscaled image attachments (data URLs) — routed to a vision model.
+    // Max 2 per message, each capped ~450 KB of base64 (≈ 330 KB binary).
+    images: v.optional(v.array(v.string())),
+    // Persisted student preference (academic memory, client-side stored).
+    concise: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ reply: string; conversationId: Id<"conversations"> }> => {
     const userId = await getAuthUserId(ctx);
@@ -379,12 +496,33 @@ export const sendMessage = action({
     }
 
     const content = args.content.trim();
-    if (!content) {
+    if (!content && !(args.images && args.images.length > 0)) {
       throw new ConvexError({ message: "Message cannot be empty.", code: "invalid" });
     }
     if (content.length > 4000) {
       throw new ConvexError({ message: "Message is too long (max 4,000 characters).", code: "invalid" });
     }
+
+    // --- Image attachment validation -------------------------------------
+    const images = (args.images ?? []).filter((img) => typeof img === "string");
+    if (images.length > 2) {
+      throw new ConvexError({ message: "Attach at most 2 images per message.", code: "invalid" });
+    }
+    for (const img of images) {
+      if (!/^data:image\/(jpeg|png|webp);base64,/.test(img)) {
+        throw new ConvexError({
+          message: "Images must be JPEG, PNG or WebP.",
+          code: "invalid",
+        });
+      }
+      if (img.length > 450_000) {
+        throw new ConvexError({
+          message: "An attached image is too large — try a smaller crop or screenshot.",
+          code: "invalid",
+        });
+      }
+    }
+    const effectiveContent = content || "Solve this and explain every step.";
 
     // --- Free-tier daily cap ---------------------------------------------
     const premium = await getPremiumAccess(ctx, userId);
@@ -465,7 +603,8 @@ export const sendMessage = action({
     await ctx.runMutation(internal.ai.insertMessage, {
       conversationId,
       role: "user",
-      content,
+      content: effectiveContent,
+      images: images.length > 0 ? images : undefined,
       createdAt: now,
     });
     await ctx.runMutation(internal.ai.patchConversation, {
@@ -480,7 +619,13 @@ export const sendMessage = action({
     );
     const history = historyRows
       .slice(-HISTORY_LIMIT)
-      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content }));
+      .map((message) => ({
+        role: message.role as "user" | "assistant",
+        // Image turns replay as text markers so history tokens stay bounded.
+        content: message.images?.length
+          ? `${message.content}\n[image attached]`
+          : message.content,
+      }));
 
     // --- Call AI model ---------------------------------------------------
     const conversation = await ctx.runQuery(internal.ai.getConversationById, {
@@ -491,6 +636,12 @@ export const sendMessage = action({
       userId,
       conversation?.subjectId,
       conversation?.contentId,
+      {
+        mode: args.mode,
+        grade: args.grade,
+        concise: args.concise,
+        hasImages: images.length > 0,
+      },
     );
 
     let reply: string;
@@ -498,17 +649,25 @@ export const sendMessage = action({
     try {
       reply = await callGroq(ctx, {
         systemPrompt,
-        userMessage: content,
+        userMessage: effectiveContent,
         history,
         maxTokens: 1024,
         temperature: 0.5,
+        // Image turns MUST use a vision-capable model (gpt-oss-120b is
+        // text-only and would reject image_url content parts).
+        model: images.length > 0 ? getVisionModelName() : undefined,
       });
       await logEventAction(ctx, {
         eventType: "api_call",
         source: "ai.sendMessage.groq",
         status: "success",
         userId,
-        metadata: { model: getModelName(), conversationId },
+        metadata: {
+          model: images.length > 0 ? getVisionModelName() : getModelName(),
+          conversationId,
+          hasImages: images.length > 0,
+          mode: args.mode ?? "learn",
+        },
         durationMs: Date.now() - aiStart,
       });
     } catch (error) {
@@ -543,10 +702,10 @@ export const sendMessage = action({
           subjectId: conversation.subjectId,
         });
         title = subject
-          ? `${subject.name}: ${truncate(content, 44)}`
-          : truncate(content, 52);
+          ? `${subject.name}: ${truncate(effectiveContent, 44)}`
+          : truncate(effectiveContent, 52);
       } else {
-        title = truncate(content, 52);
+        title = truncate(effectiveContent, 52);
       }
       await ctx.runMutation(internal.ai.patchConversation, {
         conversationId,
@@ -626,6 +785,61 @@ export const generateFollowUps = action({
     } catch {
       return { followUps: [], miniCheck: null };
     }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Make notes — compress the latest tutor answer into a saved study note.
+// One answer becomes part of the student's permanent notes library, closing
+// the Learn → Save loop without any copy-pasting.
+// ---------------------------------------------------------------------------
+
+export const saveNotesFromConversation = action({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, { conversationId }): Promise<{ noteId: string }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    const conversation = await ctx.runQuery(internal.ai.getConversationById, {
+      conversationId,
+    });
+    if (!conversation || conversation.userId !== userId) {
+      throw new ConvexError({ message: "Conversation not found.", code: "not_found" });
+    }
+    if (!conversation.subjectId) {
+      throw new ConvexError({
+        message: "Scope this chat to a subject first — notes are filed per subject.",
+        code: "invalid",
+      });
+    }
+    const messages = await ctx.runQuery(internal.ai.getMessagesByConversation, {
+      conversationId,
+    });
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!lastAssistant) {
+      throw new ConvexError({ message: "Nothing to save yet — ask a question first.", code: "not_found" });
+    }
+
+    const raw = await callGroq(ctx, {
+      systemPrompt:
+        "You compress a tutor explanation into concise study notes for an Ethiopian " +
+        "student preparing for national exams. Output ONLY the note content: markdown " +
+        "bullets, key definitions, formulas and one worked example if present. Max " +
+        "200 words. No preamble, no closing remarks.",
+      userMessage:
+        `Compress this explanation into study notes:\n\n${lastAssistant.content.slice(0, 4000)}`,
+      maxTokens: 600,
+      temperature: 0.3,
+    });
+
+    // notes.create enforces the 2,000-char cap and subject existence.
+    const noteId = await ctx.runMutation(api.notes.create, {
+      subjectId: conversation.subjectId,
+      content: raw.trim().slice(0, 2000),
+      color: "amber",
+    });
+    return { noteId };
   },
 });
 

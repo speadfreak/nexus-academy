@@ -13,7 +13,16 @@ import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 const DEFAULT_MODEL = process.env.AI_MODEL || "openai/gpt-oss-120b";
+// Vision-capable model for image uploads (textbook pages, handwritten work,
+// problem screenshots). gpt-oss-120b is text-only, so any turn that carries
+// images is routed to this model instead. Overridable via AI_VISION_MODEL.
+const VISION_MODEL = process.env.AI_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
 const GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions";
+
+/** Vision model name — used when a tutor turn carries image attachments. */
+export function getVisionModelName(): string {
+  return VISION_MODEL;
+}
 
 // ---------------------------------------------------------------------------
 // Key resolution

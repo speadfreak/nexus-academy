@@ -261,6 +261,12 @@ const schema = defineSchema(
       role: v.union(v.literal("user"), v.literal("assistant")),
       content: v.string(),
       contentId: v.optional(v.id("contentItems")),
+      // Image attachments on user messages (downscaled base64 data URLs,
+      // validated + size-capped in ai.sendMessage before persisting).
+      // Rendered inline in the chat thread; only the CURRENT turn's images
+      // are sent to the vision model — history replays get "[image attached]"
+      // markers instead, so token budgets stay bounded.
+      images: v.optional(v.array(v.string())),
       createdAt: v.number(),
     }).index("by_conversation", ["conversationId", "createdAt"]),
 
