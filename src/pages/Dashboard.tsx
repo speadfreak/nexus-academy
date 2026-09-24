@@ -36,6 +36,7 @@ import {
   Search,
   Shuffle,
   Sparkles,
+  Pin,
   Target,
   TrendingUp,
   Trophy,
@@ -329,10 +330,18 @@ function BookTile({
         <button
           type="button"
           onClick={() => onOpen(item)}
-          className="relative flex aspect-[3/4] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-2xl text-left ring-1 ring-white/10 transition-all duration-300 hover:ring-white/25"
+          className={cn(
+            "relative flex aspect-[3/4] w-full cursor-pointer flex-col justify-between overflow-hidden rounded-2xl text-left ring-1 transition-all duration-300 hover:ring-white/25",
+            bookmarked
+              ? "ring-2 ring-amber-300/50 hover:ring-amber-300/70"
+              : "ring-white/10",
+          )}
           style={{
             background: `linear-gradient(165deg, ${cover.from} 0%, ${cover.to} 100%)`,
-            boxShadow: `0 4px 20px -4px rgba(0,0,0,0.5), inset 0 1px 0 ${cover.accent}22`,
+            // Saved books get a soft amber halo — the reading list glows.
+            boxShadow: bookmarked
+              ? `0 0 18px rgba(251,191,36,0.18), 0 4px 20px -4px rgba(0,0,0,0.5), inset 0 1px 0 ${cover.accent}22`
+              : `0 4px 20px -4px rgba(0,0,0,0.5), inset 0 1px 0 ${cover.accent}22`,
           }}
           aria-label={`Open ${item.title}`}
         >
@@ -807,6 +816,10 @@ export default function Dashboard() {
     contentType: (contentType || undefined) as ContentType | undefined,
     examYear: examYear ? Number(examYear) : undefined,
     searchQuery: searchQuery.trim() || undefined,
+    // SAVED-FIRST: the backend pins the user's bookmarked resources to the
+    // front of the list (most recently saved first), rescues saves that fell
+    // beyond the page cap, and tags every item with its bookmark state.
+    prioritizeSaved: true,
   });
 
   // Library stats — real per-subject counts + per-content-type counts +
@@ -852,13 +865,30 @@ export default function Dashboard() {
 
   const visibleContent = useMemo(() => {
     if (!content) return content;
-    if (!bookmarkedOnly) return content;
-    const ids = new Set(bookmarkIds ?? []);
-    return content.filter((item) => ids.has(item._id));
+    if (!bookmarkedOnly) return content; // backend already saved-first
+    // Saved-only view: most recently saved leads.
+    return content
+      .filter((item) => bookmarkIds?.includes(item._id))
+      .sort((a, b) => (b.bookmarkedAt ?? 0) - (a.bookmarkedAt ?? 0));
   }, [content, bookmarkedOnly, bookmarkIds]);
 
+  // The gallery splits into a pinned "Saved for you" section (the user's own
+  // reading list leads the page) followed by the rest of the catalog. With
+  // filters/search active the backend still ranks matching saves first — the
+  // split keeps working, it just uses the filtered results.
+  const savedTiles = useMemo(
+    () => (visibleContent ?? []).filter((item) => item.bookmarked),
+    [visibleContent],
+  );
+  const restTiles = useMemo(
+    () => (visibleContent ?? []).filter((item) => !item.bookmarked),
+    [visibleContent],
+  );
+
   const savedContent = useMemo(
-    () => (content ?? []).filter((item) => bookmarkIds?.includes(item._id)).slice(0, 5),
+    // Backend returns saves first (most recent save leads) — the rail shows
+    // up to 10 of them, with room to scroll on small screens.
+    () => (content ?? []).filter((item) => bookmarkIds?.includes(item._id)).slice(0, 10),
     [content, bookmarkIds],
   );
   const recentContent = useMemo(
@@ -2023,7 +2053,7 @@ export default function Dashboard() {
             <h3 className="type-h2 mt-5">No content here yet</h3>
             <p className="type-body mt-2 max-w-sm text-muted-foreground">
               {bookmarkedOnly
-                ? "Nothing saved to your reading list yet — tap the bookmark on any book to start one."
+                ? "Nothing saved to your reading list yet — tap the bookmark on any book and it will appear right at the top of your library."
                 : hasFilters
                   ? "Nothing matches those filters. Try widening your search."
                   : "The library is being stocked. Check back soon, or ask an admin to upload content."}
@@ -2061,27 +2091,82 @@ export default function Dashboard() {
               )}
             </div>
 
-            <motion.div
-              layout
-              className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
-            >
-              <AnimatePresence mode="popLayout">
-                {(visibleContent ?? []).map((item) => (
-                  <BookTile
-                    key={item._id}
-                    item={item}
-                    locked={Boolean(entitlements && !entitlements.premiumAccess) && item.isPremium}
-                    bookmarked={Boolean(bookmarkIds?.includes(item._id))}
-                    onToggleBookmark={handleToggleBookmark}
-                    onOpen={handleOpen}
-                    onQuiz={(clicked) => {
-                      setQuizSubjectId(clicked.subjectId);
-                      setQuizOpen(true);
-                    }}
-                  />
-                ))}
-              </AnimatePresence>
-            </motion.div>
+            {/* ═══ SAVED-FIRST GALLERY ═══
+                The user's own saved resources lead the page in a pinned
+                section, then an elegant divider, then the rest of the
+                catalog. With zero saves this collapses into one seamless
+                grid — exactly like before. */}
+            {savedTiles.length > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5 rounded-lg bg-amber-400/10 px-2.5 py-1 type-caption font-bold text-amber-300">
+                  <Pin className="size-3 -rotate-45" />
+                  Saved for you
+                  <span className="rounded bg-amber-400/20 px-1.5">{savedTiles.length}</span>
+                </span>
+                <span className="hidden type-caption text-muted-foreground/60 sm:block">
+                  {bookmarkedOnly ? "your reading list" : "pinned to the top of your library"}
+                </span>
+                <div className="h-px flex-1 bg-gradient-to-r from-amber-400/30 to-transparent" />
+              </div>
+            )}
+
+            {savedTiles.length > 0 && (
+              <motion.div
+                layout
+                className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+              >
+                <AnimatePresence mode="popLayout">
+                  {savedTiles.map((item) => (
+                    <BookTile
+                      key={item._id}
+                      item={item}
+                      locked={Boolean(entitlements && !entitlements.premiumAccess) && item.isPremium}
+                      bookmarked={Boolean(bookmarkIds?.includes(item._id))}
+                      onToggleBookmark={handleToggleBookmark}
+                      onOpen={handleOpen}
+                      onQuiz={(clicked) => {
+                        setQuizSubjectId(clicked.subjectId);
+                        setQuizOpen(true);
+                      }}
+                    />
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+
+            {savedTiles.length > 0 && restTiles.length > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="h-px w-8 bg-gradient-to-r from-transparent via-white/20 to-white/20" />
+                <p className="type-caption text-muted-foreground/70">
+                  Explore the library — {restTiles.length} more resource{restTiles.length !== 1 ? "s" : ""}
+                </p>
+                <div className="h-px flex-1 bg-gradient-to-r from-white/20 to-transparent" />
+              </div>
+            )}
+
+            {restTiles.length > 0 && (
+              <motion.div
+                layout
+                className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+              >
+                <AnimatePresence mode="popLayout">
+                  {restTiles.map((item) => (
+                    <BookTile
+                      key={item._id}
+                      item={item}
+                      locked={Boolean(entitlements && !entitlements.premiumAccess) && item.isPremium}
+                      bookmarked={Boolean(bookmarkIds?.includes(item._id))}
+                      onToggleBookmark={handleToggleBookmark}
+                      onOpen={handleOpen}
+                      onQuiz={(clicked) => {
+                        setQuizSubjectId(clicked.subjectId);
+                        setQuizOpen(true);
+                      }}
+                    />
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
           </>
         )}
         </AnimatePresence>

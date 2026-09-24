@@ -19,6 +19,14 @@ export type ContentItemWithSubject = ContentItem & {
   subjectStream: string;
 };
 
+/** A library item enriched with the current user's bookmark state.
+ *  When `prioritizeSaved` is requested, saved items lead the list (sorted by
+ *  most recently saved) and carry `bookmarked: true` + `bookmarkedAt`. */
+export type LibraryContentItem = ContentItemWithSubject & {
+  bookmarked: boolean;
+  bookmarkedAt?: number;
+};
+
 // ---------------------------------------------------------------------------
 // Upload plumbing
 // ---------------------------------------------------------------------------
@@ -501,9 +509,14 @@ export const getContent = query({
     contentType: v.optional(contentTypeValidator),
     examYear: v.optional(v.number()),
     searchQuery: v.optional(v.string()),
+    // Saved-first ordering: when true, the current user's bookmarked items
+    // lead the result list (most recently saved first), every item carries a
+    // `bookmarked` flag, and saves that fell beyond the 200-item page cap are
+    // rescued back into the list so a user's reading list is never lost.
+    prioritizeSaved: v.optional(v.boolean()),
   },
-  handler: async (ctx, args): Promise<ContentItemWithSubject[]> => {
-    const { grade, subjectSlug, contentType, examYear, searchQuery } = args;
+  handler: async (ctx, args): Promise<LibraryContentItem[]> => {
+    const { grade, subjectSlug, contentType, examYear, searchQuery, prioritizeSaved } = args;
 
     let subject: Doc<"subjects"> | null = null;
     if (subjectSlug) {
@@ -543,16 +556,69 @@ export const getContent = query({
     // Free-text search over title and subject name (case-insensitive).
     // Applied after the structural filters; catalog scale is small enough that
     // this stays fast without a dedicated search index.
-    const query = searchQuery?.trim().toLowerCase();
-    if (query) {
-      return joined.filter(
+    const search = searchQuery?.trim().toLowerCase();
+    let results: ContentItemWithSubject[] = joined;
+    if (search) {
+      results = results.filter(
         (item) =>
-          item.title.toLowerCase().includes(query) ||
-          item.subjectName.toLowerCase().includes(query),
+          item.title.toLowerCase().includes(search) ||
+          item.subjectName.toLowerCase().includes(search),
       );
     }
 
-    return joined;
+    // ── SAVED-FIRST ORDERING ─────────────────────────────────────────
+    // Signed-in users get their bookmarked resources pinned to the front of
+    // the list, ordered by most recently saved. The user's own reading list
+    // is the single most relevant thing in the library — it should never be
+    // buried under catalog recency.
+    if (prioritizeSaved) {
+      const userId = await getAuthUserId(ctx);
+      if (userId) {
+        const bookmarkRows = await ctx.db
+          .query("bookmarks")
+          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .collect();
+        const savedAt = new Map<Id<"contentItems">, number>();
+        for (const row of bookmarkRows) {
+          savedAt.set(row.contentId, row.createdAt);
+        }
+
+        // Rescue saves that the page/filters dropped: with no constraints we
+        // pull bookmarked items back in even if they sit beyond the 200-item
+        // cap — a student's saved book must NEVER vanish from their library
+        // just because newer uploads pushed it out of the default page.
+        if (!hasFilters && !search && savedAt.size > 0) {
+          const present = new Set(results.map((item) => item._id));
+          for (const id of savedAt.keys()) {
+            if (present.has(id)) continue;
+            const item = await ctx.db.get(id);
+            if (!item) continue; // bookmark pointing at deleted content
+            const subject = item.subjectId ? await ctx.db.get(item.subjectId) : null;
+            results.push({
+              ...item,
+              subjectName: subject?.name ?? "Unknown",
+              subjectSlug: subject?.slug ?? "",
+              subjectStream: subject?.stream ?? "common",
+            });
+          }
+        }
+
+        const saved: LibraryContentItem[] = [];
+        const rest: LibraryContentItem[] = [];
+        for (const item of results) {
+          const at = savedAt.get(item._id);
+          if (at !== undefined) {
+            saved.push({ ...item, bookmarked: true, bookmarkedAt: at });
+          } else {
+            rest.push({ ...item, bookmarked: false });
+          }
+        }
+        saved.sort((a, b) => (b.bookmarkedAt ?? 0) - (a.bookmarkedAt ?? 0));
+        return [...saved, ...rest];
+      }
+    }
+
+    return results.map((item) => ({ ...item, bookmarked: false }));
   },
 });
 
