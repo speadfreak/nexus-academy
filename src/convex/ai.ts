@@ -20,7 +20,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
-import { callGroq, getModelName, getVisionModelName } from "./groq";
+import { callGroq, getModelName, resolveVisionModel } from "./groq";
 
 // ---------------------------------------------------------------------------
 // Tutor modes — the student picks an explicit learning mode before/while
@@ -646,6 +646,11 @@ export const sendMessage = action({
 
     let reply: string;
     const aiStart = Date.now();
+    // Image turns need a vision-capable model (gpt-oss-120b is text-only).
+    // resolveVisionModel picks a LIVE image-capable model from Groq's
+    // catalog (self-healing when Groq rotates/deprecates models) and
+    // callGroq retries once with a fresh model if it 404s mid-flight.
+    const visionModel = images.length > 0 ? await resolveVisionModel(ctx) : undefined;
     try {
       reply = await callGroq(ctx, {
         systemPrompt,
@@ -653,9 +658,7 @@ export const sendMessage = action({
         history,
         maxTokens: 1024,
         temperature: 0.5,
-        // Image turns MUST use a vision-capable model (gpt-oss-120b is
-        // text-only and would reject image_url content parts).
-        model: images.length > 0 ? getVisionModelName() : undefined,
+        model: visionModel,
       });
       await logEventAction(ctx, {
         eventType: "api_call",
@@ -663,7 +666,7 @@ export const sendMessage = action({
         status: "success",
         userId,
         metadata: {
-          model: images.length > 0 ? getVisionModelName() : getModelName(),
+          model: visionModel ?? getModelName(),
           conversationId,
           hasImages: images.length > 0,
           mode: args.mode ?? "learn",

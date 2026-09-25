@@ -14,6 +14,7 @@ import { isAdminDoc } from "./admin";
 
 export const INTEGRATION_KEYS = [
   { key: "GROQ_API_KEY", label: "Groq AI (Primary AI)", category: "ai", description: "AI tutor, quizzes, plans, flashcards, content classification, recaps, quotes. Also the final fallback for mock exams if Gemini + OpenRouter + Cerebras all fail.", helpUrl: "https://console.groq.com/keys", helpLabel: "console.groq.com" },
+  { key: "AI_VISION_MODEL", label: "AI Vision Model (optional)", category: "ai", description: "Optional vision model override for image uploads in the Tutor. Leave EMPTY to auto-pick the best image-capable model from Groq's live catalog (self-healing — recommended). Only set this if auto-detection picks something wrong." },
   { key: "GEMINI_API_KEY", label: "Gemini AI (Mock Exams)", category: "ai", description: "Primary provider for mock exam generation. If it fails (rate limit, region block, etc.), the system cascades to OpenRouter → Cerebras → Groq.", helpUrl: "https://aistudio.google.com/apikey", helpLabel: "aistudio.google.com/apikey" },
   { key: "GEMINI_MODEL", label: "Gemini Model (optional)", category: "ai", description: "Optional model override. Defaults to gemini-3.6-flash." },
   { key: "OPENROUTER_API_KEY", label: "OpenRouter (Mock Exams fallback 1)", category: "ai", description: "First fallback for mock exam generation when Gemini fails. Free tier: 50-200 requests/day (1000/day with $10 deposit). Get a free key at openrouter.ai/keys.", helpUrl: "https://openrouter.ai/keys", helpLabel: "openrouter.ai/keys" },
