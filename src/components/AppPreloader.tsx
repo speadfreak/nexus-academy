@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// AppPreloader — "Quantum Nexus Boot" cinematic sequence
+// AppPreloader — the "Insane L" cinematic boot sequence
 // ═══════════════════════════════════════════════════════════════════════
 // Visual layers (bottom → top):
 //   1. Deep-void background with radial cyan ambient glow

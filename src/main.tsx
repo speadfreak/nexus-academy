@@ -127,20 +127,33 @@ const ExamPrep = lazy(() => import("./pages/ExamPrep.tsx"));
 const AptitudeHub = lazy(() => import("./pages/AptitudeHub.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
-// Simple loading fallback for route transitions
+// Route-transition loading fallback — the little sibling of the Insane L
+// preloader. Same visual language: gold serif "L", orbit ring with a gold
+// tracker dot, quiet mono label. Fully theme-aware via design tokens
+// (warm parchment in light, obsidian in dark) — the old hardcoded-navy
+// "N" Nexus loader is gone. One brand, one loading experience.
 function RouteLoading() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#050510] px-6">
+    <div
+      role="status"
+      aria-label="Loading page"
+      className="flex min-h-screen items-center justify-center bg-background px-6"
+    >
       <div className="text-center">
-        {/* Spinning ring */}
+        {/* Orbit ring + gold tracker dot, matching the boot preloader */}
         <div className="relative mx-auto flex size-14 items-center justify-center">
-          <div className="absolute inset-0 rounded-full border border-primary/20" style={{ animation: 'preloader-orbit-1 2.5s linear infinite' }} />
-          <div className="absolute -top-[1px] left-1/2 -translate-x-1/2 size-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
-          <div className="flex size-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/5 font-serif text-xl font-black text-primary">
-            N
+          <div
+            className="absolute inset-0 rounded-full border border-primary/25"
+            style={{ animation: "preloader-orbit-1 2.5s linear infinite" }}
+          />
+          <div className="absolute -top-[1px] left-1/2 -translate-x-1/2 size-1.5 rounded-full bg-primary" />
+          <div className="flex size-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 font-serif text-xl font-black text-primary">
+            L
           </div>
         </div>
-        <p className="mt-4 font-mono text-[9px] font-bold uppercase tracking-[0.35em] text-white/30">Loading</p>
+        <p className="mt-4 font-mono text-[9px] font-bold uppercase tracking-[0.35em] text-muted-foreground">
+          Loading
+        </p>
       </div>
     </div>
   );
