@@ -459,7 +459,7 @@ export function PaymentReviewsSection() {
               <Building2 className="size-4 text-violet-300" />
               School bulk purchases
               {pendingSchoolSubs && pendingSchoolSubs.length > 0 && (
-                <Badge className="border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-sky-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
+                <Badge className="border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-teal-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
                   {pendingSchoolSubs.length} pending
                 </Badge>
               )}
@@ -495,7 +495,7 @@ export function PaymentReviewsSection() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       {/* Clear, distinct school-bulk badge — school name · seats · months · total */}
-                      <Badge className="gap-1 border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-sky-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
+                      <Badge className="gap-1 border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-teal-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
                         <Building2 className="size-3" /> School bulk
                       </Badge>
                       <span className="text-sm font-bold">
@@ -645,7 +645,7 @@ export function PaymentReviewsSection() {
                       </span>
                       {/* Duration badge — show when non-standard (not 1 month) */}
                       {sub.durationMonths && sub.durationMonths > 1 && (
-                        <span className="flex items-center gap-1 rounded-md border border-sky-400/20 bg-sky-400/[0.06] px-1.5 py-0.5 font-mono text-[10px] font-bold text-sky-300">
+                        <span className="flex items-center gap-1 rounded-md border border-teal-400/20 bg-teal-400/[0.06] px-1.5 py-0.5 font-mono text-[10px] font-bold text-teal-300">
                           Extended: {sub.durationMonths} months · {sub.expectedAmount} {sub.currency}
                         </span>
                       )}

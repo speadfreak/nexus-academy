@@ -367,7 +367,7 @@ export default function Focus() {
 
           {/* Today */}
           <div className="glass-soft flex items-center gap-3 rounded-xl px-4 py-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-teal-400/10 text-teal-300">
               <Timer className="size-4" />
             </div>
             <div>

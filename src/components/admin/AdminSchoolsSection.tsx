@@ -324,7 +324,7 @@ export function AdminSchoolsSection() {
         className="glass-panel relative overflow-hidden rounded-2xl p-5"
       >
         <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-violet-500/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 right-32 size-48 rounded-full bg-sky-500/[0.07] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 right-32 size-48 rounded-full bg-amber-500/[0.07] blur-3xl" />
         <div className="relative flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
@@ -401,7 +401,7 @@ export function AdminSchoolsSection() {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
           <SchoolStat label="schools" value={stats.totalSchools} icon={Building2} sub="on the platform" accent="bg-violet-400/10 text-violet-300" />
-          <SchoolStat label="classes" value={stats.totalClasses} icon={GraduationCap} sub="across all schools" accent="bg-sky-400/10 text-sky-300" />
+          <SchoolStat label="classes" value={stats.totalClasses} icon={GraduationCap} sub="across all schools" accent="bg-teal-400/10 text-teal-300" />
           <SchoolStat label="students joined" value={stats.totalMembers} icon={Users} sub="via class codes" accent="bg-emerald-400/10 text-emerald-300" />
           <SchoolStat label="seats licensed" value={fmtMoney(stats.totalSeatsLicensed)} icon={Armchair} sub={`${stats.activeLicenses} active license${stats.activeLicenses === 1 ? "" : "s"}`} accent="bg-amber-400/10 text-amber-300" />
           <SchoolStat label="license health" value={`${stats.activeLicenses + stats.expiredLicenses}`} icon={Calendar} sub={stats.expiringSoon > 0 ? `${stats.expiringSoon} expiring ≤14d` : "no renewals due soon"} accent="bg-rose-400/10 text-rose-300" />
@@ -476,7 +476,7 @@ export function AdminSchoolsSection() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Distinct school-bulk badge — never confusable with student payments */}
-                        <Badge className="gap-1 border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-sky-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
+                        <Badge className="gap-1 border-violet-400/30 bg-gradient-to-r from-violet-500/20 to-teal-500/15 font-mono text-[9px] font-extrabold uppercase tracking-[0.12em] text-violet-200">
                           <Building2 className="size-3" /> School bulk
                         </Badge>
                         <span className="text-sm font-bold">{sub.schoolName}</span>
@@ -492,7 +492,7 @@ export function AdminSchoolsSection() {
                         </Badge>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                        <span className="flex items-center gap-1.5 rounded-md border border-sky-400/20 bg-sky-400/[0.06] px-1.5 py-0.5 font-mono text-[10px] font-bold text-sky-300">
+                        <span className="flex items-center gap-1.5 rounded-md border border-teal-400/20 bg-teal-400/[0.06] px-1.5 py-0.5 font-mono text-[10px] font-bold text-teal-300">
                           <Users className="size-3" /> {sub.seatCount} seats
                         </span>
                         <span className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
@@ -609,7 +609,7 @@ export function AdminSchoolsSection() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-sky-500/10 text-violet-300">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-teal-500/10 text-violet-300">
                         <Building2 className="size-4.5" />
                       </span>
                       <div className="min-w-0">
@@ -633,7 +633,7 @@ export function AdminSchoolsSection() {
                       <Armchair className="size-3 text-amber-300" /> {fmtMoney(s.seatsPurchased)} seats
                     </span>
                     <span className="flex items-center gap-1">
-                      <GraduationCap className="size-3 text-sky-300" /> {s.classCount} class{s.classCount === 1 ? "" : "es"}
+                      <GraduationCap className="size-3 text-teal-300" /> {s.classCount} class{s.classCount === 1 ? "" : "es"}
                     </span>
                     {s.location && (
                       <span className="flex items-center gap-1">
@@ -1161,7 +1161,7 @@ function ClassRosterRow({
         onClick={onToggle}
         className="flex w-full cursor-pointer items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
       >
-        <GraduationCap className="size-4 shrink-0 text-sky-300" />
+        <GraduationCap className="size-4 shrink-0 text-teal-300" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-bold">{schoolClass.name}</p>
           <p className="font-mono text-[10px] text-muted-foreground">

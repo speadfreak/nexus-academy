@@ -72,7 +72,7 @@ export function TourStepCard({
         transition={{ duration: REDUCED_MOTION ? 0 : 0.35, ease: EASE }}
         className="relative w-full max-w-sm"
       >
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0e1117]/95 backdrop-blur-2xl shadow-[0_40px_100px_-30px_rgba(0,0,0,0.9)]">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#12110E]/95 backdrop-blur-2xl shadow-[0_40px_100px_-30px_rgba(0,0,0,0.9)]">
           {/* Top glow line */}
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
           {/* Background glow */}
@@ -235,7 +235,7 @@ export function TourWelcomeCard({
         initial={REDUCED_MOTION ? false : { opacity: 0, y: 24, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: REDUCED_MOTION ? 0 : 0.5, ease: EASE, delay: REDUCED_MOTION ? 0 : 0.1 }}
-        className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-[#0e1117]/95 backdrop-blur-2xl shadow-[0_40px_100px_-30px_rgba(0,0,0,0.9)]"
+        className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-[#12110E]/95 backdrop-blur-2xl shadow-[0_40px_100px_-30px_rgba(0,0,0,0.9)]"
       >
         <div className="absolute -top-20 left-1/2 -translate-x-1/2 size-60 rounded-full bg-amber-400/10 blur-3xl" />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
@@ -300,7 +300,7 @@ export function TourCompleteCard({ onDone }: { onDone: () => void }) {
         initial={REDUCED_MOTION ? false : { opacity: 0, y: 24, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: REDUCED_MOTION ? 0 : 0.5, ease: EASE, delay: REDUCED_MOTION ? 0 : 0.1 }}
-        className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-[#0e1117]/95 backdrop-blur-2xl shadow-[0_40px_100px_-30px_rgba(0,0,0,0.9)]"
+        className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-[#12110E]/95 backdrop-blur-2xl shadow-[0_40px_100px_-30px_rgba(0,0,0,0.9)]"
       >
         <div className="absolute -top-20 left-1/2 -translate-x-1/2 size-60 rounded-full bg-amber-400/10 blur-3xl" />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />

@@ -167,7 +167,7 @@ function QuickTab({
     violet: "border-violet-400/40 bg-violet-400/10 text-violet-300",
     rose: "border-rose-400/40 bg-rose-400/10 text-rose-300",
     emerald: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
-    sky: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    sky: "border-teal-400/40 bg-teal-400/10 text-teal-300",
   };
   return (
     <button
@@ -226,7 +226,7 @@ function DecksView({ onStudy }: { onStudy: (deckId: string) => void }) {
         <div className="grid grid-cols-4 gap-2">
           <MiniStat label="Cards" value={memoryStats.totalCards} icon={Layers} color="text-amber-300" />
           <MiniStat label="Mastered" value={memoryStats.mastered} icon={Check} color="text-emerald-300" />
-          <MiniStat label="Due" value={memoryStats.dueCards} icon={Clock} color="text-sky-300" />
+          <MiniStat label="Due" value={memoryStats.dueCards} icon={Clock} color="text-teal-300" />
           <MiniStat label="Retention" value={`${memoryStats.retention}%`} icon={Brain} color="text-violet-300" />
         </div>
       )}
@@ -410,7 +410,7 @@ function MemoryLabView() {
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <BigStat label="Cards studied" value={stats.studied} icon={Layers} color="text-amber-300" />
           <BigStat label="Mastered" value={stats.mastered} icon={Check} color="text-emerald-300" />
-          <BigStat label="Learning" value={stats.learning} icon={Brain} color="text-sky-300" />
+          <BigStat label="Learning" value={stats.learning} icon={Brain} color="text-teal-300" />
           <BigStat label="Weak" value={stats.weak} icon={AlertTriangle} color="text-rose-300" />
         </div>
 
@@ -423,9 +423,9 @@ function MemoryLabView() {
 
         {/* Due cards */}
         {stats.dueCards > 0 && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-sky-400/20 bg-sky-400/[0.06] px-4 py-3">
-            <Clock className="size-4 text-sky-300" />
-            <p className="text-sm text-sky-200">
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-teal-400/20 bg-teal-400/[0.06] px-4 py-3">
+            <Clock className="size-4 text-teal-300" />
+            <p className="text-sm text-teal-200">
               <span className="font-bold">{stats.dueCards}</span> card{stats.dueCards === 1 ? "" : "s"} due for review — spaced repetition says it's time.
             </p>
           </div>
@@ -1073,7 +1073,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
       {/* Type Answer + Speak Answer toggles */}
       {!flipped && (
         <div className="mt-4 flex justify-center gap-2">
-          <button onClick={() => setShowTypeMode(!showTypeMode)} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition", showTypeMode ? "border-sky-400/30 bg-sky-400/10 text-sky-300" : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground")}>
+          <button onClick={() => setShowTypeMode(!showTypeMode)} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition", showTypeMode ? "border-teal-400/30 bg-teal-400/10 text-teal-300" : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground")}>
             <TypeIcon className="size-3.5" /> Type answer
           </button>
           <button onClick={() => setShowSpeakMode(!showSpeakMode)} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition", showSpeakMode ? "border-violet-400/30 bg-violet-400/10 text-violet-300" : "border-white/[0.06] bg-white/[0.02] text-muted-foreground hover:text-foreground")}>
@@ -1192,7 +1192,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
               <button onClick={() => handleReview("hard")} className="flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-sm font-semibold text-amber-300 transition hover:bg-amber-400/20">
                 <AlertTriangle className="size-4" /> Hard
               </button>
-              <button onClick={() => handleReview("good")} className="flex items-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-300 transition hover:bg-sky-400/20">
+              <button onClick={() => handleReview("good")} className="flex items-center gap-1.5 rounded-xl border border-teal-400/30 bg-teal-400/10 px-4 py-2.5 text-sm font-semibold text-teal-300 transition hover:bg-teal-400/20">
                 <Check className="size-4" /> Good
               </button>
               <button onClick={() => handleReview("easy")} className="flex items-center gap-1.5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-400/20">
@@ -1200,8 +1200,8 @@ function StudyView({ onBack }: { onBack: () => void }) {
               </button>
             </div>
             {typedAnswer && (
-              <div className="mt-3 rounded-xl border border-sky-400/20 bg-sky-400/[0.04] p-3 text-center">
-                <p className="text-[11px] text-sky-300">Your answer: {typedAnswer}</p>
+              <div className="mt-3 rounded-xl border border-teal-400/20 bg-teal-400/[0.04] p-3 text-center">
+                <p className="text-[11px] text-teal-300">Your answer: {typedAnswer}</p>
               </div>
             )}
 
@@ -1334,7 +1334,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
                       {/* Step 4: Quick example */}
                       {mistakeData.quickExample && (
                         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-sky-300">4. Quick example</p>
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-teal-300">4. Quick example</p>
                           <p className="text-sm text-foreground/90">{mistakeData.quickExample}</p>
                         </div>
                       )}
@@ -1432,23 +1432,23 @@ function QualityCheckView() {
 
   return (
     <div className="glass-panel rounded-2xl p-6">
-      <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-sky-300">// quality check</p>
+      <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-teal-300">// quality check</p>
       <h2 className="type-h1 mt-1">AI Card Quality Control</h2>
       <p className="type-body mt-1 text-muted-foreground">Detect duplicates, vague questions, and poorly-written cards.</p>
 
       {!selectedDeck && (
         <div className="mt-5 space-y-2">
           {decks?.map((deck) => (
-            <button key={deck._id} onClick={() => handleCheck(deck._id)} className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition hover:border-sky-400/30 hover:bg-white/[0.04]">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300"><Shield className="size-4" /></div>
+            <button key={deck._id} onClick={() => handleCheck(deck._id)} className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition hover:border-teal-400/30 hover:bg-white/[0.04]">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-teal-400/10 text-teal-300"><Shield className="size-4" /></div>
               <div className="flex-1"><p className="text-sm font-semibold">{deck.title}</p><p className="text-[11px] text-muted-foreground">{deck.cardCount} cards</p></div>
-              <ChevronRight className="size-4 text-muted-foreground group-hover:text-sky-300" />
+              <ChevronRight className="size-4 text-muted-foreground group-hover:text-teal-300" />
             </button>
           ))}
         </div>
       )}
 
-      {checking && <div className="flex h-40 items-center justify-center"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-5 rounded-full border-2 border-sky-400/30 border-t-sky-400" /></div>}
+      {checking && <div className="flex h-40 items-center justify-center"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-5 rounded-full border-2 border-teal-400/30 border-t-teal-400" /></div>}
 
       {report && !checking && (
         <div className="mt-5 space-y-4">
@@ -1481,8 +1481,8 @@ function QualityCheckView() {
             </div>
           )}
           {report.tooEasy.length > 0 && (
-            <div className="rounded-xl border border-sky-400/20 bg-sky-400/[0.04] p-3">
-              <p className="text-xs font-bold text-sky-300">Too easy: {report.tooEasy.length}</p>
+            <div className="rounded-xl border border-teal-400/20 bg-teal-400/[0.04] p-3">
+              <p className="text-xs font-bold text-teal-300">Too easy: {report.tooEasy.length}</p>
               {report.tooEasy.slice(0, 3).map((t, i) => (
                 <p key={i} className="mt-1 text-[11px] text-muted-foreground">"{t.front}" — {t.issue}</p>
               ))}
@@ -1508,7 +1508,7 @@ const FLASHCARD_ACHIEVEMENTS = [
   { id: "first_100", icon: Flame, label: "First 100 Cards", desc: "Study 100 flashcards", color: "text-amber-400", bg: "bg-amber-400/10", threshold: 100 },
   { id: "memory_machine", icon: Brain, label: "Memory Machine", desc: "Master 1,000 cards", color: "text-violet-400", bg: "bg-violet-400/10", threshold: 1000 },
   { id: "streak_7", icon: Zap, label: "7-Day Recall Streak", desc: "Study 7 days in a row", color: "text-emerald-400", bg: "bg-emerald-400/10", threshold: 7 },
-  { id: "perfect_deck", icon: Shield, label: "Perfect Deck", desc: "100% mastery on a deck", color: "text-sky-400", bg: "bg-sky-400/10", threshold: 1 },
+  { id: "perfect_deck", icon: Shield, label: "Perfect Deck", desc: "100% mastery on a deck", color: "text-teal-400", bg: "bg-teal-400/10", threshold: 1 },
   { id: "subject_master", icon: Crown, label: "Subject Master", desc: "500 mastered cards in one subject", color: "text-amber-400", bg: "bg-amber-400/10", threshold: 500 },
   { id: "cram_champion", icon: Trophy, label: "Cram Champion", desc: "Complete a cram session", color: "text-rose-400", bg: "bg-rose-400/10", threshold: 1 },
 ];

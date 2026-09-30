@@ -789,7 +789,7 @@ export default function Reader() {
   // ─── Loading state ────────────────────────────────────────────────────
   if (reader === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background dark:bg-[#080c14]">
+      <div className="flex min-h-screen items-center justify-center bg-background dark:bg-[#0B0A08]">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
             <div className="absolute -inset-4 animate-spin rounded-full border-2 border-transparent border-t-primary/60" style={{ animationDuration: "2s" }} />
@@ -805,7 +805,7 @@ export default function Reader() {
   // ─── Not found ────────────────────────────────────────────────────────
   if (!item) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background dark:bg-[#080c14] px-6 text-center">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background dark:bg-[#0B0A08] px-6 text-center">
         <div className="relative">
           <div className="absolute -inset-6 rounded-2xl bg-gradient-to-br from-rose-500/20 to-amber-500/20 blur-xl" />
           <div className="relative flex size-20 items-center justify-center rounded-2xl border border-foreground/10 bg-foreground/5 backdrop-blur-xl">
@@ -833,7 +833,7 @@ export default function Reader() {
 
   // ─── Main reader ──────────────────────────────────────────────────────
   return (
-    <div ref={rootRef} className="flex h-screen flex-col overflow-hidden bg-background dark:bg-[#080c14]">
+    <div ref={rootRef} className="flex h-screen flex-col overflow-hidden bg-background dark:bg-[#0B0A08]">
       {/* ═══ TOP CHROME BAR (hidden in study mode) ═══ */}
       {!studyMode && (
         <header className="relative z-30 flex h-14 shrink-0 items-center gap-3 border-b border-foreground/[0.06] bg-background/80 dark:bg-black/40 px-3 backdrop-blur-2xl sm:px-5">
@@ -1075,7 +1075,7 @@ export default function Reader() {
                       type="button"
                       onClick={() => void handleQuickAction(action.id)}
                       disabled={asking}
-                      className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-background/80 dark:bg-black/60 px-3 py-1.5 text-[11px] font-semibold text-cyan-700 dark:text-cyan-200 backdrop-blur-2xl transition-all hover:bg-cyan-400/10 disabled:opacity-40 active:scale-95"
+                      className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-teal-400/20 bg-background/80 dark:bg-black/60 px-3 py-1.5 text-[11px] font-semibold text-teal-700 dark:text-teal-200 backdrop-blur-2xl transition-all hover:bg-teal-400/10 disabled:opacity-40 active:scale-95"
                     >
                       <action.icon className="size-3" /> {action.label}
                     </button>
@@ -1094,14 +1094,14 @@ export default function Reader() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ duration: 0.16 }}
-                className="fixed z-[70] w-[300px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-400/25 bg-background/95 dark:bg-[#0a0e17]/95 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.9),0_0_30px_-10px_rgba(34,211,238,0.3)] backdrop-blur-2xl"
+                className="fixed z-[70] w-[300px] max-w-[92vw] overflow-hidden rounded-2xl border border-teal-400/25 bg-background/95 dark:bg-[#12110E]/95 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.9),0_0_30px_-10px_rgba(230,167,46,0.2)] backdrop-blur-2xl"
                 style={{
                   left: Math.max(8, Math.min(selectionPoint.x - 150, (typeof window !== "undefined" ? window.innerWidth : 400) - 308)),
                   top: Math.max(8, selectionPoint.y - 96),
                 }}
               >
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/50 to-transparent" />
-                <p className="type-mono flex items-center gap-1.5 px-3 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300/80">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/50 to-transparent" />
+                <p className="type-mono flex items-center gap-1.5 px-3 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-[0.18em] text-teal-700 dark:text-teal-300/80">
                   <Sparkles className="size-3" /> Ask Learnyx AI
                 </p>
                 <p className="line-clamp-2 px-3 pb-2 text-[11px] leading-snug text-muted-foreground/50">“{highlightedText.slice(0, 120)}{highlightedText.length > 120 ? "…" : ""}”</p>
@@ -1127,7 +1127,7 @@ export default function Reader() {
                           ? "border-amber-300/25 bg-amber-300/[0.06] text-amber-700 dark:text-amber-200 hover:bg-amber-300/[0.14]"
                           : action.id === "flashcard"
                             ? "border-primary/25 bg-primary/[0.07] text-primary hover:bg-primary/[0.14]"
-                            : "border-foreground/[0.07] bg-foreground/[0.03] text-foreground/75 hover:border-cyan-400/30 hover:bg-cyan-400/[0.08] hover:text-cyan-700 dark:hover:text-cyan-700 dark:text-cyan-200",
+                            : "border-foreground/[0.07] bg-foreground/[0.03] text-foreground/75 hover:border-teal-400/30 hover:bg-teal-400/[0.08] hover:text-teal-700 dark:hover:text-teal-700 dark:text-teal-200",
                       )}
                     >
                       {generatingFlashcards && action.id === "flashcard" ? (
@@ -1216,7 +1216,7 @@ export default function Reader() {
                   transition={{ type: "spring", stiffness: 350, damping: 35 }}
                   role="complementary"
                   aria-labelledby="reader-panel-title"
-                  className="absolute bottom-0 right-0 top-0 z-50 flex w-[88%] max-w-[400px] flex-col border-l border-foreground/[0.08] bg-background/95 dark:bg-[#0a0e17]/95 shadow-[-24px_0_80px_-24px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:static sm:z-auto sm:w-[380px] sm:max-w-none sm:shadow-none xl:w-[410px]"
+                  className="absolute bottom-0 right-0 top-0 z-50 flex w-[88%] max-w-[400px] flex-col border-l border-foreground/[0.08] bg-background/95 dark:bg-[#12110E]/95 shadow-[-24px_0_80px_-24px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:static sm:z-auto sm:w-[380px] sm:max-w-none sm:shadow-none xl:w-[410px]"
                 >
                   <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/20 to-transparent sm:hidden" />
 
@@ -1242,13 +1242,13 @@ export default function Reader() {
                           "interactive-press relative flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 py-2 type-caption font-semibold transition-all duration-200",
                           panelTab === tab.id
                             ? tab.id === "companion"
-                              ? "text-cyan-700 dark:text-cyan-300"
+                              ? "text-teal-700 dark:text-teal-300"
                               : "text-primary"
                             : "text-muted-foreground/60 hover:bg-foreground/[0.03] hover:text-muted-foreground",
                         )}
                       >
                         {panelTab === tab.id && (
-                          <div className={cn("absolute inset-x-2 -bottom-[9px] h-0.5 rounded-full", tab.id === "companion" ? "bg-cyan-300/60" : "bg-primary/60")} />
+                          <div className={cn("absolute inset-x-2 -bottom-[9px] h-0.5 rounded-full", tab.id === "companion" ? "bg-teal-300/60" : "bg-primary/60")} />
                         )}
                         {tab.label}
                       </button>

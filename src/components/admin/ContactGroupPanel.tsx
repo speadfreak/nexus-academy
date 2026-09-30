@@ -97,11 +97,11 @@ export function ContactGroupPanel() {
     <div className="glass-panel rounded-2xl p-5 sm:p-6">
       {/* Header */}
       <div className="flex items-center gap-2.5">
-        <div className="flex size-9 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
+        <div className="flex size-9 items-center justify-center rounded-xl bg-teal-400/10 text-teal-300">
           <MessageCircle className="size-4.5" />
         </div>
         <div className="flex-1">
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-sky-300">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-teal-300">
             // contact-form delivery
           </p>
           <h2 className="mt-0.5 text-lg font-extrabold tracking-tight">Contact Group</h2>
@@ -141,7 +141,7 @@ export function ContactGroupPanel() {
           />
           <p className="text-[10px] text-muted-foreground/70">
             For a supergroup this starts with <code className="rounded bg-white/5 px-1">-100</code>.
-            Add <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">@userinfobot</a> to
+            Add <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="text-teal-300 hover:underline">@userinfobot</a> to
             the group and read the chat ID it reports, then remove it.
           </p>
         </div>
@@ -163,7 +163,7 @@ export function ContactGroupPanel() {
                 href={inviteLink}
                 target="_blank"
                 rel="noreferrer"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-sky-400/30 hover:text-sky-300"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:border-teal-400/30 hover:text-teal-300"
                 title="Open group"
               >
                 <ExternalLink className="size-4" />
@@ -186,7 +186,7 @@ export function ContactGroupPanel() {
           <Button
             onClick={() => void handleSave()}
             disabled={saving}
-            className="h-9 cursor-pointer gap-2 rounded-lg bg-sky-500 text-white hover:bg-sky-400 disabled:opacity-50"
+            className="h-9 cursor-pointer gap-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
           >
             {saving ? (
               <Loader2 className="size-4 animate-spin" />
@@ -199,10 +199,10 @@ export function ContactGroupPanel() {
       </div>
 
       {/* Helper tip */}
-      <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-sky-400/15 bg-sky-400/[0.04] p-3">
-        <Sparkles className="mt-0.5 size-3.5 shrink-0 text-sky-300" />
+      <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-teal-400/15 bg-teal-400/[0.04] p-3">
+        <Sparkles className="mt-0.5 size-3.5 shrink-0 text-teal-300" />
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          <span className="font-semibold text-sky-300">How it works:</span> when a
+          <span className="font-semibold text-teal-300">How it works:</span> when a
           student sends a contact-form message from{" "}
           <code className="rounded bg-white/5 px-1">Settings → Contact the Team</code>,
           the backend sends it directly to this chat ID via the Telegram bot.

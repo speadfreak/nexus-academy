@@ -459,7 +459,7 @@ function ContentTypesCard() {
                   </TableCell>
                   <TableCell>
                     {ct.hasYear ? (
-                      <Badge variant="outline" className="bg-sky-500/10 text-sky-300 border-sky-500/30">
+                      <Badge variant="outline" className="bg-teal-500/10 text-teal-300 border-teal-500/30">
                         <Check className="size-2.5 mr-1" /> Yes
                       </Badge>
                     ) : (

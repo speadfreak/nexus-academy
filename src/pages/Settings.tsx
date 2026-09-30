@@ -801,13 +801,13 @@ function ContactSection({
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className="glass-panel relative overflow-hidden rounded-2xl p-6"
     >
-      <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-sky-400/5 blur-3xl" />
+      <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-amber-400/5 blur-3xl" />
       <div className="relative">
         <div className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-sky-400/10 text-sky-300 shadow-[0_0_16px_-4px_rgb(56,189,248/0.35)]">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-teal-400/10 text-teal-300 shadow-[0_0_16px_-4px_rgb(45,212,191/0.35)]">
             <LifeBuoy className="size-4" />
           </div>
-          <p className="uppercase tracking-[0.22em] text-sky-300 font-semibold">
+          <p className="uppercase tracking-[0.22em] text-teal-300 font-semibold">
             // contact the team
           </p>
         </div>
@@ -895,7 +895,7 @@ function ContactSection({
             <Button
               onClick={handleSubmit}
               disabled={sending || !message.trim() || !email.trim()}
-              className="interactive-press cursor-pointer gap-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 disabled:opacity-50"
+              className="interactive-press cursor-pointer gap-2 rounded-xl bg-amber-500 text-amber-950 hover:bg-amber-400 disabled:opacity-50"
             >
               {sending ? (
                 <Loader2 className="size-4 animate-spin" />

@@ -204,7 +204,7 @@ export function PracticeSessionPanel(props: PracticePanelProps) {
   if (phase === "setup") {
     return (
       <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3 sm:pb-5">
-        <div className="w-full max-w-md rounded-2xl border border-amber-300/25 bg-[#0b0f17]/95 p-4 shadow-[0_18px_60px_-18px_rgba(251,191,36,0.35)] backdrop-blur">
+        <div className="w-full max-w-md rounded-2xl border border-amber-300/25 bg-[#12110E]/95 p-4 shadow-[0_18px_60px_-18px_rgba(251,191,36,0.35)] backdrop-blur">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-amber-300">
@@ -280,7 +280,7 @@ export function PracticeSessionPanel(props: PracticePanelProps) {
   return (
     <>
       <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3 sm:pb-5">
-        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-300/25 bg-[#0b0f17]/95 shadow-[0_18px_60px_-18px_rgba(251,191,36,0.35)] backdrop-blur">
+        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-300/25 bg-[#12110E]/95 shadow-[0_18px_60px_-18px_rgba(251,191,36,0.35)] backdrop-blur">
           {/* Header — title, untimed badge, elapsed, progress, collapse */}
           <div className="px-4 pt-3">
             <div className="flex items-center gap-2">
@@ -558,7 +558,7 @@ function AnswerKeySheet({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
       <div
-        className="flex h-full w-[min(520px,94vw)] flex-col border-l border-white/10 bg-[#0b0f17]"
+        className="flex h-full w-[min(520px,94vw)] flex-col border-l border-white/10 bg-[#12110E]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
@@ -597,7 +597,7 @@ function AnswerKeySheet({
             </Button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#080c14] p-4">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#0B0A08] p-4">
           {keyError ? (
             <p className="rounded-xl border border-amber-300/25 bg-amber-300/[0.06] p-3 text-xs text-amber-200">
               {keyError}

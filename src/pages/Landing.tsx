@@ -1647,7 +1647,7 @@ function AnnouncementBanner() {
   if (!announcements || announcements.length === 0) return null;
 
   const typeStyles: Record<string, string> = {
-    info: "border-sky-400/30 bg-sky-400/[0.06] text-sky-300",
+    info: "border-teal-400/30 bg-teal-400/[0.06] text-teal-300",
     feature: "border-amber-400/30 bg-amber-400/[0.06] text-amber-300",
     event: "border-emerald-400/30 bg-emerald-400/[0.06] text-emerald-300",
     referral: "border-primary/30 bg-primary/[0.06] text-primary",

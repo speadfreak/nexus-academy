@@ -914,7 +914,7 @@ function WelcomeDashboard({
           icon={PenLine}
           label={t("tutor:statQuizzes", { defaultValue: "quizzes done" })}
           value={`${quizCount}`}
-          accent="bg-sky-400/12 text-sky-300"
+          accent="bg-teal-400/12 text-teal-300"
         />
         <StatTile
           icon={Zap}

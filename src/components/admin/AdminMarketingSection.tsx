@@ -153,7 +153,7 @@ function OverviewPanel() {
           icon={Users}
           label="Signups"
           value={stats.totalSignups}
-          color="text-sky-300"
+          color="text-teal-300"
         />
         <StatCard
           icon={CheckCircle2}
@@ -414,28 +414,28 @@ function ReferralPanel() {
       </div>
 
       {/* How it works */}
-      <div className="rounded-2xl border border-sky-400/15 bg-sky-400/[0.04] p-5">
-        <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300">
+      <div className="rounded-2xl border border-teal-400/15 bg-teal-400/[0.04] p-5">
+        <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-teal-300">
           <Sparkles className="size-3.5" /> how it works
         </p>
         <ol className="mt-3 space-y-2 text-xs text-muted-foreground">
           <li>
-            <span className="font-mono text-sky-300">1.</span> A student shares
+            <span className="font-mono text-teal-300">1.</span> A student shares
             their unique link (e.g. <code className="rounded bg-white/5 px-1 py-0.5 font-mono text-[10px]">?ref=joseph7xk</code>) with a friend.
           </li>
           <li>
-            <span className="font-mono text-sky-300">2.</span> When the friend
+            <span className="font-mono text-teal-300">2.</span> When the friend
             signs up via that link, the referral is recorded (self-referrals
             are blocked automatically).
           </li>
           <li>
-            <span className="font-mono text-sky-300">3.</span> When the friend's
+            <span className="font-mono text-teal-300">3.</span> When the friend's
             first premium payment is confirmed (manual admin review or
             automated SMS verification), the reward is granted — both
             students get bonus premium days.
           </li>
           <li>
-            <span className="font-mono text-sky-300">4.</span> Referral
+            <span className="font-mono text-teal-300">4.</span> Referral
             achievements fire automatically via the existing achievements
             system. The leaderboard above updates in real time.
           </li>
@@ -749,7 +749,7 @@ function DiscountsPanel() {
 /* ──────────────────────────────────────────────────────────────────── */
 
 const ANNOUNCEMENT_TYPES = [
-  { id: "info", label: "Info", icon: "💡", color: "text-sky-300 border-sky-400/30 bg-sky-400/[0.06]" },
+  { id: "info", label: "Info", icon: "💡", color: "text-teal-300 border-teal-400/30 bg-teal-400/[0.06]" },
   { id: "feature", label: "New feature", icon: "✨", color: "text-amber-300 border-amber-400/30 bg-amber-400/[0.06]" },
   { id: "event", label: "Event", icon: "🎉", color: "text-emerald-300 border-emerald-400/30 bg-emerald-400/[0.06]" },
   { id: "referral", label: "Affiliate", icon: "🤝", color: "text-primary border-primary/30 bg-primary/[0.06]" },

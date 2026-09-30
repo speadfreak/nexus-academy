@@ -528,7 +528,7 @@ function StartScreen({
         className="relative overflow-hidden rounded-3xl border border-amber-400/15 bg-gradient-to-br from-amber-400/[0.04] via-white/[0.01] to-transparent p-8 sm:p-12"
       >
         <div className="pointer-events-none absolute -top-24 -right-12 size-64 rounded-full bg-amber-400/8 blur-[80px]" />
-        <div className="pointer-events-none absolute -bottom-20 -left-12 size-64 rounded-full bg-sky-400/5 blur-[80px]" />
+        <div className="pointer-events-none absolute -bottom-20 -left-12 size-64 rounded-full bg-amber-400/5 blur-[80px]" />
         <div className="relative">
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/5 px-3 py-1">
             <Sparkles className="size-3.5 text-amber-300" />
@@ -583,7 +583,7 @@ function StartScreen({
           hint="English · Math · Aptitude · 3 stream subjects"
         />
         <FormatStat
-          icon={<Brain className="size-5 text-sky-300" />}
+          icon={<Brain className="size-5 text-teal-300" />}
           label="Questions"
           value="~340"
           hint="50 per section (Aptitude: 40)"
@@ -954,7 +954,7 @@ function GeneratingScreen({
                     className={cn(
                       "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider",
                       item.providerUsed === "gemini"
-                        ? "bg-sky-400/15 text-sky-300"
+                        ? "bg-teal-400/15 text-teal-300"
                         : item.providerUsed === "openrouter"
                           ? "bg-emerald-400/15 text-emerald-300"
                           : item.providerUsed === "cerebras"
@@ -1478,7 +1478,7 @@ function ResultsScreen({
           "relative overflow-hidden rounded-3xl border p-6 sm:p-8",
           tier === "excellent" && "border-emerald-400/30 bg-emerald-400/[0.04]",
           tier === "strong" && "border-amber-400/30 bg-amber-400/[0.04]",
-          tier === "ok" && "border-sky-400/20 bg-sky-400/[0.03]",
+          tier === "ok" && "border-teal-400/20 bg-teal-400/[0.03]",
           tier === "needs_work" && "border-rose-400/20 bg-rose-400/[0.03]",
         )}
       >
@@ -1709,7 +1709,7 @@ function SubjectRow({
 function PremiumGateOverlay({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="mx-auto max-w-md rounded-2xl border border-amber-400/30 bg-[#0b0f17] p-8 text-center">
+      <div className="mx-auto max-w-md rounded-2xl border border-amber-400/30 bg-[#211E17] p-8 text-center">
         <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-300">
           <Crown className="size-8" />
         </div>

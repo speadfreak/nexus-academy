@@ -45,8 +45,10 @@
 }
 
 /* CHANGE VALUES FOR THEME — Learnyx Academy technical theme.
-   Dark is the default (html gets the .dark class from ThemeProvider); the
-   light theme is a genuinely usable, high-contrast cool-gray variant. */
+   Light is the default (html gets the theme class from ThemeProvider).
+   Dark theme = "OBSIDIAN STUDY HALL": warm almost-black with charcoal +
+   espresso surfaces, antique gold identity, champagne text, muted academic
+   sage for success — a private library at night, not a blue AI dashboard. */
 :root {
   --radius: 0.75rem;
   --premium: oklch(0.6 0.13 72);
@@ -117,48 +119,55 @@
   --sidebar-ring: oklch(0.62 0.20 65 / 0.4);
 }
 
+/* OBSIDIAN STUDY HALL — the dark theme.
+   bg #0B0A08 · surface-1 #12110E (sidebar) · surface-2 #171511 (cards)
+   surface-3 #1D1A15 (elevated) · modal #211E17 · border #302B22 / soft #252119
+   gold #E6A72E · bright #F4C45F · champagne #F7E3AD · dark-gold #8A641F
+   text #F4F0E7 / #B9B2A4 / #777165 · sage #8DA67D · teal #5F9189
+   warning #D08B4A · danger #B85C4A */
 .dark {
-  --premium: oklch(0.82 0.13 85);
-  --background: oklch(0.148 0.014 258);
-  --foreground: oklch(0.96 0.008 250);
-  --card: oklch(0.19 0.018 258 / 0.92);
-  --card-foreground: oklch(0.96 0.008 250);
-  --popover: oklch(0.2 0.02 258 / 0.98);
-  --popover-foreground: oklch(0.96 0.008 250);
-  --primary: oklch(0.78 0.15 80);
-  --primary-foreground: oklch(0.13 0.03 60);
-  --secondary: oklch(0.24 0.02 258);
-  --secondary-foreground: oklch(0.92 0.01 250);
-  --muted: oklch(0.225 0.018 258);
-  --muted-foreground: oklch(0.68 0.028 250);
-  --accent: oklch(0.27 0.04 75);
-  --accent-foreground: oklch(0.92 0.06 75);
-  --destructive: oklch(0.66 0.2 24);
-  --border: oklch(0.29 0.02 258);
-  --input: oklch(0.26 0.02 258);
-  --ring: oklch(0.78 0.15 80 / 0.55);
-  --chart-1: oklch(0.78 0.15 80);
-  --chart-2: oklch(0.78 0.12 200);
-  --chart-3: oklch(0.72 0.13 285);
-  --chart-4: oklch(0.7 0.14 160);
-  --chart-5: oklch(0.75 0.14 70);
-  --sidebar: oklch(0.172 0.016 258 / 0.8);
-  --sidebar-foreground: oklch(0.96 0.008 250);
-  --sidebar-primary: oklch(0.78 0.15 80);
-  --sidebar-primary-foreground: oklch(0.13 0.03 60);
-  --sidebar-accent: oklch(0.26 0.04 75);
-  --sidebar-accent-foreground: oklch(0.92 0.06 75);
-  --sidebar-border: oklch(0.29 0.02 258);
-  --sidebar-ring: oklch(0.78 0.15 80 / 0.55);
+  --premium: #F4C45F;
+  --background: #0B0A08;
+  --foreground: #F4F0E7;
+  --card: rgb(23 21 17 / 0.92);            /* #171511 glass */
+  --card-foreground: #F4F0E7;
+  --popover: rgb(29 26 21 / 0.98);         /* #1D1A15 */
+  --popover-foreground: #F4F0E7;
+  --primary: #E6A72E;
+  --primary-foreground: #1A1408;
+  --secondary: #1D1A15;
+  --secondary-foreground: #F4F0E7;
+  --muted: #171511;
+  --muted-foreground: #B9B2A4;
+  --accent: #211E17;
+  --accent-foreground: #F7E3AD;
+  --destructive: #B85C4A;
+  --border: #302B22;
+  --input: #252119;
+  --ring: rgb(230 167 46 / 0.45);
+  --chart-1: #E6A72E;                      /* gold */
+  --chart-2: #8DA67D;                      /* academic sage */
+  --chart-3: #81749A;                      /* muted violet */
+  --chart-4: #5F9189;                      /* muted teal */
+  --chart-5: #D89A35;                      /* warm amber */
+  --sidebar: rgb(18 17 14 / 0.94);         /* #12110E */
+  --sidebar-foreground: #F4F0E7;
+  --sidebar-primary: #E6A72E;
+  --sidebar-primary-foreground: #1A1408;
+  --sidebar-accent: #211E17;
+  --sidebar-accent-foreground: #F7E3AD;
+  --sidebar-border: #252119;
+  --sidebar-ring: rgb(230 167 46 / 0.45);
 }
 
-/* Warm paper/lamp glow — soft amber radial washes, no grid */
+/* Warm lamplight washes — quiet ambient glow for the obsidian hall.
+   80% quiet, 15% warm gold, 5% special: these stay faint on purpose. */
 body {
   background-color: var(--background);
   background-image:
-    radial-gradient(52rem 36rem at 88% -8%, oklch(0.65 0.14 75 / 0.09), transparent 62%),
-    radial-gradient(44rem 32rem at -8% 14%, oklch(0.6 0.12 65 / 0.07), transparent 58%),
-    radial-gradient(38rem 28rem at 50% 108%, oklch(0.58 0.1 55 / 0.06), transparent 62%);
+    radial-gradient(52rem 36rem at 88% -8%, rgb(230 167 46 / 0.055), transparent 62%),
+    radial-gradient(44rem 32rem at -8% 14%, rgb(216 154 53 / 0.04), transparent 58%),
+    radial-gradient(38rem 28rem at 50% 108%, rgb(138 100 31 / 0.035), transparent 62%);
   background-size: auto, auto, auto;
   background-attachment: fixed;
   color: var(--foreground);
@@ -437,7 +446,12 @@ body {
 .light .text-violet-300  { color: rgb(109 40 217); }
 .light .text-orange-300  { color: rgb(194 65 12); }
 .light .text-rose-300    { color: rgb(190 18 60); }
-.light .text-cyan-300    { color: rgb(8 145 178); }
+.light .text-cyan-300  { color: rgb(8 145 178); }
+/* Obsidian rebrand: teal replaced cyan — keep light mode legible (raw teal-300/400 are mint-bright on white). */
+.light .text-teal-200  { color: rgb(14 116 106); }
+.light .text-teal-300  { color: rgb(13 148 136); }
+.light .text-teal-400  { color: rgb(15 118 110); }
+.light .hover\:text-teal-300:hover { color: rgb(13 148 136); }
 .light .text-amber-300\/70  { color: rgb(180 120 20 / 0.7); }
 .light .text-white\/50    { color: rgb(100 116 139); }
 .light .text-white\/60    { color: rgb(71 85 105); }
@@ -594,8 +608,8 @@ body {
 .hover-lift:hover {
   transform: translateY(-2px);
   box-shadow:
-    0 8px 25px -5px oklch(0.35 0.14 245 / 0.2),
-    0 4px 10px -3px oklch(0.35 0.14 245 / 0.12);
+    0 8px 25px -5px rgb(0 0 0 / 0.45),
+    0 4px 10px -3px rgb(138 100 31 / 0.1);
 }
 
 .light .hover-lift:hover {
@@ -642,8 +656,8 @@ body {
   /* Command-center header: faint blueprint grid behind the title block. */
   .admin-grid-bg {
     background-image:
-      linear-gradient(rgb(116 196 255 / 0.06) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(116 196 255 / 0.06) 1px, transparent 1px);
+      linear-gradient(rgb(230 167 46 / 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(230 167 46 / 0.05) 1px, transparent 1px);
     background-size: 26px 26px;
     -webkit-mask-image: radial-gradient(ellipse at 20% 0%, black 20%, transparent 72%);
     mask-image: radial-gradient(ellipse at 20% 0%, black 20%, transparent 72%);
@@ -665,13 +679,13 @@ body {
 
   .admin-tabs-list {
     scrollbar-width: thin;
-    scrollbar-color: rgb(116 196 255 / 0.35) transparent;
+    scrollbar-color: rgb(230 167 46 / 0.35) transparent;
   }
 
   .admin-tabs-list [data-state="active"] {
-    background: rgb(116 196 255 / 0.13);
+    background: rgb(230 167 46 / 0.12);
     color: var(--primary);
-    box-shadow: inset 0 0 0 1px rgb(116 196 255 / 0.18), 0 8px 24px -18px rgb(116 196 255 / 0.8);
+    box-shadow: inset 0 0 0 1px rgb(230 167 46 / 0.2), 0 8px 24px -18px rgb(230 167 46 / 0.7);
   }
 
   .admin-tab-content {
@@ -683,7 +697,7 @@ body {
   }
 
   .admin-surface .glass-panel:hover {
-    border-color: rgb(116 196 255 / 0.16);
+    border-color: rgb(230 167 46 / 0.16);
   }
 
   @media (max-width: 639px) {
@@ -710,7 +724,7 @@ body {
       inset 0 1px 0 rgb(255 255 255 / 0.07),
       inset 0 0 0 1px rgb(255 255 255 / 0.02),
       0 1px 2px rgb(0 0 0 / 0.4),
-      0 20px 50px -24px oklch(0.35 0.14 245 / 0.3);
+      0 20px 50px -24px rgb(0 0 0 / 0.55);
   }
 
   /* Grain overlay — tactile depth without visible texture */
@@ -931,7 +945,7 @@ html.lenis, html.lenis body {
   height: 600px;
   top: -15%;
   left: -10%;
-  background: radial-gradient(circle, oklch(0.55 0.2 260 / 0.25), transparent 70%);
+  background: radial-gradient(circle, rgb(230 167 46 / 0.16), transparent 70%);
   animation: aurora-drift-1 25s ease-in-out infinite;
 }
 
@@ -940,7 +954,7 @@ html.lenis, html.lenis body {
   height: 500px;
   bottom: -20%;
   right: -10%;
-  background: radial-gradient(circle, oklch(0.6 0.18 280 / 0.2), transparent 70%);
+  background: radial-gradient(circle, rgb(138 100 31 / 0.16), transparent 70%);
   animation: aurora-drift-2 30s ease-in-out infinite;
 }
 
@@ -949,7 +963,7 @@ html.lenis, html.lenis body {
   height: 350px;
   top: 40%;
   left: 50%;
-  background: radial-gradient(circle, oklch(0.5 0.22 230 / 0.15), transparent 70%);
+  background: radial-gradient(circle, rgb(184 92 74 / 0.1), transparent 70%);
   animation: aurora-drift-3 20s ease-in-out infinite;
 }
 
@@ -958,7 +972,7 @@ html.lenis, html.lenis body {
   height: 250px;
   top: 10%;
   right: 25%;
-  background: radial-gradient(circle, oklch(0.65 0.15 200 / 0.12), transparent 70%);
+  background: radial-gradient(circle, rgb(95 145 137 / 0.09), transparent 70%);
   animation: aurora-drift-4 18s ease-in-out infinite;
 }
 
@@ -967,7 +981,7 @@ html.lenis, html.lenis body {
   height: 200px;
   bottom: 20%;
   left: 20%;
-  background: radial-gradient(circle, oklch(0.55 0.2 310 / 0.1), transparent 70%);
+  background: radial-gradient(circle, rgb(129 116 154 / 0.08), transparent 70%);
   animation: aurora-drift-5 22s ease-in-out infinite;
 }
 
@@ -1069,7 +1083,7 @@ html.lenis, html.lenis body {
    navy exam-room slab. Light mode: clean paper-white exam sheet with a
    soft amber-tinted drop shadow — same composition, right brightness. */
 .exam-room-preview {
-  background: rgb(11 15 23 / 0.8);
+  background: rgb(14 13 10 / 0.85);
   box-shadow: 0 40px 100px -30px rgb(0 0 0 / 0.8);
 }
 .light .exam-room-preview {
@@ -1186,8 +1200,8 @@ html.lenis, html.lenis body {
   height: 28rem;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 22% 18%, rgb(77 182 255 / 0.11), transparent 42%),
-    radial-gradient(ellipse at 76% 4%, rgb(151 109 255 / 0.09), transparent 40%);
+    radial-gradient(ellipse at 22% 18%, rgb(230 167 46 / 0.09), transparent 42%),
+    radial-gradient(ellipse at 76% 4%, rgb(141 166 125 / 0.06), transparent 40%);
   filter: blur(18px);
 }
 
@@ -1196,7 +1210,7 @@ html.lenis, html.lenis body {
   isolation: isolate;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.1),
-    0 24px 70px -34px rgb(58 160 255 / 0.45);
+    0 24px 70px -34px rgb(230 167 46 / 0.28);
 }
 
 .admin-hero::after {
@@ -1206,13 +1220,13 @@ html.lenis, html.lenis body {
   pointer-events: none;
   border: 1px solid rgb(255 255 255 / 0.04);
   border-radius: inherit;
-  background: linear-gradient(115deg, rgb(255 255 255 / 0.06), transparent 25%, transparent 70%, rgb(117 104 255 / 0.07));
+  background: linear-gradient(115deg, rgb(255 255 255 / 0.06), transparent 25%, transparent 70%, rgb(244 196 95 / 0.07));
   mix-blend-mode: screen;
 }
 
 .admin-hero-orbit {
   z-index: -1;
-  border: 1px solid rgb(112 196 255 / 0.22);
+  border: 1px solid rgb(230 167 46 / 0.2);
   border-radius: 999px;
   transform: rotate(-22deg);
   pointer-events: none;
@@ -1223,7 +1237,7 @@ html.lenis, html.lenis body {
   height: 10rem;
   right: -4rem;
   top: 1.5rem;
-  box-shadow: 0 0 35px rgb(112 196 255 / 0.12), inset 0 0 25px rgb(112 196 255 / 0.08);
+  box-shadow: 0 0 35px rgb(230 167 46 / 0.1), inset 0 0 25px rgb(230 167 46 / 0.07);
   animation: admin-orbit-drift 12s ease-in-out infinite;
 }
 
@@ -1232,7 +1246,7 @@ html.lenis, html.lenis body {
   height: 7rem;
   right: 2rem;
   top: 3.1rem;
-  border-color: rgb(166 123 255 / 0.18);
+  border-color: rgb(141 166 125 / 0.18);
   transform: rotate(25deg);
   animation: admin-orbit-drift 9s ease-in-out infinite reverse;
 }
@@ -1240,20 +1254,20 @@ html.lenis, html.lenis body {
 .admin-hero-scan {
   height: 1px;
   opacity: 0.6;
-  background: linear-gradient(90deg, transparent, rgb(112 196 255 / 0.7), transparent);
-  box-shadow: 0 0 18px rgb(112 196 255 / 0.8);
+  background: linear-gradient(90deg, transparent, rgb(230 167 46 / 0.65), transparent);
+  box-shadow: 0 0 18px rgb(230 167 46 / 0.7);
   animation: admin-scan 6s ease-in-out infinite;
 }
 
 .admin-rail {
   min-height: min(45rem, calc(100dvh - 8rem));
   background:
-    linear-gradient(180deg, rgb(20 35 59 / 0.84), rgb(10 18 34 / 0.72)),
-    radial-gradient(circle at 0 0, rgb(112 196 255 / 0.14), transparent 30%);
+    linear-gradient(180deg, rgb(18 17 14 / 0.9), rgb(11 10 8 / 0.8)),
+    radial-gradient(circle at 0 0, rgb(230 167 46 / 0.1), transparent 30%);
   box-shadow:
     inset 1px 0 0 rgb(255 255 255 / 0.06),
-    inset 0 0 30px rgb(48 128 255 / 0.04),
-    0 24px 70px -38px rgb(46 136 255 / 0.55);
+    inset 0 0 30px rgb(230 167 46 / 0.03),
+    0 24px 70px -38px rgb(138 100 31 / 0.4);
 }
 
 .admin-rail-item {
@@ -1267,7 +1281,7 @@ html.lenis, html.lenis body {
   inset: 0;
   pointer-events: none;
   opacity: 0;
-  background: linear-gradient(90deg, rgb(112 196 255 / 0.12), transparent 70%);
+  background: linear-gradient(90deg, rgb(230 167 46 / 0.1), transparent 70%);
   transition: opacity 180ms ease;
 }
 
@@ -1278,8 +1292,8 @@ html.lenis, html.lenis body {
 
 .admin-rail-item-active {
   box-shadow:
-    inset 0 0 0 1px rgb(112 196 255 / 0.16),
-    0 8px 24px -16px rgb(112 196 255 / 0.9);
+    inset 0 0 0 1px rgb(230 167 46 / 0.18),
+    0 8px 24px -16px rgb(230 167 46 / 0.75);
 }
 
 .admin-rail-item-active::before {
@@ -1291,32 +1305,32 @@ html.lenis, html.lenis body {
   height: 60%;
   border-radius: 999px;
   background: var(--primary);
-  box-shadow: 0 0 12px 2px rgb(112 196 255 / 0.8);
+  box-shadow: 0 0 12px 2px rgb(230 167 46 / 0.7);
 }
 
 .admin-chart {
   background:
     linear-gradient(145deg, rgb(255 255 255 / 0.065), rgb(255 255 255 / 0.018) 55%),
-    radial-gradient(circle at 100% 0, rgb(112 196 255 / 0.07), transparent 35%);
+    radial-gradient(circle at 100% 0, rgb(230 167 46 / 0.06), transparent 35%);
 }
 
 .admin-stat {
   background:
     linear-gradient(145deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.018) 62%),
-    radial-gradient(circle at 100% 0, rgb(112 196 255 / 0.1), transparent 42%);
+    radial-gradient(circle at 100% 0, rgb(230 167 46 / 0.08), transparent 42%);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
 .admin-stat:nth-child(2n) {
   background:
     linear-gradient(145deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.014) 62%),
-    radial-gradient(circle at 100% 0, rgb(152 113 255 / 0.1), transparent 42%);
+    radial-gradient(circle at 100% 0, rgb(141 166 125 / 0.08), transparent 42%);
 }
 
 .admin-inventory {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.014)),
-    repeating-linear-gradient(0deg, transparent 0 31px, rgb(112 196 255 / 0.035) 32px);
+    repeating-linear-gradient(0deg, transparent 0 31px, rgb(230 167 46 / 0.03) 32px);
 }
 
 @keyframes admin-scan {
@@ -1365,19 +1379,19 @@ html.lenis, html.lenis body {
   height: 32rem;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 15% 16%, rgb(251 191 36 / 0.08), transparent 38%),
-    radial-gradient(ellipse at 85% 10%, rgb(56 189 248 / 0.06), transparent 38%);
+    radial-gradient(ellipse at 15% 16%, rgb(230 167 46 / 0.07), transparent 38%),
+    radial-gradient(ellipse at 85% 10%, rgb(141 166 125 / 0.045), transparent 38%);
   filter: blur(22px);
 }
 
 .student-sidebar {
   background:
-    linear-gradient(180deg, rgb(18 32 54 / 0.88), rgb(9 17 32 / 0.76)),
-    linear-gradient(135deg, rgb(56 189 248 / 0.08), transparent 38%);
+    linear-gradient(180deg, rgb(18 17 14 / 0.94), rgb(11 10 8 / 0.86)),
+    linear-gradient(135deg, rgb(230 167 46 / 0.05), transparent 38%);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.1),
-    inset 0 0 26px rgb(56 189 248 / 0.04),
-    0 24px 60px -34px rgb(29 112 202 / 0.65);
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    inset 0 0 26px rgb(230 167 46 / 0.03),
+    0 24px 60px -34px rgb(0 0 0 / 0.6);
 }
 
 .student-sidebar::after {
@@ -1427,12 +1441,12 @@ html.lenis, html.lenis body {
 
 /* Tooltip styling for collapsed sidebar */
 .sidebar-tooltip {
-  background: linear-gradient(135deg, rgb(15 23 42 / 0.97), rgb(30 41 59 / 0.97)) !important;
-  border: 1px solid rgb(251 191 36 / 0.15) !important;
-  color: rgb(255 255 255 / 0.95) !important;
+  background: linear-gradient(135deg, rgb(23 21 17 / 0.97), rgb(33 30 23 / 0.97)) !important;
+  border: 1px solid rgb(230 167 46 / 0.18) !important;
+  color: rgb(244 240 231 / 0.95) !important;
   box-shadow:
-    0 8px 32px -8px rgb(0 0 0 / 0.5),
-    0 0 20px -8px rgb(251 191 36 / 0.3) !important;
+    0 8px 32px -8px rgb(0 0 0 / 0.55),
+    0 0 20px -8px rgb(230 167 46 / 0.3) !important;
   backdrop-filter: blur(12px);
   border-radius: 10px !important;
   padding: 6px 12px !important;
@@ -1639,18 +1653,22 @@ html.lenis, html.lenis body {
   min-width: 0;
 }
 
-.student-page-frame[data-page="tutor"] { --page-accent: 190 95% 60%; }
-.student-page-frame[data-page="focus"] { --page-accent: 28 95% 62%; }
-.student-page-frame[data-page="plans"] { --page-accent: 265 85% 70%; }
-.student-page-frame[data-page="journey"] { --page-accent: 155 75% 55%; }
-.student-page-frame[data-page="calendar"] { --page-accent: 205 90% 65%; }
-.student-page-frame[data-page="notes"] { --page-accent: 45 95% 62%; }
-.student-page-frame[data-page="flashcards"] { --page-accent: 320 85% 70%; }
-.student-page-frame[data-page="study-cards"] { --page-accent: 35 92% 60%; }
-.student-page-frame[data-page="groups"] { --page-accent: 175 80% 58%; }
-.student-page-frame[data-page="achievements"] { --page-accent: 42 95% 62%; }
-.student-page-frame[data-page="settings"] { --page-accent: 215 85% 68%; }
-.student-page-frame[data-page="aptitude-hub"] { --page-accent: 280 80% 65%; }
+/* Per-page ambient accent — muted academic hues (subject palette), never neon.
+   tutor teal · focus amber · plans violet · journey sage · calendar teal
+   notes gold · flashcards rose · study-cards amber · groups teal
+   achievements gold · settings violet · aptitude violet */
+.student-page-frame[data-page="tutor"] { --page-accent: 174 25% 52%; }
+.student-page-frame[data-page="focus"] { --page-accent: 35 65% 53%; }
+.student-page-frame[data-page="plans"] { --page-accent: 265 17% 53%; }
+.student-page-frame[data-page="journey"] { --page-accent: 97 19% 57%; }
+.student-page-frame[data-page="calendar"] { --page-accent: 174 21% 47%; }
+.student-page-frame[data-page="notes"] { --page-accent: 42 74% 52%; }
+.student-page-frame[data-page="flashcards"] { --page-accent: 13 22% 55%; }
+.student-page-frame[data-page="study-cards"] { --page-accent: 35 63% 53%; }
+.student-page-frame[data-page="groups"] { --page-accent: 174 21% 47%; }
+.student-page-frame[data-page="achievements"] { --page-accent: 42 74% 52%; }
+.student-page-frame[data-page="settings"] { --page-accent: 265 15% 56%; }
+.student-page-frame[data-page="aptitude-hub"] { --page-accent: 265 15% 56%; }
 
 .student-page-frame[data-page]::before {
   content: "";
@@ -1729,7 +1747,7 @@ html.lenis, html.lenis body {
 }
 
 .admin-sidebar-status {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 28px -20px rgb(52 211 153 / 0.8);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 28px -20px rgb(141 166 125 / 0.7);
 }
 
 .student-sidebar {
@@ -1772,7 +1790,7 @@ html.lenis, html.lenis body {
 }
 
 .student-sidebar-footer {
-  background: linear-gradient(to bottom, transparent, rgb(5 12 24 / 0.8) 12%);
+  background: linear-gradient(to bottom, transparent, rgb(11 10 8 / 0.85) 12%);
 }
 
 .student-page-frame > * {

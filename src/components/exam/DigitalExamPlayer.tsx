@@ -434,7 +434,7 @@ function NavigatorBody({
       {/* Session highlights */}
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
         <p className="inline-flex items-center gap-1.5 type-caption font-bold text-foreground/80">
-          <Highlighter className="size-3.5 text-sky-300" /> Highlights ({highlights.length})
+          <Highlighter className="size-3.5 text-teal-300" /> Highlights ({highlights.length})
         </p>
         {highlights.length === 0 ? (
           <p className="mt-1.5 type-caption text-muted-foreground/70">
@@ -445,14 +445,14 @@ function NavigatorBody({
             {highlights.map((h, i) => (
               <div
                 key={`${h.questionNumber}-${i}`}
-                className="flex items-center gap-2 rounded-xl border border-sky-400/20 bg-sky-400/[0.06] px-2.5 py-1.5"
+                className="flex items-center gap-2 rounded-xl border border-teal-400/20 bg-teal-400/[0.06] px-2.5 py-1.5"
               >
                 <button
                   type="button"
                   onClick={() => onJump(Math.max(0, questions.findIndex((qq) => qq.number === h.questionNumber)))}
                   className="min-w-0 flex-1 text-left"
                 >
-                  <span className="type-caption font-bold text-sky-300">Q{h.questionNumber}</span>
+                  <span className="type-caption font-bold text-teal-300">Q{h.questionNumber}</span>
                   <span className="ml-2 line-clamp-1 type-caption text-foreground/70">“{h.text}”</span>
                 </button>
                 <button
@@ -1346,7 +1346,7 @@ export function DigitalExamPlayer({
               top: Math.max(16, pendingSelection.y - 44),
             }}
             onClick={commitHighlight}
-            className="z-50 inline-flex items-center gap-1.5 rounded-xl border border-sky-400/40 bg-background/95 px-3 py-1.5 type-caption font-bold text-sky-300 shadow-2xl backdrop-blur transition hover:bg-sky-400/10"
+            className="z-50 inline-flex items-center gap-1.5 rounded-xl border border-teal-400/40 bg-background/95 px-3 py-1.5 type-caption font-bold text-teal-300 shadow-2xl backdrop-blur transition hover:bg-teal-400/10"
           >
             <Highlighter className="size-3.5" /> Highlight
           </motion.button>
@@ -1773,7 +1773,7 @@ function ResultsScreen({
                         )}
                       </>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-md border border-sky-400/25 bg-sky-400/[0.07] px-1.5 py-0.5 text-sky-300">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-teal-400/25 bg-teal-400/[0.07] px-1.5 py-0.5 text-teal-300">
                         <PenLine className="size-3" />
                         {written ? "Written answer saved" : "No written answer"}
                       </span>

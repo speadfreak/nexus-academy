@@ -76,7 +76,7 @@ function CinematicBackground() {
   return (
     <div className="auth-bg pointer-events-none fixed inset-0 overflow-hidden">
       {/* Deep base gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#060b1a] via-[#0a1128] to-[#0d0a1f]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0B0A08] via-[#0B0A08] to-[#16131A]" />
       
       {/* Animated aurora nebula */}
       <div className="aurora-orb aurora-orb-1" />
@@ -88,8 +88,8 @@ function CinematicBackground() {
       {/* Subtle grid overlay */}
       <div className="absolute inset-0 opacity-[0.03]"
         style={{
-          backgroundImage: `linear-gradient(rgba(120,160,255,0.5) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(120,160,255,0.5) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)`,
           backgroundSize: '60px 60px'
         }}
       />
@@ -378,14 +378,14 @@ function Onboarding({
                   onClick={() => setSelected(option.id)}
                   className={`group flex w-full cursor-pointer items-center gap-4 rounded-xl border p-4 text-left transition-all duration-300 ${
                     active
-                      ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_-8px_rgba(99,102,241,0.3)]"
+                      ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_-8px_rgba(230,167,46,0.35)]"
                       : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.05]"
                   }`}
                 >
                   <div
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
                       active
-                        ? "bg-primary/20 text-primary shadow-[0_0_20px_-4px_rgba(99,102,241,0.4)]"
+                        ? "bg-primary/20 text-primary shadow-[0_0_20px_-4px_rgba(230,167,46,0.45)]"
                         : "bg-white/[0.04] text-muted-foreground group-hover:bg-white/[0.08] group-hover:text-foreground"
                     }`}
                   >
@@ -484,7 +484,7 @@ function Onboarding({
                 onClick={() => setGrade(option.id)}
                 className={`group flex cursor-pointer flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all duration-300 ${
                   active
-                    ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_-8px_rgba(99,102,241,0.3)]"
+                    ? "border-primary/40 bg-primary/10 shadow-[0_0_30px_-8px_rgba(230,167,46,0.35)]"
                     : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.05]"
                 }`}
               >

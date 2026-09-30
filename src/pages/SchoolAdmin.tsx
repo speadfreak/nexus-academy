@@ -237,7 +237,7 @@ export default function SchoolAdmin() {
         {/* ══════ STATS ROW ══════ */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatTile label="students joined" value={totalMembers} icon={Users} accent="bg-emerald-400/10 text-emerald-300" />
-          <StatTile label="classes" value={school.classes.length} icon={GraduationCap} accent="bg-sky-400/10 text-sky-300" />
+          <StatTile label="classes" value={school.classes.length} icon={GraduationCap} accent="bg-teal-400/10 text-teal-300" />
           <StatTile label="seats licensed" value={school.seatsPurchased} icon={Armchair} accent="bg-amber-400/10 text-amber-300" />
           <StatTile
             label="days remaining"
@@ -484,7 +484,7 @@ function SeatPurchasePanel({
   const total = rate * seats * months;
 
   const tierColors: Record<number, string> = {
-    1: "border-sky-400/30 bg-sky-400/10 text-sky-300",
+    1: "border-teal-400/30 bg-teal-400/10 text-teal-300",
     2: "border-violet-400/30 bg-violet-400/10 text-violet-300",
     3: "border-amber-400/30 bg-amber-400/10 text-amber-300",
     4: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",

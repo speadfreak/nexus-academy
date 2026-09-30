@@ -67,7 +67,7 @@ export function GuestLockOverlay({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#080c14]/95 backdrop-blur-xl"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0B0A08]/95 backdrop-blur-xl"
     >
       {/* Background glow */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">

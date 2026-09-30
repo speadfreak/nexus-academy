@@ -39,7 +39,7 @@ interface MarketingLayoutProps {
 
 const COLOR_MAP = {
   amber: { text: "text-amber-300", bg: "bg-amber-400/[0.06]", border: "border-amber-400/20" },
-  sky: { text: "text-sky-300", bg: "bg-sky-400/[0.06]", border: "border-sky-400/20" },
+  sky: { text: "text-teal-300", bg: "bg-teal-400/[0.06]", border: "border-teal-400/20" },
   emerald: { text: "text-emerald-300", bg: "bg-emerald-400/[0.06]", border: "border-emerald-400/20" },
   rose: { text: "text-rose-300", bg: "bg-rose-400/[0.06]", border: "border-rose-400/20" },
   violet: { text: "text-violet-300", bg: "bg-violet-400/[0.06]", border: "border-violet-400/20" },

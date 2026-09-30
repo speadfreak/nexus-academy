@@ -202,7 +202,7 @@ function BrainMap({
         <text x="180" y="40" textAnchor="middle" className="fill-amber-300 font-mono text-[12px] font-bold uppercase tracking-[0.18em]" style={{ letterSpacing: "0.18em" }}>
           VERBAL
         </text>
-        <text x="520" y="40" textAnchor="middle" className="fill-sky-300 font-mono text-[12px] font-bold uppercase tracking-[0.18em]" style={{ letterSpacing: "0.18em" }}>
+        <text x="520" y="40" textAnchor="middle" className="fill-teal-300 font-mono text-[12px] font-bold uppercase tracking-[0.18em]" style={{ letterSpacing: "0.18em" }}>
           QUANTITATIVE
         </text>
 
@@ -403,7 +403,7 @@ function PracticePanel({
         <div className="flex items-center gap-2.5">
           <div className={cn(
             "flex size-8 items-center justify-center rounded-xl",
-            node.category === "verbal" ? "bg-amber-400/10 text-amber-300" : "bg-sky-400/10 text-sky-300",
+            node.category === "verbal" ? "bg-amber-400/10 text-amber-300" : "bg-teal-400/10 text-teal-300",
           )}>
             <Brain className="size-4" />
           </div>
@@ -674,7 +674,7 @@ export default function AptitudeHub() {
                 </div>
 
                 <div className="glass-chip flex items-center gap-3 rounded-2xl px-4 py-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-teal-400/10 text-teal-300">
                     <Target className="size-5" />
                   </div>
                   <div>

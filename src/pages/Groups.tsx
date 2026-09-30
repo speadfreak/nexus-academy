@@ -891,7 +891,7 @@ function SectionShell({
  * RoleBadge — color-coded role chip used in the identity card + member list.
  * Color encodes hierarchy at a glance:
  *   owner  → amber/gold  (crown icon)
- *   admin  → blue        (shield icon)
+ *   admin  → teal        (shield icon)
  *   mentor → purple      (graduation icon)
  *   member → slate       (user icon, default)
  */
@@ -904,7 +904,7 @@ function RoleBadge({ role, compact = false }: { role: string; compact?: boolean 
     },
     admin: {
       icon: <Shield className="size-2.5" />,
-      className: "border-blue-400/30 bg-blue-400/10 text-blue-300",
+      className: "border-teal-400/30 bg-teal-400/10 text-teal-300",
       label: "Admin",
     },
     mentor: {
@@ -1162,7 +1162,7 @@ function SquadOverview({
               <Brain className="size-3.5 text-purple-300" /> {dashboard.todaysTodo.dueFlashcards} flashcards due
             </span>
             <span className="flex items-center gap-1.5 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-1.5 type-caption">
-              <CalendarIcon className="size-3.5 text-blue-300" /> {dashboard.todaysTodo.calendarEvents} calendar event
+              <CalendarIcon className="size-3.5 text-teal-300" /> {dashboard.todaysTodo.calendarEvents} calendar event
               {dashboard.todaysTodo.calendarEvents === 1 ? "" : "s"}
             </span>
           </div>
@@ -1247,7 +1247,7 @@ function StatTile({
     amber: "bg-amber-400/10 text-amber-300 border-amber-400/20 shadow-[0_0_12px_-4px_rgb(251,191,36/0.4)]",
     orange: "bg-orange-400/10 text-orange-300 border-orange-400/20 shadow-[0_0_12px_-4px_rgb(251,146,60/0.4)]",
     purple: "bg-purple-400/10 text-purple-300 border-purple-400/20 shadow-[0_0_12px_-4px_rgb(168,85,247/0.4)]",
-    blue: "bg-blue-400/10 text-blue-300 border-blue-400/20 shadow-[0_0_12px_-4px_rgb(59,130,246/0.4)]",
+    blue: "bg-teal-400/10 text-teal-300 border-teal-400/20 shadow-[0_0_12px_-4px_rgb(45,212,191/0.4)]",
   };
   return (
     <motion.div

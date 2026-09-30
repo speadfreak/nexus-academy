@@ -471,8 +471,8 @@ export const PdfStage = memo(function PdfStage({
   return (
     <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden" id="pdf-scroll-area">
       {/* Ambient canvas dressing */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(56,189,248,0.04),transparent_60%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_80%_100%,rgba(168,85,247,0.03),transparent_50%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(230,167,46,0.04),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_80%_100%,rgba(129,116,154,0.03),transparent_50%)]" />
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.03]"
         style={{ backgroundImage: "radial-gradient(circle, white 0.5px, transparent 0.5px)", backgroundSize: "24px 24px" }}

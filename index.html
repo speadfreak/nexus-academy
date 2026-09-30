@@ -16,7 +16,7 @@
   <!-- PWA — theme-color drives the browser UI chrome color on mobile.
        Light is the default; ThemeProvider keeps this in sync on toggle. -->
   <meta name="theme-color" content="#F7F5F0" />
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0F17" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0A08" />
   <!-- iOS — supports standalone mode (no Safari chrome) when launched from home screen -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -48,7 +48,7 @@
       background: #F7F5F0; color: #64748b; font-family: system-ui, -apple-system, sans-serif;
       transition: opacity 0.3s ease;
     }
-    html.dark #nexus-boot-screen { background: #0B0F17; color: #94a3b8; }
+    html.dark #nexus-boot-screen { background: #0B0A08; color: #B9B2A4; }
     #nexus-boot-screen.nexus-hidden { opacity: 0; pointer-events: none; }
     #nexus-boot-screen .nexus-boot-logo {
       width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
@@ -72,7 +72,7 @@
       margin-top: 20px; font-family: monospace; font-size: 10px; font-weight: 700;
       text-transform: uppercase; letter-spacing: 0.3em; color: #78716c;
     }
-    html.dark #nexus-boot-screen .nexus-boot-text { color: #94a3b8; }
+    html.dark #nexus-boot-screen .nexus-boot-text { color: #B9B2A4; }
     @keyframes nexus-pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,0.18); }
       50% { box-shadow: 0 0 36px -5px rgba(217,119,6,0.28); }
@@ -94,7 +94,7 @@
       flex-direction: column; align-items: center; justify-content: center; padding: 24px;
       text-align: center;
     }
-    html.dark #nexus-recovery { background: #0B0F17; color: #e2e8f0; }
+    html.dark #nexus-recovery { background: #0B0A08; color: #F4F0E7; }
     #nexus-recovery.nexus-visible { display: flex; }
     #nexus-recovery .nexus-recovery-card {
       max-width: 400px; background: rgb(15 23 42 / 0.03); border: 1px solid rgb(15 23 42 / 0.1);
@@ -108,7 +108,7 @@
     html.dark #nexus-recovery .nexus-recovery-title { color: #f8fafc; }
     #nexus-recovery .nexus-recovery-btn {
       display: inline-block; padding: 10px 24px; border-radius: 12px; border: none;
-      background: #f59e0b; color: #0B0F17; font-size: 14px; font-weight: 600;
+      background: #f59e0b; color: #0B0A08; font-size: 14px; font-weight: 600;
       cursor: pointer; transition: opacity 0.2s;
     }
     #nexus-recovery .nexus-recovery-btn:hover { opacity: 0.9; }
@@ -280,9 +280,9 @@
 
   <div id="root"></div>
   <noscript>
-    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0B0F17;color:#94a3b8;font-family:system-ui,sans-serif;text-align:center;padding:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0B0A08;color:#B9B2A4;font-family:system-ui,sans-serif;text-align:center;padding:1.5rem">
       <div>
-        <p style="font-size:1.125rem;font-weight:600;color:#e2e8f0">JavaScript Required</p>
+        <p style="font-size:1.125rem;font-weight:600;color:#F4F0E7">JavaScript Required</p>
         <p style="margin-top:.5rem;font-size:.875rem">Learnyx Academy ET 🇪🇹 requires JavaScript to run. Please enable it and reload.</p>
       </div>
     </div>

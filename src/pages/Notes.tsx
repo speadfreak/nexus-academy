@@ -54,7 +54,7 @@ const DIFFICULTY_META: Record<Difficulty, { label: string; classes: string }> = 
 
 const COLOR_META: Record<NoteColor, { bar: string; tint: string }> = {
   default: { bar: "bg-amber-400/70", tint: "bg-amber-400/[0.04]" },
-  blue: { bar: "bg-sky-400/70", tint: "bg-sky-400/[0.05]" },
+  blue: { bar: "bg-teal-400/70", tint: "bg-teal-400/[0.05]" },
   green: { bar: "bg-emerald-400/70", tint: "bg-emerald-400/[0.05]" },
   amber: { bar: "bg-amber-400/70", tint: "bg-amber-400/[0.05]" },
   rose: { bar: "bg-rose-400/70", tint: "bg-rose-400/[0.05]" },

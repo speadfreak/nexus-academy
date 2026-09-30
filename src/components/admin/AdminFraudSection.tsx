@@ -46,9 +46,9 @@ const SEVERITY_STYLES: Record<string, { ring: string; text: string; bg: string; 
     label: "Medium",
   },
   low: {
-    ring: "border-sky-400/40",
-    text: "text-sky-300",
-    bg: "bg-sky-400/[0.06]",
+    ring: "border-teal-400/40",
+    text: "text-teal-300",
+    bg: "bg-teal-400/[0.06]",
     label: "Low",
   },
 };
@@ -440,7 +440,7 @@ function QuickStatCard({
       <div className="mt-1.5 flex items-center gap-2 text-[10px]">
         <span className="font-mono text-rose-300">{counts.high}h</span>
         <span className="font-mono text-amber-300">{counts.medium}m</span>
-        <span className="font-mono text-sky-300">{counts.low}l</span>
+        <span className="font-mono text-teal-300">{counts.low}l</span>
       </div>
     </div>
   );

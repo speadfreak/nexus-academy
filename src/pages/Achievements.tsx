@@ -136,7 +136,7 @@ export default function Achievements() {
             <div className="mt-5">
               <div className="relative h-5 w-full overflow-hidden rounded-full bg-white/10">
                 <motion.div
-                  className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-cyan-300 to-[oklch(0.82_0.13_85)]"
+                  className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-teal-300 to-[oklch(0.82_0.13_85)]"
                   initial={{ width: 0 }}
                   animate={{
                     width: `${Math.round((level?.progressToNext ?? 0) * 100)}%`,

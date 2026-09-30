@@ -162,7 +162,7 @@ export function AccountSheet({ children, initials = "N" }: AccountSheetProps) {
                   className={cn(
                     "px-1.5 py-0 text-[10px] font-semibold",
                     subStatus === "premium" && "border-amber-500/30 bg-amber-500/10 text-amber-300",
-                    subStatus === "trial" && "border-sky-500/30 bg-sky-500/10 text-sky-300",
+                    subStatus === "trial" && "border-sky-500/30 bg-sky-500/10 text-sky-300 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300",
                     subStatus === "free" && "border-white/10 bg-white/5 text-muted-foreground",
                   )}
                 >

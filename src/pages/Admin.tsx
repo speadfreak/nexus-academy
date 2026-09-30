@@ -1538,7 +1538,7 @@ export default function Admin() {
                   <span className="flex items-center gap-1.5 type-mono text-[9px] text-emerald-300"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> ONLINE</span>
                 </div>
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full w-[78%] rounded-full bg-gradient-to-r from-emerald-400 via-cyan-300 to-primary" />
+                  <div className="h-full w-[78%] rounded-full bg-gradient-to-r from-emerald-400 via-teal-300 to-primary" />
                 </div>
                 <p className="mt-1.5 type-mono text-[9px] text-muted-foreground">secure control plane · v2.7</p>
                 {isAdmin?.role && (

@@ -75,7 +75,7 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
           }}
           transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden pointer-events-none"
-          style={{ background: "#030308" }}
+          style={{ background: "#0B0A08" }}
           role="status"
           aria-label="Loading Learnyx Academy ET 🇪🇹"
         >
@@ -370,15 +370,15 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
           >
             <div className="flex flex-col">
               <div className="flex items-center gap-0.5">
-                <div className="h-px w-6 bg-gradient-to-r from-cyan-400/40 to-transparent" />
-                <div className="w-1 h-1 rounded-full bg-cyan-400/30" />
+                <div className="h-px w-6 bg-gradient-to-r from-teal-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/30" />
               </div>
               <div className="flex items-start gap-0.5 mt-0.5">
-                <div className="w-px h-6 bg-gradient-to-b from-cyan-400/40 to-transparent" />
-                <div className="w-1 h-1 rounded-full bg-cyan-400/25 -ml-[3px] -mt-[3px]" />
+                <div className="w-px h-6 bg-gradient-to-b from-teal-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/25 -ml-[3px] -mt-[3px]" />
               </div>
             </div>
-            <div className="mt-2 font-mono text-[6px] font-bold uppercase tracking-[0.2em] text-cyan-400/20">
+            <div className="mt-2 font-mono text-[6px] font-bold uppercase tracking-[0.2em] text-teal-400/20">
               LEARNYX//BOOT
             </div>
           </div>
@@ -390,15 +390,15 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
           >
             <div className="flex flex-col items-end">
               <div className="flex items-center gap-0.5">
-                <div className="w-1 h-1 rounded-full bg-cyan-400/30" />
-                <div className="h-px w-6 bg-gradient-to-l from-cyan-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/30" />
+                <div className="h-px w-6 bg-gradient-to-l from-teal-400/40 to-transparent" />
               </div>
               <div className="flex items-end gap-0.5 mt-0.5">
-                <div className="w-1 h-1 rounded-full bg-cyan-400/25 -mr-[3px] -mt-[3px]" />
-                <div className="w-px h-6 bg-gradient-to-b from-cyan-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/25 -mr-[3px] -mt-[3px]" />
+                <div className="w-px h-6 bg-gradient-to-b from-teal-400/40 to-transparent" />
               </div>
             </div>
-            <div className="mt-2 font-mono text-[6px] font-bold uppercase tracking-[0.2em] text-cyan-400/20">
+            <div className="mt-2 font-mono text-[6px] font-bold uppercase tracking-[0.2em] text-teal-400/20">
               v2.0
             </div>
           </div>
@@ -410,12 +410,12 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
           >
             <div className="flex flex-col items-start justify-end">
               <div className="flex items-start gap-0.5">
-                <div className="w-px h-6 bg-gradient-to-t from-cyan-400/40 to-transparent" />
-                <div className="w-1 h-1 rounded-full bg-cyan-400/25 -ml-[3px] -mb-[3px]" />
+                <div className="w-px h-6 bg-gradient-to-t from-teal-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/25 -ml-[3px] -mb-[3px]" />
               </div>
               <div className="flex items-center gap-0.5 mt-0.5">
-                <div className="h-px w-6 bg-gradient-to-r from-cyan-400/40 to-transparent" />
-                <div className="w-1 h-1 rounded-full bg-cyan-400/30" />
+                <div className="h-px w-6 bg-gradient-to-r from-teal-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/30" />
               </div>
             </div>
           </div>
@@ -427,12 +427,12 @@ export default function AppPreloader({ ready }: { ready: boolean }) {
           >
             <div className="flex flex-col items-end justify-end">
               <div className="flex items-start gap-0.5">
-                <div className="w-1 h-1 rounded-full bg-cyan-400/25 -mr-[3px] -mb-[3px]" />
-                <div className="w-px h-6 bg-gradient-to-t from-cyan-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/25 -mr-[3px] -mb-[3px]" />
+                <div className="w-px h-6 bg-gradient-to-t from-teal-400/40 to-transparent" />
               </div>
               <div className="flex items-center gap-0.5 mt-0.5">
-                <div className="w-1 h-1 rounded-full bg-cyan-400/30" />
-                <div className="h-px w-6 bg-gradient-to-l from-cyan-400/40 to-transparent" />
+                <div className="w-1 h-1 rounded-full bg-teal-400/30" />
+                <div className="h-px w-6 bg-gradient-to-l from-teal-400/40 to-transparent" />
               </div>
             </div>
           </div>

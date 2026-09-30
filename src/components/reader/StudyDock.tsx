@@ -121,7 +121,7 @@ export function StudyDock({
         <button
           type="button"
           onClick={onOpenAI}
-          className="flex size-10 cursor-pointer items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-400/15 text-cyan-700 dark:text-cyan-200 shadow-[0_8px_30px_-6px_rgba(34,211,238,0.25)] backdrop-blur-2xl transition-all duration-200 hover:bg-cyan-400/25 active:scale-90"
+          className="flex size-10 cursor-pointer items-center justify-center rounded-xl border border-teal-400/30 bg-teal-400/15 text-teal-700 dark:text-teal-200 shadow-[0_8px_30px_-6px_rgba(230,167,46,0.2)] backdrop-blur-2xl transition-all duration-200 hover:bg-teal-400/25 active:scale-90"
           title="AI Reading Companion"
           aria-label="Study dock: AI companion"
         >
@@ -141,7 +141,7 @@ export function StudyDock({
             role="dialog"
             aria-label={`Study dock — ${open}`}
             className={cn(
-              "absolute inset-x-3 z-40 flex max-h-[min(58vh,420px)] flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-background/95 dark:bg-[#0a0e17]/95 shadow-[0_24px_80px_-12px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:inset-x-auto sm:right-3 sm:w-[400px]",
+              "absolute inset-x-3 z-40 flex max-h-[min(58vh,420px)] flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-background/95 dark:bg-[#12110E]/95 shadow-[0_24px_80px_-12px_rgba(0,0,0,0.85)] backdrop-blur-2xl sm:inset-x-auto sm:right-3 sm:w-[400px]",
               raised ? "bottom-64" : "bottom-36",
             )}
           >

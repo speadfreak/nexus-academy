@@ -135,7 +135,7 @@ export function ReportIssueButton({
         variant="ghost"
         disabled
         title="You reported this question — it's in the review queue."
-        className="h-8 gap-1.5 rounded-xl px-2 text-[11px] font-bold text-sky-300"
+        className="h-8 gap-1.5 rounded-xl px-2 text-[11px] font-bold text-teal-300"
       >
         <MessageSquareWarning className="size-3.5" /> Reported
       </Button>
@@ -149,7 +149,7 @@ export function ReportIssueButton({
         variant="ghost"
         onClick={() => setOpen(true)}
         title="Report an issue with this question"
-        className="h-8 gap-1.5 rounded-xl px-2 text-[11px] font-bold text-muted-foreground hover:text-sky-300"
+        className="h-8 gap-1.5 rounded-xl px-2 text-[11px] font-bold text-muted-foreground hover:text-teal-300"
       >
         <MessageSquareWarning className="size-3.5" /> Report
       </Button>
@@ -172,7 +172,7 @@ export function ReportIssueButton({
                   className={cn(
                     "rounded-2xl border px-3 py-2 text-left text-sm transition",
                     category === c.value
-                      ? "border-sky-400/60 bg-sky-400/10 text-sky-200"
+                      ? "border-amber-400/60 bg-amber-400/10 text-amber-200"
                       : "border-white/10 bg-white/[0.03] text-foreground/80 hover:border-white/25",
                   )}
                 >
@@ -186,7 +186,7 @@ export function ReportIssueButton({
               placeholder="What's wrong? (e.g. 'option B should be 42 kg', 'the diagram is missing')"
               rows={3}
               maxLength={1000}
-              className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:border-sky-400/50"
+              className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:border-amber-400/50"
             />
           </div>
           <DialogFooter className="gap-2">

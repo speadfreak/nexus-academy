@@ -186,7 +186,7 @@ function OverviewPanel() {
         <StatCard icon={Clock} label="Expired" value={stats.expiredTrials} color="text-rose-300" />
         <StatCard icon={Crown} label="Paid active" value={stats.paidActive} color="text-emerald-300" />
         <StatCard icon={CheckCircle2} label="Canceled" value={stats.canceled} color="text-muted-foreground" />
-        <StatCard icon={Users} label="Total users" value={stats.total} color="text-sky-300" />
+        <StatCard icon={Users} label="Total users" value={stats.total} color="text-teal-300" />
         <StatCard
           icon={TrendingUp}
           label="Trial → paid rate"
@@ -241,8 +241,8 @@ function OverviewPanel() {
       </div>
 
       {/* Trial-program quick-glance summary */}
-      <div className="rounded-2xl border border-sky-400/15 bg-sky-400/[0.04] p-5">
-        <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300">
+      <div className="rounded-2xl border border-teal-400/15 bg-teal-400/[0.04] p-5">
+        <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-teal-300">
           <Sparkles className="size-3.5" /> quick summary
         </p>
         <p className="mt-2 text-sm leading-6 text-foreground">
@@ -689,7 +689,7 @@ function UsersPanel() {
                               setSetDaysValue(String(u.trialActiveDays));
                             }}
                             disabled={busyUserId === u.userId}
-                            className="rounded-md border border-sky-400/30 bg-sky-400/10 px-2 py-1 font-mono text-[10px] font-semibold text-sky-200 transition-colors hover:bg-sky-400/20 disabled:opacity-50"
+                            className="rounded-md border border-teal-400/30 bg-teal-400/10 px-2 py-1 font-mono text-[10px] font-semibold text-teal-200 transition-colors hover:bg-teal-400/20 disabled:opacity-50"
                             title="Set exact trial days"
                           >
                             Set…
@@ -729,7 +729,7 @@ function UsersPanel() {
             className="w-full max-w-md rounded-2xl border border-white/10 bg-card p-5"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-teal-300">
               // set exact trial days
             </p>
             <h3 className="mt-1 text-lg font-extrabold tracking-tight">
@@ -832,12 +832,12 @@ function HelpPanel() {
       </div>
 
       <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
-        <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300">
+        <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-teal-300">
           <Sparkles className="size-3.5" /> how the admin tools interact with it
         </p>
         <ol className="mt-3 space-y-3 text-sm leading-6 text-foreground">
           <li>
-            <span className="font-mono text-sky-300">1. FREE_TRIAL_DAYS config:</span>{" "}
+            <span className="font-mono text-teal-300">1. FREE_TRIAL_DAYS config:</span>{" "}
             Setting this in the Overview tab changes the threshold against
             which ALL in-progress trials are compared. So if a student has
             used 8 of 14 days and you bump the config to 21, their next
@@ -845,13 +845,13 @@ function HelpPanel() {
             days instead of 6. This does NOT affect expired trials.
           </li>
           <li>
-            <span className="font-mono text-sky-300">2. Bulk extend active trials:</span>{" "}
+            <span className="font-mono text-teal-300">2. Bulk extend active trials:</span>{" "}
             Reduces every in-progress trial's <code className="rounded bg-white/5 px-1 py-0.5 font-mono">trialActiveDays</code> by
             N. So a student who used 8 of 14 days gets bumped back to 5 of
             14 — they now have 9 more active days.
           </li>
           <li>
-            <span className="font-mono text-sky-300">3. Bulk re-activate expired trials:</span>{" "}
+            <span className="font-mono text-teal-300">3. Bulk re-activate expired trials:</span>{" "}
             Flips expired trials back to <code className="rounded bg-white/5 px-1 py-0.5 font-mono">"trial"</code> status
             AND reduces their <code className="rounded bg-white/5 px-1 py-0.5 font-mono">trialActiveDays</code> by
             N. So a student who used all 14 days gets bumped back to 11 of
@@ -859,14 +859,14 @@ function HelpPanel() {
             campaigns.
           </li>
           <li>
-            <span className="font-mono text-sky-300">4. Per-user extend / reset:</span>{" "}
+            <span className="font-mono text-teal-300">4. Per-user extend / reset:</span>{" "}
             Same mechanics as the bulk tools, but scoped to one user. The{" "}
             <code className="rounded bg-white/5 px-1 py-0.5 font-mono">Set…</code> button
             lets you set an exact <code className="rounded bg-white/5 px-1 py-0.5 font-mono">trialActiveDays</code> value
             (useful for undoing a botched bulk operation on a single user).
           </li>
           <li>
-            <span className="font-mono text-sky-300">5. Paid subscribers:</span>{" "}
+            <span className="font-mono text-teal-300">5. Paid subscribers:</span>{" "}
             None of these tools affect users with <code className="rounded bg-white/5 px-1 py-0.5 font-mono">status: "active"</code>.
             Once a student pays, their trial counter is irrelevant.
           </li>

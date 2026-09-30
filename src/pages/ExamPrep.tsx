@@ -128,7 +128,7 @@ function scoreTone(pct: number | null): string {
 /** Subtle per-subject accent (matches the platform's dark/gold system). */
 function subjectAccent(slug: string): string {
   const map: Record<string, string> = {
-    physics: "bg-sky-400/10 text-sky-300",
+    physics: "bg-amber-400/10 text-amber-300",
     chemistry: "bg-emerald-400/10 text-emerald-300",
     biology: "bg-lime-400/10 text-lime-300",
     mathematics: "bg-violet-400/10 text-violet-300",
@@ -195,7 +195,7 @@ function OverviewTab({
   const stats = [
     { label: "Official papers", value: nationalCount, icon: Medal, accent: "bg-amber-400/10 text-amber-300" },
     { label: "Practice sets", value: practiceCount, icon: Target, accent: "bg-violet-400/10 text-violet-300" },
-    { label: "Years covered", value: years.size, icon: CalendarDays, accent: "bg-sky-400/10 text-sky-300" },
+    { label: "Years covered", value: years.size, icon: CalendarDays, accent: "bg-teal-400/10 text-teal-300" },
     { label: "Mock exams taken", value: mockCompleted.length, icon: GraduationCap, accent: "bg-emerald-400/10 text-emerald-300" },
   ];
 
@@ -523,7 +523,7 @@ function PaperCard({
         </div>
       ) : digital?.status === "processing" ? (
         <div className="mt-2">
-          <span className="inline-flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 type-caption font-bold text-sky-300">
+          <span className="inline-flex items-center gap-1 rounded-md border border-teal-400/30 bg-teal-400/10 px-1.5 py-0.5 type-caption font-bold text-teal-300">
             <Loader2 className="size-3 animate-spin" /> Converting…
           </span>
         </div>
@@ -1065,7 +1065,7 @@ function ResultsTab({ results }: { results: PrepResultRow[] }) {
       headline: quizAvg !== null ? `${quizAvg}%` : "—",
       detail: `${quizRows.length} attempt${quizRows.length === 1 ? "" : "s"} in exam subjects`,
       icon: ListChecks,
-      accent: "bg-sky-400/10 text-sky-300",
+      accent: "bg-teal-400/10 text-teal-300",
     },
   ];
 
@@ -1125,7 +1125,7 @@ function ResultsTab({ results }: { results: PrepResultRow[] }) {
                       ? "bg-amber-400/10 text-amber-300"
                       : row.kind === "mock_exam"
                         ? "bg-emerald-400/10 text-emerald-300"
-                        : "bg-sky-400/10 text-sky-300",
+                        : "bg-teal-400/10 text-teal-300",
                   )}
                   title={row.kind === "paper_exam" ? "Paper exam" : row.kind === "mock_exam" ? "AI mock exam" : "Quiz"}
                 >
@@ -1146,7 +1146,7 @@ function ResultsTab({ results }: { results: PrepResultRow[] }) {
                   </p>
                 </div>
                 {row.status === "in_progress" ? (
-                  <span className="shrink-0 rounded-md border border-sky-400/30 bg-sky-400/10 px-2 py-0.5 type-caption font-bold text-sky-300">
+                  <span className="shrink-0 rounded-md border border-teal-400/30 bg-teal-400/10 px-2 py-0.5 type-caption font-bold text-teal-300">
                     In progress
                   </span>
                 ) : row.scorePct !== null ? (

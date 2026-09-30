@@ -66,7 +66,7 @@ export function AuthRequiredPrompt({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#080c14]/95 backdrop-blur-xl"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0B0A08]/95 backdrop-blur-xl"
     >
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute left-1/4 top-1/4 size-96 rounded-full bg-amber-400/5 blur-3xl" />

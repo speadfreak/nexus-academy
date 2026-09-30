@@ -91,7 +91,7 @@ const TYPE_STYLES: Record<
   { icon: typeof BookOpen; classes: string }
 > = {
   textbook: { icon: BookOpen, classes: "bg-indigo-400/10 text-indigo-300" },
-  past_exam: { icon: CalendarDays, classes: "bg-sky-400/10 text-sky-300" },
+  past_exam: { icon: CalendarDays, classes: "bg-teal-400/10 text-teal-300" },
   worksheet: { icon: ClipboardList, classes: "bg-violet-400/10 text-violet-300" },
   student_guide: { icon: GraduationCap, classes: "bg-teal-400/10 text-teal-300" },
   teacher_guide: { icon: Presentation, classes: "bg-amber-400/10 text-amber-300" },
@@ -99,26 +99,26 @@ const TYPE_STYLES: Record<
 
 /** Per-subject book-cover palettes — the "spine" of each shelf tile. */
 const SUBJECT_COVERS: Record<string, { from: string; to: string; accent: string; glyph: string; text: string; pattern: string }> = {
-  physics: { from: "#1c3a5e", to: "#0d1b2e", accent: "#38bdf8", glyph: "rgba(56,189,248,0.08)", text: "text-sky-200", pattern: "rgba(56,189,248,0.03)" },
-  chemistry: { from: "#1f4d3a", to: "#0c1f16", accent: "#34d399", glyph: "rgba(52,211,153,0.08)", text: "text-emerald-200", pattern: "rgba(52,211,153,0.03)" },
-  biology: { from: "#2c4a2a", to: "#12200f", accent: "#a3e635", glyph: "rgba(163,230,53,0.08)", text: "text-lime-200", pattern: "rgba(163,230,53,0.03)" },
-  mathematics: { from: "#3b2d5e", to: "#171026", accent: "#a78bfa", glyph: "rgba(167,139,250,0.08)", text: "text-violet-200", pattern: "rgba(167,139,250,0.03)" },
-  english: { from: "#5e2335", to: "#260d14", accent: "#fb7185", glyph: "rgba(251,113,133,0.08)", text: "text-rose-200", pattern: "rgba(251,113,133,0.03)" },
+  physics: { from: "#33250F", to: "#15140F", accent: "#D89A35", glyph: "rgba(216,154,53,0.08)", text: "text-amber-200", pattern: "rgba(216,154,53,0.03)" },
+  chemistry: { from: "#1B3833", to: "#12201C", accent: "#5F9189", glyph: "rgba(95,145,137,0.08)", text: "text-teal-200", pattern: "rgba(95,145,137,0.03)" },
+  biology: { from: "#2c4a2a", to: "#12200f", accent: "#8DA67D", glyph: "rgba(141,166,125,0.08)", text: "text-[#AEBF9F]", pattern: "rgba(141,166,125,0.03)" },
+  mathematics: { from: "#2E2740", to: "#171026", accent: "#81749A", glyph: "rgba(129,116,154,0.08)", text: "text-[#9A8CB5]", pattern: "rgba(129,116,154,0.03)" },
+  english: { from: "#402A26", to: "#261310", accent: "#A77B72", glyph: "rgba(167,123,114,0.08)", text: "text-[#C4A29A]", pattern: "rgba(167,123,114,0.03)" },
   history: { from: "#5e4a1f", to: "#261d0a", accent: "#fbbf24", glyph: "rgba(251,191,36,0.08)", text: "text-amber-200", pattern: "rgba(251,191,36,0.03)" },
-  geography: { from: "#1f4d4d", to: "#0c1f1f", accent: "#2dd4bf", glyph: "rgba(45,212,191,0.08)", text: "text-teal-200", pattern: "rgba(45,212,191,0.03)" },
-  economics: { from: "#2a335e", to: "#0f1326", accent: "#818cf8", glyph: "rgba(129,140,248,0.08)", text: "text-indigo-200", pattern: "rgba(129,140,248,0.03)" },
-  "scholastic-aptitude-test": { from: "#4a2d5e", to: "#1e1026", accent: "#e879f9", glyph: "rgba(232,121,249,0.08)", text: "text-fuchsia-200", pattern: "rgba(232,121,249,0.03)" },
+  geography: { from: "#1f4d4d", to: "#121A18", accent: "#2dd4bf", glyph: "rgba(45,212,191,0.08)", text: "text-teal-200", pattern: "rgba(45,212,191,0.03)" },
+  economics: { from: "#1A1720", to: "#16131A", accent: "#818cf8", glyph: "rgba(129,140,248,0.08)", text: "text-indigo-200", pattern: "rgba(129,140,248,0.03)" },
+  "scholastic-aptitude-test": { from: "#2E2740", to: "#1e1026", accent: "#B788C9", glyph: "rgba(183,136,201,0.08)", text: "text-purple-200", pattern: "rgba(183,136,201,0.03)" },
 };
 
 function coverFor(subjectSlug: string) {
   return (
     SUBJECT_COVERS[subjectSlug] ?? {
-      from: "#2b2f3a",
-      to: "#14161c",
-      accent: "#94a3b8",
-      glyph: "rgba(148,163,184,0.08)",
-      text: "text-slate-200",
-      pattern: "rgba(148,163,184,0.03)",
+      from: "#26221A",
+      to: "#171511",
+      accent: "#B9B2A4",
+      glyph: "rgba(185,178,164,0.08)",
+      text: "text-[#F4F0E7]",
+      pattern: "rgba(185,178,164,0.03)",
     }
   );
 }
@@ -310,7 +310,7 @@ function BookTile({
   // crash the dashboard with "Cannot read properties of undefined".
   const style = TYPE_STYLES[item.contentType] ?? {
     icon: BookOpen,
-    classes: "bg-slate-400/10 text-slate-300",
+    classes: "bg-[#B9B2A4]/10 text-[#B9B2A4]",
   };
   const cover = coverFor(item.subjectSlug);
   const GlyphIcon = SUBJECT_GLYPHS[item.subjectSlug] ?? BookOpen;
@@ -1506,7 +1506,7 @@ export default function Dashboard() {
           <div className="student-stat-card student-stat-study glass-panel hover-lift rounded-2xl p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <span className="type-caption text-muted-foreground/70">Studied</span>
-              <div className="flex size-8 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
+              <div className="flex size-8 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300 dark:bg-teal-400/10 dark:text-teal-300">
                 <Clock className="size-4" />
               </div>
             </div>

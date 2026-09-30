@@ -337,7 +337,7 @@ export function ReaderExamMode(props: ExamModeProps) {
   const isLowTime = remainingSeconds <= 60 && phase === "running";
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#080c14]">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-[#0B0A08]">
       {/* ─── Top bar: exam-conditions chrome (clinical, not warm) ─── */}
       <div
         className={cn(
@@ -537,7 +537,7 @@ export function ReaderExamMode(props: ExamModeProps) {
         {(phase === "running" || phase === "submitted") && (
           <>
             {/* Page toolbar */}
-            <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-between gap-2 border-t border-white/[0.06] bg-[#080c14]/90 px-4 py-2 backdrop-blur">
+            <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-between gap-2 border-t border-white/[0.06] bg-[#0B0A08]/90 px-4 py-2 backdrop-blur">
               <div className="flex items-center gap-1.5">
                 <Button
                   variant="ghost"
@@ -606,7 +606,7 @@ export function ReaderExamMode(props: ExamModeProps) {
               data-lenis-prevent-wheel
               data-exam-pdf-view
               className={cn(
-                "relative flex-1 overflow-auto bg-[#0b0f17] py-6 pb-20",
+                "relative flex-1 overflow-auto bg-[#12110E] py-6 pb-20",
                 phase === "submitted" && "pointer-events-none opacity-60",
               )}
             >
@@ -654,7 +654,7 @@ export function ReaderExamMode(props: ExamModeProps) {
 
             {/* ─── Navigator sheet: pages · question palette · highlights ─── */}
             {navigatorOpen && phase === "running" && (
-              <div className="absolute inset-y-0 right-0 z-20 flex w-[min(420px,100vw)] flex-col border-l border-white/10 bg-[#0b0f17]/97 backdrop-blur">
+              <div className="absolute inset-y-0 right-0 z-20 flex w-[min(420px,100vw)] flex-col border-l border-white/10 bg-[#12110E]/97 backdrop-blur">
                 <div className="flex shrink-0 items-center justify-between border-b border-white/[0.08] px-4 py-3">
                   <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-amber-300">
                     session navigator
@@ -715,7 +715,7 @@ export function ReaderExamMode(props: ExamModeProps) {
                 <button
                   type="button"
                   onClick={() => addHighlight(selectedInPdf)}
-                  className="flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-amber-300/40 bg-[#0b0f17]/95 px-3.5 py-2 shadow-[0_10px_36px_-10px_rgba(251,191,36,0.5)] backdrop-blur transition-colors hover:bg-[#131a26]"
+                  className="flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-amber-300/40 bg-[#12110E]/95 px-3.5 py-2 shadow-[0_10px_36px_-10px_rgba(251,191,36,0.5)] backdrop-blur transition-colors hover:bg-[#211E17]"
                 >
                   <Highlighter className="size-3.5 shrink-0 text-amber-300" />
                   <span className="truncate text-xs text-foreground/90">
@@ -729,7 +729,7 @@ export function ReaderExamMode(props: ExamModeProps) {
 
             {/* Submitted overlay — reveals completion + answer key */}
             {phase === "submitted" && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#080c14]/85 backdrop-blur-sm">
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#0B0A08]/85 backdrop-blur-sm">
                 <div className="mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
                   <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300">
                     <CheckCircle2 className="size-7" />

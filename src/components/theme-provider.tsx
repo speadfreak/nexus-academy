@@ -74,7 +74,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     document
       .querySelectorAll('meta[name="theme-color"]')
-      .forEach((meta) => meta.setAttribute("content", theme === "dark" ? "#0B0F17" : "#F7F5F0"));
+      .forEach((meta) => meta.setAttribute("content", theme === "dark" ? "#0B0A08" : "#F7F5F0"));
   }, [theme]);
 
   // Sync from the saved profile preference once it loads (e.g. the user

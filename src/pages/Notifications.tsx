@@ -116,8 +116,8 @@ const TYPE_META: Record<string, TypeMeta> = {
   },
   group_join: {
     icon: Users,
-    gradient: "from-sky-400/30 to-indigo-400/20",
-    glow: "rgba(56, 189, 248, 0.45)",
+    gradient: "from-teal-400/30 to-teal-500/20",
+    glow: "rgba(45, 212, 191, 0.45)",
     label: "Group",
   },
   streak: {
@@ -152,8 +152,8 @@ const TYPE_META: Record<string, TypeMeta> = {
   },
   update: {
     icon: GitBranch,
-    gradient: "from-cyan-400/30 to-blue-400/20",
-    glow: "rgba(34, 211, 238, 0.45)",
+    gradient: "from-teal-400/30 to-teal-500/20",
+    glow: "rgba(45, 212, 191, 0.45)",
     label: "Update",
   },
 };

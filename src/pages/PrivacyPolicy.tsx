@@ -78,7 +78,7 @@ export default function PrivacyPolicy() {
   return (
     <div className="relative min-h-screen">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-20 -right-20 size-96 rounded-full bg-sky-400/[0.04] blur-[120px]" />
+        <div className="absolute -top-20 -right-20 size-96 rounded-full bg-teal-400/[0.04] blur-[120px]" />
         <div className="absolute -bottom-20 -left-20 size-96 rounded-full bg-amber-400/[0.04] blur-[120px]" />
       </div>
 
@@ -95,9 +95,9 @@ export default function PrivacyPolicy() {
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
           className="mt-8"
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/[0.06] px-3 py-1">
-            <Shield className="size-3.5 text-sky-300" />
-            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-sky-300">
+          <div className="inline-flex items-center gap-2 rounded-full border border-teal-400/20 bg-teal-400/[0.06] px-3 py-1">
+            <Shield className="size-3.5 text-teal-300" />
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-teal-300">
               Privacy Policy
             </span>
           </div>
@@ -124,7 +124,7 @@ export default function PrivacyPolicy() {
               className="glass-panel rounded-2xl p-5 sm:p-7"
             >
               <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
+                <div className="flex size-8 items-center justify-center rounded-xl bg-teal-400/10 text-teal-300">
                   <span className="font-mono text-xs font-bold">{String(idx + 1).padStart(2, "0")}</span>
                 </div>
                 <h2 className="text-lg font-extrabold tracking-tight">{section.title}</h2>

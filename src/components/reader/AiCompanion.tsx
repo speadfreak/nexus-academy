@@ -90,12 +90,12 @@ export function AiCompanion({
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" data-lenis-prevent-wheel>
         {/* Hero — electric cyan AI identity */}
-        <div className="relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/[0.09] via-sky-500/[0.04] to-transparent p-4">
-          <div className="absolute -right-8 -top-10 size-28 rounded-full bg-cyan-400/10 blur-2xl" />
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
+        <div className="relative overflow-hidden rounded-2xl border border-teal-400/20 bg-gradient-to-br from-teal-400/[0.09] via-teal-500/[0.04] to-transparent p-4">
+          <div className="absolute -right-8 -top-10 size-28 rounded-full bg-teal-400/10 blur-2xl" />
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-300/40 to-transparent" />
           <p className="relative flex items-center gap-2 type-h3 text-foreground">
-            <span className="relative flex size-6 items-center justify-center rounded-lg bg-cyan-400/15 ring-1 ring-cyan-300/30">
-              <Sparkles className="size-3 text-cyan-700 dark:text-cyan-300" />
+            <span className="relative flex size-6 items-center justify-center rounded-lg bg-teal-400/15 ring-1 ring-teal-300/30">
+              <Sparkles className="size-3 text-teal-700 dark:text-teal-300" />
             </span>
             AI READING COMPANION
           </p>
@@ -127,7 +127,7 @@ export function AiCompanion({
                   i === QUICK_ACTIONS.length - 1 && QUICK_ACTIONS.length % 2 === 1 && "col-span-2",
                   isFlashcards
                     ? "border-amber-300/25 bg-amber-300/[0.07] text-amber-700 dark:text-amber-200 hover:bg-amber-300/[0.12]"
-                    : "border-cyan-400/15 bg-cyan-400/[0.05] text-cyan-700 dark:text-cyan-200/90 hover:border-cyan-400/30 hover:bg-cyan-400/[0.1]",
+                    : "border-teal-400/15 bg-teal-400/[0.05] text-teal-700 dark:text-teal-200/90 hover:border-teal-400/30 hover:bg-teal-400/[0.1]",
                 )}
               >
                 {isPending ? (
@@ -154,7 +154,7 @@ export function AiCompanion({
             className={cn(
               "rounded-xl px-3.5 py-2.5 text-[13px] leading-6 transition-all duration-200",
               message.role === "user"
-                ? "ml-6 border border-cyan-400/15 bg-cyan-400/[0.07] text-foreground"
+                ? "ml-6 border border-teal-400/15 bg-teal-400/[0.07] text-foreground"
                 : "mr-1 border border-foreground/[0.06] bg-foreground/[0.02] text-foreground/85",
             )}
           >
@@ -165,11 +165,11 @@ export function AiCompanion({
         ))}
 
         {asking && (
-          <div className="type-mono mr-1 flex items-center gap-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.03] px-4 py-3 text-cyan-700 dark:text-cyan-200/60">
+          <div className="type-mono mr-1 flex items-center gap-2 rounded-xl border border-teal-400/15 bg-teal-400/[0.03] px-4 py-3 text-teal-700 dark:text-teal-200/60">
             <div className="flex gap-1">
-              <div className="size-1.5 animate-bounce rounded-full bg-cyan-300/70" style={{ animationDelay: "0ms" }} />
-              <div className="size-1.5 animate-bounce rounded-full bg-cyan-300/70" style={{ animationDelay: "150ms" }} />
-              <div className="size-1.5 animate-bounce rounded-full bg-cyan-300/70" style={{ animationDelay: "300ms" }} />
+              <div className="size-1.5 animate-bounce rounded-full bg-teal-300/70" style={{ animationDelay: "0ms" }} />
+              <div className="size-1.5 animate-bounce rounded-full bg-teal-300/70" style={{ animationDelay: "150ms" }} />
+              <div className="size-1.5 animate-bounce rounded-full bg-teal-300/70" style={{ animationDelay: "300ms" }} />
             </div>
             <span className="ml-1">reading the page…</span>
           </div>
@@ -179,7 +179,7 @@ export function AiCompanion({
 
       {/* Chat input */}
       <div className="relative shrink-0 border-t border-foreground/[0.06] p-3">
-        <div className="flex items-center gap-2 rounded-xl border border-foreground/[0.08] bg-foreground/[0.03] p-1.5 transition-all duration-200 focus-within:border-cyan-400/30 focus-within:bg-foreground/[0.05]">
+        <div className="flex items-center gap-2 rounded-xl border border-foreground/[0.08] bg-foreground/[0.03] p-1.5 transition-all duration-200 focus-within:border-teal-400/30 focus-within:bg-foreground/[0.05]">
           <label htmlFor="reader-question" className="sr-only">Ask the reading companion</label>
           <Input
             id="reader-question"
@@ -195,7 +195,7 @@ export function AiCompanion({
           />
           <Button
             size="icon"
-            className="size-8 shrink-0 cursor-pointer rounded-lg bg-cyan-400/20 text-cyan-700 dark:text-cyan-200 hover:bg-cyan-400/30"
+            className="size-8 shrink-0 cursor-pointer rounded-lg bg-teal-400/20 text-teal-700 dark:text-teal-200 hover:bg-teal-400/30"
             onClick={() => onAsk()}
             disabled={asking || !question.trim()}
             aria-label="Send"

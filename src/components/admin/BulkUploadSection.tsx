@@ -1594,7 +1594,7 @@ export function BulkUploadSection() {
                           {f.status === "pending" && <Clock className="size-3.5 text-muted-foreground" />}
                           {f.status === "uploading" && <Loader2 className="size-3.5 animate-spin text-amber-300" />}
                           {f.status === "retrying" && <RotateCw className="size-3.5 animate-spin text-amber-400" />}
-                          {f.status === "analyzing" && <Loader2 className="size-3.5 animate-spin text-sky-300" />}
+                          {f.status === "analyzing" && <Loader2 className="size-3.5 animate-spin text-teal-300" />}
                           {f.status === "ready" && <CheckCircle2 className="size-3.5 text-emerald-300" />}
                           {f.status === "failed" && <AlertTriangle className="size-3.5 text-rose-300" />}
                           {f.status === "duplicate" && <Copy className="size-3.5 text-amber-300" />}

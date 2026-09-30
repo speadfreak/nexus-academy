@@ -156,7 +156,7 @@ export function ExamEngineAdmin() {
               label="Waiting for OCR"
               value={overview.scansWaiting}
               hint="scans — zero cloud AI"
-              tone="text-sky-300"
+              tone="text-teal-300"
             />
             <MiniStat
               label="Queue"
@@ -302,12 +302,12 @@ function PapersSection() {
                     </span>
                   )}
                   {r.status === "processing" && r.sourceMode === "scan" && (
-                    <span className="inline-flex items-center gap-1 text-sky-300">
+                    <span className="inline-flex items-center gap-1 text-teal-300">
                       <ScanLine className="size-3" /> waiting for OCR…
                     </span>
                   )}
                   {r.status === "processing" && r.sourceMode !== "scan" && (
-                    <span className="inline-flex items-center gap-1 text-sky-300">
+                    <span className="inline-flex items-center gap-1 text-teal-300">
                       <Loader2 className="size-3 animate-spin" /> converting…
                     </span>
                   )}
@@ -712,7 +712,7 @@ function ReportsSection() {
   return (
     <div className="glass-panel rounded-2xl p-5">
       <h3 className="flex items-center gap-2 text-sm font-extrabold">
-        <Inbox className="size-4 text-sky-300" /> Student reports — open
+        <Inbox className="size-4 text-teal-300" /> Student reports — open
       </h3>
       {!reports ? (
         <Loader2 className="mt-4 size-4 animate-spin text-muted-foreground" />
@@ -927,7 +927,7 @@ function QueueSection() {
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
               <MiniStat label="Papers" value={autopilot.libraryTotal} tone="text-foreground" />
               <MiniStat label="Digital" value={autopilot.ready} tone="text-emerald-300" />
-              <MiniStat label="In flight" value={autopilot.queued + autopilot.running} tone="text-sky-300" />
+              <MiniStat label="In flight" value={autopilot.queued + autopilot.running} tone="text-teal-300" />
               <MiniStat label="Waiting OCR" value={autopilot.scansWaiting} tone="text-violet-300" />
               <MiniStat label="Need review" value={autopilot.needsReview} tone="text-amber-300" />
             </div>
@@ -973,7 +973,7 @@ function QueueSection() {
             <Button
               size="sm"
               variant="outline"
-              className="gap-1 rounded-xl border-sky-400/30 text-xs text-sky-300"
+              className="gap-1 rounded-xl border-teal-400/30 text-xs text-teal-300"
               disabled={ocrBusy}
               onClick={() => void runScanOcr()}
             >
@@ -1012,14 +1012,14 @@ function QueueSection() {
           </div>
         </div>
         {msg && (
-          <p className="mt-3 rounded-xl border border-sky-400/25 bg-sky-400/[0.07] px-3 py-2 text-xs font-semibold text-sky-200">
+          <p className="mt-3 rounded-xl border border-teal-400/25 bg-teal-400/[0.07] px-3 py-2 text-xs font-semibold text-teal-200">
             {msg}
           </p>
         )}
         {overview && (
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <MiniStat label="Queued" value={overview.queue.queued} tone="text-violet-300" />
-            <MiniStat label="Running" value={overview.queue.running} tone="text-sky-300" />
+            <MiniStat label="Running" value={overview.queue.running} tone="text-teal-300" />
             <MiniStat label="Done" value={overview.queue.done} tone="text-emerald-300" />
             <MiniStat label="Failed" value={overview.queue.failed} tone="text-rose-300" />
           </div>
@@ -1048,7 +1048,7 @@ function QueueSection() {
                     "rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase",
                     j.status === "done" && "bg-emerald-400/15 text-emerald-300",
                     j.status === "failed" && "bg-rose-400/15 text-rose-300",
-                    j.status === "running" && "bg-sky-400/15 text-sky-300",
+                    j.status === "running" && "bg-teal-400/15 text-teal-300",
                     j.status === "queued" && "bg-white/10 text-muted-foreground",
                   )}
                 >
@@ -1076,7 +1076,7 @@ function QueueSection() {
       {scans && scans.length > 0 && (
         <div className="glass-panel rounded-2xl p-5">
           <h3 className="flex items-center gap-2 text-sm font-extrabold">
-            <ScanLine className="size-4 text-sky-300" /> Scans being read ({scans.length})
+            <ScanLine className="size-4 text-teal-300" /> Scans being read ({scans.length})
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Open any of these papers yourself, or press “OCR scans in this tab” — reading is free
@@ -1089,7 +1089,7 @@ function QueueSection() {
                 className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2"
               >
                 <p className="min-w-0 flex-1 truncate text-xs font-semibold">{s.title}</p>
-                <span className="text-[10px] font-bold tabular-nums text-sky-300">
+                <span className="text-[10px] font-bold tabular-nums text-teal-300">
                   {s.pagesDone}/{s.pageCount} pages
                 </span>
               </div>
