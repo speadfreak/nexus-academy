@@ -225,10 +225,16 @@ body {
 .light .bg-white\/5 { background-color: rgb(15 23 42 / 0.045); }
 .light .bg-white\/4 { background-color: rgb(15 23 42 / 0.04); }
 .light .bg-white\/10 { background-color: rgb(15 23 42 / 0.06); }
+.light .bg-white\/\[0\.02\] { background-color: rgb(15 23 42 / 0.025); }
 .light .bg-white\/\[0\.03\] { background-color: rgb(15 23 42 / 0.03); }
 .light .bg-white\/\[0\.04\] { background-color: rgb(15 23 42 / 0.04); }
 .light .bg-white\/\[0\.05\] { background-color: rgb(15 23 42 / 0.05); }
+.light .bg-white\/\[0\.06\] { background-color: rgb(15 23 42 / 0.055); }
+.light .bg-white\/\[0\.08\] { background-color: rgb(15 23 42 / 0.07); }
 .light .hover\:bg-white\/5:hover { background-color: rgb(15 23 42 / 0.05); }
+.light .hover\:bg-white\/\[0\.08\]:hover { background-color: rgb(15 23 42 / 0.07); }
+.light .group-hover\:bg-white\/\[0\.08\]:hover { background-color: rgb(15 23 42 / 0.07); }
+.light .focus\:bg-white\/\[0\.06\]:focus { background-color: rgb(15 23 42 / 0.055); }
 .light .bg-black\/30 { background-color: rgb(255 255 255 / 0.7); }
 .light .border-white\/8,
 .light .border-white\/10,
@@ -236,6 +242,12 @@ body {
 .light .border-white\/15,
 .light .border-white\/20,
 .light .border-white\/25 { border-color: rgb(15 23 42 / 0.1); }
+.light .border-white\/\[0\.06\],
+.light .border-white\/\[0\.08\],
+.light .border-white\/\[0\.15\],
+.light .border-white\/\[0\.2\] { border-color: rgb(15 23 42 / 0.1); }
+.light .hover\:border-white\/\[0\.15\]:hover,
+.light .hover\:border-white\/\[0\.2\]:hover { border-color: rgb(15 23 42 / 0.18); }
 
 /* ═══════════════════════════════════════════════════════════════════════
    STUDENT DASHBOARD — Light-mode overrides
@@ -1050,6 +1062,22 @@ html.lenis, html.lenis body {
 /* Light-mode auth overrides — keep it gorgeous in both themes */
 .light .auth-bg {
   display: none;
+}
+
+/* ── MOCK-EXAM SHOWCASE PREVIEW CARD (Landing) ──────────────────────
+   The "Sit the real exam" exam-room snapshot. Dark mode: the cinematic
+   navy exam-room slab. Light mode: clean paper-white exam sheet with a
+   soft amber-tinted drop shadow — same composition, right brightness. */
+.exam-room-preview {
+  background: rgb(11 15 23 / 0.8);
+  box-shadow: 0 40px 100px -30px rgb(0 0 0 / 0.8);
+}
+.light .exam-room-preview {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.97), rgb(250 250 252 / 0.93));
+  box-shadow:
+    0 1px 3px rgb(15 23 42 / 0.06),
+    0 2px 8px rgb(15 23 42 / 0.04),
+    0 40px 90px -30px oklch(0.45 0.1 65 / 0.22);
 }
 
 .light .auth-card-border {

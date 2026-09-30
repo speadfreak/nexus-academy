@@ -13,8 +13,10 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <!-- PWA — theme-color drives the browser UI chrome color on mobile -->
-  <meta name="theme-color" content="#0B0F17" />
+  <!-- PWA — theme-color drives the browser UI chrome color on mobile.
+       Light is the default; ThemeProvider keeps this in sync on toggle. -->
+  <meta name="theme-color" content="#F7F5F0" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0F17" />
   <!-- iOS — supports standalone mode (no Safari chrome) when launched from home screen -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -37,47 +39,73 @@
        so normal refreshes are never affected.
        ═══════════════════════════════════════════════════════════════════ -->
   <style>
-    /* CSS-only loading state — visible BEFORE React mounts */
+    /* CSS-only loading state — visible BEFORE React mounts.
+       Light is the default; html.dark flips it (the anti-flash script
+       below sets the class before first paint). */
     #nexus-boot-screen {
       position: fixed; inset: 0; z-index: 99999;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: #0B0F17; color: #94a3b8; font-family: system-ui, -apple-system, sans-serif;
+      background: #F7F5F0; color: #64748b; font-family: system-ui, -apple-system, sans-serif;
       transition: opacity 0.3s ease;
     }
+    html.dark #nexus-boot-screen { background: #0B0F17; color: #94a3b8; }
     #nexus-boot-screen.nexus-hidden { opacity: 0; pointer-events: none; }
     #nexus-boot-screen .nexus-boot-logo {
       width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
       border-radius: 16px;
-      border: 1px solid rgba(251,191,36,0.35);
-      background: linear-gradient(135deg, rgba(251,191,36,0.25) 0%, rgba(245,158,11,0.12) 40%, rgba(146,64,14,0.08) 100%);
+      border: 1px solid rgba(217,119,6,0.35);
+      background: linear-gradient(135deg, rgba(251,191,36,0.30) 0%, rgba(245,158,11,0.16) 40%, rgba(180,83,9,0.08) 100%);
       font-family: Georgia, serif; font-size: 28px; font-weight: 900;
+      color: #b45309;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+      animation: nexus-pulse 2s ease-in-out infinite;
+      box-shadow: 0 2px 12px -2px rgba(180,83,9,0.25), inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+    html.dark #nexus-boot-screen .nexus-boot-logo {
+      border-color: rgba(251,191,36,0.35);
+      background: linear-gradient(135deg, rgba(251,191,36,0.25) 0%, rgba(245,158,11,0.12) 40%, rgba(146,64,14,0.08) 100%);
       color: #fcd34d;
       text-shadow: 0 0 12px rgba(251,191,36,0.5), 0 0 24px rgba(245,158,11,0.3);
-      animation: nexus-pulse 2s ease-in-out infinite;
       box-shadow: 0 0 20px -4px rgba(251,191,36,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
     }
     #nexus-boot-screen .nexus-boot-text {
       margin-top: 20px; font-family: monospace; font-size: 10px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.3em; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.3em; color: #78716c;
     }
+    html.dark #nexus-boot-screen .nexus-boot-text { color: #94a3b8; }
     @keyframes nexus-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,0.18); }
+      50% { box-shadow: 0 0 36px -5px rgba(217,119,6,0.28); }
+    }
+    html.dark #nexus-boot-screen {
+      animation-name: none;
+    }
+    html.dark #nexus-boot-screen .nexus-boot-logo {
+      animation: nexus-pulse-dark 2s ease-in-out infinite;
+    }
+    @keyframes nexus-pulse-dark {
       0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.2); }
       50% { box-shadow: 0 0 40px -5px rgba(251,191,36,0.3); }
     }
-    /* Error recovery UI — shown when boot fails */
+    /* Error recovery UI — shown when boot fails (theme-aware) */
     #nexus-recovery {
       display: none; position: fixed; inset: 0; z-index: 100000;
-      background: #0B0F17; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif;
+      background: #F7F5F0; color: #1e293b; font-family: system-ui, -apple-system, sans-serif;
       flex-direction: column; align-items: center; justify-content: center; padding: 24px;
       text-align: center;
     }
+    html.dark #nexus-recovery { background: #0B0F17; color: #e2e8f0; }
     #nexus-recovery.nexus-visible { display: flex; }
     #nexus-recovery .nexus-recovery-card {
-      max-width: 400px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+      max-width: 400px; background: rgb(15 23 42 / 0.03); border: 1px solid rgb(15 23 42 / 0.1);
       border-radius: 16px; padding: 32px;
     }
-    #nexus-recovery .nexus-recovery-title { font-size: 16px; font-weight: 600; color: #f8fafc; margin-bottom: 8px; }
+    html.dark #nexus-recovery .nexus-recovery-card {
+      background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08);
+    }
+    #nexus-recovery .nexus-recovery-title { font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 8px; }
     #nexus-recovery .nexus-recovery-msg { font-size: 13px; color: #64748b; margin-bottom: 20px; word-break: break-word; }
+    html.dark #nexus-recovery .nexus-recovery-title { color: #f8fafc; }
     #nexus-recovery .nexus-recovery-btn {
       display: inline-block; padding: 10px 24px; border-radius: 12px; border: none;
       background: #f59e0b; color: #0B0F17; font-size: 14px; font-weight: 600;
@@ -206,14 +234,23 @@
   })();
   </script>
   <script>
-    // Apply theme before first paint to prevent light-theme flash.
-    // Default is dark; only switch to light if explicitly saved.
+    // Apply theme before first paint to prevent a wrong-theme flash.
+    // Light is the DEFAULT Learnyx experience. A stored theme is only
+    // honored when the user made an explicit choice (nexus-theme-explicit
+    // flag) — legacy installs auto-wrote "dark" on every load, so the flag
+    // is what separates "chose dark" from "was defaulted dark". This logic
+    // MUST mirror readStoredTheme() in theme-provider.tsx.
     (function () {
+      var explicit = false;
+      var t = "light";
       try {
-        var t = localStorage.getItem("nexus-theme");
-        if (t !== "light") t = "dark";
+        explicit = localStorage.getItem("nexus-theme-explicit") === "1";
+        if (explicit) {
+          var stored = localStorage.getItem("nexus-theme");
+          if (stored === "light" || stored === "dark") t = stored;
+        }
       } catch (e) {
-        t = "dark";
+        t = "light";
       }
       var el = document.documentElement;
       el.classList.remove("dark", "light");

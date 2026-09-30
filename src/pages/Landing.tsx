@@ -1919,7 +1919,7 @@ function TestimonialCard({
                 key={s}
                 className={cn(
                   "size-3",
-                  s <= t.starRating! ? "fill-amber-400 text-amber-400" : "text-white/15",
+                  s <= t.starRating! ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
                 )}
               />
             ))}
@@ -1975,7 +1975,7 @@ function TestimonialCardLarge({
                 key={s}
                 className={cn(
                   "size-4",
-                  s <= t.starRating! ? "fill-amber-400 text-amber-400" : "text-white/15",
+                  s <= t.starRating! ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
                 )}
               />
             ))}
@@ -2186,10 +2186,10 @@ function MockExamShowcase({
           glow) instead of the dual-orb pattern used elsewhere. */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2.5rem]">
         <div
-          className="absolute inset-0 opacity-[0.04]"
+          className="exam-room-grid absolute inset-0 opacity-[0.04]"
           style={{
             backgroundImage:
-              "linear-gradient(rgb(255 255 255 / 0.5) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.5) 1px, transparent 1px)",
+              "linear-gradient(rgb(128 128 128 / 0.6) 1px, transparent 1px), linear-gradient(90deg, rgb(128 128 128 / 0.6) 1px, transparent 1px)",
             backgroundSize: "48px 48px",
             maskImage:
               "radial-gradient(ellipse at center, black 40%, transparent 80%)",
@@ -2267,10 +2267,12 @@ function MockExamShowcase({
           </motion.div>
 
           {/* Right: exam-room preview card — a snapshot of the real
-              taking UI so visitors see what they'll get */}
+              taking UI so visitors see what they'll get. The card surface
+              follows the theme: dark navy in dark mode, clean paper-white
+              in light mode (exam-room-preview class in index.css). */}
           <motion.div
             variants={fadeUp}
-            className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#0b0f17]/80 shadow-[0_40px_100px_-30px_rgba(0,0,0,0.8)] backdrop-blur-xl"
+            className="exam-room-preview relative overflow-hidden rounded-2xl border border-white/10 backdrop-blur-xl"
           >
             {/* Top exam-conditions bar */}
             <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] px-4 py-3">

@@ -11,6 +11,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { useAppBootstrap } from "@/components/AppBootstrap";
+import { useTheme } from "@/components/theme-provider";
 import { useMutation, useQuery } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -46,6 +47,7 @@ interface AccountSheetProps {
 export function AccountSheet({ children, initials = "N" }: AccountSheetProps) {
   // Shared shell subscriptions (AppBootstrap) — profile + admin check.
   const { profile, adminInfo: isAdmin } = useAppBootstrap();
+  const { theme, setTheme } = useTheme();
   const entitlements = useQuery(api.subscriptions.getEntitlements);
   const updateProfile = useMutation(api.profile.updateProfile);
   const { signOut } = useAuth();
@@ -61,7 +63,10 @@ export function AccountSheet({ children, initials = "N" }: AccountSheetProps) {
   else if (entitlements?.status === "trial") subStatus = "trial";
 
   const cycleTheme = async () => {
-    const next = profile?.themePreference === "dark" ? "light" : "dark";
+    const next = theme === "dark" ? "light" : "dark";
+    // Apply immediately (marks the choice as explicit so it survives
+    // reloads) and persist to the profile for cross-device roaming.
+    setTheme(next);
     try {
       await updateProfile({ themePreference: next });
       toast.success(`Switched to ${next} mode.`);
@@ -218,7 +223,7 @@ export function AccountSheet({ children, initials = "N" }: AccountSheetProps) {
               className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition-all duration-200 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-[0_0_20px_-8px_var(--primary)]"
             >
               <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-105">
-                {profile?.themePreference === "dark" ? (
+                {theme === "dark" ? (
                   <Moon className="size-4" />
                 ) : (
                   <Sun className="size-4" />
@@ -227,7 +232,7 @@ export function AccountSheet({ children, initials = "N" }: AccountSheetProps) {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold">Appearance</p>
                 <p className="text-xs text-muted-foreground">
-                  {profile?.themePreference === "dark" ? "Dark mode" : "Light mode"}
+                  {theme === "dark" ? "Dark mode" : "Light mode"}
                 </p>
               </div>
               <SunMoon className="size-4 text-muted-foreground" />

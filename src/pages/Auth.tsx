@@ -188,7 +188,7 @@ function ShowcasePanel() {
             </div>
             <span className="type-display text-gradient">Learnyx Academy ET 🇪🇹</span>
           </div>
-          <p className="text-lg leading-relaxed text-amber-200/60">
+          <p className="text-lg leading-relaxed text-muted-foreground">
             Where ambition meets intelligence — master any subject, crush every exam,
             and outlearn everyone.
           </p>
@@ -217,8 +217,8 @@ function ShowcasePanel() {
                 <feature.icon className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-white/90">{feature.label}</p>
-                <p className="text-xs text-white/40">{feature.desc}</p>
+                <p className="text-sm font-semibold text-foreground">{feature.label}</p>
+                <p className="text-xs text-muted-foreground">{feature.desc}</p>
               </div>
             </motion.div>
           ))}
@@ -235,14 +235,14 @@ function ShowcasePanel() {
             {['bg-amber-500', 'bg-orange-500', 'bg-emerald-500', 'bg-teal-500'].map((bg, i) => (
               <div
                 key={i}
-                className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#0a1128] ${bg} text-[10px] font-bold text-white`}
+                className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-background ${bg} text-[10px] font-bold text-white`}
               >
                 {['A', 'M', 'S', 'K'][i]}
               </div>
             ))}
           </div>
-          <p className="text-xs text-white/40">
-            <span className="font-semibold text-white/60">400+</span> students already learning
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground/70">400+</span> students already learning
           </p>
         </motion.div>
       </motion.div>
@@ -261,7 +261,9 @@ function AnimatedBorderCard({ children, className = "" }: { children: React.Reac
       <div className="auth-card-border absolute -inset-[1px] rounded-2xl" />
       
       {/* Card content */}
-      <div className="relative z-10 overflow-hidden rounded-2xl bg-[#0c1425]/95 backdrop-blur-2xl">
+      {/* Card content — bg-card adapts: dark navy glass in dark mode,
+          clean white glass in light mode */}
+      <div className="relative z-10 overflow-hidden rounded-2xl bg-card/95 backdrop-blur-2xl">
         {/* Inner top-edge highlight */}
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-amber-500/[0.03] to-transparent" />
@@ -384,19 +386,19 @@ function Onboarding({
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
                       active
                         ? "bg-primary/20 text-primary shadow-[0_0_20px_-4px_rgba(99,102,241,0.4)]"
-                        : "bg-white/[0.04] text-white/40 group-hover:bg-white/[0.08] group-hover:text-white/60"
+                        : "bg-white/[0.04] text-muted-foreground group-hover:bg-white/[0.08] group-hover:text-foreground"
                     }`}
                   >
                     <option.icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold tracking-tight text-white/90">
+                    <p className="text-sm font-bold tracking-tight text-foreground">
                       {STREAM_LABELS[option.id]}
                     </p>
-                    <p className="mt-0.5 font-mono text-[10px] text-white/40">
+                    <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
                       {option.subjects}
                     </p>
-                    <p className="mt-0.5 font-mono text-[9px] leading-4 text-white/25">
+                    <p className="mt-0.5 font-mono text-[9px] leading-4 text-muted-foreground/70">
                       + {SHARED_SUBJECTS}{" "}
                       <span className="text-primary/50">(both streams)</span>
                     </p>
@@ -487,7 +489,7 @@ function Onboarding({
                 }`}
               >
                 <div className="flex w-full items-center justify-between">
-                  <span className="text-2xl font-extrabold tracking-tight text-white/90">
+                  <span className="text-2xl font-extrabold tracking-tight text-foreground">
                     {option.id}
                   </span>
                   {active && (
@@ -502,10 +504,10 @@ function Onboarding({
                     </motion.div>
                   )}
                 </div>
-                <p className="text-xs font-bold tracking-tight text-white/90">
+                <p className="text-xs font-bold tracking-tight text-foreground">
                   {option.label}
                 </p>
-                <p className="font-mono text-[10px] text-white/40">{option.desc}</p>
+                <p className="font-mono text-[10px] text-muted-foreground">{option.desc}</p>
                 {option.id === 12 && (
                   <p className="mt-0.5 font-mono text-[9px] leading-4 text-primary/60">
                     shows all 4 years
@@ -520,7 +522,7 @@ function Onboarding({
             <Button
               type="button"
               variant="ghost"
-              className="flex-1 rounded-xl py-5 text-sm font-semibold text-white/50 hover:text-white/80"
+              className="flex-1 rounded-xl py-5 text-sm font-semibold text-muted-foreground hover:text-foreground"
               onClick={() => setStep("stream")}
               disabled={saving}
             >
@@ -541,7 +543,7 @@ function Onboarding({
               )}
             </ShimmerButton>
           </div>
-          <p className="text-center font-mono text-[9px] text-white/30">
+          <p className="text-center font-mono text-[9px] text-muted-foreground/70">
             Grade 12 sees all 4 years — your exam covers the full curriculum.
           </p>
         </CardFooter>
@@ -808,7 +810,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#060b1a]">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
       <CinematicBackground />
 
       {/* Back to site link */}
@@ -819,7 +821,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.5, duration: 0.5 }}
           onClick={() => navigate("/")}
-          className="group flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50 backdrop-blur-md transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.08] hover:text-white/80"
+          className="group flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-muted-foreground backdrop-blur-md transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.08] hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-x-0.5" />
           Back to site
@@ -881,11 +883,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
                           {/* Title */}
                           <motion.div variants={itemVariants} className="text-center">
-                            <h1 className="text-2xl font-extrabold tracking-tight text-white">
+                            <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
                               Welcome to{" "}
                               <span className="text-gradient">Learnyx Academy ET</span> 🇪🇹
                             </h1>
-                            <p className="mt-2 text-sm text-white/40">
+                            <p className="mt-2 text-sm text-muted-foreground">
                               Sign in to access your learning dashboard
                             </p>
                           </motion.div>
@@ -895,7 +897,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                             <Button
                               type="button"
                               variant="outline"
-                              className="group relative w-full overflow-hidden rounded-xl border-white/[0.08] bg-white/[0.04] py-5 text-sm font-medium text-white/70 transition-all duration-300 hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white"
+                              className="group relative w-full overflow-hidden rounded-xl border-white/[0.08] bg-white/[0.04] py-5 text-sm font-medium text-foreground/70 transition-all duration-300 hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-foreground"
                               onClick={handleGoogle}
                               disabled={isLoading}
                             >
@@ -918,7 +920,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                               <div className="w-full border-t border-white/[0.06]" />
                             </div>
                             <div className="relative flex justify-center">
-                              <span className="rounded-full bg-[#0c1425] px-3 text-[10px] uppercase tracking-widest text-white/25">
+                              <span className="rounded-full bg-card px-3 text-[10px] uppercase tracking-widest text-muted-foreground/70">
                                 or continue with email
                               </span>
                             </div>
@@ -927,7 +929,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                           {/* Email Form */}
                           <motion.form variants={itemVariants} onSubmit={handleEmailSubmit} className="space-y-4">
                             <div className="relative">
-                              <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
+                              <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
                               <Input
                                 name="identifier"
                                 placeholder="email or username"
@@ -935,7 +937,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                                 autoCapitalize="none"
                                 autoCorrect="off"
                                 spellCheck={false}
-                                className="h-12 rounded-xl border-white/[0.08] bg-white/[0.04] pl-10 text-sm text-white/90 placeholder:text-white/25 transition-all duration-300 focus:border-primary/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-primary/20"
+                                className="h-12 rounded-xl border-white/[0.08] bg-white/[0.04] pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 transition-all duration-300 focus:border-primary/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-primary/20"
                                 disabled={isLoading}
                                 required
                               />
@@ -972,7 +974,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                           </AnimatePresence>
 
                           {/* Helper text */}
-                          <motion.p variants={itemVariants} className="mt-4 text-center text-[11px] leading-5 text-white/25">
+                          <motion.p variants={itemVariants} className="mt-4 text-center text-[11px] leading-5 text-muted-foreground/70">
                             No passwords to forget — we email you a one-time code.
                           </motion.p>
 
@@ -981,7 +983,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                             <Button
                               type="button"
                               variant="outline"
-                              className="group w-full rounded-xl border-white/[0.06] bg-white/[0.02] py-5 text-sm text-white/40 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.05] hover:text-white/70"
+                              className="group w-full rounded-xl border-white/[0.06] bg-white/[0.02] py-5 text-sm text-muted-foreground transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.05] hover:text-foreground"
                               onClick={handleGuestLogin}
                               disabled={isLoading}
                             >
@@ -1018,8 +1020,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                           </motion.div>
 
                           <motion.div variants={itemVariants} className="text-center">
-                            <CardTitle className="text-xl text-white">Check your email</CardTitle>
-                            <CardDescription className="mt-2 text-white/40">
+                            <CardTitle className="text-xl text-foreground">Check your email</CardTitle>
+                            <CardDescription className="mt-2 text-muted-foreground">
                               We&apos;ve sent a verification code to
                             </CardDescription>
                             <p className="mt-1 text-sm font-medium text-primary">
@@ -1086,7 +1088,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                             </ShimmerButton>
                           </motion.form>
 
-                          <motion.div variants={itemVariants} className="mt-4 text-center text-sm text-white/30">
+                          <motion.div variants={itemVariants} className="mt-4 text-center text-sm text-muted-foreground/70">
                             Didn&apos;t get it?{" "}
                             <button
                               type="button"
@@ -1101,7 +1103,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                               type="button"
                               onClick={() => { setStep("signIn"); setError(null); }}
                               disabled={isLoading}
-                              className="text-white/50 underline-offset-4 transition-colors hover:text-white/70 disabled:opacity-50"
+                              className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground disabled:opacity-50"
                             >
                               try again
                             </button>
@@ -1111,10 +1113,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </AnimatePresence>
 
                     {/* Footer */}
-                    <div className="mt-8 flex items-center justify-center gap-1.5 text-center text-[10px] text-white/20">
+                    <div className="mt-8 flex items-center justify-center gap-1.5 text-center text-[10px] text-muted-foreground/50">
                       <Shield className="h-3 w-3" />
                       <span>256-bit encrypted</span>
-                      <span className="text-white/10">·</span>
+                      <span className="text-muted-foreground/40">·</span>
                       <span>Your data stays yours</span>
                     </div>
                   </div>

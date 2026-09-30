@@ -67,7 +67,8 @@ export const ensureProfile = internalMutation({
     if (existing) return existing._id;
     return await ctx.db.insert("userProfiles", {
       userId,
-      themePreference: "dark",
+      // Light is the default Learnyx experience; users opt into dark.
+      themePreference: "light",
     });
   },
 });
@@ -101,7 +102,7 @@ export const getProfile = query({
       username: profile?.username ?? null,
       avatarStorageId: profile?.avatarStorageId ?? null,
       avatarUrl,
-      themePreference: profile?.themePreference ?? "dark",
+      themePreference: profile?.themePreference ?? "light",
       stream: profile?.stream ?? null,
       // ── GRADE LEVEL ────────────────────────────────────────────────
       // The student's current grade (9, 10, 11, 12) or null for legacy

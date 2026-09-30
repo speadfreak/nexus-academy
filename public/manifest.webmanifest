@@ -6,9 +6,13 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0B0F17",
-  "theme_color": "#0B0F17",
-  "categories": ["education", "productivity", "books"],
+  "background_color": "#F7F5F0",
+  "theme_color": "#F7F5F0",
+  "categories": [
+    "education",
+    "productivity",
+    "books"
+  ],
   "icons": [
     {
       "src": "/logo.svg",
