@@ -886,6 +886,82 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ═════════════════════════════════════════════════════
+   ACCESSIBILITY PREFERENCES — applied via classes on <html>
+   (see src/lib/prefs.ts · Settings → Accessibility)
+   ═════════════════════════════════════════════════════ */
+
+/* Control Center micro-interactions — premium = restraint. */
+@keyframes settings-gold-sweep {
+  0%   { transform: translateX(-130%); opacity: 0; }
+  30%  { opacity: 1; }
+  100% { transform: translateX(260%); opacity: 0; }
+}
+.choice-sweep::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 36%;
+  background: linear-gradient(105deg, transparent, rgba(251, 191, 36, 0.16), transparent);
+  animation: settings-gold-sweep 0.7s ease-out 1;
+  pointer-events: none;
+}
+
+@keyframes saved-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(230, 167, 46, 0.35); }
+  100% { box-shadow: 0 0 0 10px rgba(230, 167, 46, 0); }
+}
+.saved-pulse {
+  animation: saved-pulse 0.8s ease-out 1;
+}
+
+/* Smooth theme crossfade — subtle, only color properties, and dropped
+   entirely when the user asked for reduced motion. */
+html.theme-fade body,
+html.theme-fade .glass-panel {
+  transition: background-color 0.28s ease, border-color 0.28s ease, color 0.28s ease;
+}
+
+/* Reduce motion — kills decorative animation app-wide. Framer Motion
+   respects prefers-reduced-motion through the OS; this class covers the
+   in-app CSS animations for users who want calm without an OS switch. */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* High contrast — firm up borders and text so nothing sits at 4% opacity. */
+html.high-contrast {
+  --tw-ring-offset-shadow: 0 0 #0000;
+}
+html.high-contrast body {
+  color: var(--foreground);
+}
+html.high-contrast .glass-panel,
+html.high-contrast .glass-chip {
+  border-color: color-mix(in oklab, var(--border) 78%, var(--foreground)) !important;
+  background-color: var(--card) !important;
+  backdrop-filter: none !important;
+}
+html.high-contrast .text-muted-foreground,
+html.high-contrast .text-foreground\/60,
+html.high-contrast .text-foreground\/70 {
+  color: color-mix(in oklab, var(--muted-foreground) 62%, var(--foreground)) !important;
+}
+html.high-contrast a,
+html.high-contrast button {
+  outline-offset: 2px;
+}
+html.high-contrast :focus-visible {
+  outline: 2px solid var(--primary) !important;
+}
+
 /* Lenis smooth scroll — disable native scroll behavior, Lenis handles it */
 html.lenis, html.lenis body {
   height: auto;

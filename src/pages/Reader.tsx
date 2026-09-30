@@ -74,6 +74,7 @@ import {
   saveReadingProgress,
   type ReaderHighlight,
 } from "@/lib/readerStorage";
+import { loadReaderPrefs } from "@/lib/prefs";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 type PanelTab = "companion" | "videos" | "scratchpad";
@@ -150,14 +151,21 @@ export default function Reader() {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [scale, setScale] = useState(1.0);
+  const [scale, setScale] = useState(() => {
+    // Settings → Reader → default zoom ("fit" keeps 1.0 and lets the
+    // stage's own fit-width logic take over once the doc is measured).
+    const prefs = loadReaderPrefs();
+    return prefs.defaultZoom === "125" ? 1.25 : 1.0;
+  });
   const [docProxy, setDocProxy] = useState<any>(null);
   const [outlineChapters, setOutlineChapters] = useState<OutlineChapter[] | null>(null);
 
   // --- Panel / dock -------------------------------------------------------
-  // Default CLOSED on mobile (PDF visible immediately), OPEN on desktop.
+  // Default CLOSED on mobile (PDF visible immediately), OPEN on desktop —
+  // unless Settings → Reader turned the AI companion default off.
   const [panelOpen, setPanelOpen] = useState(() => {
     if (typeof window === "undefined") return true;
+    if (!loadReaderPrefs().companionOpen) return false;
     return window.matchMedia("(min-width: 640px)").matches;
   });
   const [panelTab, setPanelTab] = useState<PanelTab>("companion");

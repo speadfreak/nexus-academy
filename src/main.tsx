@@ -33,6 +33,10 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import "./index.css";
+// Re-apply saved accessibility prefs (text scale, reduce motion, high
+// contrast) before first render — see Settings → Accessibility.
+import { applySavedA11yPrefs } from "@/lib/prefs";
+applySavedA11yPrefs();
 
 // ─── VlyToolbar: LAZY with error recovery ────────────────────────────
 // Must be lazy — it statically imports @zumer/snapdom which can throw at
