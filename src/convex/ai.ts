@@ -12,6 +12,7 @@ import {
   action,
   internalMutation,
   internalQuery,
+  mutation,
   query,
   type ActionCtx,
 } from "./_generated/server";
@@ -936,5 +937,427 @@ export const getMessages = query({
       .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
       .order("asc")
       .take(200);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// STUDY ROOM engine — thread surgery behind the Tutor's edit / branch /
+// regenerate / search / delete interactions. Every function re-verifies
+// ownership server-side; nothing trusts the client.
+// ---------------------------------------------------------------------------
+
+/** Drop an owned conversation's trailing assistant message(s) — used by
+ * regenerate so the fresh reply replaces the old one instead of appending. */
+export const deleteTrailingAssistant = internalMutation({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, { conversationId }) => {
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+      .order("asc")
+      .collect();
+    let deleted = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role !== "assistant") break;
+      await ctx.db.delete(messages[i]._id);
+      deleted += 1;
+    }
+    return { deleted };
+  },
+});
+
+/** Delete a message and every message after it — the blade behind
+ * "Edit & resend" and "Retry from here". The client then re-sends the
+ * (possibly edited) content through ai.sendMessage. */
+export const truncateFromMessage = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    messageId: v.id("messages"),
+  },
+  handler: async (ctx, { conversationId, messageId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation || conversation.userId !== userId) {
+      throw new ConvexError({
+        message: "Conversation not found or not yours.",
+        code: "not_found",
+      });
+    }
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+      .order("asc")
+      .collect();
+    const index = messages.findIndex((m) => m._id === messageId);
+    if (index === -1) {
+      throw new ConvexError({ message: "Message not found.", code: "not_found" });
+    }
+    let deleted = 0;
+    for (let i = index; i < messages.length; i++) {
+      await ctx.db.delete(messages[i]._id);
+      deleted += 1;
+    }
+    await ctx.db.patch(conversationId, { updatedAt: Date.now() });
+    return { deleted };
+  },
+});
+
+/** Regenerate the last assistant reply — deletes the trailing assistant
+ * message(s), then answers the SAME conversation context again with the
+ * current mode / grade / concise preferences applied. No new user turn is
+ * inserted, so the free-tier counter is untouched (it replaces a reply,
+ * it doesn't add one). */
+export const regenerateReply = action({
+  args: {
+    conversationId: v.id("conversations"),
+    mode: v.optional(tutorModeValidator),
+    grade: v.optional(v.union(
+      v.literal(9),
+      v.literal(10),
+      v.literal(11),
+      v.literal(12),
+    )),
+    concise: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<{ reply: string }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required to use the tutor.", code: "unauthorized" });
+    }
+    const conversation: Doc<"conversations"> | null = await ctx.runQuery(
+      internal.ai.getConversationById,
+      { conversationId: args.conversationId },
+    );
+    if (!conversation || conversation.userId !== userId) {
+      throw new ConvexError({
+        message: "Conversation not found or not yours.",
+        code: "not_found",
+      });
+    }
+
+    // Replace, don't append: drop trailing assistant message(s) first.
+    await ctx.runMutation(internal.ai.deleteTrailingAssistant, {
+      conversationId: args.conversationId,
+    });
+
+    const historyRows: Doc<"messages">[] = await ctx.runQuery(
+      internal.ai.getMessagesByConversation,
+      { conversationId: args.conversationId },
+    );
+    const lastUser = [...historyRows].reverse().find((m) => m.role === "user");
+    if (!lastUser) {
+      throw new ConvexError({
+        message: "Nothing to regenerate yet.",
+        code: "invalid",
+      });
+    }
+
+    // History EXCLUDES the final user turn — callGroq appends userMessage
+    // itself, so passing both would duplicate the turn in context.
+    const history = historyRows
+      .filter((m) => m._id !== lastUser._id)
+      .slice(-HISTORY_LIMIT)
+      .map((message) => ({
+        role: message.role as "user" | "assistant",
+        content: message.images?.length
+          ? `${message.content}\n[image attached]`
+          : message.content,
+      }));
+
+    const systemPrompt = await buildSystemPrompt(
+      ctx,
+      userId,
+      conversation.subjectId,
+      conversation.contentId,
+      {
+        mode: args.mode,
+        grade: args.grade,
+        concise: args.concise,
+        hasImages: false,
+      },
+    );
+
+    let reply: string;
+    const aiStart = Date.now();
+    try {
+      reply = await callGroq(ctx, {
+        systemPrompt,
+        userMessage: lastUser.content,
+        history,
+        maxTokens: 1024,
+        temperature: 0.55, // a touch more variance than the first pass
+      });
+      await logEventAction(ctx, {
+        eventType: "api_call",
+        source: "ai.regenerateReply.groq",
+        status: "success",
+        userId,
+        metadata: { model: getModelName(), conversationId: args.conversationId },
+        durationMs: Date.now() - aiStart,
+      });
+    } catch (error) {
+      await logEventAction(ctx, {
+        eventType: "error",
+        source: "ai.regenerateReply.groq",
+        status: "error",
+        userId,
+        metadata: { message: error instanceof Error ? error.message : "unknown" },
+        durationMs: Date.now() - aiStart,
+      });
+      throw asAiError(error, "The AI tutor could not reach Groq. Try again.");
+    }
+
+    const now = Date.now();
+    await ctx.runMutation(internal.ai.insertMessage, {
+      conversationId: args.conversationId,
+      role: "assistant",
+      content: reply,
+      createdAt: now,
+    });
+    await ctx.runMutation(internal.ai.patchConversation, {
+      conversationId: args.conversationId,
+      updatedAt: now,
+    });
+    return { reply };
+  },
+});
+
+/** "Edit & branch" — never destroys the original thread. Copies everything
+ * before the edited message into a NEW conversation (↳ titled), writes the
+ * edited user message there, and answers it. The original conversation
+ * stays exactly as it was. */
+export const branchConversation = action({
+  args: {
+    conversationId: v.id("conversations"),
+    messageId: v.id("messages"),
+    content: v.string(),
+    mode: v.optional(tutorModeValidator),
+    grade: v.optional(v.union(
+      v.literal(9),
+      v.literal(10),
+      v.literal(11),
+      v.literal(12),
+    )),
+    concise: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ reply: string; conversationId: Id<"conversations"> }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required to use the tutor.", code: "unauthorized" });
+    }
+    const content = args.content.trim();
+    if (!content) {
+      throw new ConvexError({ message: "Message cannot be empty.", code: "invalid" });
+    }
+    if (content.length > 4000) {
+      throw new ConvexError({ message: "Message is too long (max 4,000 characters).", code: "invalid" });
+    }
+
+    // Free-tier parity with sendMessage — a branch consumes a daily message.
+    const premium = await getPremiumAccess(ctx, userId);
+    if (!premium) {
+      const since = Date.now() - 24 * 60 * 60 * 1000;
+      const used = await ctx.runQuery(internal.ai.countUserMessagesSince, {
+        userId,
+        since,
+      });
+      if (used >= FREE_TUTOR_DAILY_LIMIT) {
+        throw new ConvexError({
+          message:
+            `You've used your ${FREE_TUTOR_DAILY_LIMIT} free tutor messages for today. ` +
+            "Come back tomorrow for a fresh set — or upgrade for unlimited tutoring.",
+          code: "daily_limit_reached",
+        });
+      }
+    }
+
+    const original: Doc<"conversations"> | null = await ctx.runQuery(
+      internal.ai.getConversationById,
+      { conversationId: args.conversationId },
+    );
+    if (!original || original.userId !== userId) {
+      throw new ConvexError({
+        message: "Conversation not found or not yours.",
+        code: "not_found",
+      });
+    }
+    const messages: Doc<"messages">[] = await ctx.runQuery(
+      internal.ai.getMessagesByConversation,
+      { conversationId: args.conversationId },
+    );
+    const index = messages.findIndex((m) => m._id === args.messageId);
+    if (index === -1) {
+      throw new ConvexError({ message: "Message not found.", code: "not_found" });
+    }
+
+    // The new branch: copy of the prefix + the edited user message.
+    const now = Date.now();
+    const branchId = await ctx.runMutation(internal.ai.insertConversation, {
+      userId,
+      title: `↳ ${original.title ?? "Branched chat"}`,
+      subjectId: original.subjectId,
+      contentId: original.contentId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Copy the prefix. To bound the write burst, keep image payloads only on
+    // the last 4 copied turns — older turns replay as text anyway.
+    const prefix = messages.slice(0, index);
+    const imageFloor = Math.max(0, prefix.length - 4);
+    for (let i = 0; i < prefix.length; i++) {
+      const m = prefix[i];
+      await ctx.runMutation(internal.ai.insertMessage, {
+        conversationId: branchId,
+        role: m.role,
+        content: m.content,
+        images: i >= imageFloor ? m.images : undefined,
+        createdAt: m.createdAt,
+      });
+    }
+    await ctx.runMutation(internal.ai.insertMessage, {
+      conversationId: branchId,
+      role: "user",
+      content,
+      createdAt: now,
+    });
+    await ctx.runMutation(internal.ai.patchConversation, {
+      conversationId: branchId,
+      updatedAt: now,
+    });
+
+    // Answer the edited turn inside the branch.
+    const history = [...prefix.map((message) => ({
+      role: message.role as "user" | "assistant",
+      content: message.images?.length
+        ? `${message.content}\n[image attached]`
+        : message.content,
+    })), ].slice(-HISTORY_LIMIT);
+
+    const systemPrompt = await buildSystemPrompt(
+      ctx,
+      userId,
+      original.subjectId,
+      original.contentId,
+      {
+        mode: args.mode,
+        grade: args.grade,
+        concise: args.concise,
+        hasImages: false,
+      },
+    );
+
+    let reply: string;
+    try {
+      reply = await callGroq(ctx, {
+        systemPrompt,
+        userMessage: content,
+        history,
+        maxTokens: 1024,
+        temperature: 0.5,
+      });
+    } catch (error) {
+      throw asAiError(error, "The AI tutor could not reach Groq. Try again.");
+    }
+
+    await ctx.runMutation(internal.ai.insertMessage, {
+      conversationId: branchId,
+      role: "assistant",
+      content: reply,
+      createdAt: Date.now(),
+    });
+    await ctx.runMutation(internal.ai.patchConversation, {
+      conversationId: branchId,
+      updatedAt: Date.now(),
+    });
+    return { reply, conversationId: branchId };
+  },
+});
+
+/** Full-text search over the student's tutor history — bounded scan of the
+ * 30 most recent conversations × their last 80 messages. Powers the sidebar
+ * "Search conversations" knowledge-archive feature. */
+export const searchMessages = query({
+  args: { q: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { q, limit = 12 }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const needle = q.trim().toLowerCase();
+    if (needle.length < 2) return [];
+
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_user_updatedAt", (x) => x.eq("userId", userId))
+      .order("desc")
+      .take(30);
+
+    const results: {
+      messageId: Id<"messages">;
+      conversationId: Id<"conversations">;
+      title: string;
+      role: "user" | "assistant";
+      snippet: string;
+      createdAt: number;
+    }[] = [];
+
+    for (const conversation of conversations) {
+      const messages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (x) => x.eq("conversationId", conversation._id))
+        .order("desc")
+        .take(80);
+      for (const m of messages) {
+        const at = m.content.toLowerCase().indexOf(needle);
+        if (at === -1) continue;
+        const start = Math.max(0, at - 42);
+        results.push({
+          messageId: m._id,
+          conversationId: conversation._id,
+          title: conversation.title ?? "Untitled chat",
+          role: m.role,
+          snippet:
+            (start > 0 ? "…" : "") +
+            m.content.slice(start, Math.min(m.content.length, at + 90)).trim() +
+            (at + 90 < m.content.length ? "…" : ""),
+          createdAt: m.createdAt,
+        });
+        if (results.length >= limit) return results;
+      }
+    }
+    return results;
+  },
+});
+
+/** Delete a whole conversation and every message in it — sidebar-level
+ * thread management. */
+export const deleteConversation = mutation({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, { conversationId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation || conversation.userId !== userId) {
+      throw new ConvexError({
+        message: "Conversation not found or not yours.",
+        code: "not_found",
+      });
+    }
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+      .collect();
+    for (const m of messages) {
+      await ctx.db.delete(m._id);
+    }
+    await ctx.db.delete(conversationId);
+    return { ok: true };
   },
 });

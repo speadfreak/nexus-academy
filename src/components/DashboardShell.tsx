@@ -48,7 +48,20 @@ const SIDEBAR_KEY = "nexus-sidebar-collapsed";
 const COLLAPSED_W = "4.5rem";
 const EXPANDED_W = "15rem";
 
-export function DashboardShell({ children }: { children: ReactNode }) {
+/**
+ * DashboardShell props.
+ * `immersive` — full-viewport app mode (used by the Tutor study room):
+ * the outer page never scrolls, the footer is hidden, and the page content
+ * area becomes a fixed-height flex region the child can fill exactly.
+ * Other pages keep the classic scrolling shell.
+ */
+export function DashboardShell({
+  children,
+  immersive = false,
+}: {
+  children: ReactNode;
+  immersive?: boolean;
+}) {
   const { user, signOut } = useAuth();
   // Shared admin-check subscription (AppBootstrap) — one for the whole app.
   const { adminInfo: isAdmin } = useAppBootstrap();
@@ -214,7 +227,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-4 overflow-x-clip px-4 py-4 sm:px-6 sm:py-6 lg:px-8"
+      className={cn(
+        "student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-4 overflow-x-clip px-4 py-4 sm:px-6 sm:py-6 lg:px-8",
+        immersive && "h-[100dvh] overflow-hidden",
+      )}
     >
 
       {/* Desktop sidebar wrapper — toggle button lives here so it's not clipped */}
@@ -375,7 +391,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       </div>
 
       {/* Main content area */}
-      <div className="student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch">
+      <div className={cn(
+        "student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch",
+        immersive && "min-h-0",
+      )}>
         <header className="student-mobile-header glass-panel relative z-30 flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Learnyx Academy ET 🇪🇹 logo" className="size-8 rounded-lg" />
@@ -389,22 +408,30 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="student-page-frame min-w-0 flex-1 pb-20 sm:pb-28" data-page={location.pathname.replace(/^\//, "").split("/")[0] || "dashboard"}>
+        <main
+          className={cn(
+            "student-page-frame min-w-0 flex-1",
+            immersive ? "min-h-0" : "pb-20 sm:pb-28",
+          )}
+          data-page={location.pathname.replace(/^\//, "").split("/")[0] || "dashboard"}
+        >
           {children}
         </main>
 
-        <footer className="mt-auto pb-3 pt-2">
-          <div className="footer-gradient-line mx-auto max-w-xs rounded-full" />
-          <div className="footer-dots relative flex flex-col items-center gap-1.5 pt-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground/40">Developed by</span>
-              <span className="footer-dev-glow">
-                <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">Joseph James</span>
-              </span>
+        {!immersive && (
+          <footer className="mt-auto pb-3 pt-2">
+            <div className="footer-gradient-line mx-auto max-w-xs rounded-full" />
+            <div className="footer-dots relative flex flex-col items-center gap-1.5 pt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground/40">Developed by</span>
+                <span className="footer-dev-glow">
+                  <span className="text-gradient footer-shimmer inline-block text-xs font-extrabold tracking-[0.06em]">Joseph James</span>
+                </span>
+              </div>
+              <p className="type-caption text-muted-foreground/30">&copy; 2026 Learnyx Academy ET 🇪🇹</p>
             </div>
-            <p className="type-caption text-muted-foreground/30">&copy; 2026 Learnyx Academy ET 🇪🇹</p>
-          </div>
-        </footer>
+          </footer>
+        )}
       </div>
 
       {/* Mobile drawer overlay */}
