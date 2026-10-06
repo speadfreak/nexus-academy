@@ -88,7 +88,7 @@ export function AiCompanion({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" data-lenis-prevent-wheel>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" data-scroll-contain>
         {/* Hero — electric cyan AI identity */}
         <div className="relative overflow-hidden rounded-2xl border border-teal-400/20 bg-gradient-to-br from-teal-400/[0.09] via-teal-500/[0.04] to-transparent p-4">
           <div className="absolute -right-8 -top-10 size-28 rounded-full bg-teal-400/10 blur-2xl" />

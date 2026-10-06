@@ -1272,7 +1272,7 @@ export default function Reader() {
                   </div>
 
                   {/* Tab content */}
-                  <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-lenis-prevent-wheel>
+                  <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-scroll-contain>
                     {/* ── AI Companion ── */}
                     {panelTab === "companion" && (
                       <div id="reader-panel-companion" className="h-full">

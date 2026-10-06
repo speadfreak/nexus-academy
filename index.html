@@ -3,6 +3,14 @@
 
 <head>
   <meta charset="UTF-8" />
+  <!-- FONTS — loaded here, NOT via CSS @import. A CSS @import creates a
+       waterfall (HTML → CSS → Google CSS → font files). Preconnect + link
+       starts DNS/TLS and the font CSS download immediately, in parallel
+       with the app bundle. font-display=swap is already in the URL so text
+       renders in fallbacks without invisible-text delays. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />

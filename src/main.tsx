@@ -17,8 +17,14 @@ import AppPreloader from "@/components/AppPreloader";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
-import { useLenis } from "@/hooks/useLenis";
 import { useSchoolFeatureEnabled } from "@/hooks/useSchoolFeature";
+// SCROLLING — NATIVE BY DESIGN: the Lenis wheel-easing library was removed
+// on purpose. It hijacked every wheel event and replayed it over 1.2s,
+// which made trackpads feel rubbery, added main-thread work on every
+// frame, and fought mobile momentum scrolling. Native scrolling is
+// compositor-driven and frame-perfect on 60–120Hz displays. Scroll polish
+// now comes from CSS (overscroll-behavior containment, scroll-behavior
+// for programmatic jumps) — never from replacing the browser's pipeline.
 // i18n — MUST be imported before any component that uses useTranslation.
 // The import has a side effect: it initializes i18next + registers the
 // language detector. English namespaces are bundled synchronously;
@@ -31,6 +37,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import React, { StrictMode, useEffect, useRef, lazy, Suspense, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router";
+import { ScrollManager } from "@/lib/navigation";
 import { api } from "@/convex/_generated/api";
 import "./index.css";
 // Re-apply saved accessibility prefs (text scale, reduce motion, high
@@ -315,7 +322,13 @@ class RootErrorBoundary extends React.Component<
 // navigations (route changes within the app).
 // ═══════════════════════════════════════════════════════════════════════
 
-/** Smooth fade/slide between routes — BUT NOT on first page load. */
+/** Route change fade — deliberately minimal.
+ *
+ * PERFORMANCE BUDGET: transitions target ~100-180ms total. Learnyx is an
+ * education app — perceived speed beats spectacle. Opacity + 4px lift are
+ * compositor-only properties (no layout, no paint), so the animation runs
+ * on the GPU even on low-end phones. First mount renders instantly
+ * (initial=false) so hard refreshes never flash. */
 function PageTransition({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const isFirstMount = useRef(true);
@@ -338,14 +351,14 @@ function PageTransition({ children }: { children: React.ReactNode }) {
       // On first mount: `initial={false}` means framer-motion applies the
       // `animate` values directly with NO entry animation → content is
       // immediately visible at opacity: 1.
-      // On SPA navigation: the ref is false, so the nice fade/slide plays.
+      // On SPA navigation: the ref is false, so the quick fade plays.
       initial={
         prefersReduced || isFirstMount.current
           ? false
-          : { opacity: 0, y: 8 }
+          : { opacity: 0, y: 4 }
       }
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: "easeOut" }}
+      transition={{ duration: 0.16, ease: "easeOut" }}
       className="min-h-screen"
     >
       {children}
@@ -525,7 +538,6 @@ function OAuthPopupCloser() {
 }
 
 function RouteSyncer() {
-  useLenis();
   const location = useLocation();
   useEffect(() => {
     window.parent.postMessage(
@@ -605,6 +617,7 @@ if (rootEl) {
                 <BrowserRouter>
                   <TourProvider>
                   <RouteSyncer />
+                  <ScrollManager />
                   <ContentSafetyNet />
                   <GlobalErrorCaptor />
                   <Suspense fallback={<RouteLoading />}>

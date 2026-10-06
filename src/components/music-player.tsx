@@ -877,7 +877,7 @@ export function MusicPlayer() {
       // width so all controls (prev/play/next/track-name/visualizer/volume/
       // 3 action buttons/minimize) have proper breathing room on a single row.
       className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[calc(100vw-1.5rem)] max-w-md sm:w-auto sm:max-w-none"
-      data-lenis-prevent-wheel
+      data-scroll-contain
     >
       {/* Time-of-day suggestion banner */}
       {timeSuggestion && !playing && (
@@ -902,7 +902,7 @@ export function MusicPlayer() {
 
       {/* Mixer panel */}
       {showMixer && (
-        <div className="mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-lenis-prevent-wheel>
+        <div className="mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-scroll-contain>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Mixer — Layer your sounds</p>
             <button onClick={() => setShowMixer(false)} className="cursor-pointer text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>
@@ -939,7 +939,7 @@ export function MusicPlayer() {
 
       {/* Track browser */}
       {showBrowser && (
-        <div className="mb-2 max-h-64 w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-lenis-prevent-wheel>
+        <div className="mb-2 max-h-64 w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-scroll-contain>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-300">Browse tracks</p>
             <button onClick={() => setShowBrowser(false)} className="cursor-pointer text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>
@@ -972,7 +972,7 @@ export function MusicPlayer() {
 
       {/* YouTube panel */}
       {showYoutube && (
-        <div className="mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-lenis-prevent-wheel>
+        <div className="mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/10 bg-background/95 p-3 shadow-2xl backdrop-blur-xl" data-scroll-contain>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-300">YouTube study music</p>
             <button onClick={() => setShowYoutube(false)} className="cursor-pointer text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>

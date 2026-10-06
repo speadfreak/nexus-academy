@@ -1473,7 +1473,7 @@ export default function Admin() {
         {/* ── Main layout: sidebar + content ── */}
         <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:gap-6">
           {/* ── Mobile: horizontal scrollable tab bar (< xl) ── */}
-          <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:hidden" data-lenis-prevent-wheel>
+          <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:hidden" data-scroll-contain>
             {visibleTabs.map(({ id, label, icon: TabIcon }) => (
               <button
                 key={id}
@@ -1502,7 +1502,7 @@ export default function Admin() {
           </nav>
 
           {/* ── Desktop: vertical grouped sidebar (>= xl) ── */}
-          <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" data-lenis-prevent-wheel style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
+          <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" data-scroll-contain style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
             {/* Learnyx Academy ET 🇪🇹 admin brand lockup */}
             <Link
               to="/dashboard"
@@ -2286,7 +2286,7 @@ export default function Admin() {
                       <span className="ml-2 font-mono text-[10px] text-muted-foreground">learnyx://system-events --tail -f</span>
                       <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] text-emerald-300"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> live</span>
                     </div>
-                    <div className="max-h-[26rem] overflow-y-auto p-3 font-mono text-[11px] leading-5" data-lenis-prevent-wheel>
+                    <div className="max-h-[26rem] overflow-y-auto p-3 font-mono text-[11px] leading-5" data-scroll-contain>
                       {systemEvents === undefined ? (
                         <div className="flex items-center gap-2 py-6 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> connecting…</div>
                       ) : liveFeed.length === 0 && olderEvents.length === 0 ? (

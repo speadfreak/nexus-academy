@@ -33,6 +33,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router";
+import { prefetchRoute } from "@/lib/navigation";
 import { localDateKey } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -163,6 +164,9 @@ export function DashboardShell({
       <Link
         to={item.to}
         aria-current={active ? "page" : undefined}
+        onPointerEnter={() => prefetchRoute(item.to)}
+        onFocus={() => prefetchRoute(item.to)}
+        onTouchStart={() => prefetchRoute(item.to)}
         className={cn(
           "sidebar-nav-item interactive-press group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
           active
@@ -211,6 +215,7 @@ export function DashboardShell({
         key={item.to}
         to={item.to}
         onClick={() => setMobileOpen(false)}
+        onTouchStart={() => prefetchRoute(item.to)}
         aria-current={active ? "page" : undefined}
         className={cn(
           "interactive-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold",
@@ -273,7 +278,7 @@ export function DashboardShell({
           {/* Main navigation */}
           <nav
             aria-label="Student navigation"
-            data-lenis-prevent-wheel
+            data-scroll-contain
             className={cn(
               "student-sidebar-nav min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1 transition-all duration-300",
               collapsed && "items-center gap-1 pr-0",
@@ -440,7 +445,7 @@ export function DashboardShell({
           {mobileOpen && (
             <>
               <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm xl:hidden" onClick={() => setMobileOpen(false)} aria-hidden="true" />
-              <motion.div key="drawer" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }} className="fixed inset-x-3 top-[4.5rem] z-[9999] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden" data-lenis-prevent-wheel role="dialog" aria-label="Navigation menu">
+              <motion.div key="drawer" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }} className="fixed inset-x-3 top-[4.5rem] z-[9999] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden" data-scroll-contain role="dialog" aria-label="Navigation menu">
                 <nav aria-label="Mobile navigation" className="grid gap-1">
                   {navItems.map(renderMobileNavLink)}
                   <div className="my-1 h-px bg-white/[0.06]" />

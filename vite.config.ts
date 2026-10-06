@@ -36,42 +36,24 @@ export default defineConfig({
     // Optimize chunk splitting
     rollupOptions: {
       output: {
-        // Manual chunk splitting for better caching and lazy loading
+        // Manual chunk splitting for better caching and lazy loading.
+        // NOTE: no forced 'radix-ui' mega-chunk — forcing all 24 radix
+        // packages into one chunk made the BOOT payload download every
+        // primitive (dialog, carousel, menubar…) even though the entry
+        // graph uses only a handful. Split naturally, each radix package
+        // travels with the routes/components that import it.
+        //
+        // NOTE: no forced 'charts'/'forms' chunks either. Listing recharts
+        // (or react-hook-form) as a manual chunk glues the whole library
+        // into one file; when the entry graph shares even a few tiny
+        // bindings with that file, the browser must download ALL 425KB of
+        // recharts at boot before first paint. Natural splitting keeps
+        // recharts inside the lazy Admin/Journey chunks where it belongs.
         manualChunks: {
           // Vendor chunks for large libraries
           'react-vendor': ['react', 'react-dom', 'react-router'],
           'convex-vendor': ['convex'],
-          // Large UI library chunks
-          'radix-ui': [
-            '@radix-ui/react-accordion',
-            '@radix-ui/react-alert-dialog',
-            '@radix-ui/react-avatar',
-            '@radix-ui/react-checkbox',
-            '@radix-ui/react-collapsible',
-            '@radix-ui/react-context-menu',
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-hover-card',
-            '@radix-ui/react-label',
-            '@radix-ui/react-menubar',
-            '@radix-ui/react-navigation-menu',
-            '@radix-ui/react-popover',
-            '@radix-ui/react-progress',
-            '@radix-ui/react-radio-group',
-            '@radix-ui/react-scroll-area',
-            '@radix-ui/react-select',
-            '@radix-ui/react-separator',
-            '@radix-ui/react-slider',
-            '@radix-ui/react-switch',
-            '@radix-ui/react-tabs',
-            '@radix-ui/react-toggle',
-            '@radix-ui/react-toggle-group',
-            '@radix-ui/react-tooltip',
-          ],
-          // Heavy optional libraries - separate chunks for better lazy loading
           'framer-motion': ['framer-motion'],
-          'charts': ['recharts'],
-          'forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
         },
         // Optimize chunk size
         chunkFileNames: 'assets/[name]-[hash].js',

@@ -2137,11 +2137,28 @@ function SchoolsLandingSection() {
 
 function BackToTop() {
   const [visible, setVisible] = useState(false);
+  // rAF-throttled; state flips only when the threshold is crossed — never
+  // on ordinary scroll frames.
   useEff(() => {
-    const onScroll = () => setVisible(window.scrollY > 600);
+    let raf = 0;
+    let last = false;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const next = window.scrollY > 600;
+        if (next !== last) {
+          last = next;
+          setVisible(next);
+        }
+      });
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
   if (!visible) return null;
   return (

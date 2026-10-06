@@ -1,6 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Fonts are loaded via <link> in index.html (preconnect + parallel fetch).
+   A CSS @import here would serialize the font CSS after the app CSS. */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -161,32 +162,49 @@
 }
 
 /* Warm lamplight washes — quiet ambient glow for the obsidian hall.
-   80% quiet, 15% warm gold, 5% special: these stay faint on purpose. */
-body {
-  background-color: var(--background);
+   80% quiet, 15% warm gold, 5% special: these stay faint on purpose.
+   PERFORMANCE: rendered on a single position:fixed pseudo-element instead
+   of background-attachment:fixed. `background-attachment:fixed` forces the
+   browser to repaint the gradient on EVERY scroll frame; a fixed-layer
+   pseudo-element is composited once and never repaints while scrolling. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image:
     radial-gradient(52rem 36rem at 88% -8%, rgb(230 167 46 / 0.055), transparent 62%),
     radial-gradient(44rem 32rem at -8% 14%, rgb(216 154 53 / 0.04), transparent 58%),
     radial-gradient(38rem 28rem at 50% 108%, rgb(138 100 31 / 0.035), transparent 62%);
-  background-size: auto, auto, auto;
-  background-attachment: fixed;
+}
+body {
+  background-color: var(--background);
   color: var(--foreground);
   /* Mobile horizontal-overflow safety net. The root causes (music player
      fixed-width panels, fixed-width decorative elements) are fixed at the
      source, but this catches any remaining edge case on narrow viewports
      so a student never sees a horizontal-scroll page. `clip` (not
      `hidden`) because we don't want to create a scroll container —
-     vertical scroll stays with Lenis / the document. */
+     vertical scroll stays with the document. */
   overflow-x: clip;
 }
 
-/* Light-mode background: soft warm amber washes instead of cool blue glows. */
-.light body {
+/* Programmatic + anchor scrolls glide; wheel/touch scrolling is untouched
+   native input. The reduced-motion media rule further below already forces
+   `scroll-behavior: auto`, so this is automatically a11y-safe. */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Light-mode background: soft warm amber washes instead of cool blue glows.
+   Same fixed-layer strategy as the dark washes above (paint once, never
+   repaint during scroll). */
+.light body::before {
   background-image:
     radial-gradient(52rem 36rem at 88% -8%, oklch(0.7 0.1 80 / 0.08), transparent 62%),
     radial-gradient(44rem 32rem at -8% 14%, oklch(0.65 0.08 70 / 0.06), transparent 58%),
     radial-gradient(38rem 28rem at 50% 108%, oklch(0.6 0.08 60 / 0.05), transparent 62%);
-  background-size: auto, auto, auto;
 }
 
 ::selection {
@@ -962,21 +980,13 @@ html.high-contrast :focus-visible {
   outline: 2px solid var(--primary) !important;
 }
 
-/* Lenis smooth scroll — disable native scroll behavior, Lenis handles it */
-html.lenis, html.lenis body {
-  height: auto;
-}
-
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-
-.lenis.lenis-smooth [data-lenis-prevent] {
+/* Native scrolling — containment for intentional inner scroll containers
+   (chat threads, PDF rails, drawers). Elements tagged data-scroll-contain
+   keep their momentum to themselves instead of chaining to the page once
+   they hit their edge. Pure CSS — no JS scroll handling anywhere. */
+[data-scroll-contain] {
   overscroll-behavior: contain;
-}
-
-.lenis.lenis-stopped {
-  overflow: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Respect prefers-reduced-motion: collapse animations and transitions. */

@@ -603,7 +603,7 @@ export function ReaderExamMode(props: ExamModeProps) {
 
             {/* PDF */}
             <div
-              data-lenis-prevent-wheel
+              data-scroll-contain
               data-exam-pdf-view
               className={cn(
                 "relative flex-1 overflow-auto bg-[#12110E] py-6 pb-20",

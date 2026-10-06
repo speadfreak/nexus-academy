@@ -682,7 +682,7 @@ export function GroupChatPanel({ groupId, groupName, onStartRoom }: Props) {
       <div
         ref={scrollContainerRef}
         className="nexus-chat-scroll relative max-h-[26rem] min-h-[10rem] space-y-3 overflow-y-auto px-5 py-4"
-        data-lenis-prevent-wheel
+        data-scroll-contain
       >
         {messages === undefined ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 py-12">

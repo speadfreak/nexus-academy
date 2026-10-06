@@ -513,7 +513,7 @@ export const PdfStage = memo(function PdfStage({
           </AnimatePresence>
 
           {/* Scrollable stage — centered page with soft shadow */}
-          <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" data-lenis-prevent-wheel>
+          <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" data-scroll-contain>
             <div className="mx-auto flex min-h-full w-fit flex-col items-center px-4 py-6 sm:px-10">
               {/* Loading splash — the FULL-LOAD experience. One honest
                   percentage on a slim bar while the entire document
@@ -1091,7 +1091,7 @@ function ThumbnailsRail({
           <X className="size-3" />
         </button>
       </div>
-      <div ref={railRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2 scrollbar-none" data-lenis-prevent-wheel>
+      <div ref={railRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2 scrollbar-none" data-scroll-contain>
         {pages.map((page) => {
           const isActive = page === pageNumber;
           const shouldRender = activeRenders.includes(page) || rendered.has(page);
@@ -1285,7 +1285,7 @@ function SearchOverlay({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2 scrollbar-none" data-lenis-prevent-wheel>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2 scrollbar-none" data-scroll-contain>
         {debounced.length < 2 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
             <Search className="size-6 text-muted-foreground/20" />

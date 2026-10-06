@@ -233,7 +233,7 @@ export function StudyDock({
                     )}
                   </div>
                 </div>
-                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pb-3 scrollbar-none" data-lenis-prevent-wheel>
+                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pb-3 scrollbar-none" data-scroll-contain>
                   {highlights.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 py-8 text-center">
                       <Highlighter className="size-6 text-muted-foreground/20" />
