@@ -49,7 +49,7 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -594,7 +594,10 @@ function MsgAction({
 // study moves (continue, notes, flashcards, share, simplify…).
 // ---------------------------------------------------------------------------
 
-function AssistantMessage({
+// MEMOIZED: stable handler props from the parent let a copy/hover/edit in
+// one message re-render only that message — long AI answers never re-parse
+// their markdown because another message changed.
+const AssistantMessage = memo(function AssistantMessage({
   message,
   index,
   isLast,
@@ -711,7 +714,7 @@ function AssistantMessage({
       </div>
     </motion.div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // User message — the only bubble in the room. Subtle gold-tinted, right
@@ -719,7 +722,7 @@ function AssistantMessage({
 // delete from here). Editing transforms the bubble into an inline editor.
 // ---------------------------------------------------------------------------
 
-function UserMessage({
+const UserMessage = memo(function UserMessage({
   message,
   index,
   editing,
@@ -907,7 +910,7 @@ function UserMessage({
       </div>
     </motion.div>
   );
-}
+});
 
 /** Tiny inline branch glyph for the branch button (no extra import weight). */
 function GitBranchFallback() {
@@ -1206,7 +1209,7 @@ function SearchPanel({
           className="h-9 rounded-xl bg-foreground/[0.05] pl-9 text-xs"
         />
       </div>
-      <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5" data-lenis-prevent-wheel>
+      <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5" data-scroll-contain>
         {query.trim().length < 2 ? (
           <p className="px-1 py-6 text-center type-mono text-[10px] leading-5 text-muted-foreground/50">
             Type at least two characters.
@@ -2599,7 +2602,11 @@ export default function Tutor() {
     }
   }, []);
 
-  const handleRegenerate = async () => {
+  // All message-level handlers are useCallback-wrapped: AssistantMessage
+  // and UserMessage are React.memo components, and stable identities here
+  // are what let one copying/editing/hovering message re-render alone
+  // instead of re-parsing markdown for the entire conversation.
+  const handleRegenerate = useCallback(async () => {
     if (!selectedId || regenerating || isAwaiting) return;
     setRegenerating(true);
     try {
@@ -2615,9 +2622,9 @@ export default function Tutor() {
     } finally {
       setRegenerating(false);
     }
-  };
+  }, [selectedId, regenerating, isAwaiting, regenerateReply, mode, grade, concise, friendlyError]);
 
-  const saveEdit = async (message: MessageDoc, content: string) => {
+  const saveEdit = useCallback(async (message: MessageDoc, content: string) => {
     if (!selectedId || !content.trim() || isAwaiting) return;
     setEditing(null);
     try {
@@ -2632,9 +2639,9 @@ export default function Tutor() {
     } catch (error) {
       toast.error(friendlyError(error, "Couldn't resend that message."));
     }
-  };
+  }, [selectedId, isAwaiting, truncateFrom, friendlyError]);
 
-  const branchEdit = async (message: MessageDoc, content: string) => {
+  const branchEdit = useCallback(async (message: MessageDoc, content: string) => {
     if (!selectedId || !content.trim() || isAwaiting || branching) return;
     setEditing(null);
     setBranching(true);
@@ -2655,9 +2662,9 @@ export default function Tutor() {
     } finally {
       setBranching(false);
     }
-  };
+  }, [selectedId, isAwaiting, branching, branchConversation, mode, grade, concise, friendlyError]);
 
-  const retryFrom = async (message: MessageDoc) => {
+  const retryFrom = useCallback(async (message: MessageDoc) => {
     if (!selectedId || isAwaiting) return;
     try {
       await truncateFrom({
@@ -2670,9 +2677,9 @@ export default function Tutor() {
     } catch (error) {
       toast.error(friendlyError(error, "Couldn't retry from there."));
     }
-  };
+  }, [selectedId, isAwaiting, truncateFrom, friendlyError]);
 
-  const deleteFrom = async (message: MessageDoc) => {
+  const deleteFrom = useCallback(async (message: MessageDoc) => {
     if (!selectedId || isAwaiting) return;
     try {
       await truncateFrom({
@@ -2683,7 +2690,28 @@ export default function Tutor() {
     } catch (error) {
       toast.error(friendlyError(error, "Couldn't trim the thread."));
     }
-  };
+  }, [selectedId, isAwaiting, truncateFrom, friendlyError]);
+
+  // ── Stable message-list callbacks (memoized message props) ──
+  const onEditStart = useCallback(
+    (m: MessageDoc, branchFlag: boolean) =>
+      setEditing({ messageId: m._id, content: m.content, branch: branchFlag }),
+    [],
+  );
+  const onEditChange = useCallback(
+    (content: string) => setEditing((cur) => (cur ? { ...cur, content } : cur)),
+    [],
+  );
+  const onEditCancel = useCallback(() => setEditing(null), []);
+  // sendRef always points at the latest handleSend, so this callback is
+  // created once and keeps AssistantMessage's memo perfectly stable.
+  const onContinue = useCallback(
+    () =>
+      void sendRef.current(
+        "Continue from exactly where you stopped — same explanation, next part. Don't repeat what you already wrote.",
+      ),
+    [],
+  );
 
   const handleDeleteConversation = async (id: string) => {
     try {
@@ -2957,7 +2985,7 @@ export default function Tutor() {
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2 pr-0.5" data-lenis-prevent-wheel>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2 pr-0.5" data-scroll-contain>
             {conversations === undefined ? (
               <div className="flex justify-center py-6">
                 <motion.div
@@ -3279,7 +3307,7 @@ export default function Tutor() {
               ref={canvasRef}
               onScroll={handleCanvasScroll}
               className="absolute inset-0 overflow-y-auto"
-              data-lenis-prevent-wheel
+              data-scroll-contain
             >
               <div className="mx-auto flex w-full max-w-[960px] flex-col gap-7 px-5 py-6 sm:px-8 sm:py-8">
                 {selectedId === null ? (
@@ -3362,18 +3390,14 @@ export default function Tutor() {
                           message={message as MessageDoc}
                           index={i}
                           editing={editing}
-                          onEditStart={(m, branchFlag) =>
-                            setEditing({ messageId: m._id, content: m.content, branch: branchFlag })
-                          }
-                          onEditChange={(content) =>
-                            setEditing((cur) => (cur ? { ...cur, content } : cur))
-                          }
-                          onEditCancel={() => setEditing(null)}
-                          onEditSave={(m, content) => void saveEdit(m, content)}
-                          onEditBranch={(m, content) => void branchEdit(m, content)}
-                          onCopy={(m) => void handleCopy(m)}
-                          onRetryFrom={(m) => void retryFrom(m)}
-                          onDeleteFrom={(m) => void deleteFrom(m)}
+                          onEditStart={onEditStart}
+                          onEditChange={onEditChange}
+                          onEditCancel={onEditCancel}
+                          onEditSave={saveEdit}
+                          onEditBranch={branchEdit}
+                          onCopy={handleCopy}
+                          onRetryFrom={retryFrom}
+                          onDeleteFrom={deleteFrom}
                           busy={busy}
                         />
                       ) : (
@@ -3383,14 +3407,10 @@ export default function Tutor() {
                           index={i}
                           isLast={message._id === (lastAssistantId as never)}
                           copiedId={copiedId}
-                          onCopy={(m) => void handleCopy(m)}
-                          onRegenerate={() => void handleRegenerate()}
-                          onReadAloud={(content) => speak(content)}
-                          onContinue={() =>
-                            void handleSend(
-                              "Continue from exactly where you stopped — same explanation, next part. Don't repeat what you already wrote.",
-                            )
-                          }
+                          onCopy={handleCopy}
+                          onRegenerate={handleRegenerate}
+                          onReadAloud={speak}
+                          onContinue={onContinue}
                           regenerating={regenerating}
                         />
                       ),
@@ -3625,7 +3645,7 @@ export default function Tutor() {
                   </button>
                 </div>
 
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4 pr-0.5" data-lenis-prevent-wheel>
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4 pr-0.5" data-scroll-contain>
                   {/* Grounded document */}
                   {discussing && (
                     <div className="glass-soft rounded-xl p-3">

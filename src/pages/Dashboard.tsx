@@ -43,7 +43,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { lastNDayWindows, localDateKey } from "@/lib/dates";
@@ -129,10 +129,28 @@ function coverFor(subjectSlug: string) {
 
 function ScrollToTopButton() {
   const [visible, setVisible] = useState(false);
+  // PERFORMANCE: rAF-throttled; state flips only when the threshold is
+  // CROSSED — never on ordinary scroll frames, so scrolling can't
+  // re-render the page.
   useEffect(() => {
-    const onScroll = () => setVisible(window.scrollY > 400);
+    let raf = 0;
+    let last = false;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const next = window.scrollY > 400;
+        if (next !== last) {
+          last = next;
+          setVisible(next);
+        }
+      });
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   const scrollToTop = useCallback(() => {
@@ -164,24 +182,40 @@ function ScrollToTopButton() {
    ═══════════════════════════════════════════════════════════════════════ */
 
 function ScrollProgressBar() {
-  const [progress, setProgress] = useState(0);
+  const barRef = useRef<HTMLDivElement>(null);
+  // PERFORMANCE: writes scaleX straight to the DOM node via ref — zero
+  // React state during scroll. The previous version called setState on
+  // every scroll frame, re-rendering the ENTIRE dashboard (every book
+  // tile) at scroll frequency. This costs one composited style write.
   useEffect(() => {
+    let raf = 0;
     const onScroll = () => {
-      const el = document.documentElement;
-      const scrollTop = el.scrollTop || document.body.scrollTop;
-      const scrollHeight = el.scrollHeight - el.clientHeight;
-      setProgress(scrollHeight > 0 ? scrollTop / scrollHeight : 0);
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const el = barRef.current;
+        if (!el) return;
+        const doc = document.documentElement;
+        const max = doc.scrollHeight - doc.clientHeight;
+        const progress = max > 0 ? (doc.scrollTop || document.body.scrollTop) / max : 0;
+        el.style.transform = `scaleX(${progress})`;
+      });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   return (
-    <motion.div
+    <div
+      ref={barRef}
       className="fixed inset-x-0 top-0 z-50 h-[2px] origin-left"
       style={{
-        scaleX: progress,
+        transform: "scaleX(0)",
+        willChange: "transform",
         background: "linear-gradient(90deg, oklch(0.65 0.15 85), oklch(0.78 0.14 75), oklch(0.82 0.12 80))",
         boxShadow: "0 0 12px rgba(251,191,36,0.4), 0 0 4px rgba(251,191,36,0.6)",
       }}
@@ -203,9 +237,11 @@ function TiltCard({
   disabled?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [transform, setTransform] = useState("perspective(800px) rotateX(0deg) rotateY(0deg)");
-  const [isHovering, setIsHovering] = useState(false);
+  const hoveringRef = useRef(false);
 
+  // PERFORMANCE: tilt writes go straight to the DOM node — no setState in
+  // the mousemove path. The old version re-rendered the card subtree on
+  // every mousemove across the whole gallery.
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (disabled) return;
@@ -216,14 +252,20 @@ function TiltCard({
       const y = (e.clientY - rect.top) / rect.height;
       const rotateX = (0.5 - y) * 8;
       const rotateY = (x - 0.5) * 8;
-      setTransform(`perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02,1.02,1.02)`);
+      el.style.transition = hoveringRef.current
+        ? "transform 120ms cubic-bezier(0.22, 1, 0.36, 1)"
+        : "transform 400ms cubic-bezier(0.22, 1, 0.36, 1)";
+      el.style.transform = `perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02,1.02,1.02)`;
     },
     [disabled],
   );
 
   const handleMouseLeave = useCallback(() => {
-    setIsHovering(false);
-    setTransform("perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1,1,1)");
+    hoveringRef.current = false;
+    const el = ref.current;
+    if (!el) return;
+    el.style.transition = "transform 400ms cubic-bezier(0.22, 1, 0.36, 1)";
+    el.style.transform = "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1,1,1)";
   }, []);
 
   return (
@@ -231,13 +273,13 @@ function TiltCard({
       ref={ref}
       className={cn("relative", className)}
       onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovering(true)}
+      onMouseEnter={() => {
+        hoveringRef.current = true;
+      }}
       onMouseLeave={handleMouseLeave}
       style={{
-        transform,
-        transition: isHovering
-          ? "transform 120ms cubic-bezier(0.22, 1, 0.36, 1)"
-          : "transform 400ms cubic-bezier(0.22, 1, 0.36, 1)",
+        transform: "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1,1,1)",
+        transition: "transform 400ms cubic-bezier(0.22, 1, 0.36, 1)",
         transformStyle: "preserve-3d",
         willChange: "transform",
       }}
@@ -290,7 +332,7 @@ function StatNumber({ value, decimals = 0 }: { value: number; decimals?: number 
    PREMIUM BOOK TILE — CSS-generated cover with subject glyph + 3D tilt
    ═══════════════════════════════════════════════════════════════════════ */
 
-function BookTile({
+function BookTileBase({
   item,
   locked,
   bookmarked,
@@ -318,11 +360,14 @@ function BookTile({
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.92, y: -10 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      // No `layout` prop here: framer's layout animation measures every tile
+      // on every render — with 200 tiles that's constant layout thrash.
+      // The short opacity/lift entry keeps the shelf feel at a fraction of
+      // the cost.
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
       className="group flex flex-col gap-3"
     >
       {/* Book cover with 3D tilt */}
@@ -353,9 +398,10 @@ function BookTile({
             }}
           />
 
-          {/* Shimmer light sweep on hover */}
+          {/* Shimmer light sweep on hover — transform-based (compositor); the
+              old version animated `left`, causing layout + paint per frame */}
           <div
-            className="pointer-events-none absolute -top-1/2 -left-full h-[200%] w-1/3 -rotate-12 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-[left] duration-1000 ease-out group-hover:left-[150%]"
+            className="pointer-events-none absolute -top-1/2 left-0 h-[200%] w-1/3 -translate-x-[250%] -rotate-12 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent transition-transform duration-1000 ease-out group-hover:translate-x-[450%]"
           />
 
           {/* Spine highlight */}
@@ -503,6 +549,11 @@ function BookTile({
   );
 }
 
+// MEMOIZED TILE: with stable callbacks from the parent, a hover/scroll/
+// typing state change re-renders only the tile that actually changed —
+// not all 200. This is the single biggest render cost in the Library.
+const BookTile = memo(BookTileBase);
+
 /* ═══════════════════════════════════════════════════════════════════════
    LOADING SKELETON
    ═══════════════════════════════════════════════════════════════════════ */
@@ -597,18 +648,17 @@ function HeroMeshGrid() {
         animate={{ scaleY: 1, opacity: 1 }}
         transition={{ duration: 2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.4 }}
       />
-      {/* Floating ambient orbs */}
-      <motion.div
+      {/* Ambient orbs — STATIC by design. The old version animated two
+          blur(40px) elements forever (continuous repaint + battery drain
+          while scrolling). The identical glow, painted once, costs
+          nothing. Calm > constant motion. */}
+      <div
         className="absolute -right-6 top-1/3 size-48 -translate-y-1/2 rounded-full bg-amber-400/[0.06]"
         style={{ filter: 'blur(40px)' }}
-        animate={{ x: [0, 20, 0], y: [0, -15, 0], scale: [1, 1.15, 1] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
       />
-      <motion.div
+      <div
         className="absolute -left-4 bottom-1/4 size-32 rounded-full bg-amber-400/[0.03]"
         style={{ filter: 'blur(30px)' }}
-        animate={{ x: [0, -12, 0], y: [0, 10, 0], scale: [1, 1.1, 1] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 2 }}
       />
     </div>
   );
@@ -655,13 +705,13 @@ function XPProgressBar({ currentLevel, totalXp, xpToNext }: { currentLevel: numb
               }}
             />
             <motion.div
-              className="absolute inset-0"
+              className="absolute inset-y-0 left-0 w-1/2"
               style={{
                 background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
-                backgroundSize: '200% 100%',
+                willChange: 'transform',
               }}
-              animate={{ backgroundPosition: ['100% 0%', '-100% 0%'] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+              animate={{ x: ['-200%', '420%'] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: 'linear' }}
             />
           </motion.div>
         </div>
@@ -669,6 +719,34 @@ function XPProgressBar({ currentLevel, totalXp, xpToNext }: { currentLevel: numb
       </div>
     </motion.div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// GALLERY REVEAL SENTINEL — progressive rendering for the Library.
+// Only the first ~2 screens of book tiles mount immediately; an
+// IntersectionObserver expands the grid in batches as the student
+// approaches the bottom. A 200-book library no longer mounts 200
+// tiles (each with its own tilt/animation) in one commit — the first
+// paint is fast and scrolling stays light on cheap phones.
+// ═══════════════════════════════════════════════════════════════════════
+
+const REVEAL_BATCH = 24;
+
+function GalleryRevealSentinel({ onReveal }: { onReveal: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) onReveal();
+      },
+      { rootMargin: "900px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onReveal]);
+  return <div ref={ref} aria-hidden="true" className="h-1 w-full" />;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -895,6 +973,17 @@ export default function Dashboard() {
     () => [...(content ?? [])].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
     [content],
   );
+  // PROGRESSIVE GALLERY: how many non-saved tiles are currently mounted.
+  // Resets whenever the filter set changes so a new search starts from a
+  // fast first screen again.
+  const [revealedCount, setRevealedCount] = useState(REVEAL_BATCH);
+  useEffect(() => {
+    setRevealedCount(REVEAL_BATCH);
+  }, [grade, subjectSlug, contentType, examYear, searchQuery, bookmarkedOnly]);
+  const revealMore = useCallback(() => {
+    setRevealedCount((c) => c + REVEAL_BATCH);
+  }, []);
+
   // These counts use libraryStats (which counts ALL items) instead of
   // the capped content list. When libraryStats is loading, fall back to
   // the capped count so the UI doesn't flash 0.
@@ -945,13 +1034,24 @@ export default function Dashboard() {
     }
   };
 
-  const handleOpen = (item: ContentItemWithSubject) => {
-    if (item.isPremium && entitlements && !entitlements.premiumAccess) {
-      setPremiumPrompt({ reason: "premium_content", open: true });
-      return;
-    }
-    navigate(`/read/${item._id}`);
-  };
+  // STABLE HANDLERS: BookTile is memoized — these must keep a constant
+  // identity between renders or the memo is defeated and every tile
+  // re-renders on any state change.
+  const handleOpen = useCallback(
+    (item: ContentItemWithSubject) => {
+      if (item.isPremium && entitlements && !entitlements.premiumAccess) {
+        setPremiumPrompt({ reason: "premium_content", open: true });
+        return;
+      }
+      navigate(`/read/${item._id}`);
+    },
+    [entitlements, navigate],
+  );
+
+  const handleQuiz = useCallback((clicked: ContentItemWithSubject) => {
+    setQuizSubjectId(clicked.subjectId);
+    setQuizOpen(true);
+  }, []);
 
   // "Surprise me" — picks a random resource from the library and opens it.
   // Delightful discovery feature for students who don't know what to study.
@@ -973,11 +1073,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleToggleBookmark = (item: ContentItemWithSubject) => {
-    void toggleBookmark({ contentId: item._id })
-      .then(() => {})
-      .catch(() => toast.error("Could not update your reading list."));
-  };
+  const handleToggleBookmark = useCallback(
+    (item: ContentItemWithSubject) => {
+      void toggleBookmark({ contentId: item._id })
+        .then(() => {})
+        .catch(() => toast.error("Could not update your reading list."));
+    },
+    [toggleBookmark],
+  );
 
   const resetFilters = () => {
     setSearchQuery("");
@@ -2111,11 +2214,10 @@ export default function Dashboard() {
             )}
 
             {savedTiles.length > 0 && (
-              <motion.div
-                layout
+              <div
                 className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
               >
-                <AnimatePresence mode="popLayout">
+                <AnimatePresence mode="popLayout" initial={false}>
                   {savedTiles.map((item) => (
                     <BookTile
                       key={item._id}
@@ -2124,14 +2226,11 @@ export default function Dashboard() {
                       bookmarked={Boolean(bookmarkIds?.includes(item._id))}
                       onToggleBookmark={handleToggleBookmark}
                       onOpen={handleOpen}
-                      onQuiz={(clicked) => {
-                        setQuizSubjectId(clicked.subjectId);
-                        setQuizOpen(true);
-                      }}
+                      onQuiz={handleQuiz}
                     />
                   ))}
                 </AnimatePresence>
-              </motion.div>
+              </div>
             )}
 
             {savedTiles.length > 0 && restTiles.length > 0 && (
@@ -2145,12 +2244,11 @@ export default function Dashboard() {
             )}
 
             {restTiles.length > 0 && (
-              <motion.div
-                layout
+              <div
                 className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
               >
-                <AnimatePresence mode="popLayout">
-                  {restTiles.map((item) => (
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {restTiles.slice(0, revealedCount).map((item) => (
                     <BookTile
                       key={item._id}
                       item={item}
@@ -2158,14 +2256,18 @@ export default function Dashboard() {
                       bookmarked={Boolean(bookmarkIds?.includes(item._id))}
                       onToggleBookmark={handleToggleBookmark}
                       onOpen={handleOpen}
-                      onQuiz={(clicked) => {
-                        setQuizSubjectId(clicked.subjectId);
-                        setQuizOpen(true);
-                      }}
+                      onQuiz={handleQuiz}
                     />
                   ))}
                 </AnimatePresence>
-              </motion.div>
+              </div>
+            )}
+
+            {/* Progressive reveal — mounts the next batch of tiles when the
+                student scrolls near the bottom. No tiles beyond ~2 screens
+                exist in the DOM until they're actually approached. */}
+            {restTiles.length > revealedCount && (
+              <GalleryRevealSentinel onReveal={revealMore} />
             )}
           </>
         )}
