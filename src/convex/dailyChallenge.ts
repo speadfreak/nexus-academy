@@ -326,6 +326,32 @@ export const submitDailyChallenge = mutation({
       hours: 0,
     });
 
+    // Learning loop: a missed challenge lands in the shared mistake ledger
+    // (with its explanation) so tomorrow's review queue includes it. The
+    // challenge question is AI-written and not topic-tagged, so it feeds
+    // the ledger only — honest provenance, no fabricated topic evidence.
+    if (!correct) {
+      await ctx.runMutation(internal.learning.ingestQuestionOutcomes, {
+        subjectId,
+        source: "daily_challenge",
+        sourceRefId: date,
+        outcomes: [
+          {
+            questionKey: date,
+            questionText: question.question,
+            options: question.options,
+            correctAnswer:
+              question.options[question.correctIndex] ??
+              `Option ${String.fromCharCode(65 + question.correctIndex)}`,
+            studentAnswer: question.options[answer],
+            explanation: question.explanation,
+            origin: "ai_generated" as const,
+            correct: false,
+          },
+        ],
+      });
+    }
+
     // Idempotent sweep — daily_challenge_first achievement.
     const newly = await ctx.runMutation(internal.achievements.checkAndAward, { userId });
 

@@ -31,11 +31,13 @@ import {
   ClipboardCheck,
   Crown,
   FileText,
+  FlaskConical,
   GraduationCap,
   Layers,
   ListChecks,
   Loader2,
   Medal,
+  ScanFace,
   Search,
   Share2,
   Sparkles,
@@ -392,6 +394,9 @@ function OverviewTab({
         )}
       </motion.div>
 
+      {/* ═══ EXAM TWIN — evidence-based topic readiness (2.0) ═══ */}
+      <ExamTwinPanel />
+
       {/* Quick links into the other tabs */}
       <div className="grid gap-3 md:grid-cols-3">
         {[
@@ -444,6 +449,152 @@ function OverviewTab({
 // ─── Papers tab ─────────────────────────────────────────────────────────
 
 type TypeFilter = "all" | "national_past_paper" | "practice_set" | "unclassified";
+
+const CONFIDENCE_STYLE: Record<string, string> = {
+  low: "border-white/10 bg-white/[0.04] text-muted-foreground",
+  fair: "border-amber-400/25 bg-amber-400/10 text-amber-300",
+  solid: "border-emerald-400/25 bg-emerald-400/10 text-emerald-300",
+};
+
+/**
+ * EXAM TWIN — the evidence-based readiness view. Shows ONLY topics the
+ * student actually answered questions on, weakest first, with an honest
+ * confidence label derived from evidence count and an explicit coverage
+ * line ("assessed X of Y curriculum topics"). No readiness percentage, no
+ * exam-result prediction — a signal with receipts.
+ */
+function ExamTwinPanel() {
+  const navigate = useNavigate();
+  const twin = useQuery(api.learning.getTopicMasteryForUser, { limit: 8 });
+  const mistakeStats = useQuery(api.learning.getMistakeStats);
+
+  if (twin === undefined) {
+    return (
+      <div className="h-44 animate-pulse rounded-3xl border border-white/10 bg-white/[0.03]" />
+    );
+  }
+
+  const { topics, assessedCount, curriculumTopicCount } = twin;
+  const evidencePoints = topics.reduce((sum, t) => sum + t.attempts, 0);
+
+  if (topics.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.24 }}
+        className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-6"
+      >
+        <div className="pointer-events-none absolute -right-14 -top-14 size-44 rounded-full bg-teal-400/10 blur-3xl" />
+        <p className="type-caption font-semibold text-teal-300/80">
+          <span className="inline-flex items-center gap-1.5">
+            <ScanFace className="size-3.5" /> Exam Twin
+          </span>
+        </p>
+        <p className="type-h3 mt-2">Your twin is waiting for its first evidence</p>
+        <p className="type-body mt-1 max-w-xl text-muted-foreground">
+          Answer questions in Practice or a past paper and your twin starts
+          mapping exactly which topics are solid and which need work — built
+          only from what you actually answered, never guessed.
+        </p>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.24 }}
+      className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-6"
+    >
+      <div className="pointer-events-none absolute -right-14 -top-14 size-44 rounded-full bg-teal-400/10 blur-3xl" />
+      <div className="relative flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="type-caption font-semibold text-teal-300/80">
+            <span className="inline-flex items-center gap-1.5">
+              <ScanFace className="size-3.5" /> Exam Twin — topic evidence
+            </span>
+          </p>
+          <p className="type-body mt-1 max-w-xl text-muted-foreground">
+            Weakest topics first, from {evidencePoints} scored question{evidencePoints === 1 ? "" : "s"}
+            {mistakeStats && mistakeStats.open > 0
+              ? ` · ${mistakeStats.open} mistake${mistakeStats.open === 1 ? "" : "s"} waiting for review`
+              : ""}
+            .
+          </p>
+        </div>
+        <p className="type-caption shrink-0 rounded-full border border-white/10 px-3 py-1 text-muted-foreground">
+          assessed {assessedCount} of {curriculumTopicCount} curriculum topics
+        </p>
+      </div>
+
+      <div className="relative mt-4 grid gap-2.5 md:grid-cols-2">
+        {topics.map((t) => (
+          <div
+            key={t.topicId}
+            className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate type-body text-sm font-bold">{t.topicName}</p>
+                <p className="type-caption mt-0.5 truncate text-muted-foreground">
+                  {t.subjectName} · {t.correct}/{t.attempts} scored correct
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "type-caption shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                  CONFIDENCE_STYLE[t.confidence] ?? CONFIDENCE_STYLE.low,
+                )}
+              >
+                {t.confidence === "low" ? "low evidence" : t.confidence}
+              </span>
+            </div>
+            <div className="mt-2.5 flex items-center gap-2.5">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    t.evidenceScore >= 70
+                      ? "bg-emerald-400/70"
+                      : t.evidenceScore >= 45
+                        ? "bg-amber-400/70"
+                        : "bg-rose-400/70",
+                  )}
+                  style={{ width: `${Math.max(3, t.evidenceScore)}%` }}
+                />
+              </div>
+              <span className="type-mono w-9 text-right text-xs font-bold tabular-nums text-foreground/85">
+                {t.evidenceScore}%
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative mt-4 flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          className="interactive-press gap-2"
+          onClick={() => navigate("/mistakes")}
+        >
+          <FlaskConical className="size-4" /> Review mistakes
+        </Button>
+        <Button
+          variant="ghost"
+          className="interactive-press gap-1 text-muted-foreground"
+          onClick={() => navigate("/exam-prep?tab=practice")}
+        >
+          Train weak topics <ArrowRight className="size-3.5" />
+        </Button>
+        <p className="type-caption ml-auto max-w-[240px] text-right text-muted-foreground/50">
+          A signal from your own answers — not a prediction of your exam result.
+        </p>
+      </div>
+    </motion.div>
+  );
+}
 
 function sharePaper(paper: PrepPaper) {
   const url = `${window.location.origin}/read/${paper._id}`;

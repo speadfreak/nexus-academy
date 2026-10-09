@@ -733,6 +733,26 @@ export const logDigitalAttempt = mutation({
     questionsTotal: v.optional(v.number()),
     questionsCorrect: v.optional(v.number()),
     questionsAnswered: v.optional(v.number()),
+    // Learning loop (2.0): per-question outcomes for every auto-gradable
+    // MCQ. Optional for backward compatibility — older clients omit it and
+    // the attempt still persists exactly as before. The server derives
+    // topic mastery + the mistake ledger from this; the paper's own answer
+    // key stays the source of truth (the client only reports what it
+    // scored against, and the server clamps/caps everything).
+    questionResults: v.optional(
+      v.array(
+        v.object({
+          questionNumber: v.number(),
+          correct: v.boolean(),
+          studentAnswer: v.optional(v.string()),
+          correctAnswer: v.optional(v.string()),
+          questionText: v.optional(v.string()),
+          explanation: v.optional(v.string()),
+          topicText: v.optional(v.string()),
+          sourcePage: v.optional(v.number()),
+        }),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -758,6 +778,36 @@ export const logDigitalAttempt = mutation({
       questionsCorrect: args.questionsCorrect,
       questionsAnswered: args.questionsAnswered,
     });
+
+    // Learning loop — per-question evidence + mistake ledger. Provenance is
+    // "official" (real past paper, answers from the paper's own key) and the
+    // source page link points back at the original PDF. Best-effort: a
+    // failure here must never block the results screen, so this runs only
+    // when outcomes were supplied and is wrapped to stay silent.
+    if (args.questionResults && args.questionResults.length > 0) {
+      try {
+        await ctx.runMutation(internal.learning.ingestQuestionOutcomes, {
+          subjectId: item.subjectId,
+          source: "digital_paper",
+          sourceRefId: args.contentId,
+          outcomes: args.questionResults.slice(0, 300).map((r) => ({
+            questionKey: `q${r.questionNumber}`,
+            questionText: r.questionText ?? `Question ${r.questionNumber}`,
+            correctAnswer: r.correctAnswer ?? "(see paper key)",
+            studentAnswer: r.studentAnswer,
+            explanation: r.explanation,
+            topicText: r.topicText,
+            contentId: args.contentId,
+            sourcePage: r.sourcePage,
+            origin: "official" as const,
+            correct: r.correct,
+          })),
+        });
+      } catch {
+        // Evidence capture is enhancement, not the critical path.
+      }
+    }
+
     return { attemptId };
   },
 });

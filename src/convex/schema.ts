@@ -1952,6 +1952,76 @@ const schema = defineSchema(
     })
       .index("by_user", ["userId"])
       .index("by_user_date", ["userId", "warmupDate"]),
+
+    // ------------------------------------------------------------------
+    // LEARNING LOOP (2.0) — evidence-based mastery + mistake intelligence
+    // --------------------------------------------------------------------
+    // One shared evidence pipeline for the whole app: every scored attempt
+    // (digital past papers, AI quizzes, mock exams, daily challenge) funnels
+    // per-question outcomes into these two tables via learning.ingest*.
+    // Additive only — every existing attempt table keeps its exact shape,
+    // so results history, streaks and XP are untouched.
+    //
+    // topicMastery: honest per-topic evidence. recentResults holds the last
+    // up-to-20 outcomes (1 correct / 0 wrong, oldest first); the display
+    // score applies exponential decay (newest evidence counts most — same
+    // philosophy as aptitude's userSkillMastery so both signals compare).
+    // Confidence is derived from attempts count, never faked.
+    topicMastery: defineTable({
+      userId: v.id("users"),
+      topicId: v.id("topics"),
+      subjectId: v.id("subjects"),
+      recentResults: v.array(v.number()), // capped at 20, oldest first
+      attempts: v.number(), // lifetime scored outcomes on this topic
+      correct: v.number(),
+      lastAttemptAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_user_topic", ["userId", "topicId"])
+      .index("by_user", ["userId"])
+      .index("by_user_subject", ["userId", "subjectId"]),
+
+    // mistakes: the mistake ledger — one row per wrong answer worth
+    // remembering. Questions in this app are JSON snapshots (not entities),
+    // so each row carries a verbatim snapshot: what was asked, the VERIFIED
+    // correct answer recorded at score time (AI may annotate, never
+    // override), the student's answer, and provenance (official past paper
+    // + source page vs AI-generated practice) so every review links back to
+    // the real source. nextReviewAt powers the spaced-revision queue.
+    mistakes: defineTable({
+      userId: v.id("users"),
+      source: v.union(
+        v.literal("digital_paper"),
+        v.literal("quiz"),
+        v.literal("mock_exam"),
+        v.literal("daily_challenge"),
+      ),
+      sourceRefId: v.string(), // contentId / quizId / mockExamId / challengeDate
+      dedupeKey: v.string(), // `${source}:${sourceRefId}:${questionKey}`
+      subjectId: v.id("subjects"),
+      topicId: v.optional(v.id("topics")),
+      topicText: v.optional(v.string()), // free-text topic printed on the paper
+      questionText: v.string(),
+      options: v.optional(v.array(v.string())),
+      correctAnswer: v.string(),
+      studentAnswer: v.optional(v.string()),
+      explanation: v.optional(v.string()),
+      contentId: v.optional(v.id("contentItems")), // open the source paper
+      sourcePage: v.optional(v.number()),
+      origin: v.union(v.literal("official"), v.literal("ai_generated")),
+      status: v.union(v.literal("open"), v.literal("mastered"), v.literal("dismissed")),
+      reviewCount: v.number(),
+      correctReviewCount: v.number(),
+      intervalDays: v.number(), // current spaced-revision interval
+      nextReviewAt: v.number(),
+      lastReviewedAt: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_status", ["userId", "status"])
+      .index("by_user_nextReview", ["userId", "nextReviewAt"])
+      .index("by_user_subject", ["userId", "subjectId"])
+      .index("by_dedupe", ["userId", "dedupeKey"]),
   },
 );
 

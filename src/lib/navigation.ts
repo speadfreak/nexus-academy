@@ -130,6 +130,7 @@ const ROUTE_CHUNKS: Record<string, Loader> = {
   "/journey": () => import("../pages/Journey.tsx"),
   "/calendar": () => import("../pages/Calendar.tsx"),
   "/notes": () => import("../pages/Notes.tsx"),
+  "/mistakes": () => import("../pages/Mistakes.tsx"),
   "/flashcards": () => import("../pages/Flashcards.tsx"),
   "/study-cards": () => import("../pages/StudyCards.tsx"),
   "/achievements": () => import("../pages/Achievements.tsx"),

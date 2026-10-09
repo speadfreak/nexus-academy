@@ -333,6 +333,27 @@ export const submitAttempt = mutation({
       completedAt: Date.now(),
     });
 
+    // Learning loop: feed every scored outcome into the shared evidence
+    // engine — topic mastery (when the quiz has a topic) + the mistake
+    // ledger for every miss. Server-scored, so correctAnswer is the
+    // verified key the same way the results screen displays it.
+    await ctx.runMutation(internal.learning.ingestQuestionOutcomes, {
+      subjectId: quiz.subjectId,
+      source: "quiz",
+      sourceRefId: quizId,
+      outcomes: results.map((r, index) => ({
+        questionKey: `q${index}`,
+        questionText: r.question,
+        options: r.options,
+        correctAnswer: r.options[r.correctIndex] ?? `Option ${String.fromCharCode(65 + r.correctIndex)}`,
+        studentAnswer: r.selected >= 0 ? (r.options[r.selected] ?? undefined) : undefined,
+        explanation: r.explanation,
+        topicId: quiz.topicId ?? undefined,
+        origin: "ai_generated" as const,
+        correct: r.correct,
+      })),
+    });
+
     const xpAmount =
       XP_VALUES.quiz_complete_base + XP_VALUES.quiz_complete_per_correct * score;
     const award = await ctx.runMutation(internal.xp.awardXp, {

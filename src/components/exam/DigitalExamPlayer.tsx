@@ -648,6 +648,25 @@ export function DigitalExamPlayer({
       const endedAt = Date.now();
       const durationSeconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
 
+      // Learning loop: per-question outcomes for every auto-gradable MCQ —
+      // feeds topic mastery + the Mistake Lab. Structured questions have no
+      // machine-checkable key here, so they're honestly excluded.
+      const questionResults = questions
+        .filter((x) => !isStructured(x) && x.answer)
+        .map((x) => {
+          const picked = answers[x.number];
+          return {
+            questionNumber: x.number,
+            correct: picked !== undefined && picked !== null && picked === x.answer,
+            studentAnswer: picked ?? undefined,
+            correctAnswer: x.answer,
+            questionText: x.text,
+            explanation: x.explanation,
+            topicText: x.topic,
+            sourcePage: x.sourcePage,
+          };
+        });
+
       // 1) Digital attempt record — examPrepAttempts (mode + auto score).
       logDigitalAttempt({
         contentId: contentId as never,
@@ -660,6 +679,7 @@ export function DigitalExamPlayer({
         questionsTotal: questions.length,
         questionsCorrect: score.correct,
         questionsAnswered: score.answeredAll,
+        questionResults,
       }).catch(() => {
         toast.error("Couldn't save this attempt to your results.", {
           description: "Your session still counted locally.",
@@ -677,7 +697,7 @@ export function DigitalExamPlayer({
         // Non-fatal: streak credit fails silently — results unaffected.
       });
     },
-    [contentId, logDigitalAttempt, logSession, mode, questions.length, score, startedAt, subjectId],
+    [answers, contentId, logDigitalAttempt, logSession, mode, questions, score, startedAt, subjectId],
   );
 
   // ── Finish paths ──

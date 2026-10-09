@@ -45,6 +45,7 @@ import type * as groq from "../groq.js";
 import type * as groupChat from "../groupChat.js";
 import type * as http from "../http.js";
 import type * as journey from "../journey.js";
+import type * as learning from "../learning.js";
 import type * as manualPayments from "../manualPayments.js";
 import type * as marketing from "../marketing.js";
 import type * as media from "../media.js";
@@ -133,6 +134,7 @@ declare const fullApi: ApiFromModules<{
   groupChat: typeof groupChat;
   http: typeof http;
   journey: typeof journey;
+  learning: typeof learning;
   manualPayments: typeof manualPayments;
   marketing: typeof marketing;
   media: typeof media;

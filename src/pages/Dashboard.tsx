@@ -24,6 +24,7 @@ import {
   GraduationCap,
   HelpCircle,
   History,
+  Lamp,
   Languages,
   Leaf,
   Loader2,
@@ -841,6 +842,10 @@ export default function Dashboard() {
 
   // Daily quote
   const quote = useQuery(api.quotes.getTodaysQuote);
+
+  // Learning loop (2.0) — the honest "what should I do right now?" signal.
+  const nextAction = useQuery(api.learning.getNextAction);
+  const mistakeStats = useQuery(api.learning.getMistakeStats);
   const ensureQuote = useAction(api.quotes.ensureTodaysQuote);
   const rebrandQuotes = useMutation(api.quotes.rebrandQuoteAuthors);
   const quoteSyncedRef = useRef(false);
@@ -1457,6 +1462,61 @@ export default function Dashboard() {
             </button>
           )}
         </motion.section>
+
+        {/* ═══ YOUR NEXT MOVE — the learning loop's command card ═══
+            One honest recommendation derived only from the student's own
+            evidence (due mistake reviews → weakest evidenced topic →
+            daily habit → first diagnostic). Explains itself on-card;
+            never invents a readiness percentage. */}
+        {nextAction && (
+          <motion.section
+            aria-label="Recommended next study action"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.28, ease: [0.22, 1, 0.36, 1] as const }}
+            className="relative overflow-hidden rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/[0.09] via-transparent to-transparent p-4 sm:p-5"
+          >
+            <div className="pointer-events-none absolute -left-16 -top-20 size-56 rounded-full bg-primary/[0.08] blur-3xl" />
+            <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-[0_0_24px_-8px_rgb(251,191,36/0.55)]">
+                {nextAction.type === "review_mistakes" ? (
+                  <RotateCcw className="size-5" />
+                ) : nextAction.type === "practice_topic" ? (
+                  <Target className="size-5" />
+                ) : nextAction.type === "diagnostic" ? (
+                  <Lamp className="size-5" />
+                ) : (
+                  <Flame className="size-5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="type-caption font-bold uppercase tracking-[0.2em] text-amber-300/80">
+                    Your next move
+                  </p>
+                  <span className="type-caption rounded-full bg-white/[0.06] px-2 py-0.5 text-muted-foreground">
+                    ~{nextAction.etaMinutes} min
+                  </span>
+                  {mistakeStats && mistakeStats.dueNow > 0 && (
+                    <span className="type-caption rounded-full bg-amber-400/15 px-2 py-0.5 font-semibold text-amber-300">
+                      {mistakeStats.dueNow} due for review
+                    </span>
+                  )}
+                </div>
+                <p className="type-h3 mt-1">{nextAction.title}</p>
+                <p className="type-caption mt-0.5 text-muted-foreground">{nextAction.reason}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(nextAction.href)}
+                className="interactive-press group flex shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition hover:brightness-110"
+              >
+                {nextAction.cta}
+                <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            </div>
+          </motion.section>
+        )}
 
         {/* ═══ DAILY QUOTE ═══ */}
         {quote && (

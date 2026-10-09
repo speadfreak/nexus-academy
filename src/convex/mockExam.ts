@@ -951,6 +951,32 @@ export const completeSection = mutation({
       completedAt: Date.now(),
     });
 
+    // Learning loop: every miss in this section enters the shared mistake
+    // ledger (with the explanation the results flow will show). Mock
+    // questions are AI-written and not curriculum-topic-tagged, so they
+    // deliberately feed the ledger only — no topic mastery row without
+    // topic evidence. Honest provenance: origin "ai_generated".
+    await ctx.runMutation(internal.learning.ingestQuestionOutcomes, {
+      subjectId: section.subjectId,
+      source: "mock_exam",
+      sourceRefId: section.mockExamId,
+      outcomes: questions.map((mq, index) => ({
+        questionKey: `q${index}`,
+        questionText: mq.question,
+        options: mq.options,
+        correctAnswer:
+          mq.options[mq.correctIndex] ??
+          `Option ${String.fromCharCode(65 + mq.correctIndex)}`,
+        studentAnswer:
+          storedAnswers[index] >= 0
+            ? (mq.options[storedAnswers[index]] ?? undefined)
+            : undefined,
+        explanation: mq.explanation,
+        origin: "ai_generated" as const,
+        correct: storedAnswers[index] === mq.correctIndex,
+      })),
+    });
+
     return {
       sectionId: section._id,
       score,
