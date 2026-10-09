@@ -261,7 +261,7 @@ function MistakeCard({
           )}
           <button
             type="button"
-            onClick={() => navigate("/exam-prep?tab=practice")}
+            onClick={() => navigate(`/mistakes/practice/${row._id}`)}
             className="interactive-press inline-flex cursor-pointer items-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold text-amber-300/80 transition hover:text-amber-300"
           >
             Practice similar <ChevronRight className="size-3.5" />

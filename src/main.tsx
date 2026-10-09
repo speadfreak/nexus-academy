@@ -120,6 +120,7 @@ const Journey = lazy(() => import("./pages/Journey.tsx"));
 const CalendarPage = lazy(() => import("./pages/Calendar.tsx"));
 const Notes = lazy(() => import("./pages/Notes.tsx"));
 const Mistakes = lazy(() => import("./pages/Mistakes.tsx"));
+const MistakePractice = lazy(() => import("./pages/MistakePractice.tsx"));
 const Flashcards = lazy(() => import("./pages/Flashcards.tsx"));
 const Achievements = lazy(() => import("./pages/Achievements.tsx"));
 const Groups = lazy(() => import("./pages/Groups.tsx"));
@@ -766,6 +767,19 @@ if (rootEl) {
                             element={
                               <RequireAuth>
                                 <Mistakes />
+                              </RequireAuth>
+                            }
+                          />
+                          {/* /mistakes/practice/:mistakeId — the focused
+                              "practice similar" experience: real past-paper
+                              questions on the same topic as one mistake,
+                              scored server-side, one review event per
+                              session. Auth-gated like the rest of the loop. */}
+                          <Route
+                            path="/mistakes/practice/:mistakeId"
+                            element={
+                              <RequireAuth>
+                                <MistakePractice />
                               </RequireAuth>
                             }
                           />

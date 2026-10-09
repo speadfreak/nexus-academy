@@ -7,6 +7,11 @@
 //   DASHBOARD ─▶ getNextAction (honest, evidence-derived recommendation)
 //   MISTAKE LAB ▶ listMistakes / reviewMistake (spaced revision)
 //   EXAM TWIN ──▶ getTopicMasteryForUser (assessed vs low-evidence topics)
+//   PRACTICE ───▶ findSimilarPractice / startMistakePractice /
+//                 submitMistakePractice / completeMistakePractice
+//                 (real past-paper questions on the SAME canonical topic,
+//                 server-scored against the paper's own key, one review
+//                 event per session through the SAME ladder)
 //
 // HONESTY RULES (non-negotiable, same spirit as the digital exam engine):
 //   - Mastery is computed ONLY from questions the student actually answered.
@@ -24,9 +29,16 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
+} from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { isPremiumStatus } from "./subscriptions";
 
 // ── Tuning constants (documented + testable) ─────────────────────────────
 
@@ -55,6 +67,14 @@ const clampText = (s: string | undefined, max: number): string | undefined => {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 };
 
+// Practice-from-mistake tuning (documented + testable):
+// a session is SHORT by design — repair one misconception, then move on.
+const MAX_PRACTICE_QUESTIONS = 5;
+// Papers scanned per selection (curated library scale; bounded for latency).
+const MAX_PAPERS_SCANNED = 200;
+// Bounded number of by_dedupe ledger lookups per selection (ranked walk).
+const MAX_LEDGER_CHECKS = 120;
+
 /** Weighted mastery score (0–100) from the rolling evidence window. */
 export function computeEvidenceScore(results: number[]): number {
   if (results.length === 0) return 0;
@@ -74,6 +94,148 @@ export function confidenceFor(attempts: number): "unassessed" | "low" | "fair" |
   if (attempts < 3) return "low";
   if (attempts < 6) return "fair";
   return "solid";
+}
+
+// ── Practice-from-mistake: pure, testable helpers ────────────────────────
+// The rules below are the single source of truth for BOTH the direct review
+// path (reviewMistake) and the practice path (one review event per finished
+// session) — scheduling can never drift between surfaces.
+
+/** Canonical topic-name normalization: trim, collapse whitespace, lowercase. */
+export function normalizeTopicName(s: string | undefined | null): string {
+  return (s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * THE spaced-revision ladder — one scheduling rule everywhere.
+ *
+ *   miss → due now → "still unsure" rechecks in 6h → got it ×1 → 1d →
+ *   got it ×2 → 3d (mistake retired — two clean passes) → if ever reopened:
+ *   3 → 6 → 12 → 21d (doubling, capped).
+ */
+export function nextMistakeReviewState(
+  m: { intervalDays: number; correctReviewCount: number; status: Doc<"mistakes">["status"] },
+  result: "got_it" | "still_unsure",
+  now: number,
+): {
+  intervalDays: number;
+  correctReviewCount: number;
+  status: Doc<"mistakes">["status"];
+  nextReviewAt: number;
+} {
+  let intervalDays = m.intervalDays;
+  let correctReviewCount = m.correctReviewCount;
+  let status = m.status;
+
+  if (result === "got_it") {
+    intervalDays =
+      intervalDays < FIRST_INTERVAL_DAYS
+        ? FIRST_INTERVAL_DAYS
+        : intervalDays < MASTERY_MIN_INTERVAL_DAYS
+          ? MASTERY_MIN_INTERVAL_DAYS
+          : Math.min(intervalDays * 2, MAX_INTERVAL_DAYS);
+    correctReviewCount += 1;
+    if (
+      correctReviewCount >= MASTERY_MIN_CORRECT_REVIEWS &&
+      intervalDays >= MASTERY_MIN_INTERVAL_DAYS
+    ) {
+      status = "mastered";
+    }
+  } else {
+    intervalDays = 0;
+    correctReviewCount = 0;
+    status = "open";
+  }
+
+  const nextReviewAt =
+    result === "still_unsure"
+      ? now + SAME_DAY_HOURS * 3600 * 1000
+      : now + Math.round(intervalDays * 24 * 3600 * 1000);
+
+  return { intervalDays, correctReviewCount, status, nextReviewAt };
+}
+
+/**
+ * One review event per FINISHED practice session, from the session's
+ * submissions in order. Every selected question answered correctly →
+ * "got_it"; anything else → "still_unsure" (a mixed session must never
+ * walk the ladder — that would inflate progress). Each question allows
+ * exactly one submission, so "first try" is inherent, and
+ * attemptsToFirstCorrect records the 1-based index of the first correct
+ * submission (undefined when none were correct — the honest "attempts
+ * needed" record).
+ */
+export function computePracticeReview(submissions: boolean[]): {
+  result: "got_it" | "still_unsure";
+  firstTryCorrect: number;
+  attemptsToFirstCorrect: number | undefined;
+} {
+  const firstTryCorrect = submissions.filter(Boolean).length;
+  const firstCorrectIdx = submissions.findIndex(Boolean);
+  return {
+    result:
+      submissions.length > 0 && firstTryCorrect === submissions.length
+        ? "got_it"
+        : "still_unsure",
+    firstTryCorrect,
+    attemptsToFirstCorrect: firstCorrectIdx === -1 ? undefined : firstCorrectIdx + 1,
+  };
+}
+
+/** Ranking input — plain shape so the comparator is testable in isolation. */
+export interface RankableCandidate {
+  /** Admin-verified transcription, or edited by a teacher. */
+  verifiedPaper: boolean;
+  /** A real official sitting (national_past_paper), not an admin practice set. */
+  official: boolean;
+  /** Newer sittings first; papers without a year rank last. */
+  examYear: number | null;
+  /** The paper the mistake came from — deprioritized for variety. */
+  fromOriginalPaper: boolean;
+}
+
+/**
+ * Deterministic candidate ordering: teacher-verified first, official
+ * sittings next, newer papers, then papers other than the one the mistake
+ * came from. Ties keep their scan order (Array#sort is stable).
+ */
+export function comparePracticeCandidates(
+  a: RankableCandidate,
+  b: RankableCandidate,
+): number {
+  if (a.verifiedPaper !== b.verifiedPaper) return a.verifiedPaper ? -1 : 1;
+  if (a.official !== b.official) return a.official ? -1 : 1;
+  const ya = a.examYear ?? -1;
+  const yb = b.examYear ?? -1;
+  if (ya !== yb) return yb - ya;
+  if (a.fromOriginalPaper !== b.fromOriginalPaper) return a.fromOriginalPaper ? 1 : -1;
+  return 0;
+}
+
+/**
+ * Greedy one-per-paper pick (variety), then backfill by rank order. Pure.
+ */
+export function pickWithPaperDiversity<T extends { contentId: string }>(
+  ranked: T[],
+  limit: number,
+): T[] {
+  const picked: T[] = [];
+  const pickedSet = new Set<T>();
+  const seenPapers = new Set<string>();
+  for (const c of ranked) {
+    if (picked.length >= limit) break;
+    if (seenPapers.has(c.contentId)) continue;
+    picked.push(c);
+    pickedSet.add(c);
+    seenPapers.add(c.contentId);
+  }
+  for (const c of ranked) {
+    if (picked.length >= limit) break;
+    if (pickedSet.has(c)) continue;
+    picked.push(c);
+    pickedSet.add(c);
+  }
+  return picked;
 }
 
 // ── Ingestion contract ───────────────────────────────────────────────────
@@ -270,42 +432,15 @@ export const reviewMistake = mutation({
     }
 
     const now = Date.now();
-    let intervalDays = m.intervalDays;
-    let correctReviewCount = m.correctReviewCount;
-    let status: Doc<"mistakes">["status"] = m.status;
-
-    if (args.result === "got_it") {
-      intervalDays =
-        intervalDays < FIRST_INTERVAL_DAYS
-          ? FIRST_INTERVAL_DAYS
-          : intervalDays < MASTERY_MIN_INTERVAL_DAYS
-            ? MASTERY_MIN_INTERVAL_DAYS
-            : Math.min(intervalDays * 2, MAX_INTERVAL_DAYS);
-      correctReviewCount += 1;
-      if (
-        correctReviewCount >= MASTERY_MIN_CORRECT_REVIEWS &&
-        intervalDays >= MASTERY_MIN_INTERVAL_DAYS
-      ) {
-        status = "mastered";
-      }
-    } else {
-      intervalDays = 0;
-      correctReviewCount = 0;
-      status = "open";
-    }
-
-    const nextReviewAt =
-      args.result === "still_unsure"
-        ? now + SAME_DAY_HOURS * 3600 * 1000
-        : now + Math.round(intervalDays * 24 * 3600 * 1000);
+    const next = nextMistakeReviewState(m, args.result, now);
 
     await ctx.db.patch(args.mistakeId, {
-      intervalDays,
-      correctReviewCount,
-      status,
+      intervalDays: next.intervalDays,
+      correctReviewCount: next.correctReviewCount,
+      status: next.status,
       reviewCount: m.reviewCount + 1,
       lastReviewedAt: now,
-      nextReviewAt,
+      nextReviewAt: next.nextReviewAt,
     });
 
     // Revision success is evidence too (only when a topic is known).
@@ -330,7 +465,7 @@ export const reviewMistake = mutation({
       });
     }
 
-    return { status, nextReviewAt, intervalDays };
+    return { status: next.status, nextReviewAt: next.nextReviewAt, intervalDays: next.intervalDays };
   },
 });
 
@@ -609,6 +744,738 @@ export const getNextAction = query({
       cta: "Start a quiz",
       etaMinutes: 5,
       subjectId: null,
+    };
+  },
+});
+
+// ── Practice from a mistake ("Practice similar") ─────────────────────────
+//
+// A short focused session of REAL past-paper questions on the SAME topic as
+// one mistake. This is not a quiz engine and it never generates questions:
+//
+//   SELECTION RULES (each one maps to an honesty constraint):
+//   1. Match the mistake's CANONICAL topic — the same resolved topic name
+//      within the subject. When the mistake only carries the paper's printed
+//      topic text, an exact normalized match against other printed topics is
+//      allowed and is labeled as such. Nothing else matches: the curriculum
+//      has no parent/related-topic data, so "closely related" cannot be
+//      claimed and is never invented here.
+//   2. Only auto-gradable MCQs with a stored answer are selected. Structured
+//      questions and key-less questions are excluded — feedback must come
+//      from the actual answer key.
+//   3. The original question is excluded (same paper + same number, plus a
+//      normalized-text safety net for reprints), and so is any question
+//      already in the student's mistake ledger — those are owned by review.
+//   4. Ranking: teacher-verified transcription first, official sittings
+//      before admin practice sets, newer papers, one-per-paper variety.
+//   5. Provenance travels end to end: paper title, year, page, question
+//      number, verification status — and the student always sees WHY each
+//      question was picked.
+//   6. Papers behind Premium are skipped for students without Premium and
+//      reported honestly as hidden, never silently mixed in.
+//   7. If nothing matches, the reason says so plainly — no fabricated bank
+//      entries, no claimed equivalence.
+
+export type PracticeCandidate = {
+  contentId: Id<"contentItems">;
+  questionNumber: number;
+  paperTitle: string;
+  examYear: number | null;
+  /** A real official sitting (national_past_paper). */
+  official: boolean;
+  /** Teacher-verified transcription / teacher-edited. */
+  verifiedPaper: boolean;
+  sourcePage: number | null;
+  topic: string | null;
+  questionText: string;
+  passage: string | null;
+  options: { label: string; text: string }[];
+  answerLabel: string; // never shipped to the client pre-submit
+  explanation: string | null;
+  why: string;
+};
+
+export type SimilarSelection = {
+  status: "ok" | "no_topic" | "no_match" | "mistake_dismissed";
+  reason: string;
+  matchedBy: "canonical_topic" | "topic_text" | null;
+  topicLabel: string | null;
+  topicId: Id<"topics"> | null;
+  mistake: {
+    _id: Id<"mistakes">;
+    subjectId: Id<"subjects">;
+    questionText: string;
+    studentAnswer: string | null;
+    correctAnswer: string;
+    explanation: string | null;
+    topicText: string | null;
+    contentId: Id<"contentItems"> | null;
+    sourcePage: number | null;
+    status: Doc<"mistakes">["status"];
+    nextReviewAt: number;
+  } | null;
+  candidates: PracticeCandidate[];
+  scannedPapers: number;
+  premiumHiddenPapers: number;
+};
+
+/**
+ * The shared selection engine. Runs as an internalQuery so both the public
+ * preview (findSimilarPractice) and the session start (startMistakePractice)
+ * execute the exact same rules — one implementation, no drift.
+ */
+export const selectSimilarForMistake = internalQuery({
+  args: {
+    mistakeId: v.id("mistakes"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<SimilarSelection> => {
+    const mistake = await ctx.db.get(args.mistakeId);
+    if (!mistake || mistake.userId !== args.userId) {
+      throw new ConvexError({ message: "Mistake not found.", code: "not_found" });
+    }
+
+    const mistakeSummary: SimilarSelection["mistake"] = {
+      _id: mistake._id,
+      subjectId: mistake.subjectId,
+      questionText: mistake.questionText,
+      studentAnswer: mistake.studentAnswer ?? null,
+      correctAnswer: mistake.correctAnswer,
+      explanation: mistake.explanation ?? null,
+      topicText: mistake.topicText ?? null,
+      contentId: mistake.contentId ?? null,
+      sourcePage: mistake.sourcePage ?? null,
+      status: mistake.status,
+      nextReviewAt: mistake.nextReviewAt,
+    };
+
+    if (mistake.status === "dismissed") {
+      return {
+        status: "mistake_dismissed",
+        reason: "This mistake was dismissed — it no longer takes practice or review.",
+        matchedBy: null,
+        topicLabel: null,
+        topicId: null,
+        mistake: mistakeSummary,
+        candidates: [],
+        scannedPapers: 0,
+        premiumHiddenPapers: 0,
+      };
+    }
+
+    // ── Topic resolution ──────────────────────────────────────────────
+    // Same canonical topic (by normalized name within the subject) or —
+    // only when no canonical topic exists — an exact normalized match on
+    // the printed topic text. Both are real, observable data.
+    const subjectTopics = await ctx.db
+      .query("topics")
+      .withIndex("by_subject", (q) => q.eq("subjectId", mistake.subjectId))
+      .collect();
+    const topicById = new Map(subjectTopics.map((t) => [t._id as string, t.name]));
+
+    let matchedBy: SimilarSelection["matchedBy"] = null;
+    let targetName: string | null = null;
+    let topicLabel: string | null = null;
+    let canonicalTopicId: Id<"topics"> | null = mistake.topicId ?? null;
+
+    if (canonicalTopicId) {
+      const name = topicById.get(canonicalTopicId);
+      if (name) {
+        matchedBy = "canonical_topic";
+        targetName = normalizeTopicName(name);
+        topicLabel = name;
+      }
+    }
+    if (!matchedBy && mistake.topicText) {
+      // Try to lift the printed text onto the curriculum first; topics may
+      // have been seeded since the attempt was ingested.
+      const printed = normalizeTopicName(mistake.topicText);
+      const hit = subjectTopics.find((t) => normalizeTopicName(t.name) === printed);
+      if (hit) {
+        matchedBy = "canonical_topic";
+        canonicalTopicId = hit._id;
+        targetName = normalizeTopicName(hit.name);
+        topicLabel = hit.name;
+      } else {
+        matchedBy = "topic_text";
+        targetName = printed;
+        topicLabel = mistake.topicText;
+      }
+    }
+
+    if (!matchedBy || !targetName || !topicLabel) {
+      return {
+        status: "no_topic",
+        reason:
+          "This mistake doesn't carry a topic we can match on, so honest targeted practice isn't possible yet. Review it here or practice the subject generally.",
+        matchedBy: null,
+        topicLabel: null,
+        topicId: null,
+        mistake: mistakeSummary,
+        candidates: [],
+        scannedPapers: 0,
+        premiumHiddenPapers: 0,
+      };
+    }
+
+    // ── Paper scan ────────────────────────────────────────────────────
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    const hasPremium = isPremiumStatus(sub?.status);
+
+    const subjectItems = await ctx.db
+      .query("contentItems")
+      .withIndex("by_subject", (q) => q.eq("subjectId", mistake.subjectId))
+      .collect();
+    const papers = subjectItems
+      .filter((p) => p.contentType === "past_exam")
+      .slice(0, MAX_PAPERS_SCANNED);
+
+    const originalNumberMatch =
+      mistake.source === "digital_paper" && mistake.contentId
+        ? /:q(\d+)$/.exec(mistake.dedupeKey)
+        : null;
+    const originalNumber = originalNumberMatch ? Number(originalNumberMatch[1]) : null;
+    const originalTextKey = normalizeTopicName(mistake.questionText).slice(0, 160);
+
+    let scannedPapers = 0;
+    let premiumHiddenPapers = 0;
+    const pool: (PracticeCandidate & RankableCandidate)[] = [];
+
+    for (const paper of papers) {
+      if (paper.isPremium && !hasPremium) {
+        premiumHiddenPapers += 1;
+        continue;
+      }
+      const dp = await ctx.db
+        .query("digitalPapers")
+        .withIndex("by_content", (q) => q.eq("contentId", paper._id))
+        .unique();
+      if (!dp || dp.status !== "ready") continue;
+      if (dp.reviewStatus === "needs_review" || dp.reviewStatus === "pdf_only") continue;
+      if (dp.verification === "rejected") continue;
+      scannedPapers += 1;
+
+      const verifiedPaper = dp.verification === "verified" || dp.adminEdited === true;
+      const verificationNote = verifiedPaper
+        ? "Answer key teacher-verified."
+        : "Answers parsed from the paper's own key.";
+      const matchNote =
+        matchedBy === "canonical_topic"
+          ? `Same topic as your mistake — ${topicLabel} (matched on the paper's printed topic).`
+          : `Printed topic matches your mistake — “${topicLabel}”.`;
+
+      for (const q of dp.questions) {
+        // Auto-gradable MCQs with a stored key only — feedback must come
+        // from the actual answer key, never from a guess.
+        if (q.kind === "structured" || q.options.length === 0) continue;
+        if (!q.answer) continue;
+        // Topic gate: exact normalized equality with the resolved target.
+        const qName = normalizeTopicName(q.topic);
+        if (!qName || qName !== targetName) continue;
+        // Exclude the original question (and identical reprints).
+        if (paper._id === mistake.contentId && originalNumber !== null && q.number === originalNumber) {
+          continue;
+        }
+        if (normalizeTopicName(q.text).slice(0, 160) === originalTextKey) continue;
+
+        pool.push({
+          contentId: paper._id,
+          questionNumber: q.number,
+          paperTitle: paper.title,
+          examYear: paper.examYear ?? null,
+          official: paper.examPrepSubtype === "national_past_paper",
+          verifiedPaper,
+          sourcePage: q.sourcePage ?? null,
+          topic: q.topic ?? null,
+          questionText: q.text,
+          passage: q.passage ?? null,
+          options: q.options,
+          answerLabel: q.answer,
+          explanation: q.explanation ?? null,
+          why: `${matchNote} ${verificationNote}`,
+          // ranking inputs (RankableCandidate)
+          fromOriginalPaper: paper._id === mistake.contentId,
+        });
+      }
+    }
+
+    if (pool.length === 0) {
+      const hiddenNote =
+        premiumHiddenPapers > 0
+          ? ` ${premiumHiddenPapers} digitized paper${premiumHiddenPapers === 1 ? "" : "s"} on this subject are behind Premium.`
+          : "";
+      return {
+        status: "no_match",
+        reason: `We scanned ${scannedPapers} digitized paper${scannedPapers === 1 ? "" : "s"} for this subject and none currently has a verified multiple-choice question on “${topicLabel}”.${hiddenNote} Review this mistake here instead — or check back as more papers are digitized.`,
+        matchedBy,
+        topicLabel,
+        topicId: matchedBy === "canonical_topic" ? canonicalTopicId : null,
+        mistake: mistakeSummary,
+        candidates: [],
+        scannedPapers,
+        premiumHiddenPapers,
+      };
+    }
+
+    // ── Rank, then walk with bounded ledger checks ────────────────────
+    pool.sort(comparePracticeCandidates);
+
+    const clean: (PracticeCandidate & RankableCandidate)[] = [];
+    let ledgerChecks = 0;
+    for (const c of pool) {
+      if (clean.length >= MAX_PRACTICE_QUESTIONS * 4) break; // plenty for the diversity pick
+      if (ledgerChecks >= MAX_LEDGER_CHECKS) break;
+      ledgerChecks += 1;
+      const dedupeKey = `digital_paper:${c.contentId}:q${c.questionNumber}`;
+      const known = await ctx.db
+        .query("mistakes")
+        .withIndex("by_dedupe", (q) =>
+          q.eq("userId", args.userId).eq("dedupeKey", dedupeKey),
+        )
+        .unique();
+      if (known) continue; // already in the student's ledger — review owns it
+      clean.push(c);
+    }
+
+    const selected = pickWithPaperDiversity(clean, MAX_PRACTICE_QUESTIONS);
+
+    return {
+      status: "ok",
+      reason: `Found ${selected.length} question${selected.length === 1 ? "" : "s"} on “${topicLabel}” from ${new Set(selected.map((c) => c.contentId)).size} digitized paper${new Set(selected.map((c) => c.contentId)).size === 1 ? "" : "s"}.`,
+      matchedBy,
+      topicLabel,
+      topicId: matchedBy === "canonical_topic" ? canonicalTopicId : null,
+      mistake: mistakeSummary,
+      candidates: selected,
+      scannedPapers,
+      premiumHiddenPapers,
+    };
+  },
+});
+
+/** Public preview: what could this mistake be practiced with, and why? */
+export const findSimilarPractice = query({
+  args: { mistakeId: v.id("mistakes") },
+  handler: async (ctx, args): Promise<SimilarSelection | null> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    return await ctx.runQuery(internal.learning.selectSimilarForMistake, {
+      mistakeId: args.mistakeId,
+      userId,
+    });
+  },
+});
+
+/**
+ * Start (or resume) a practice session for one mistake. An in-progress
+ * session is always resumed — never forked into a duplicate. Starting
+ * stores the selection snapshot so the session stays stable even if papers
+ * are re-converted mid-practice.
+ */
+export const startMistakePractice = mutation({
+  args: { mistakeId: v.id("mistakes") },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    started: boolean;
+    resumed: boolean;
+    sessionId: Id<"mistakePracticeSessions"> | null;
+    status: SimilarSelection["status"];
+    reason: string;
+  }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const existing = await ctx.db
+      .query("mistakePracticeSessions")
+      .withIndex("by_user_mistake", (q) =>
+        q.eq("userId", userId).eq("mistakeId", args.mistakeId),
+      )
+      .collect();
+    const open = existing
+      .filter((s) => s.completedAt === undefined)
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (open) {
+      return { started: true, resumed: true, sessionId: open._id, status: "ok" as const, reason: "Resumed your practice in progress." };
+    }
+
+    const selection = await ctx.runQuery(internal.learning.selectSimilarForMistake, {
+      mistakeId: args.mistakeId,
+      userId,
+    });
+    if (selection.status !== "ok" || selection.candidates.length === 0) {
+      return {
+        started: false,
+        resumed: false,
+        sessionId: null,
+        status: selection.status,
+        reason: selection.reason,
+      };
+    }
+
+    const sessionId = await ctx.db.insert("mistakePracticeSessions", {
+      userId,
+      mistakeId: args.mistakeId,
+      topicId: selection.topicId ?? undefined,
+      questions: selection.candidates.map((c) => ({
+        contentId: c.contentId,
+        questionNumber: c.questionNumber,
+        why: c.why,
+      })),
+      reviewApplied: false,
+      createdAt: Date.now(),
+    });
+    return { started: true, resumed: false, sessionId, status: "ok" as const, reason: selection.reason };
+  },
+});
+
+/**
+ * The session's questions, sanitized: NO answer labels and NO explanations —
+ * those arrive only with the submit verdict, so the client never holds the
+ * key before answering. Questions whose paper was re-converted away or
+ * became premium mid-session are honestly dropped and counted.
+ */
+export const getPracticeQuestions = query({
+  args: { sessionId: v.id("mistakePracticeSessions") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.userId !== userId) return null;
+    const mistake = await ctx.db.get(session.mistakeId);
+    if (!mistake || mistake.userId !== userId) return null;
+
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const hasPremium = isPremiumStatus(sub?.status);
+
+    const attempts = await ctx.db
+      .query("mistakePracticeAttempts")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+
+    const questions: {
+      contentId: Id<"contentItems">;
+      questionNumber: number;
+      why: string;
+      text: string;
+      passage: string | null;
+      options: { label: string; text: string }[];
+      topic: string | null;
+      sourcePage: number | null;
+      paperTitle: string;
+      examYear: number | null;
+      official: boolean;
+      verifiedPaper: boolean;
+    }[] = [];
+    let unavailable = 0;
+
+    for (const ref of session.questions) {
+      const paper = await ctx.db.get(ref.contentId);
+      if (!paper) {
+        unavailable += 1;
+        continue;
+      }
+      if (paper.isPremium && !hasPremium) {
+        unavailable += 1;
+        continue;
+      }
+      const dp = await ctx.db
+        .query("digitalPapers")
+        .withIndex("by_content", (q) => q.eq("contentId", ref.contentId))
+        .unique();
+      const q = dp?.status === "ready" ? dp.questions.find((x) => x.number === ref.questionNumber) : undefined;
+      if (!q || q.kind === "structured" || !q.answer) {
+        unavailable += 1;
+        continue;
+      }
+      questions.push({
+        contentId: ref.contentId,
+        questionNumber: ref.questionNumber,
+        why: ref.why,
+        text: q.text,
+        passage: q.passage ?? null,
+        options: q.options,
+        topic: q.topic ?? null,
+        sourcePage: q.sourcePage ?? null,
+        paperTitle: paper.title,
+        examYear: paper.examYear ?? null,
+        official: paper.examPrepSubtype === "national_past_paper",
+        verifiedPaper: dp?.verification === "verified" || dp?.adminEdited === true,
+      });
+    }
+
+    const topicRow = session.topicId ? await ctx.db.get(session.topicId) : null;
+
+    return {
+      sessionId: session._id,
+      mistakeId: mistake._id,
+      closed: session.completedAt !== undefined,
+      topicLabel: topicRow?.name ?? mistake.topicText ?? null,
+      mistake: {
+        questionText: mistake.questionText,
+        studentAnswer: mistake.studentAnswer ?? null,
+        correctAnswer: mistake.correctAnswer,
+        explanation: mistake.explanation ?? null,
+        topicText: mistake.topicText ?? null,
+        status: mistake.status,
+        nextReviewAt: mistake.nextReviewAt,
+        intervalDays: mistake.intervalDays,
+        contentId: mistake.contentId ?? null,
+        sourcePage: mistake.sourcePage ?? null,
+      },
+      result: session.result ?? null,
+      firstTryCorrect: session.firstTryCorrect ?? null,
+      submissionsCount: session.submissionsCount ?? null,
+      attemptsToFirstCorrect: session.attemptsToFirstCorrect ?? null,
+      attempts: attempts.map((a) => ({
+        contentId: a.contentId,
+        questionNumber: a.questionNumber,
+        correct: a.correct,
+      })),
+      questions,
+      unavailable,
+    };
+  },
+});
+
+/**
+ * Apply the practice session's ONE review event to the original mistake —
+ * exactly once, through the same ladder as reviewMistake. Idempotent: a
+ * second call (or a race) is a no-op. No synthetic evidence is ingested
+ * here — the submissions themselves already went through the single
+ * ingestion point, so ingesting again would double-count mastery.
+ */
+async function applyPracticeReview(
+  ctx: MutationCtx,
+  sessionId: Id<"mistakePracticeSessions">,
+  userId: Id<"users">,
+): Promise<{ result: "got_it" | "still_unsure"; nextReviewAt: number } | null> {
+  const session = await ctx.db.get(sessionId);
+  if (!session || session.userId !== userId || session.reviewApplied) return null;
+
+  const mistake = await ctx.db.get(session.mistakeId);
+  const attempts = await ctx.db
+    .query("mistakePracticeAttempts")
+    .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+    .collect();
+  const ordered = attempts.slice().sort((a, b) => a.submittedAt - b.submittedAt);
+  const now = Date.now();
+
+  if (!mistake || mistake.userId !== userId || mistake.status === "dismissed" || ordered.length === 0) {
+    // Nothing honest to update — close the session without a review event.
+    await ctx.db.patch(sessionId, { reviewApplied: true, completedAt: now });
+    return null;
+  }
+
+  const review = computePracticeReview(ordered.map((a) => a.correct));
+  const next = nextMistakeReviewState(mistake, review.result, now);
+
+  await ctx.db.patch(mistake._id, {
+    intervalDays: next.intervalDays,
+    correctReviewCount: next.correctReviewCount,
+    status: next.status,
+    reviewCount: mistake.reviewCount + 1,
+    lastReviewedAt: now,
+    nextReviewAt: next.nextReviewAt,
+  });
+  await ctx.db.patch(sessionId, {
+    result: review.result,
+    firstTryCorrect: review.firstTryCorrect,
+    submissionsCount: ordered.length,
+    attemptsToFirstCorrect: review.attemptsToFirstCorrect,
+    reviewApplied: true,
+    completedAt: now,
+  });
+  return { result: review.result, nextReviewAt: next.nextReviewAt };
+}
+
+/**
+ * Submit ONE answer inside a practice session. Scored server-side against
+ * the paper's stored answer (the client never sends a verdict). Idempotent
+ * per (session, question): a duplicate submit returns the stored verdict
+ * and never re-ingests evidence. When the last question is answered, the
+ * session's single review event is applied inline.
+ */
+export const submitMistakePractice = mutation({
+  args: {
+    sessionId: v.id("mistakePracticeSessions"),
+    contentId: v.id("contentItems"),
+    questionNumber: v.number(),
+    choice: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.userId !== userId) {
+      throw new ConvexError({ message: "Practice session not found.", code: "not_found" });
+    }
+    const mistake = await ctx.db.get(session.mistakeId);
+    if (!mistake || mistake.userId !== userId) {
+      throw new ConvexError({ message: "Mistake not found.", code: "not_found" });
+    }
+    if (session.completedAt !== undefined || session.reviewApplied) {
+      throw new ConvexError({ message: "This practice session is already closed.", code: "invalid" });
+    }
+    const inSession = session.questions.some(
+      (q) => q.contentId === args.contentId && q.questionNumber === args.questionNumber,
+    );
+    if (!inSession) {
+      throw new ConvexError({ message: "That question is not part of this session.", code: "invalid" });
+    }
+
+    // Idempotency: one submission per (session, question). A retry returns
+    // the stored verdict — no re-scoring, no duplicate evidence.
+    const sessionAttempts = await ctx.db
+      .query("mistakePracticeAttempts")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect();
+    const prior = sessionAttempts.find(
+      (a) => a.contentId === args.contentId && a.questionNumber === args.questionNumber,
+    );
+
+    const paper = await ctx.db.get(args.contentId);
+    if (!paper) {
+      throw new ConvexError({ message: "The source paper is no longer available.", code: "not_found" });
+    }
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    if (paper.isPremium && !isPremiumStatus(sub?.status)) {
+      throw new ConvexError({ message: "This paper is part of Learnyx Premium.", code: "premium_required" });
+    }
+    const dp = await ctx.db
+      .query("digitalPapers")
+      .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
+      .unique();
+    const q = dp?.status === "ready" ? dp.questions.find((x) => x.number === args.questionNumber) : undefined;
+    if (!q || q.kind === "structured" || !q.answer) {
+      throw new ConvexError({
+        message: "That question no longer has a checkable answer — it was removed from the session.",
+        code: "invalid",
+      });
+    }
+
+    const normalizedChoice = args.choice.trim().toUpperCase();
+    if (!q.options.some((o) => o.label === normalizedChoice)) {
+      throw new ConvexError({ message: "Pick one of the listed options.", code: "invalid" });
+    }
+    const correct = normalizedChoice === q.answer.trim().toUpperCase();
+
+    if (prior) {
+      return {
+        duplicate: true,
+        correct: prior.correct,
+        correctAnswer: q.answer,
+        explanation: q.explanation ?? null,
+        sourcePage: q.sourcePage ?? null,
+        review: null,
+        sessionComplete: session.completedAt !== undefined,
+      };
+    }
+
+    await ctx.db.insert("mistakePracticeAttempts", {
+      userId,
+      sessionId: session._id,
+      mistakeId: mistake._id,
+      contentId: args.contentId,
+      questionNumber: args.questionNumber,
+      choice: normalizedChoice,
+      correct,
+      submittedAt: Date.now(),
+    });
+
+    // Evidence through THE SINGLE INGESTION POINT. Deliberately NOT wrapped
+    // in try/catch: Convex transactions are all-or-nothing, so a failed
+    // ingest rolls the attempt row back too — the attempt record and the
+    // evidence can never drift apart.
+    await ctx.runMutation(internal.learning.ingestQuestionOutcomes, {
+      subjectId: mistake.subjectId,
+      // The question really is from this paper, and the dedupeKey this
+      // produces (`digital_paper:{contentId}:q{N}`) is the same namespace a
+      // real paper attempt uses — missing the same question in a real paper
+      // later reopens this mistake instead of duplicating it.
+      source: "digital_paper",
+      sourceRefId: args.contentId,
+      outcomes: [
+        {
+          questionKey: `q${args.questionNumber}`,
+          questionText: q.text,
+          options: q.options.slice(0, 6).map((o) => `${o.label}. ${o.text}`),
+          correctAnswer: q.answer,
+          studentAnswer: normalizedChoice,
+          explanation: q.explanation,
+          topicId: session.topicId ?? undefined,
+          topicText: q.topic,
+          contentId: args.contentId,
+          sourcePage: q.sourcePage,
+          origin: "official" as const,
+          correct,
+        },
+      ],
+    });
+
+    // Last question answered → apply the session's single review event now.
+    let review: { result: "got_it" | "still_unsure"; nextReviewAt: number } | null = null;
+    let sessionComplete = false;
+    if (sessionAttempts.length + 1 >= session.questions.length) {
+      const applied = await applyPracticeReview(ctx, session._id, userId);
+      if (applied) review = applied;
+      sessionComplete = true;
+    }
+
+    return {
+      duplicate: false,
+      correct,
+      correctAnswer: q.answer,
+      explanation: q.explanation ?? null,
+      sourcePage: q.sourcePage ?? null,
+      review,
+      sessionComplete,
+    };
+  },
+});
+
+/**
+ * Finish a session explicitly (e.g. exiting after some questions). Applies
+ * the ONE review event over whatever was submitted — a partial session with
+ * all-correct submissions still counts as "got it"; anything else is
+ * "still unsure". A session with zero submissions closes without touching
+ * the mistake: exiting never fabricates a review.
+ */
+export const completeMistakePractice = mutation({
+  args: { sessionId: v.id("mistakePracticeSessions") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.userId !== userId) {
+      throw new ConvexError({ message: "Practice session not found.", code: "not_found" });
+    }
+    if (session.reviewApplied) {
+      const mistake = await ctx.db.get(session.mistakeId);
+      return {
+        applied: session.result !== undefined,
+        alreadyApplied: true,
+        result: session.result ?? null,
+        nextReviewAt: mistake?.nextReviewAt ?? null,
+      };
+    }
+    const applied = await applyPracticeReview(ctx, args.sessionId, userId);
+    return {
+      applied: applied !== null,
+      alreadyApplied: false,
+      result: applied?.result ?? null,
+      nextReviewAt: applied?.nextReviewAt ?? null,
     };
   },
 });

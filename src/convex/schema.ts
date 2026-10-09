@@ -2022,6 +2022,62 @@ const schema = defineSchema(
       .index("by_user_nextReview", ["userId", "nextReviewAt"])
       .index("by_user_subject", ["userId", "subjectId"])
       .index("by_dedupe", ["userId", "dedupeKey"]),
+
+    // ── MISTAKE → MASTERY PRACTICE (2.0) ─────────────────────────────────
+    // "Practice similar": a short focused session of real past-paper
+    // questions on the SAME canonical topic as one mistake. Not a new quiz
+    // engine — every question is pulled from the verified digitalPapers
+    // bank, every attempt funnels through learning.ingestQuestionOutcomes
+    // (the single ingestion point), and the original mistake's spaced
+    // revision is updated exactly once per session through the SAME ladder
+    // reviewMistake uses.
+    //
+    // One row per practice run. questions is the selection SNAPSHOT
+    // (contentId + display number) so the session stays stable even if
+    // papers are re-converted mid-practice. result/firstTryCorrect/
+    // submissionsCount record what happened; reviewApplied guarantees the
+    // mistake's schedule moves exactly once (duplicate completes are
+    // no-ops). An abandoned session (completedAt undefined, 0-1
+    // submissions) moves nothing — exiting never fabricates a review.
+    mistakePracticeSessions: defineTable({
+      userId: v.id("users"),
+      mistakeId: v.id("mistakes"),
+      topicId: v.optional(v.id("topics")), // canonical topic the selection matched on
+      questions: v.array(
+        v.object({
+          contentId: v.id("contentItems"),
+          questionNumber: v.number(),
+          // The selection-time "why", snapshot so a resumed session still
+          // shows the honest reason each question was picked.
+          why: v.string(),
+        }),
+      ),
+      result: v.optional(v.union(v.literal("got_it"), v.literal("still_unsure"))),
+      firstTryCorrect: v.optional(v.number()), // attempts answered correctly (each question is one first-try shot)
+      submissionsCount: v.optional(v.number()),
+      attemptsToFirstCorrect: v.optional(v.number()), // submissions until the first correct one; undefined = never correct
+      reviewApplied: v.boolean(), // the original mistake's SRS update has been applied (exactly once)
+      createdAt: v.number(),
+      completedAt: v.optional(v.number()),
+    })
+      .index("by_user_mistake", ["userId", "mistakeId"])
+      .index("by_user", ["userId"]),
+
+    // One row per submitted answer inside a practice session. Idempotent
+    // per (sessionId, questionNumber): a duplicate submit returns the
+    // stored verdict instead of re-scoring or re-ingesting evidence.
+    mistakePracticeAttempts: defineTable({
+      userId: v.id("users"),
+      sessionId: v.id("mistakePracticeSessions"),
+      mistakeId: v.id("mistakes"),
+      contentId: v.id("contentItems"),
+      questionNumber: v.number(),
+      choice: v.string(), // the option label the student picked, e.g. "B"
+      correct: v.boolean(), // scored server-side against the paper's stored answer
+      submittedAt: v.number(),
+    })
+      .index("by_session", ["sessionId"])
+      .index("by_user", ["userId"]),
   },
 );
 
