@@ -100,3 +100,42 @@ export const countContentItems = internalQuery({
     return await ctx.db.query("contentItems").collect().then((items) => items.length);
   },
 });
+
+// ── Affiliate summary (P4: weekly digest extension) ──────────────────
+// Bounded indexed reads; commissions grow with real payment volume only.
+
+export const listAffiliateCommissionsForDigest = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const pending = await ctx.db
+      .query("affiliateCommissions")
+      .withIndex("by_status_payableAt", (q) => q.eq("status", "pending").gt("payableAt", 0))
+      .take(1000);
+    const payable = await ctx.db
+      .query("affiliateCommissions")
+      .withIndex("by_status_payableAt", (q) => q.eq("status", "payable").gt("payableAt", 0))
+      .take(1000);
+    const paid = await ctx.db
+      .query("affiliateCommissions")
+      .withIndex("by_status_payableAt", (q) => q.eq("status", "paid").gt("payableAt", 0))
+      .take(1000);
+    const voided = await ctx.db
+      .query("affiliateCommissions")
+      .withIndex("by_status_payableAt", (q) => q.eq("status", "void").gt("payableAt", 0))
+      .take(1000);
+    return [...pending, ...payable, ...paid, ...voided].map((c) => ({
+      status: c.status,
+      commissionEtb: c.commissionEtb,
+      grossAmountEtb: c.grossAmountEtb,
+      createdAt: c.createdAt,
+    }));
+  },
+});
+
+export const listAffiliateAttributionsForDigest = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("affiliateAttributions").take(1000);
+    return rows.map((r) => ({ attributedAt: r.attributedAt }));
+  },
+});

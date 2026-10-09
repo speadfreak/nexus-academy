@@ -73,6 +73,7 @@ import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
 import { AdminSchoolsSection } from "@/components/admin/AdminSchoolsSection";
 import { AdminContentSection } from "@/components/admin/AdminContentSection";
 import { AdminMarketingSection } from "@/components/admin/AdminMarketingSection";
+import { AdminAffiliatesSection } from "@/components/admin/AdminAffiliatesSection";
 import { AdminSubscriptionsSection } from "@/components/admin/AdminSubscriptionsSection";
 import { AdminTestimonialsSection } from "@/components/admin/AdminTestimonialsSection";
 import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
@@ -169,16 +170,17 @@ const ADMIN_TABS = [
   { id: "finance", label: "Finance", index: "07", icon: Wallet },
   { id: "payments", label: "Payment Reviews", index: "08", icon: Receipt },
   { id: "schools", label: "Schools", index: "09", icon: Building2 },
-  { id: "fraud", label: "Fraud Patterns", index: "10", icon: ShieldAlert },
-  { id: "marketing", label: "Marketing", index: "11", icon: Megaphone },
-  { id: "testimonials", label: "Testimonials", index: "12", icon: MessageSquareQuote },
-  { id: "subscriptions", label: "Subscriptions", index: "13", icon: CalendarClock },
-  { id: "reports", label: "Reports", index: "14", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "15", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "16", icon: Send },
-  { id: "system", label: "System", index: "17", icon: Plug },
-  { id: "audit", label: "Audit Log", index: "18", icon: ScrollText },
-  { id: "examengine", label: "Exam Engine", index: "19", icon: Wand2 },
+  { id: "affiliates", label: "Affiliates", index: "10", icon: Megaphone },
+  { id: "fraud", label: "Fraud Patterns", index: "11", icon: ShieldAlert },
+  { id: "marketing", label: "Marketing", index: "12", icon: Megaphone },
+  { id: "testimonials", label: "Testimonials", index: "13", icon: MessageSquareQuote },
+  { id: "subscriptions", label: "Subscriptions", index: "14", icon: CalendarClock },
+  { id: "reports", label: "Reports", index: "15", icon: Flag },
+  { id: "terminal", label: "Terminal", index: "16", icon: Terminal },
+  { id: "broadcast", label: "Broadcast", index: "17", icon: Send },
+  { id: "system", label: "System", index: "18", icon: Plug },
+  { id: "audit", label: "Audit Log", index: "19", icon: ScrollText },
+  { id: "examengine", label: "Exam Engine", index: "20", icon: Wand2 },
 ] as const;
 
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
@@ -186,7 +188,7 @@ type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 const ADMIN_TAB_GROUPS = [
   { label: "OVERVIEW", ids: ["dashboard"] as const },
   { label: "CONTENT", ids: ["content", "coverage"] as const },
-  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "schools", "fraud", "marketing", "testimonials", "subscriptions"] as const },
+  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "schools", "affiliates", "fraud", "marketing", "testimonials", "subscriptions"] as const },
   { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
 ] as const;
 
@@ -1391,9 +1393,9 @@ export default function Admin() {
     if (isAdmin === undefined) return true; // loading — show all tabs
     if (!isAdmin?.isAdmin) return false;
     const myRole = isAdmin?.role;
-    // Moderators cannot manage admins, keys, audit, or finance.
+    // Moderators cannot manage admins, keys, audit, finance, or affiliates.
     if (myRole === "moderator") {
-      if (t.id === "keys" || t.id === "admins" || t.id === "audit" || t.id === "finance") return false;
+      if (t.id === "keys" || t.id === "admins" || t.id === "audit" || t.id === "finance" || t.id === "affiliates") return false;
     }
     return true;
   });
@@ -2019,6 +2021,39 @@ export default function Admin() {
                       />
                     </div>
 
+                    {/* Affiliate cost lines — gross revenue above stays EXACTLY
+                        as it is; commissions are shown as a separate cost line
+                        (revenue is revenue; commissions are what it costs). */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <StatCard2
+                        label="affiliate commissions accrued"
+                        value={finance.affiliateCommissionsAccrued}
+                        icon={Megaphone}
+                        money
+                        currency={finance.currency}
+                        sub="owed to promoters (non-void, all time)"
+                        accent="warning"
+                      />
+                      <StatCard2
+                        label="affiliate commissions paid"
+                        value={finance.affiliateCommissionsPaid}
+                        icon={Send}
+                        money
+                        currency={finance.currency}
+                        sub="recorded TeleBirr payouts"
+                        accent="default"
+                      />
+                      <StatCard2
+                        label="net revenue after commissions"
+                        value={finance.netRevenueAfterCommissions}
+                        icon={Wallet}
+                        money
+                        currency={finance.currency}
+                        sub={`gross ${fmtMoney(finance.totalEarned)} − accrued ${fmtMoney(finance.affiliateCommissionsAccrued)}`}
+                        accent={finance.netRevenueAfterCommissions >= 0 ? "success" : "danger"}
+                      />
+                    </div>
+
                     {/* Daily revenue + provider breakdown */}
                     <div className="grid gap-4 lg:grid-cols-3">
                       <ChartCard
@@ -2172,6 +2207,12 @@ export default function Admin() {
 
             {/* ══════ SCHOOLS — school system management console ══════ */}
             {tab === "schools" && <AdminSchoolsSection />}
+
+            {/* ══════ AFFILIATES — promoter/commission control room ══════ */}
+            {/* Usable even while the master toggle is OFF so the owner can
+                prepare promoters before launching — mirrors the Schools tab
+                pattern. Gated to admin+ like Payments/Finance. */}
+            {tab === "affiliates" && <AdminAffiliatesSection />}
 
             {/* ══════ FRAUD PATTERNS — review-only suspicious-pattern detection ══════ */}
             {tab === "fraud" && <AdminFraudSection />}

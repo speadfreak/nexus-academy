@@ -87,6 +87,7 @@ function composeAdminDigest({
   slaBreached,
   contentItemsTotal,
   totalUsers,
+  affiliateSummary,
 }: {
   weekStart: number;
   revenueThisWeek: number;
@@ -101,6 +102,14 @@ function composeAdminDigest({
   slaBreached: number;
   contentItemsTotal: number;
   totalUsers: number;
+  affiliateSummary: {
+    programEnabled: boolean;
+    weekSignups: number;
+    weekCommissionsEtb: number;
+    pendingEtb: number;
+    payableEtb: number;
+    paidEtb: number;
+  } | null;
 }): string {
   const now = new Date();
   const weekStartDate = new Date(weekStart);
@@ -137,6 +146,26 @@ function composeAdminDigest({
   lines.push(`Paid active: <b>${paidActiveSubscriptions}</b>`);
   lines.push(`Trials in progress: <b>${inProgressTrials}</b>`);
   lines.push("");
+
+  // Affiliates (promoter program) — separate cost line, honest numbers.
+  if (affiliateSummary) {
+    lines.push(`<b>🤝 Affiliates (promoters)</b>`);
+    lines.push(
+      `Program: <b>${affiliateSummary.programEnabled ? "LIVE" : "OFF"}</b> · new attributed signups this week: <b>${affiliateSummary.weekSignups}</b>`,
+    );
+    if (
+      affiliateSummary.weekCommissionsEtb > 0 ||
+      affiliateSummary.pendingEtb > 0 ||
+      affiliateSummary.payableEtb > 0
+    ) {
+      lines.push(
+        `Commissions this week: <b>${formatMoney(affiliateSummary.weekCommissionsEtb)} ETB</b> · pending ${formatMoney(affiliateSummary.pendingEtb)} · payable ${formatMoney(affiliateSummary.payableEtb)} · paid ${formatMoney(affiliateSummary.paidEtb)}`,
+      );
+    } else {
+      lines.push(`<i>No commissions accrued yet.</i>`);
+    }
+    lines.push("");
+  }
 
   // Pipeline + health
   lines.push(`<b>📋 Pipeline</b>`);
@@ -191,7 +220,7 @@ export const sendWeeklyBusinessDigest = internalAction({
     // All direct ctx.db queries — no admin gate, no recomputation
     // from scratch, honest data only.
 
-    const [users, manualSubmissions, referrals, subscriptions, sessions, xpRows, attempts, contentItems] =
+    const [users, manualSubmissions, referrals, subscriptions, sessions, xpRows, attempts, contentItems, affiliateCommissions, affiliateAttributions] =
       await Promise.all([
         ctx.runQuery(internal.adminDigestData.listAllUsers, {}),
         ctx.runQuery(internal.adminDigestData.listAllManualSubmissions, {}),
@@ -201,6 +230,8 @@ export const sendWeeklyBusinessDigest = internalAction({
         ctx.runQuery(internal.adminDigestData.listRecentXp, { since: weekStart }),
         ctx.runQuery(internal.adminDigestData.listRecentQuizAttempts, { since: weekStart }),
         ctx.runQuery(internal.adminDigestData.countContentItems, {}),
+        ctx.runQuery(internal.adminDigestData.listAffiliateCommissionsForDigest, {}),
+        ctx.runQuery(internal.adminDigestData.listAffiliateAttributionsForDigest, {}),
       ]) as [
         Array<{ _id: Id<"users">; _creationTime: number }>,
         Array<{
@@ -220,6 +251,13 @@ export const sendWeeklyBusinessDigest = internalAction({
         Array<{ userId: Id<"users"> }>,
         Array<{ userId: Id<"users"> }>,
         number,
+        Array<{
+          status: string;
+          commissionEtb: number;
+          grossAmountEtb: number;
+          createdAt: number;
+        }>,
+        Array<{ attributedAt: number }>,
       ];
 
     // Revenue this week — sum of expectedAmount for submissions
@@ -271,6 +309,25 @@ export const sendWeeklyBusinessDigest = internalAction({
       else if (sub.status === "trial") inProgressTrials += 1;
     }
 
+    // Affiliate summary — week commissions (non-void, created this week) +
+    // pipeline sums. Null when the whole program has zero rows (the digest
+    // line only appears once the program has any data).
+    const programEnabled = await resolveConfigValue(ctx, "AFFILIATE_PROGRAM_ENABLED");
+    const weekCommissions = affiliateCommissions.filter(
+      (c) => c.status !== "void" && c.createdAt >= weekStart,
+    );
+    const affiliateSummary =
+      affiliateCommissions.length > 0 || affiliateAttributions.length > 0
+        ? {
+            programEnabled: programEnabled === "true",
+            weekSignups: affiliateAttributions.filter((a) => a.attributedAt >= weekStart).length,
+            weekCommissionsEtb: Math.round(weekCommissions.reduce((s, c) => s + c.commissionEtb, 0) * 100) / 100,
+            pendingEtb: Math.round(affiliateCommissions.filter((c) => c.status === "pending").reduce((s, c) => s + c.commissionEtb, 0) * 100) / 100,
+            payableEtb: Math.round(affiliateCommissions.filter((c) => c.status === "payable").reduce((s, c) => s + c.commissionEtb, 0) * 100) / 100,
+            paidEtb: Math.round(affiliateCommissions.filter((c) => c.status === "paid").reduce((s, c) => s + c.commissionEtb, 0) * 100) / 100,
+          }
+        : null;
+
     const text = composeAdminDigest({
       weekStart,
       revenueThisWeek,
@@ -285,6 +342,7 @@ export const sendWeeklyBusinessDigest = internalAction({
       slaBreached,
       contentItemsTotal: contentItems,
       totalUsers,
+      affiliateSummary,
     });
 
     // Send to the admin chat.

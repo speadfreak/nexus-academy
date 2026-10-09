@@ -32,6 +32,7 @@ import {
   Upload,
   Wallet,
   X,
+  Gift,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -302,6 +303,14 @@ function ManualPaymentSection({
   // ── Discount code state ────────────────────────────────────────────
   const [discountInput, setDiscountInput] = useState("");
   const trimmedCode = discountInput.trim();
+  // P6 promoter perk: if this user arrived via a promoter link whose
+  // promoter has a follower-perk discount code attached, auto-suggest it
+  // at checkout ("MELODY's followers get X% off"). Commission is computed
+  // on the amount actually paid — the perk just lowers that amount.
+  const promoterPerk = useQuery(api.affiliates.getMyPromoterPerk, {});
+  const perkVisible =
+    promoterPerk?.perkCode &&
+    trimmedCode.toUpperCase() !== promoterPerk.perkCode;
   const validateQuery = useQuery(
     api.marketing.validateDiscountCode,
     trimmedCode ? { code: trimmedCode } : "skip",
@@ -697,6 +706,24 @@ function ManualPaymentSection({
               </div>
             )}
           </div>
+          {perkVisible && promoterPerk?.perkCode && (
+            <button
+              type="button"
+              onClick={() => setDiscountInput(promoterPerk.perkCode!)}
+              className="mt-2.5 flex w-full items-center gap-2 rounded-xl border border-fuchsia-300/25 bg-fuchsia-300/[0.07] px-3 py-2.5 text-left transition hover:bg-fuchsia-300/[0.12]"
+            >
+              <Gift className="size-4 shrink-0 text-fuchsia-300" />
+              <span className="min-w-0 flex-1 text-xs leading-5 text-foreground/90">
+                <span className="font-semibold text-fuchsia-200">{promoterPerk.promoterName}</span> invited
+                you — your follower code{" "}
+                <span className="font-mono font-bold text-fuchsia-200">{promoterPerk.perkCode}</span> is
+                ready. Tap to apply it.
+              </span>
+              <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-fuchsia-300">
+                apply
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Submission form */}
