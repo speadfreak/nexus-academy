@@ -749,6 +749,16 @@ export interface FinanceOverview {
   paymentSuccessRate: number;
   // ARPU — total earned / paying users (active + trial). 0 if no payers.
   arpu: number;
+  // ── Affiliate program cost lines (P4 finance integration) ──
+  // Gross revenue figures above stay EXACTLY as they are — revenue is
+  // revenue; commissions are shown as a separate cost line.
+  // Commissions accrued on approved payments (all non-void, all time).
+  affiliateCommissionsAccrued: number;
+  // Commissions actually paid out to promoters (recorded payouts).
+  affiliateCommissionsPaid: number;
+  // Net revenue after commissions: totalEarned − accrued (can be an
+  // overstatement of cash position when payouts lag — see paid line).
+  netRevenueAfterCommissions: number;
   // Estimated LTV — average revenue per paying user per month × 12.
   // Conservative estimate assuming 1-year retention.
   estimatedLtv: number;
@@ -805,11 +815,27 @@ export const getFinanceOverview = query({
     monthStart.setHours(0, 0, 0, 0);
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-    const [payments, users, subscriptions, manualSubmissions] = await Promise.all([
+    const [payments, users, subscriptions, manualSubmissions, affiliatePendingC, affiliatePayableC, affiliatePaidC, affiliatePayouts] = await Promise.all([
       ctx.db.query("payments").collect(),
       ctx.db.query("users").take(300),
       ctx.db.query("subscriptions").collect(),
       ctx.db.query("manualPaymentSubmissions").collect(),
+      // Affiliate cost lines — bounded takes; the ledger grows with real
+      // payment volume only. Voided commissions are excluded from "accrued"
+      // (they were never owed).
+      ctx.db
+        .query("affiliateCommissions")
+        .withIndex("by_status_payableAt", (q) => q.eq("status", "pending").gt("payableAt", 0))
+        .take(1000),
+      ctx.db
+        .query("affiliateCommissions")
+        .withIndex("by_status_payableAt", (q) => q.eq("status", "payable").gt("payableAt", 0))
+        .take(1000),
+      ctx.db
+        .query("affiliateCommissions")
+        .withIndex("by_status_payableAt", (q) => q.eq("status", "paid").gt("payableAt", 0))
+        .take(1000),
+      ctx.db.query("affiliatePayouts").withIndex("by_paidAt").take(1000),
     ]);
 
     let totalEarned = 0;
@@ -893,10 +919,29 @@ export const getFinanceOverview = query({
         ? completedCount / (completedCount + failedCount)
         : 0;
 
+    // ── Affiliate cost lines (P4) ──
+    // Accrued = every non-void commission (pending + payable + paid).
+    // Paid = actual recorded payouts. Gross revenue figures above stay
+    // untouched — revenue is revenue; commissions are a separate cost.
+    const affiliateCommissionsAccrued =
+      [...affiliatePendingC, ...affiliatePayableC, ...affiliatePaidC].reduce(
+        (s, c) => s + c.commissionEtb,
+        0,
+      );
+    const affiliateCommissionsPaid = affiliatePayouts.reduce(
+      (s, p) => s + p.amountEtb,
+      0,
+    );
+    const netRevenueAfterCommissions =
+      Math.round((totalEarned - affiliateCommissionsAccrued) * 100) / 100;
+
     return {
       totalEarned,
       thisMonth,
       last30Days,
+      affiliateCommissionsAccrued,
+      affiliateCommissionsPaid,
+      netRevenueAfterCommissions,
       avgPayment: completedCount > 0 ? totalEarned / completedCount : 0,
       completedCount,
       pendingCount,

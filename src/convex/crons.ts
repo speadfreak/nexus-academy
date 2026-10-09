@@ -47,6 +47,17 @@ crons.hourly(
   internal.manualPayments.checkSlaBreach,
 );
 
+// Hourly: affiliate commission hold-window flip. Indexed by
+// status+payableAt with an earliest-first read — exits immediately (one
+// indexed query) when nothing is due. Flips due "pending" commissions to
+// "payable" and pings the admin when a promoter's payable balance crosses
+// the minimum payout (throttled to once per 7 days per promoter).
+crons.hourly(
+  "affiliate-flip-payable",
+  { minuteUTC: 45 },
+  internal.affiliates.flipDueCommissions,
+);
+
 // Weekly: personal Telegram digest for every linked user. Runs every
 // Monday at 08:00 UTC. The action iterates every telegramLinks row,
 // computes their weekly stats (XP, quiz trend, streak, weakest topic),

@@ -552,6 +552,20 @@ export const approveSubmission = mutation({
       // Non-fatal — referral processing must never block approval.
     }
 
+    // Affiliate commission accrual — the SINGLE engine shared with the
+    // SMS auto-approve path. Idempotent (unique submissionId guard),
+    // fully gated (program toggle, attribution, school seats, hold
+    // window) and non-fatal: accrual problems must never block a
+    // student's premium activation.
+    try {
+      await ctx.runMutation(internal.affiliates.accrueAffiliateCommission, {
+        submissionId: submissionId as string,
+        source: "manual_payment",
+      });
+    } catch {
+      // Non-fatal — affiliate accrual must never block approval.
+    }
+
     // Log to systemEvents.
     try {
       await ctx.runMutation(internal.systemEvents.logEvent, {
@@ -636,6 +650,19 @@ export const approveFromSms = internalMutation({
       });
     } catch {
       // Non-fatal
+    }
+
+    // Affiliate commission accrual — the SAME single engine the manual
+    // approval path calls (no duplicated logic). Idempotent: if the
+    // manual path somehow approved this submission first, the unique
+    // submissionId guard means still exactly ONE commission.
+    try {
+      await ctx.runMutation(internal.affiliates.accrueAffiliateCommission, {
+        submissionId: submissionId as string,
+        source: "manual_payment",
+      });
+    } catch {
+      // Non-fatal — affiliate accrual must never block approval.
     }
 
     try {

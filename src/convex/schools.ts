@@ -226,6 +226,18 @@ export const adminApproveSeatSubmission = mutation({
       targetId: submissionId,
       details: JSON.stringify({ schoolId: sub.schoolId, seatCount: sub.seatCount, durationMonths: sub.durationMonths, totalAmount: sub.totalAmount }),
     });
+    // Affiliate commission accrual — school seats are EXCLUDED by default
+    // (AFFILIATE_INCLUDE_SCHOOL_SEATS=false); the engine itself checks the
+    // config and skips silently when excluded. Same single engine both
+    // manual-payment approval paths use; idempotent per submission.
+    try {
+      await ctx.runMutation(internal.affiliates.accrueAffiliateCommission, {
+        submissionId: submissionId as string,
+        source: "school_seat",
+      });
+    } catch {
+      // Non-fatal — affiliate accrual must never block seat approval.
+    }
     return { ok: true };
   },
 });

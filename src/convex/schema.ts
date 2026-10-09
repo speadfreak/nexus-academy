@@ -2106,6 +2106,178 @@ const schema = defineSchema(
     })
       .index("by_session", ["sessionId"])
       .index("by_user", ["userId"]),
+
+    // ------------------------------------------------------------------
+    // Affiliate program — TikTok promoter links + commissions
+    // ------------------------------------------------------------------
+    //
+    // SEPARATE from the student referral program (referralCodes/referrals,
+    // premium-days, non-cash). The affiliate program is cash commission:
+    // promoters share https://…/<CODE> links, new signups get attributed,
+    // and every APPROVED real payment accrues a commission owed to the
+    // promoter. Money never moves automatically — the platform tracks
+    // what is owed, the admin pays manually (TeleBirr) and records the
+    // payout. Privacy: promoter-facing views show AGGREGATE numbers only,
+    // never a referred student's name/email (many are minors).
+    //
+    // Commission accrues ONLY on approved manual payments (both the admin
+    // approval and the SMS auto-approve path call the same internal
+    // mutation). Signups, trials, admin premium grants, goodwill bonuses
+    // and school-seat purchases never accrue (seats only when the admin
+    // explicitly enables AFFILIATE_INCLUDE_SCHOOL_SEATS).
+
+    // One promoter = one code. status "paused" stops NEW attributions but
+    // the promoter still earns on already-attributed users; "archived"
+    // ends everything while preserving the ledger (no hard delete once
+    // any attribution/commission exists).
+    affiliatePromoters: defineTable({
+      name: v.string(),
+      email: v.string(),
+      phone: v.optional(v.string()),
+      tiktokHandle: v.optional(v.string()),
+      payoutAccount: v.optional(v.string()), // TeleBirr number
+      code: v.string(), // unique, uppercase A–Z0–9, 3–20 chars
+      status: v.union(
+        v.literal("active"),
+        v.literal("paused"),
+        v.literal("archived"),
+      ),
+      // Per-promoter override; "inherit" = use the global AFFILIATE_*
+      // defaults from the configKeys table.
+      commissionType: v.union(
+        v.literal("inherit"),
+        v.literal("fixed"),
+        v.literal("percent"),
+      ),
+      commissionValue: v.optional(v.number()),
+      commissionScope: v.union(
+        v.literal("inherit"),
+        v.literal("first_only"),
+        v.literal("every_payment"),
+      ),
+      // Optional short message shown on the landing welcome strip for
+      // this promoter's visitors.
+      welcomeMessage: v.optional(v.string()),
+      // Random unguessable token (32+ chars) for the no-login partner
+      // stats page at /partner/<secretToken>. Regenerable by the admin.
+      secretToken: v.string(),
+      // Optional P6 perk: an existing discount code auto-suggested at
+      // checkout for this promoter's followers ("MELODY's followers get
+      // X% off"). Commission is computed on the amount actually paid.
+      perkDiscountCode: v.optional(v.string()),
+      notes: v.optional(v.string()),
+      // Denormalized lifetime counters — incremented by the visit ping /
+      // attribution mutation so the admin overview sums N promoter rows
+      // instead of scanning the daily-stats table. See Convex usage
+      // discipline at the top of affiliates.ts.
+      totalVisits: v.optional(v.number()),
+      totalSignups: v.optional(v.number()),
+      // Set when the payable balance crosses the min payout — keeps the
+      // Telegram "payout ready" ping from repeating every hour.
+      minPayoutNotifiedAt: v.optional(v.number()),
+      createdAt: v.number(),
+      createdBy: v.id("users"),
+    })
+      .index("by_code", ["code"])
+      .index("by_status", ["status"])
+      .index("by_secretToken", ["secretToken"])
+      .index("by_createdAt", ["createdAt"]),
+
+    // Optional extra codes that resolve to the same promoter (e.g. a
+    // campaign-specific code). The promoter's primary code is locked once
+    // it has visits/attributions — aliases are the growth path.
+    affiliateCodeAliases: defineTable({
+      promoterId: v.id("affiliatePromoters"),
+      aliasCode: v.string(), // unique, same charset rules as primary codes
+      createdAt: v.number(),
+      createdBy: v.id("users"),
+    })
+      .index("by_alias", ["aliasCode"])
+      .index("by_promoter", ["promoterId"]),
+
+    // DAILY AGGREGATE visit counters — one document per
+    // promoter+date+campaign, INCREMENTED per visit. Never one row per
+    // click (the project was suspended for query volume once; visit
+    // tracking stays deliberately cheap). The client throttles to at
+    // most one ping per browser per day per code before calling this.
+    affiliateDailyStats: defineTable({
+      promoterId: v.id("affiliatePromoters"),
+      date: v.string(), // "YYYY-MM-DD" (Addis Ababa calendar day)
+      campaign: v.string(), // "" when the link had no ?c= label
+      visits: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_promoter", ["promoterId"])
+      .index("by_promoter_date_campaign", ["promoterId", "date", "campaign"])
+      .index("by_promoter_date", ["promoterId", "date"])
+      .index("by_date", ["date"]),
+
+    // One attribution row per USER (unique) — FIRST attribution wins,
+    // never overwritten. Created when a brand-new account completes
+    // sign-up with a stored promoter code; existing accounts are not
+    // attributed; self-attribution (promoter's own email) is blocked.
+    affiliateAttributions: defineTable({
+      userId: v.id("users"),
+      promoterId: v.id("affiliatePromoters"),
+      campaign: v.string(),
+      attributedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_promoter", ["promoterId"])
+      .index("by_promoter_attributedAt", ["promoterId", "attributedAt"]),
+
+    // The commission ledger. submissionId is UNIQUE per submission — the
+    // idempotency guard that makes double-approval or both approval
+    // paths racing create exactly ONE commission. Amounts are SNAPSHOTTED
+    // at approval time: later price/config changes never rewrite history.
+    affiliateCommissions: defineTable({
+      promoterId: v.id("affiliatePromoters"),
+      userId: v.id("users"),
+      submissionId: v.string(), // unique; Id<"manualPaymentSubmissions"> or Id<"schoolSeatSubmissions">
+      source: v.union(
+        v.literal("manual_payment"),
+        v.literal("school_seat"),
+      ),
+      grossAmountEtb: v.number(), // amount ACTUALLY paid (post-discount)
+      commissionEtb: v.number(),
+      status: v.union(
+        v.literal("pending"), // inside the hold window
+        v.literal("payable"), // hold elapsed, ready for payout
+        v.literal("paid"), // covered by a recorded payout
+        v.literal("void"), // refunded/clawed back (voidReason set)
+      ),
+      payableAt: v.number(), // approval time + AFFILIATE_HOLD_HOURS
+      paidAt: v.optional(v.number()),
+      payoutId: v.optional(v.id("affiliatePayouts")),
+      voidReason: v.optional(v.string()),
+      voidedBy: v.optional(v.id("users")),
+      voidedAt: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_submission", ["submissionId"])
+      .index("by_promoter_status", ["promoterId", "status"])
+      .index("by_status_payableAt", ["status", "payableAt"])
+      .index("by_promoter", ["promoterId"])
+      .index("by_user", ["userId"])
+      .index("by_user_status", ["userId", "status"])
+      .index("by_createdAt", ["createdAt"]),
+
+    // Recorded manual payouts (TeleBirr). Money moves OUTSIDE the system;
+    // this row is the receipt. Marks the covered payable commissions as
+    // paid via payoutId.
+    affiliatePayouts: defineTable({
+      promoterId: v.id("affiliatePromoters"),
+      amountEtb: v.number(),
+      method: v.string(), // e.g. "telebirr"
+      reference: v.string(), // TeleBirr transaction reference
+      screenshotStorageId: v.optional(v.string()),
+      note: v.optional(v.string()),
+      paidAt: v.number(),
+      paidBy: v.id("users"),
+    })
+      .index("by_promoter_paidAt", ["promoterId", "paidAt"])
+      .index("by_promoter", ["promoterId"])
+      .index("by_paidAt", ["paidAt"]),
   },
 );
 

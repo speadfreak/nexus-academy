@@ -89,6 +89,20 @@ export const INTEGRATION_KEYS = [
   { key: "SCHOOL_SEAT_PRICE_TIER_2", label: "School Seat Price — Tier 2 (20-49 seats)", category: "payments", description: "Per-seat/month rate in ETB for 20-49 seats. Should be lower than Tier 1." },
   { key: "SCHOOL_SEAT_PRICE_TIER_3", label: "School Seat Price — Tier 3 (50-99 seats)", category: "payments", description: "Per-seat/month rate in ETB for 50-99 seats. Should be lower than Tier 2." },
   { key: "SCHOOL_SEAT_PRICE_TIER_4", label: "School Seat Price — Tier 4 (100+ seats)", category: "payments", description: "Per-seat/month rate in ETB for 100+ seats. Lowest per-seat rate (largest bulk discount)." },
+  // ── Affiliate (promoter) program ─────────────────────────────────────
+  // Cash-commission program for TikTok promoters. COMPLETELY SEPARATE from
+  // the student referral program (premium days, non-cash) — the two
+  // coexist. Master toggle default OFF; every public behavior (link
+  // resolution, visit pings, attribution, commission accrual) stops when
+  // OFF while the admin Affiliates tab + partner stats pages stay usable.
+  { key: "AFFILIATE_PROGRAM_ENABLED", label: "Affiliate Program Enabled", category: "affiliate", description: "MASTER TOGGLE for the entire promoter/affiliate program. When 'true', /<CODE> links resolve, visits are counted, new signups are attributed and approved payments accrue commissions. When unset/false every public behavior stops silently — promoter bio links just redirect to the landing page, never an error — while the admin Affiliates tab and existing partner pages stay readable. Default: false." },
+  { key: "AFFILIATE_DEFAULT_COMMISSION_TYPE", label: "Affiliate Default Commission Type", category: "affiliate", description: "'fixed' (flat ETB per approved payment) or 'percent' (share of the amount actually paid, post-discount). Promoters can override this individually. Default: fixed." },
+  { key: "AFFILIATE_DEFAULT_COMMISSION_VALUE", label: "Affiliate Default Commission Value", category: "affiliate", description: "The default commission amount: ETB when type is fixed, a percentage number when type is percent (e.g. 10 = 10%). Default: 50." },
+  { key: "AFFILIATE_DEFAULT_SCOPE", label: "Affiliate Default Scope", category: "affiliate", description: "'first_only' = commission on the attributed student's FIRST approved payment only. 'every_payment' = commission on every approved payment that student ever makes. Default: first_only." },
+  { key: "AFFILIATE_HOLD_HOURS", label: "Affiliate Hold Window (hours)", category: "affiliate", description: "Hours a commission stays 'pending' after payment approval before flipping to 'payable'. Protects against refunds — must exceed the 48h refund window. Default: 72." },
+  { key: "AFFILIATE_ATTRIBUTION_DAYS", label: "Affiliate Attribution Window (days)", category: "affiliate", description: "How long after clicking a promoter link a brand-new signup can still be attributed to that promoter. Default: 30." },
+  { key: "AFFILIATE_MIN_PAYOUT_ETB", label: "Affiliate Minimum Payout (ETB)", category: "affiliate", description: "Smallest payout the admin records without explicitly overriding. The admin gets a Telegram ping when a promoter's payable balance crosses this. Default: 200." },
+  { key: "AFFILIATE_INCLUDE_SCHOOL_SEATS", label: "Affiliate Include School Seats", category: "affiliate", description: "When 'true', approved school bulk-seat purchases also accrue commissions for the attributed promoter (rare — schools come through directors, not promoters). Default: false (excluded)." },
 ] as const;
 
 /**
@@ -124,6 +138,17 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   SCHOOL_SEAT_PRICE_TIER_2: "40",
   SCHOOL_SEAT_PRICE_TIER_3: "30",
   SCHOOL_SEAT_PRICE_TIER_4: "20",
+  // Affiliate program defaults — master toggle OFF until the owner flips
+  // it from the admin Affiliates tab (or Keys tab). Hold must exceed the
+  // 48h refund window → 72h default.
+  AFFILIATE_PROGRAM_ENABLED: "false",
+  AFFILIATE_DEFAULT_COMMISSION_TYPE: "fixed",
+  AFFILIATE_DEFAULT_COMMISSION_VALUE: "50",
+  AFFILIATE_DEFAULT_SCOPE: "first_only",
+  AFFILIATE_HOLD_HOURS: "72",
+  AFFILIATE_ATTRIBUTION_DAYS: "30",
+  AFFILIATE_MIN_PAYOUT_ETB: "200",
+  AFFILIATE_INCLUDE_SCHOOL_SEATS: "false",
 };
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
@@ -134,6 +159,7 @@ const CATEGORIES: Record<string, { label: string; icon: string }> = {
   auth: { label: "Authentication", icon: "shield" },
   video: { label: "Video (Rooms)", icon: "video" },
   integrations: { label: "Integrations", icon: "git-branch" },
+  affiliate: { label: "Affiliate Program", icon: "megaphone" },
   system: { label: "System", icon: "settings" },
   custom: { label: "Custom Keys", icon: "key-round" },
 };
