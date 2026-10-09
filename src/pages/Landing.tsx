@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
 import { useSchoolFeatureEnabled } from "@/hooks/useSchoolFeature";
+import AffiliateWelcomeStrip from "@/components/affiliate/AffiliateWelcomeStrip";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -363,6 +364,12 @@ export default function Landing() {
 
       {/* ------- Announcement banner ------- */}
       <AnnouncementBanner />
+
+      {/* ------- Affiliate welcome strip ------- */}
+      {/* Renders NOTHING unless the visitor arrived via a promoter link
+          (stored `lx_aff` code resolves). Dismissible, honest, aggregate-
+          safe — the landing page's own structure is untouched. */}
+      <AffiliateWelcomeStrip />
 
       {/* BrowserLanguagePrompt removed — kept the layout minimal above
           the hero per the platform owner's preference. The language

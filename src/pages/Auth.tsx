@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/input-otp";
 
 import { useAuth } from "@/hooks/use-auth";
+import { clearStoredAffiliateVisit, getStoredAffiliateVisit } from "@/pages/AffiliateRedirect";
 import logo from "@/assets/learnyx-logo.svg";
 import {
   ArrowLeft,
@@ -642,6 +643,38 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       }
     }
   }, [authLoading, isAuthenticated, profile, recordReferral]);
+
+  // ── Affiliate (promoter) attribution ────────────────────────────────
+  // SEPARATE from the referral flow above — a user can have both; each
+  // program rewards on its own terms. Fired at the SAME hook point (after
+  // auth + profile resolve): reads the visit the /:code redirect stored in
+  // `lx_aff` and hands it to attachAffiliateAttribution, which re-validates
+  // EVERYTHING server-side (program enabled, active promoter, brand-new
+  // account only, attribution window, first-attribution-wins, no
+  // self-attribution). One-shot; the stored visit is always cleared so we
+  // never retry or re-attribute.
+  const affiliateCapturedRef = useRef(false);
+  const attachAffiliate = useMutation(api.affiliates.attachAffiliateAttribution);
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && profile !== undefined && !affiliateCapturedRef.current) {
+      const visit = getStoredAffiliateVisit();
+      if (visit?.code) {
+        affiliateCapturedRef.current = true; // one-shot — never retry
+        attachAffiliate({
+          code: visit.code,
+          capturedAt: visit.ts,
+          campaign: visit.campaign || undefined,
+        })
+          .catch(() => {
+            // Backend rejects silently (disabled / invalid / existing
+            // account / self-attribution / window expired) — no UX noise.
+          })
+          .finally(() => {
+            clearStoredAffiliateVisit();
+          });
+      }
+    }
+  }, [authLoading, isAuthenticated, profile, attachAffiliate]);
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {

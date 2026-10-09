@@ -139,6 +139,13 @@ const MockExam = lazy(() => import("./pages/MockExam.tsx"));
 const ExamPrep = lazy(() => import("./pages/ExamPrep.tsx"));
 const AptitudeHub = lazy(() => import("./pages/AptitudeHub.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+// ── Affiliate (promoter) program routes ──
+// AffiliateRedirect handles /:code (LAST route). PartnerStats handles
+// /partner/:secretToken and MUST be declared before the /:code catch-all
+// so "partner" is never captured as a promoter code (it's also in the
+// RESERVED_CODES list as a second guard).
+const AffiliateRedirect = lazy(() => import("./pages/AffiliateRedirect.tsx"));
+const PartnerStats = lazy(() => import("./pages/PartnerStats.tsx"));
 
 // Route-transition loading fallback — the little sibling of the Insane L
 // preloader. Same visual language: gold serif "L", orbit ring with a gold
@@ -901,6 +908,24 @@ if (rootEl) {
                               </RequireAuth>
                             }
                           />
+                          {/* ── /partner/:secretToken — promoter stats page
+                              (no login, token-gated, aggregate-only). MUST
+                              be registered BEFORE the /:code catch-all so
+                              the literal segment "partner" wins. */}
+                          <Route
+                            path="/partner/:secretToken"
+                            element={<PartnerStats />}
+                          />
+                          {/* ── /:code — affiliate promoter links. THE LAST
+                              top-level route, immediately before the
+                              NotFound catch-all, so every real route always
+                              wins over a promoter code. Valid code + program
+                              enabled → store attribution + throttled visit
+                              ping + redirect to /. Unknown code or program
+                              off → silent redirect to / (a promoter's bio
+                              link must never look broken). Non-code paths
+                              fall through to NotFound. */}
+                          <Route path=":code" element={<AffiliateRedirect />} />
                           <Route path="*" element={<NotFound />} />
                         </Routes>
                       </PageTransition>
