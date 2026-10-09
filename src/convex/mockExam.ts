@@ -61,6 +61,7 @@ import { callGemini, GeminiRateLimitError, GeminiUnavailableError } from "./gemi
 import { callGroq } from "./groq";
 import { callOpenRouter, callCerebras, ProviderUnavailableError } from "./mockExamProviders";
 import { XP_VALUES } from "./constants";
+import { computeMockInsights, type MockSectionResult } from "../lib/mockInsights";
 
 // ---------------------------------------------------------------------------
 // Question shape (mirrors quizzes.ts so the frontend QuizFlow component can
@@ -790,6 +791,7 @@ export const getMyMockExam = query({
           flagged: s.flagged,
           timeAllottedSeconds: s.timeAllottedSeconds,
           timeSpentSeconds: s.timeSpentSeconds,
+          timeMs: s.timeMs ?? null,
           status: s.status,
           score: s.score,
           correctCount: s.correctCount,
@@ -877,6 +879,12 @@ export const completeSection = mutation({
     answers: v.array(v.number()),
     flagged: v.array(v.boolean()),
     timeSpentSeconds: v.number(),
+    // Personal exam clock (3.0): optional per-question time in ms captured
+    // by the player. Older clients omit it and everything below behaves
+    // exactly as before. Sanitized server-side: length-capped, clamped to
+    // the section's own budget (a single question can't out-live its whole
+    // section), negatives floored to 0.
+    timeMs: v.optional(v.array(v.number())),
   },
   handler: async (ctx, args): Promise<{
     sectionId: Id<"mockExamSections">;
@@ -940,10 +948,25 @@ export const completeSection = mutation({
     const score = Math.round((correctCount / questions.length) * 100);
     const clampedTime = Math.max(0, Math.min(args.timeSpentSeconds, section.timeAllottedSeconds));
 
+    // Exam clock sanitization — same length as the question set, every
+    // entry a sane non-negative int within the section budget.
+    let safeTimeMs: number[] | undefined;
+    if (args.timeMs) {
+      const budgetMs = section.timeAllottedSeconds * 1000;
+      const sanitized = args.timeMs
+        .slice(0, questions.length)
+        .map((ms) =>
+          Number.isFinite(ms) ? Math.max(0, Math.min(Math.round(ms), budgetMs)) : 0,
+        );
+      while (sanitized.length < questions.length) sanitized.push(0);
+      safeTimeMs = sanitized;
+    }
+
     await ctx.db.patch(args.sectionId, {
       answers: storedAnswers,
       flagged: safeFlagged,
       timeSpentSeconds: clampedTime,
+      ...(safeTimeMs ? { timeMs: safeTimeMs } : {}),
       score,
       correctCount,
       totalQuestions: questions.length,
@@ -1182,6 +1205,49 @@ export const getMyMockExams = query({
       completedAt: e.completedAt,
       totalScore: e.totalScore,
     }));
+  },
+});
+
+// ---------------------------------------------------------------------------
+// getMockInsights — the cross-exam intelligence for the results screen.
+// The server is the ONLY place that can see the previous sitting's
+// per-subject breakdown, so the comparison lives here, on the pure
+// computeMockInsights helper (shared with scripts/verify-mock-insights.mjs).
+// Returns null while the exam is in progress/abandoned — no partial
+// "insights" invented from unfinished sections.
+// ---------------------------------------------------------------------------
+
+export const getMockInsights = query({
+  args: { mockExamId: v.id("mockExams") },
+  handler: async (ctx, { mockExamId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const exam = await ctx.db.get(mockExamId);
+    if (!exam || exam.userId !== userId) return null;
+    if (exam.status !== "completed") return null;
+
+    const parse = (json: string | undefined): MockSectionResult[] => {
+      try {
+        const raw = JSON.parse(json ?? "[]") as MockSectionResult[];
+        return Array.isArray(raw) ? raw : [];
+      } catch {
+        return [];
+      }
+    };
+    const current = parse(exam.sectionResults);
+    if (current.length === 0) return null;
+
+    // Most recent completed sitting strictly BEFORE this one.
+    const completed = await ctx.db
+      .query("mockExams")
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "completed"))
+      .collect();
+    const previous = completed
+      .filter((e) => e._id !== exam._id && e.startedAt < exam.startedAt)
+      .sort((a, b) => b.startedAt - a.startedAt)[0];
+    const previousResults = previous ? parse(previous.sectionResults) : null;
+
+    return computeMockInsights(current, previousResults && previousResults.length > 0 ? previousResults : null);
   },
 });
 

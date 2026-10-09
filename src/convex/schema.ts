@@ -461,6 +461,12 @@ const schema = defineSchema(
       quizId: v.id("quizzes"),
       userId: v.id("users"),
       answers: v.array(v.number()),
+      // Confidence calibration (3.0): optional pre-reveal self-report per
+      // question, same length as answers (null = not reported). Feeds the
+      // results screen's danger-gap note and the mistake ledger.
+      confidences: v.optional(
+        v.array(v.union(v.literal("sure"), v.literal("unsure"), v.null())),
+      ),
       score: v.number(),
       totalQuestions: v.number(),
       completedAt: v.number(),
@@ -1415,6 +1421,12 @@ const schema = defineSchema(
       flagged: v.array(v.boolean()),
       timeAllottedSeconds: v.number(),
       timeSpentSeconds: v.number(), // updated on each save and on completion
+      // Personal exam clock (3.0): per-question time in ms, captured
+      // client-side while the student works and clamped server-side on
+      // completion. Same length as questions; 0 = no timing data for that
+      // question. Powers the results-screen pace view — a practice aid,
+      // never an official per-question allocation.
+      timeMs: v.optional(v.array(v.number())),
       score: v.optional(v.number()), // 0..100, server-computed on completion
       correctCount: v.optional(v.number()),
       totalQuestions: v.optional(v.number()),
@@ -1469,6 +1481,12 @@ const schema = defineSchema(
       questionsTotal: v.optional(v.number()),
       questionsCorrect: v.optional(v.number()),
       questionsAnswered: v.optional(v.number()),
+      // Personal exam clock + confidence calibration (3.0): JSON array of
+      // [{ questionNumber, timeMs?, confidence?, correct }] captured by the
+      // digital player. Stored as JSON (written once per attempt, read back
+      // by future pace-comparison features) — never authoritative for
+      // scoring, which is derived from questionResults at ingest time.
+      questionTimingsJson: v.optional(v.string()),
     })
       .index("by_user", ["userId"])
       .index("by_user_content", ["userId", "contentId"])
@@ -2009,6 +2027,12 @@ const schema = defineSchema(
       contentId: v.optional(v.id("contentItems")), // open the source paper
       sourcePage: v.optional(v.number()),
       origin: v.union(v.literal("official"), v.literal("ai_generated")),
+      // Confidence calibration (3.0): the student's OPTIONAL self-report
+      // captured BEFORE the answer was revealed ("sure" / "unsure"). The
+      // latest report at score time wins. A confident miss is the most
+      // dangerous kind of gap — the Mistake Lab surfaces it as such.
+      // Absent = never self-reported; the system never guesses it.
+      confidence: v.optional(v.union(v.literal("sure"), v.literal("unsure"))),
       status: v.union(v.literal("open"), v.literal("mastered"), v.literal("dismissed")),
       reviewCount: v.number(),
       correctReviewCount: v.number(),
@@ -2074,6 +2098,10 @@ const schema = defineSchema(
       questionNumber: v.number(),
       choice: v.string(), // the option label the student picked, e.g. "B"
       correct: v.boolean(), // scored server-side against the paper's stored answer
+      // Optional pre-reveal self-report, passed through to the ingested
+      // outcome (and onto the mistake row when the practice question was
+      // missed). Absent = the student skipped the check.
+      confidence: v.optional(v.union(v.literal("sure"), v.literal("unsure"))),
       submittedAt: v.number(),
     })
       .index("by_session", ["sessionId"])

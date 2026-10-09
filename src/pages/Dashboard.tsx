@@ -846,6 +846,10 @@ export default function Dashboard() {
   // Learning loop (2.0) — the honest "what should I do right now?" signal.
   const nextAction = useQuery(api.learning.getNextAction);
   const mistakeStats = useQuery(api.learning.getMistakeStats);
+  // Memory engine (3.0) — due flashcard count surfaced next to the loop's
+  // due-review count, so spaced recall never depends on remembering to open
+  // the Flashcards page. Purely additive display; getNextAction unchanged.
+  const memoryStats = useQuery(api.flashcards.getMemoryStats);
   const ensureQuote = useAction(api.quotes.ensureTodaysQuote);
   const rebrandQuotes = useMutation(api.quotes.rebrandQuoteAuthors);
   const quoteSyncedRef = useRef(false);
@@ -1501,6 +1505,16 @@ export default function Dashboard() {
                     <span className="type-caption rounded-full bg-amber-400/15 px-2 py-0.5 font-semibold text-amber-300">
                       {mistakeStats.dueNow} due for review
                     </span>
+                  )}
+                  {memoryStats && memoryStats.dueCards > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => navigate("/flashcards")}
+                      aria-label={`${memoryStats.dueCards} flashcards due for review — open Flashcards`}
+                      className="type-caption cursor-pointer rounded-full bg-emerald-400/15 px-2 py-0.5 font-semibold text-emerald-300 transition-colors hover:bg-emerald-400/25"
+                    >
+                      {memoryStats.dueCards} card{memoryStats.dueCards === 1 ? "" : "s"} due
+                    </button>
                   )}
                 </div>
                 <p className="type-h3 mt-1">{nextAction.title}</p>

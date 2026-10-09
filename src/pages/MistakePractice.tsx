@@ -362,6 +362,9 @@ function Player({
 
   const [idx, setIdx] = useState(firstUnanswered);
   const [choice, setChoice] = useState<string | null>(null);
+  // Confidence calibration: optional self-report captured BEFORE the check
+  // reveal. Locked once answered so it can never be retro-fitted.
+  const [confidence, setConfidence] = useState<"sure" | "unsure" | null>(null);
   const [hintShown, setHintShown] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -372,6 +375,7 @@ function Player({
   // Reset per-question state when moving between questions.
   useEffect(() => {
     setChoice(null);
+    setConfidence(null);
     setHintShown(false);
     setResult(null);
   }, [idx]);
@@ -385,6 +389,7 @@ function Player({
         contentId: q.contentId,
         questionNumber: q.questionNumber,
         choice,
+        ...(confidence ? { confidence } : {}),
       });
       setResult(res);
       if (res.sessionComplete) {
@@ -544,6 +549,35 @@ function Player({
               />
             ))}
           </div>
+
+          {/* Confidence calibration — optional, pre-reveal only. */}
+          {!result && !isAnswered && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="type-caption text-muted-foreground">How sure?</span>
+              {(["sure", "unsure"] as const).map((mark) => {
+                const active = confidence === mark;
+                return (
+                  <button
+                    key={mark}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setConfidence(active ? null : mark)}
+                    className={cn(
+                      "interactive-press cursor-pointer rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                      active && mark === "sure"
+                        ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300"
+                        : active && mark === "unsure"
+                          ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
+                          : "border-white/10 bg-white/[0.04] text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {mark === "sure" ? "I'm sure" : "Not sure"}
+                  </button>
+                );
+              })}
+              <span className="type-caption text-muted-foreground/50">optional — marks the gaps you can't see</span>
+            </div>
+          )}
 
           {/* Pre-submit */}
           {!result && !isAnswered && (
@@ -707,6 +741,33 @@ function Summary({ session, onPracticeAgain }: { session: SessionData; onPractic
             : `This mistake comes back ${relTime(session.mistake.nextReviewAt)} — spaced re-checks are how repairs stick.`}
         </p>
       )}
+
+      {/* Calibration readout — only from what the student actually reported
+          before each reveal. Confident misses are the gaps worth naming. */}
+      {(() => {
+        const confidentWrong = session.attempts.filter(
+          (a) => !a.correct && a.confidence === "sure",
+        ).length;
+        const unsureRight = session.attempts.filter(
+          (a) => a.correct && a.confidence === "unsure",
+        ).length;
+        if (confidentWrong === 0 && unsureRight === 0) return null;
+        return (
+          <div className="mt-4 max-w-md rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-3 text-left">
+            {confidentWrong > 0 && (
+              <p className="type-caption font-semibold text-amber-200">
+                Sure but wrong on {confidentWrong}: that&apos;s a danger question — it stays in
+                your Mistake Lab and deserves the next session.
+              </p>
+            )}
+            {unsureRight > 0 && (
+              <p className="type-caption mt-1 text-amber-200/80">
+                Unsure but right on {unsureRight}: thin ice — the schedule will re-check it.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         <button

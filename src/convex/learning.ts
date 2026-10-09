@@ -252,6 +252,9 @@ const outcomeShape = v.object({
   contentId: v.optional(v.id("contentItems")),
   sourcePage: v.optional(v.number()),
   origin: v.union(v.literal("official"), v.literal("ai_generated")),
+  // Confidence calibration: optional pre-reveal self-report. Stored on the
+  // mistake row only — it never changes correctness or mastery math.
+  confidence: v.optional(v.union(v.literal("sure"), v.literal("unsure"))),
   correct: v.boolean(),
 });
 
@@ -279,6 +282,7 @@ type Outcome = {
   contentId?: Id<"contentItems">;
   sourcePage?: number;
   origin: "official" | "ai_generated";
+  confidence?: "sure" | "unsure";
   correct: boolean;
 };
 
@@ -338,10 +342,13 @@ export const ingestQuestionOutcomes = internalMutation({
               nextReviewAt: now,
               intervalDays: 0,
               studentAnswer: clampText(o.studentAnswer, 400) ?? existing.studentAnswer,
+              // Latest self-report wins; absent never erases a prior one.
+              ...(o.confidence ? { confidence: o.confidence } : {}),
             });
           } else {
             await ctx.db.patch(existing._id, {
               studentAnswer: clampText(o.studentAnswer, 400) ?? existing.studentAnswer,
+              ...(o.confidence ? { confidence: o.confidence } : {}),
             });
           }
           continue;
@@ -362,6 +369,7 @@ export const ingestQuestionOutcomes = internalMutation({
           contentId: o.contentId,
           sourcePage: o.sourcePage,
           origin: o.origin,
+          confidence: o.confidence,
           status: "open",
           reviewCount: 0,
           correctReviewCount: 0,
@@ -516,6 +524,7 @@ export const listMistakes = query({
       _id: r._id,
       source: r.source,
       origin: r.origin,
+      confidence: r.confidence ?? null,
       subjectId: r.subjectId,
       subjectName: subjectName.get(r.subjectId) ?? "Unknown subject",
       topicId: r.topicId ?? null,
@@ -541,7 +550,7 @@ export const listMistakes = query({
 export const getMistakeStats = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) return { open: 0, dueNow: 0, mastered: 0 };
+    if (!userId) return { open: 0, dueNow: 0, mastered: 0, confidentOpen: 0 };
     const now = Date.now();
     const open = await ctx.db
       .query("mistakes")
@@ -555,7 +564,47 @@ export const getMistakeStats = query({
       open: open.length,
       dueNow: open.filter((m) => m.nextReviewAt <= now).length,
       mastered: mastered.length,
+      // Danger gaps: open mistakes the student had marked "sure" before the
+      // reveal. Confidence feels like knowledge; when it's wrong it deserves
+      // its own line in the Exam Twin and the Mistake Lab.
+      confidentOpen: open.filter((m) => m.confidence === "sure").length,
     };
+  },
+});
+
+/**
+ * Mistakes recorded from ONE source (e.g. a single mock exam or a single
+ * digital paper), keyed by questionKey so a results screen can badge each
+ * question with its ledger state. Minimal payload — the full rows live in
+ * the Mistake Lab. Bounded scan: mistakes per user are capped in practice
+ * by their attempt history, and the query stops at 500 rows.
+ */
+export const getMistakesForSource = query({
+  args: {
+    source: v.union(
+      v.literal("digital_paper"),
+      v.literal("quiz"),
+      v.literal("mock_exam"),
+      v.literal("daily_challenge"),
+    ),
+    sourceRefId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const rows = await ctx.db
+      .query("mistakes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    const now = Date.now();
+    return rows
+      .filter((m) => m.source === args.source && m.sourceRefId === args.sourceRefId)
+      .slice(0, 500)
+      .map((m) => ({
+        questionKey: m.dedupeKey.split(":").slice(2).join(":"),
+        status: m.status,
+        due: m.status === "open" && m.nextReviewAt <= now,
+      }));
   },
 });
 
@@ -1238,6 +1287,7 @@ export const getPracticeQuestions = query({
         contentId: a.contentId,
         questionNumber: a.questionNumber,
         correct: a.correct,
+        confidence: a.confidence ?? null,
       })),
       questions,
       unavailable,
@@ -1309,6 +1359,10 @@ export const submitMistakePractice = mutation({
     contentId: v.id("contentItems"),
     questionNumber: v.number(),
     choice: v.string(),
+    // Optional pre-reveal self-report — captured by the player BEFORE the
+    // "Check" reveal and stored on both the attempt row and (via ingest)
+    // the mistake row when this question was missed.
+    confidence: v.optional(v.union(v.literal("sure"), v.literal("unsure"))),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -1391,6 +1445,7 @@ export const submitMistakePractice = mutation({
       questionNumber: args.questionNumber,
       choice: normalizedChoice,
       correct,
+      confidence: args.confidence,
       submittedAt: Date.now(),
     });
 
@@ -1419,6 +1474,7 @@ export const submitMistakePractice = mutation({
           contentId: args.contentId,
           sourcePage: q.sourcePage,
           origin: "official" as const,
+          confidence: args.confidence,
           correct,
         },
       ],

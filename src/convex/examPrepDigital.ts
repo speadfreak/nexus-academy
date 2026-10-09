@@ -750,6 +750,12 @@ export const logDigitalAttempt = mutation({
           explanation: v.optional(v.string()),
           topicText: v.optional(v.string()),
           sourcePage: v.optional(v.number()),
+          // Confidence calibration (3.0): optional pre-reveal self-report
+          // captured by the player's practice mode before "Check answer".
+          confidence: v.optional(v.union(v.literal("sure"), v.literal("unsure"))),
+          // Personal exam clock (3.0): ms the student spent on this
+          // question. Clamped + stored on the attempt's timing JSON.
+          timeMs: v.optional(v.number()),
         }),
       ),
     ),
@@ -765,6 +771,23 @@ export const logDigitalAttempt = mutation({
     const clampPct = (n?: number) =>
       n === undefined ? undefined : Math.max(0, Math.min(100, Math.round(n)));
 
+    // Exam clock + calibration snapshot — written once per attempt so a
+    // future "compare with your previous attempt" pace view has real data
+    // to work from. Sanitized: bounded count, non-negative int times.
+    let questionTimingsJson: string | undefined;
+    if (args.questionResults && args.questionResults.length > 0) {
+      const timings = args.questionResults.slice(0, 300).map((r) => ({
+        questionNumber: r.questionNumber,
+        timeMs:
+          r.timeMs !== undefined && Number.isFinite(r.timeMs)
+            ? Math.max(0, Math.min(Math.round(r.timeMs), 24 * 3600 * 1000))
+            : undefined,
+        confidence: r.confidence,
+        correct: r.correct,
+      }));
+      questionTimingsJson = JSON.stringify(timings);
+    }
+
     const attemptId = await ctx.db.insert("examPrepAttempts", {
       userId,
       contentId: args.contentId,
@@ -777,6 +800,7 @@ export const logDigitalAttempt = mutation({
       questionsTotal: args.questionsTotal,
       questionsCorrect: args.questionsCorrect,
       questionsAnswered: args.questionsAnswered,
+      questionTimingsJson,
     });
 
     // Learning loop — per-question evidence + mistake ledger. Provenance is
@@ -800,6 +824,7 @@ export const logDigitalAttempt = mutation({
             contentId: args.contentId,
             sourcePage: r.sourcePage,
             origin: "official" as const,
+            confidence: r.confidence,
             correct: r.correct,
           })),
         });

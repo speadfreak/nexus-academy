@@ -287,8 +287,14 @@ export const submitAttempt = mutation({
   args: {
     quizId: v.id("quizzes"),
     answers: v.array(v.number()),
+    // Confidence calibration (3.0): optional pre-reveal self-report per
+    // question (null = not reported). Same length as answers; mismatches
+    // are tolerated — missing entries are treated as unreported.
+    confidences: v.optional(
+      v.array(v.union(v.literal("sure"), v.literal("unsure"), v.null())),
+    ),
   },
-  handler: async (ctx, { quizId, answers }): Promise<SubmitAttemptResult> => {
+  handler: async (ctx, { quizId, answers, confidences }): Promise<SubmitAttemptResult> => {
     const userId = await requireUser(ctx);
     const quiz = await ctx.db.get(quizId);
     if (!quiz || quiz.generatedForUserId !== userId) {
@@ -323,11 +329,15 @@ export const submitAttempt = mutation({
 
     const score = results.filter((r) => r.correct).length;
     const storedAnswers = results.map((r) => r.selected);
+    const storedConfidences = confidences
+      ? results.map((_, index) => confidences[index] ?? null)
+      : undefined;
 
     await ctx.db.insert("quizAttempts", {
       quizId,
       userId,
       answers: storedAnswers,
+      ...(storedConfidences ? { confidences: storedConfidences } : {}),
       score,
       totalQuestions: questions.length,
       completedAt: Date.now(),
@@ -350,6 +360,7 @@ export const submitAttempt = mutation({
         explanation: r.explanation,
         topicId: quiz.topicId ?? undefined,
         origin: "ai_generated" as const,
+        confidence: confidences?.[index] ?? undefined,
         correct: r.correct,
       })),
     });

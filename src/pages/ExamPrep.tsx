@@ -521,6 +521,9 @@ function ExamTwinPanel() {
             {mistakeStats && mistakeStats.open > 0
               ? ` · ${mistakeStats.open} mistake${mistakeStats.open === 1 ? "" : "s"} waiting for review`
               : ""}
+            {mistakeStats && mistakeStats.confidentOpen > 0
+              ? ` · ${mistakeStats.confidentOpen} you'd marked "sure" (danger gaps)`
+              : ""}
             .
           </p>
         </div>

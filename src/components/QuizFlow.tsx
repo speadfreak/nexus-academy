@@ -82,6 +82,10 @@ export function QuizFlow({
   const [count, setCount] = useState(10);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
+  // Confidence calibration: optional pre-reveal self-report per question.
+  // Capture happens BEFORE the pick reveals the answer — once answered, the
+  // buttons lock so the report can never be retro-fitted to the outcome.
+  const [confidences, setConfidences] = useState<("sure" | "unsure" | null)[]>([]);
   const [answered, setAnswered] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [recapText, setRecapText] = useState<string | null>(null);
@@ -105,6 +109,7 @@ export function QuizFlow({
       });
       setCurrent(0);
       setAnswers([]);
+      setConfidences([]);
       setAnswered(false);
       setPhase({
         name: "questions",
@@ -152,9 +157,17 @@ export function QuizFlow({
     if (phase.name !== "questions" || submitting) return;
     setSubmitting(true);
     try {
+      // Only ship the calibration when the student actually used it — all-
+      // null arrays stay local, and old behavior is preserved otherwise.
+      const hasConfidence = confidences.some((c) => c !== null && c !== undefined);
       const result = await submitAttempt({
         quizId: phase.quizId as never,
         answers,
+        ...(hasConfidence
+          ? {
+              confidences: phase.questions.map((_, i) => confidences[i] ?? null),
+            }
+          : {}),
       });
       setPhase({
         name: "results",
@@ -193,6 +206,7 @@ export function QuizFlow({
       setSubjectId(initialSubjectId ?? "");
       setCurrent(0);
       setAnswers([]);
+      setConfidences([]);
       setAnswered(false);
       setRecapText(null);
     }, 250);
@@ -312,6 +326,45 @@ export function QuizFlow({
                 {question.question}
               </p>
 
+              {/* Confidence calibration — mark BEFORE picking; the reveal
+                  happens on pick, so the buttons lock then. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  How sure?
+                </span>
+                {(["sure", "unsure"] as const).map((mark) => {
+                  const active = confidences[current] === mark;
+                  return (
+                    <button
+                      key={mark}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={answered}
+                      onClick={() =>
+                        setConfidences((prev) => {
+                          const next = [...prev];
+                          next[current] = active ? null : mark;
+                          return next;
+                        })
+                      }
+                      className={cn(
+                        "cursor-pointer rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors disabled:cursor-default disabled:opacity-70",
+                        active && mark === "sure"
+                          ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300"
+                          : active && mark === "unsure"
+                            ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
+                            : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {mark === "sure" ? "I'm sure" : "Not sure"}
+                    </button>
+                  );
+                })}
+                {answered && !confidences[current] && (
+                  <span className="text-[11px] text-muted-foreground/60">not marked</span>
+                )}
+              </div>
+
               <div className="flex flex-col gap-2">
                 {question.options.map((option, index) => {
                   const selected = answered && answers[current] === index;
@@ -417,6 +470,35 @@ export function QuizFlow({
                   +{phase.xpAwarded} XP · saved to your journey
                 </p>
               </div>
+
+              {/* Calibration readout — the dangerous gap called out plainly,
+                  only from what the student actually reported pre-reveal. */}
+              {(() => {
+                const confidentWrong = phase.results.filter(
+                  (r, i) => !r.correct && confidences[i] === "sure",
+                ).length;
+                const unsureRight = phase.results.filter(
+                  (r, i) => r.correct && confidences[i] === "unsure",
+                ).length;
+                if (confidentWrong === 0 && unsureRight === 0) return null;
+                return (
+                  <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06] px-4 py-3 text-sm leading-6">
+                    {confidentWrong > 0 && (
+                      <p className="font-semibold text-amber-200">
+                        You were sure but wrong on {confidentWrong} question
+                        {confidentWrong === 1 ? "" : "s"} — start your review there. That&apos;s the
+                        dangerous kind of gap.
+                      </p>
+                    )}
+                    {unsureRight > 0 && (
+                      <p className="text-amber-200/80">
+                        {unsureRight} you marked &quot;not sure&quot; but got right — thin ice. Worth a
+                        second pass before you trust it.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="flex flex-col gap-3">
                 {phase.results.map((result, index) => (

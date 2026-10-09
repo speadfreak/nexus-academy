@@ -32,7 +32,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Award,
+  BarChart3,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -40,11 +42,14 @@ import {
   FileText,
   Flag,
   FlagOff,
+  FlaskConical,
   GraduationCap,
   Loader2,
   Play,
+  RotateCcw,
   Sparkles,
   Timer,
+  TrendingDown,
   TrendingUp,
   Trophy,
   X,
@@ -64,6 +69,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AuthRequiredPrompt } from "@/components/AuthRequiredPrompt";
 import { cn } from "@/lib/utils";
+import { computePaceStats, formatDurationMs, paceBudgetMs } from "@/lib/examClock";
+import type { MockInsights } from "@/lib/mockInsights";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Link } from "react-router";
 
@@ -89,6 +96,9 @@ type ExamSection = {
   flagged: boolean[];
   timeAllottedSeconds: number;
   timeSpentSeconds: number;
+  // Personal exam clock — per-question ms captured by the player while the
+  // section was taken. null for sections completed before 3.0.
+  timeMs: number[] | null;
   status: SectionStatus;
   score?: number;
   correctCount?: number;
@@ -1040,6 +1050,16 @@ function TakingScreen({
   const [sectionStartedAt, setSectionStartedAt] = useState<number | null>(null);
   const [submittingSection, setSubmittingSection] = useState(false);
 
+  // ── Personal exam clock: per-question time capture ──
+  // Dwell time is accumulated per question as the student navigates. The
+  // flush-on-navigation pattern means only the CURRENT question's open
+  // dwell is pending at any instant; it is flushed on submit. Times are a
+  // practice aid — rough by nature (tab switches etc. are not paused),
+  // which the results screen says plainly.
+  const timeMsRef = useRef<number[]>([]);
+  const qEnterRef = useRef<number>(Date.now());
+  const qPrevIdxRef = useRef<number>(0);
+
   const submitSectionAnswers = useMutation(api.mockExam.submitSectionAnswers);
   const completeSection = useMutation(api.mockExam.completeSection);
   const completeMockExam = useMutation(api.mockExam.completeMockExam);
@@ -1056,7 +1076,25 @@ function TakingScreen({
     setFlagged([...currentSection.flagged]);
     setRemainingSeconds(currentSection.timeAllottedSeconds - currentSection.timeSpentSeconds);
     setSectionStartedAt(Date.now());
+    // Reset the exam clock for this section.
+    timeMsRef.current = new Array(currentSection.questions.length).fill(0);
+    qEnterRef.current = Date.now();
+    qPrevIdxRef.current = 0;
   }, [sectionIndex, currentSection?._id]);
+
+  // Flush dwell time into the clock whenever the student moves between
+  // questions. (Runs after the init effect above on section switches; the
+  // stray sub-millisecond delta it can add to index 0 is noise.)
+  useEffect(() => {
+    const prev = qPrevIdxRef.current;
+    if (prev === questionIndex) return;
+    const now = Date.now();
+    if (prev >= 0 && prev < timeMsRef.current.length) {
+      timeMsRef.current[prev] = (timeMsRef.current[prev] ?? 0) + (now - qEnterRef.current);
+    }
+    qEnterRef.current = now;
+    qPrevIdxRef.current = questionIndex;
+  }, [questionIndex, currentSection?._id]);
 
   // Countdown ticker
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1113,12 +1151,25 @@ function TakingScreen({
     const elapsed =
       currentSection.timeSpentSeconds +
       Math.floor((Date.now() - (sectionStartedAt ?? Date.now())) / 1000);
+    // Flush the current question's open dwell before shipping the clock.
+    const flushNow = Date.now();
+    const cur = qPrevIdxRef.current;
+    if (cur >= 0 && cur < timeMsRef.current.length) {
+      timeMsRef.current[cur] = (timeMsRef.current[cur] ?? 0) + (flushNow - qEnterRef.current);
+      qEnterRef.current = flushNow;
+    }
+    const timeMs =
+      timeMsRef.current.length === (currentSection.questions.length ?? 0) &&
+      timeMsRef.current.some((ms) => ms > 0)
+        ? timeMsRef.current.slice()
+        : undefined;
     try {
       await completeSection({
         sectionId: currentSection._id,
         answers,
         flagged,
         timeSpentSeconds: Math.min(elapsed, currentSection.timeAllottedSeconds),
+        ...(timeMs ? { timeMs } : {}),
       });
       if (autoSubmitted) {
         toast.info(`Time's up — ${subjectNames.get(currentSection.subjectId) ?? "Section"} submitted.`);
@@ -1437,6 +1488,17 @@ function ResultsScreen({
   onRetake: () => void;
   onExit: () => void;
 }) {
+  // Mock intelligence — cross-exam comparison computed server-side from
+  // real stored sectionResults (the client can't see previous sittings).
+  const insights = useQuery(api.mockExam.getMockInsights, { mockExamId: exam._id });
+  // Mistake-ladder state for THIS exam's questions — powers the per-question
+  // "in your Mistake Lab" badges in the review below.
+  const sourceMistakes = useQuery(api.learning.getMistakesForSource, {
+    source: "mock_exam" as const,
+    sourceRefId: exam._id,
+  });
+  const [openReview, setOpenReview] = useState<Id<"mockExamSections"> | null>(null);
+
   const sectionResults = useMemo(() => {
     return exam.sections
       .filter((s) => s.status === "completed")
@@ -1572,6 +1634,91 @@ function ResultsScreen({
         </div>
       </div>
 
+      {/* Mock intelligence — what THIS sitting says, compared honestly with
+          the previous one, plus where its misses now live. */}
+      <MockIntelligenceCard
+        insights={insights ?? null}
+        insightsLoading={insights === undefined}
+        mistakes={sourceMistakes ?? null}
+        mistakesLoading={sourceMistakes === undefined}
+      />
+
+      {/* Personal exam clock — pace from the ms actually spent per question. */}
+      <PaceCard exam={exam} subjectNames={subjectNames} />
+
+      {/* Review the questions — the sitting talks back. Completed sections
+          re-open with your pick vs the stored key, the explanation, your
+          per-question time, and where each miss lives now. */}
+      {exam.sections.some((s) => s.status === "completed") && (
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Review the questions
+            </p>
+            <p className="text-xs text-muted-foreground/60">
+              your answer vs the section&apos;s stored answer key
+            </p>
+          </div>
+          <div className="mt-4 flex flex-col gap-2.5">
+            {exam.sections
+              .filter((s) => s.status === "completed" && s.questions.length > 0)
+              .map((s) => {
+                const open = openReview === s._id;
+                const missed = s.questions.reduce(
+                  (n, q, i) => n + (s.answers[i] !== q.correctIndex ? 1 : 0),
+                  0,
+                );
+                return (
+                  <div
+                    key={s._id}
+                    className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02]"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenReview(open ? null : s._id)}
+                      aria-expanded={open}
+                      className="flex w-full cursor-pointer items-center gap-3 p-4 text-left transition-colors hover:bg-white/[0.03]"
+                    >
+                      <RotateCcw className="size-4 shrink-0 text-amber-300" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {subjectNames.get(s.subjectId) ?? "Section"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {s.questions.length} questions · {missed} to look at again
+                        </p>
+                      </div>
+                      <ChevronDown
+                        className={cn(
+                          "size-4 shrink-0 text-muted-foreground transition-transform",
+                          open && "rotate-180",
+                        )}
+                      />
+                    </button>
+                    {open && (
+                      <div className="flex flex-col gap-3 border-t border-white/[0.06] p-4">
+                        {s.questions.map((q, i) => (
+                          <QuestionReviewRow
+                            key={`${s._id}:${i}`}
+                            index={i}
+                            question={q}
+                            picked={s.answers[i]}
+                            flagged={s.flagged[i] ?? false}
+                            timeMs={s.timeMs?.[i]}
+                            mistake={
+                              sourceMistakes?.find((m) => m.questionKey === `q${i}`) ?? null
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       {/* Previous attempts table */}
       {previousAttempts.length > 0 && (
         <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8">
@@ -1627,6 +1774,380 @@ function ResultsScreen({
           <Sparkles className="size-4" /> Take another mock exam
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mock intelligence — cross-sitting deltas + where this exam's misses live
+// ---------------------------------------------------------------------------
+
+type SourceMistakeBadge = {
+  questionKey: string;
+  status: "open" | "mastered" | "dismissed";
+  due: boolean;
+};
+
+function MockIntelligenceCard({
+  insights,
+  insightsLoading,
+  mistakes,
+  mistakesLoading,
+}: {
+  insights: MockInsights | null;
+  insightsLoading: boolean;
+  mistakes: SourceMistakeBadge[] | null;
+  mistakesLoading: boolean;
+}) {
+  if (insightsLoading) {
+    return <div className="h-40 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.02]" />;
+  }
+  if (!insights) return null;
+
+  const openMistakes = mistakes?.filter((m) => m.status === "open") ?? [];
+  const dueMistakes = openMistakes.filter((m) => m.due);
+  const masteredCount = mistakes?.filter((m) => m.status === "mastered").length ?? 0;
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <BarChart3 className="size-3.5 text-amber-300" /> Mock intelligence
+          </span>
+        </p>
+        <p className="text-xs text-muted-foreground/60">
+          from your real sittings — observed, never predicted
+        </p>
+      </div>
+
+      {insights.hasPrevious ? (
+        <>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {insights.improvedCount > 0 && (
+              <>
+                <span className="font-semibold text-emerald-300">
+                  {insights.improvedCount} subject{insights.improvedCount === 1 ? "" : "s"} improved
+                </span>
+                {insights.declinedCount > 0 ? " · " : ""}
+              </>
+            )}
+            {insights.declinedCount > 0 && (
+              <span className="font-semibold text-rose-300">
+                {insights.declinedCount} slipped
+              </span>
+            )}
+            {insights.improvedCount === 0 && insights.declinedCount === 0 && (
+              <span>Subject scores held steady vs your last sitting</span>
+            )}
+            {insights.totalDelta !== null && insights.totalDelta !== 0 && (
+              <span className="text-foreground/80">
+                {" "}
+                — overall {insights.totalDelta > 0 ? "+" : ""}
+                {insights.totalDelta}%
+              </span>
+            )}
+            .
+          </p>
+
+          <div className="mt-4 flex flex-col gap-2">
+            {insights.subjectDeltas.map((d) => (
+              <div
+                key={d.subjectName}
+                className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+                  {d.subjectName}
+                </span>
+                {d.prevScore !== null && (
+                  <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                    {d.prevScore}%
+                  </span>
+                )}
+                <span className="font-mono text-sm font-bold text-foreground tabular-nums">
+                  {d.score}%
+                </span>
+                {d.delta === null ? (
+                  <span className="w-16 text-right font-mono text-[11px] text-muted-foreground/60">
+                    new
+                  </span>
+                ) : (
+                  <span
+                    className={cn(
+                      "inline-flex w-16 items-center justify-end gap-1 font-mono text-xs font-bold tabular-nums",
+                      d.delta > 0
+                        ? "text-emerald-300"
+                        : d.delta < 0
+                          ? "text-rose-300"
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {d.delta > 0 ? (
+                      <TrendingUp className="size-3.5" />
+                    ) : d.delta < 0 ? (
+                      <TrendingDown className="size-3.5" />
+                    ) : null}
+                    {d.delta > 0 ? `+${d.delta}` : d.delta === 0 ? "±0" : d.delta}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">
+          First sitting recorded. From your next mock, subject-level movement
+          shows here — the honest version of progress tracking.
+        </p>
+      )}
+
+      {/* Where the misses went + the weakest subject — the loop's exits. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {!mistakesLoading && openMistakes.length > 0 && (
+          <Link
+            to="/mistakes"
+            className="interactive-press inline-flex items-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-4 py-2.5 text-sm font-bold text-amber-200 transition hover:bg-amber-400/15"
+          >
+            <FlaskConical className="size-4" />
+            {openMistakes.length} miss{openMistakes.length === 1 ? "" : "es"} in your Mistake Lab
+            {dueMistakes.length > 0 ? ` · ${dueMistakes.length} due now` : ""}
+          </Link>
+        )}
+        {!mistakesLoading && openMistakes.length === 0 && mistakes !== null && (
+          <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] px-4 py-2.5 text-sm font-semibold text-emerald-200">
+            <CheckCircle2 className="size-4" />
+            No misses left open from this sitting{masteredCount > 0 ? ` · ${masteredCount} retired` : ""}
+          </span>
+        )}
+        {insights.weakest && insights.weakest.score < 70 && (
+          <Link
+            to="/exam-prep?tab=practice"
+            className="interactive-press inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-foreground transition hover:border-amber-400/30 hover:text-amber-200"
+          >
+            <Target className="size-4" />
+            Train {insights.weakest.subjectName} ({insights.weakest.score}%)
+            <ArrowRight className="size-3.5" />
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Personal exam clock — pace view from per-question ms
+// ---------------------------------------------------------------------------
+
+function PaceCard({
+  exam,
+  subjectNames,
+}: {
+  exam: FullExam;
+  subjectNames: Map<Id<"subjects">, string>;
+}) {
+  const { items, stats } = useMemo(() => {
+    const items: { label: string; ms: number | undefined }[] = [];
+    let allotted = 0;
+    let questionCount = 0;
+    for (const s of exam.sections) {
+      if (s.status !== "completed") continue;
+      const name = subjectNames.get(s.subjectId) ?? "Section";
+      s.questions.forEach((_, qIdx) => {
+        const ms = s.timeMs?.[qIdx];
+        items.push({ label: `${name} · Q${qIdx + 1}`, ms: ms && ms > 0 ? ms : undefined });
+      });
+      allotted += s.timeAllottedSeconds;
+      questionCount += s.totalQuestions ?? 0;
+    }
+    return {
+      items,
+      stats: computePaceStats(items.map((i) => i.ms), paceBudgetMs(allotted, questionCount)),
+    };
+  }, [exam, subjectNames]);
+
+  if (!stats.hasSignal) return null;
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 sm:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Timer className="size-3.5 text-amber-300" /> Your exam clock
+          </span>
+        </p>
+        <p className="text-xs text-muted-foreground/60">
+          your pace from this sitting — a practice aid, not an official allocation
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            Median per question
+          </p>
+          <p className="mt-1 font-mono text-xl font-bold text-foreground tabular-nums">
+            {stats.medianMs !== null ? formatDurationMs(stats.medianMs) : "—"}
+          </p>
+        </div>
+        {stats.budgetMsPerQuestion !== null && (
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              Sitting budget
+            </p>
+            <p className="mt-1 font-mono text-xl font-bold text-foreground tabular-nums">
+              {formatDurationMs(stats.budgetMsPerQuestion)}
+            </p>
+          </div>
+        )}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            Over budget
+          </p>
+          <p
+            className={cn(
+              "mt-1 font-mono text-xl font-bold tabular-nums",
+              stats.budgetMsPerQuestion !== null && stats.overBudgetShare > 0.25
+                ? "text-rose-300"
+                : "text-foreground",
+            )}
+          >
+            {stats.budgetMsPerQuestion !== null
+              ? `${Math.round(stats.overBudgetShare * 100)}%`
+              : "—"}
+          </p>
+        </div>
+      </div>
+
+      {stats.slowest.length > 0 && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Slowest questions:{" "}
+          {stats.slowest.map((s, i) => (
+            <span key={s.index}>
+              {i > 0 && ", "}
+              <span className="font-semibold text-foreground/90">
+                {items[s.index]?.label ?? `Q${s.index + 1}`}
+              </span>{" "}
+              ({formatDurationMs(s.ms)})
+            </span>
+          ))}
+          . Long dwells are worth a second look — or a flagged guess.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// One reviewed question inside a completed section
+// ---------------------------------------------------------------------------
+
+function QuestionReviewRow({
+  index,
+  question,
+  picked,
+  flagged,
+  timeMs,
+  mistake,
+}: {
+  index: number;
+  question: VisibleQuestion;
+  picked: number; // -1 = unanswered
+  flagged: boolean;
+  timeMs?: number;
+  mistake: SourceMistakeBadge | null;
+}) {
+  const correct = picked === question.correctIndex;
+  const answered = picked >= 0;
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-xs font-bold text-muted-foreground">Q{index + 1}</span>
+        {answered ? (
+          correct ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+              <CheckCircle2 className="size-3" /> correct
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-400/15 px-2 py-0.5 text-[11px] font-bold text-rose-300">
+              <X className="size-3" /> missed
+            </span>
+          )
+        ) : (
+          <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+            unanswered
+          </span>
+        )}
+        {typeof timeMs === "number" && timeMs > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+            <Timer className="size-3" /> {formatDurationMs(timeMs)}
+          </span>
+        )}
+        {flagged && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+            <Flag className="size-3" /> flagged
+          </span>
+        )}
+        {mistake && mistake.status !== "dismissed" && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+              mistake.status === "mastered"
+                ? "bg-emerald-400/10 text-emerald-300/90"
+                : mistake.due
+                  ? "bg-amber-400/15 text-amber-300"
+                  : "bg-white/[0.06] text-muted-foreground",
+            )}
+          >
+            <FlaskConical className="size-3" />
+            {mistake.status === "mastered"
+              ? "retired in Mistake Lab"
+              : mistake.due
+                ? "in Mistake Lab · due now"
+                : "in Mistake Lab"}
+          </span>
+        )}
+      </div>
+
+      <p className="mt-2.5 text-sm font-semibold leading-relaxed text-foreground">
+        {question.question}
+      </p>
+
+      <div className="mt-2 flex flex-col gap-1.5">
+        {question.options.map((opt, oi) => {
+          const isPicked = picked === oi;
+          const isKey = question.correctIndex === oi;
+          return (
+            <div
+              key={oi}
+              className={cn(
+                "flex items-start gap-2.5 rounded-lg border px-3 py-2 text-sm",
+                isKey
+                  ? "border-emerald-400/40 bg-emerald-400/[0.07] text-emerald-100"
+                  : isPicked
+                    ? "border-rose-400/40 bg-rose-400/[0.07] text-rose-100"
+                    : "border-white/[0.05] bg-white/[0.01] text-muted-foreground",
+              )}
+            >
+              <span className="font-mono text-xs font-bold pt-0.5">
+                {String.fromCharCode(65 + oi)}
+              </span>
+              <span className="flex-1">{opt}</span>
+              {isKey && (
+                <span className="shrink-0 text-[11px] font-bold text-emerald-300">answer key</span>
+              )}
+              {isPicked && !isKey && (
+                <span className="shrink-0 text-[11px] font-bold text-rose-300">your pick</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {question.explanation && (
+        <p className="mt-2.5 border-l-2 border-amber-400/30 pl-3 text-sm leading-relaxed text-muted-foreground">
+          {question.explanation}
+        </p>
+      )}
     </div>
   );
 }

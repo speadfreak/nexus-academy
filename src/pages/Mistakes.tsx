@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Clock,
   FileText,
+  Flame,
   FlaskConical,
   Inbox,
   RotateCcw,
@@ -153,6 +154,16 @@ function MistakeCard({
         {row.topicText && (
           <span className="type-caption rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
             {row.topicText}
+          </span>
+        )}
+        {/* Confidence calibration — the student marked "I'm sure" before the
+            reveal and still missed. The most useful kind of gap to name. */}
+        {row.confidence === "sure" && row.status === "open" && (
+          <span
+            className="type-caption inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/[0.08] px-2 py-0.5 text-[10px] font-semibold text-amber-300"
+            title="You marked this 'I'm sure' before the answer was revealed — a confident miss."
+          >
+            <Flame className="size-3" /> was sure
           </span>
         )}
         <span

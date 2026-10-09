@@ -64,6 +64,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { useReadAloud } from "@/hooks/useReadAloud";
 import { splitSentences } from "@/lib/pdfText";
+import { computePaceStats, formatDurationMs, paceBudgetMs, type PaceStats } from "@/lib/examClock";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -547,6 +548,18 @@ export function DigitalExamPlayer({
   const [structuredAnswers, setStructuredAnswers] = useState<Record<number, string>>({});
   const [flagged, setFlagged] = useState<Record<number, boolean>>({});
   const [checks, setChecks] = useState<Record<number, "correct" | "wrong">>({});
+  // Confidence calibration (practice mode): optional pre-reveal self-report
+  // per question. Locked at reveal — it can never be fitted to the outcome.
+  const [confidences, setConfidences] = useState<Record<number, "sure" | "unsure">>({});
+  // Personal exam clock: per-question dwell in ms keyed by question number.
+  // Flushed on navigation and at finish; a practice aid, not an official
+  // per-question allocation — the results screen says so plainly.
+  const timeMsRef = useRef<Record<number, number>>({});
+  const qEnterRef = useRef<number>(Date.now());
+  const [finalPace, setFinalPace] = useState<{
+    stats: PaceStats;
+    labels: string[];
+  } | null>(null);
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [revealedSuggested, setRevealedSuggested] = useState<Record<number, boolean>>({});
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -602,6 +615,22 @@ export function DigitalExamPlayer({
   const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
   const remainingSeconds = examLimitSeconds - elapsedSeconds;
 
+  // Exam clock: don't count time spent on the rules screen.
+  useEffect(() => {
+    if (phase === "playing") qEnterRef.current = Date.now();
+  }, [phase]);
+
+  // Flush the CURRENT question's open dwell into the clock. Called on
+  // navigation and at finish, so only one dwell is pending at any instant.
+  const flushClock = useCallback(() => {
+    const question = questions[currentIdx];
+    if (!question) return;
+    const t = Date.now();
+    timeMsRef.current[question.number] =
+      (timeMsRef.current[question.number] ?? 0) + (t - qEnterRef.current);
+    qEnterRef.current = t;
+  }, [questions, currentIdx]);
+
   // ── Answer predicates ──
   const isAnswered = useCallback(
     (n: number) => Boolean(answers[n]) || (structuredAnswers[n]?.trim().length ?? 0) > 0,
@@ -648,6 +677,9 @@ export function DigitalExamPlayer({
       const endedAt = Date.now();
       const durationSeconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
 
+      // Flush the last question's open dwell so the clock is complete.
+      flushClock();
+
       // Learning loop: per-question outcomes for every auto-gradable MCQ —
       // feeds topic mastery + the Mistake Lab. Structured questions have no
       // machine-checkable key here, so they're honestly excluded.
@@ -664,6 +696,8 @@ export function DigitalExamPlayer({
             explanation: x.explanation,
             topicText: x.topic,
             sourcePage: x.sourcePage,
+            confidence: confidences[x.number],
+            timeMs: timeMsRef.current[x.number],
           };
         });
 
@@ -697,10 +731,26 @@ export function DigitalExamPlayer({
         // Non-fatal: streak credit fails silently — results unaffected.
       });
     },
-    [answers, contentId, logDigitalAttempt, logSession, mode, questions, score, startedAt, subjectId],
+    [answers, contentId, flushClock, logDigitalAttempt, logSession, mode, questions, score, startedAt, subjectId, confidences],
   );
 
   // ── Finish paths ──
+  // Capture the pace view BEFORE the component stops ticking, so the results
+  // screen can show it without re-deriving anything.
+  const capturePace = useCallback(() => {
+    flushClock();
+    const items = questions.map((x) => ({
+      label: `Q${x.number}`,
+      ms: timeMsRef.current[x.number],
+    }));
+    const budget =
+      mode === "exam" ? paceBudgetMs(durationMinutes * 60, gradable.length) : null;
+    setFinalPace({
+      stats: computePaceStats(items.map((i) => i.ms), budget),
+      labels: items.map((i) => i.label),
+    });
+  }, [durationMinutes, flushClock, gradable.length, mode, questions]);
+
   const finishExam = useCallback(
     (autoSubmitted: boolean) => {
       readAloud.stop();
@@ -708,9 +758,10 @@ export function DigitalExamPlayer({
       setPhase("finished");
       setReviewOpen(false);
       persistAttempt({ completed: !autoSubmitted });
+      capturePace();
       window.scrollTo({ top: 0 });
     },
-    [persistAttempt, readAloud],
+    [persistAttempt, readAloud, capturePace],
   );
 
   const finishPractice = useCallback(() => {
@@ -718,8 +769,9 @@ export function DigitalExamPlayer({
     setFinished({ autoSubmitted: false });
     setPhase("finished");
     persistAttempt({ completed: true });
+    capturePace();
     window.scrollTo({ top: 0 });
-  }, [persistAttempt, readAloud]);
+  }, [persistAttempt, readAloud, capturePace]);
 
   // Auto-submit when the exam clock hits zero (the real sitting does).
   const autoSubmittedRef = useRef(false);
@@ -755,11 +807,12 @@ export function DigitalExamPlayer({
   const goTo = useCallback(
     (idx: number) => {
       if (idx < 0 || idx >= questions.length) return;
+      flushClock();
       setCurrentIdx(idx);
       setNavigatorOpen(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [questions.length],
+    [questions.length, flushClock],
   );
 
   // ── Read aloud: per-question speech with block-aware highlighting ──
@@ -1190,6 +1243,45 @@ export function DigitalExamPlayer({
                   </div>
                 )}
 
+                {/* Confidence calibration — optional, pre-reveal only
+                    (practice mode; exam mode never reveals mid-sitting). */}
+                {mode === "practice" && q.options.length > 0 && !revealed[q.number] && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className="type-caption text-muted-foreground">How sure?</span>
+                    {(["sure", "unsure"] as const).map((mark) => {
+                      const active = confidences[q.number] === mark;
+                      return (
+                        <button
+                          key={mark}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() =>
+                            setConfidences((prev) => {
+                              const next = { ...prev };
+                              if (active) delete next[q.number];
+                              else next[q.number] = mark;
+                              return next;
+                            })
+                          }
+                          className={cn(
+                            "interactive-press cursor-pointer rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                            active && mark === "sure"
+                              ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-300"
+                              : active && mark === "unsure"
+                                ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
+                                : "border-white/10 bg-white/[0.04] text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {mark === "sure" ? "I'm sure" : "Not sure"}
+                        </button>
+                      );
+                    })}
+                    <span className="type-caption text-muted-foreground/50">
+                      optional — names the gaps you can&apos;t see
+                    </span>
+                  </div>
+                )}
+
                 {/* Practice: check answer (exam NEVER gets this) */}
                 {mode === "practice" && q.options.length > 0 && !revealed[q.number] && (
                   <div className="mt-4 flex flex-wrap items-center gap-2.5">
@@ -1316,6 +1408,7 @@ export function DigitalExamPlayer({
           answers={answers}
           structuredAnswers={structuredAnswers}
           checks={checks}
+          pace={finalPace}
           paperTitle={paperTitle}
           subjectName={subjectName}
           onRetake={retake}
@@ -1652,6 +1745,7 @@ function ResultsScreen({
   answers,
   structuredAnswers,
   checks,
+  pace,
   paperTitle,
   subjectName,
   onRetake,
@@ -1675,6 +1769,10 @@ function ResultsScreen({
   answers: Record<number, string | null>;
   structuredAnswers: Record<number, string>;
   checks: Record<number, "correct" | "wrong">;
+  pace: {
+    stats: PaceStats;
+    labels: string[];
+  } | null;
   paperTitle: string;
   subjectName: string;
   onRetake: () => void;
@@ -1735,6 +1833,70 @@ function ResultsScreen({
             </p>
           </div>
         </div>
+
+        {/* Personal exam clock — pace from the ms actually spent. */}
+        {pace && pace.stats.hasSignal && (
+          <div className="mt-6 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="type-caption font-bold uppercase tracking-wider text-amber-300">
+                <Timer className="mr-1.5 inline size-3.5" /> Your exam clock
+              </p>
+              <p className="type-caption text-muted-foreground/60">
+                your pace — a practice aid, not an official allocation
+              </p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                <p className="type-caption text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Median per question
+                </p>
+                <p className="mt-0.5 font-mono text-lg font-bold tabular-nums">
+                  {pace.stats.medianMs !== null ? formatDurationMs(pace.stats.medianMs) : "—"}
+                </p>
+              </div>
+              {pace.stats.budgetMsPerQuestion !== null && (
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                  <p className="type-caption text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Sitting budget
+                  </p>
+                  <p className="mt-0.5 font-mono text-lg font-bold tabular-nums">
+                    {formatDurationMs(pace.stats.budgetMsPerQuestion)}
+                  </p>
+                </div>
+              )}
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                <p className="type-caption text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  {pace.stats.budgetMsPerQuestion !== null ? "Over budget" : "Timed questions"}
+                </p>
+                <p
+                  className={cn(
+                    "mt-0.5 font-mono text-lg font-bold tabular-nums",
+                    pace.stats.budgetMsPerQuestion !== null && pace.stats.overBudgetShare > 0.25
+                      ? "text-rose-300"
+                      : "",
+                  )}
+                >
+                  {pace.stats.budgetMsPerQuestion !== null
+                    ? `${Math.round(pace.stats.overBudgetShare * 100)}%`
+                    : pace.stats.timedCount}
+                </p>
+              </div>
+            </div>
+            {pace.stats.slowest.length > 0 && (
+              <p className="mt-2.5 type-caption leading-relaxed text-muted-foreground">
+                Slowest: {pace.stats.slowest.map((s, i) => (
+                  <span key={s.index}>
+                    {i > 0 && ", "}
+                    <span className="font-semibold text-foreground/90">
+                      {pace.labels[s.index] ?? `Q${s.index + 1}`}
+                    </span>{" "}
+                    ({formatDurationMs(s.ms)})
+                  </span>
+                ))}. Long dwells are worth a second look.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="mt-6 flex flex-wrap gap-2">
           <Button onClick={onRetake} className="interactive-press gap-2">
