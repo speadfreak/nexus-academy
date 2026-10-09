@@ -44,6 +44,7 @@ import { ConvexError, v } from "convex/values";
 import {
   internalAction,
   internalMutation,
+  internalQuery,
   mutation,
   query,
 } from "./_generated/server";
@@ -227,6 +228,16 @@ export const resolveAffiliateCode = query({
   args: { code: v.string() },
   handler: async (
     ctx,
+    args,
+  ): Promise<{ valid: boolean; displayName: string; welcomeMessage: string | null }> => {
+    return await ctx.runQuery(internal.affiliates.resolveAffiliateCodeCore, args);
+  },
+});
+
+export const resolveAffiliateCodeCore = internalQuery({
+  args: { code: v.string() },
+  handler: async (
+    ctx,
     { code },
   ): Promise<{ valid: boolean; displayName: string; welcomeMessage: string | null }> => {
     const empty = { valid: false, displayName: "", welcomeMessage: null as string | null };
@@ -253,6 +264,13 @@ export const resolveAffiliateCode = query({
  * promoter+date+campaign; no per-click rows, no unbounded growth.
  */
 export const recordAffiliateVisit = mutation({
+  args: { code: v.string(), campaign: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<{ ok: boolean }> => {
+    return await ctx.runMutation(internal.affiliates.recordAffiliateVisitCore, args);
+  },
+});
+
+export const recordAffiliateVisitCore = internalMutation({
   args: { code: v.string(), campaign: v.optional(v.string()) },
   handler: async (ctx, { code, campaign }) => {
     if (!(await isProgramEnabled(ctx))) return { ok: false };
@@ -320,9 +338,34 @@ export const attachAffiliateAttribution = mutation({
     capturedAt: v.optional(v.number()),
     campaign: v.optional(v.string()),
   },
-  handler: async (ctx, { code, capturedAt, campaign }) => {
+  handler: async (
+    ctx,
+    { code, capturedAt, campaign },
+  ): Promise<{ ok: boolean; reason?: string }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return { ok: false, reason: "unauthenticated" };
+    return await ctx.runMutation(internal.affiliates.attachAffiliateAttributionCore, {
+      userId,
+      code,
+      capturedAt,
+      campaign,
+    });
+  },
+});
+
+/**
+ * Core attribution logic (internal) — called by the public mutation with
+ * the authenticated userId. Internal so the self-test harness can exercise
+ * the exact same code path headlessly.
+ */
+export const attachAffiliateAttributionCore = internalMutation({
+  args: {
+    userId: v.id("users"),
+    code: v.string(),
+    capturedAt: v.optional(v.number()),
+    campaign: v.optional(v.string()),
+  },
+  handler: async (ctx, { userId, code, capturedAt, campaign }) => {
     if (!(await isProgramEnabled(ctx))) return { ok: false, reason: "program_disabled" };
 
     const user = await ctx.db.get(userId);
@@ -712,8 +755,24 @@ export const sendPayoutReadyTelegram = internalAction({
  */
 export const voidCommission = mutation({
   args: { commissionId: v.id("affiliateCommissions"), reason: v.string() },
-  handler: async (ctx, { commissionId, reason }) => {
+  handler: async (ctx, { commissionId, reason }): Promise<{ ok: boolean }> => {
     const admin = await requireAdmin(ctx);
+    return await ctx.runMutation(internal.affiliates.voidCommissionCore, {
+      commissionId,
+      reason,
+      adminId: admin._id,
+    });
+  },
+});
+
+export const voidCommissionCore = internalMutation({
+  args: {
+    commissionId: v.id("affiliateCommissions"),
+    reason: v.string(),
+    adminId: v.id("users"),
+  },
+  handler: async (ctx, { commissionId, reason, adminId }) => {
+    const admin = { _id: adminId };
     const clean = reason.trim();
     if (clean.length < 3) {
       throw new ConvexError({
@@ -769,8 +828,31 @@ export const recordAffiliatePayout = mutation({
     note: v.optional(v.string()),
     overrideMinPayout: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ ok: boolean; payoutId: Id<"affiliatePayouts">; coveredCommissions: number; coveredEtb: number }> => {
     const admin = await requireAdmin(ctx);
+    return await ctx.runMutation(internal.affiliates.recordPayoutCore, {
+      ...args,
+      adminId: admin._id,
+    });
+  },
+});
+
+export const recordPayoutCore = internalMutation({
+  args: {
+    promoterId: v.id("affiliatePromoters"),
+    amountEtb: v.number(),
+    method: v.optional(v.string()),
+    reference: v.string(),
+    screenshotStorageId: v.optional(v.string()),
+    note: v.optional(v.string()),
+    overrideMinPayout: v.optional(v.boolean()),
+    adminId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const admin = { _id: args.adminId };
     const amount = money(args.amountEtb);
     if (!(amount > 0)) {
       throw new ConvexError({ message: "Payout amount must be positive.", code: "invalid" });
@@ -1845,9 +1927,46 @@ export const getPromoterWeeklySummary = query({
  * unknown token — the route renders the generic NotFound with no hint
  * about token validity.
  */
+export interface PartnerCampaignRow {
+  campaign: string;
+  visits: number;
+  signups: number;
+}
+
+export interface PartnerStatsData {
+  displayName: string;
+  code: string;
+  status: string;
+  programEnabled: boolean;
+  welcomeMessage: string | null;
+  totals: {
+    visits: number;
+    signups: number;
+    payingUsers: number;
+    conversion: number;
+    pendingEtb: number;
+    payableEtb: number;
+    paidEtb: number;
+    lifetimeEarnedEtb: number;
+    paidOutEtb: number;
+    balanceEtb: number;
+  };
+  days: { date: string; label: string; visits: number; signups: number }[];
+  campaigns: PartnerCampaignRow[];
+  payouts: { paidAt: number; amountEtb: number; method: string }[];
+  howItWorks: { holdHours: number; minPayoutEtb: number };
+}
+
 export const getPartnerStats = query({
   args: { token: v.string() },
-  handler: async (ctx, { token }) => {
+  handler: async (ctx, args): Promise<PartnerStatsData | null> => {
+    return await ctx.runQuery(internal.affiliates.getPartnerStatsCore, args);
+  },
+});
+
+export const getPartnerStatsCore = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, { token }): Promise<PartnerStatsData | null> => {
     const clean = (token || "").trim().toLowerCase();
     if (!clean || clean.length < 16) return null;
     const promoter = await ctx.db
