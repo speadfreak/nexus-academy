@@ -421,7 +421,8 @@ export default function Settings() {
       { s: id },
       { replace: true, preventScrollReset: true },
     );
-    // Lenis owns smooth scrolling; a plain jump keeps section swaps instant.
+    // Native scrolling by design (no scroll hijacking) — a plain instant
+    // jump keeps section swaps deterministic and instant.
     window.scrollTo({ top: 0, behavior: "auto" });
   };
 
@@ -1401,7 +1402,7 @@ function SecuritySection({
             </Badge>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3 rounded-xl border border-border/50 bg-card/30 p-4">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Monitor className="size-4" />
@@ -1917,7 +1918,7 @@ function RemindersSection({
             title="Study reminders"
             desc="A nudge when you haven't studied today."
           />
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-card/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-xl border border-border/50 bg-card/30 p-4">
             <div className="min-w-0">
               <p className="type-body text-sm font-semibold">Reminder time</p>
               <p className="type-caption mt-0.5 text-muted-foreground">
@@ -1956,9 +1957,9 @@ function RemindersSection({
             title="Enable quiet hours"
             desc="No reminder banners while you rest."
           />
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 rounded-xl border border-border/50 bg-card/30 p-4">
             <span className="type-body text-sm font-semibold">Window</span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Select
                 value={String(quietHours.start)}
                 onValueChange={(v) => onQuietHours({ ...quietHours, start: Number(v) })}

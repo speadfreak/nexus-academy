@@ -5,9 +5,18 @@
 //     reveal the full body + a "View →" button. The dropdown stays open.
 //   - The "View →" button is the ONLY thing that navigates — and only when
 //     the notification has an actionUrl. Empty actionUrls show no button.
-//   - Previously, clicking anywhere on a notification row would call
-//     navigate(actionUrl) which sent users to the landing page if the
-//     actionUrl was "/" or similar. That bad UX is gone.
+//     External http(s) actionUrls open in a new tab; internal paths use the
+//     SPA router.
+//   - EVENT WALL: the dropdown content is a hermetically sealed interaction
+//     zone — a blanket stopPropagation on the content + stopPropagation in
+//     every interactive handler means clicks inside this panel can NEVER
+//     bubble into an ancestor (e.g. a wrapping <Link>) and hijack the
+//     student to another page. Root cause of the "clicking anything in the
+//     notification panel sent me to the landing page" bug: the bell used to
+//     be a React child of the sidebar's <Link to="/">, and React portal
+//     events bubble through the REACT tree even though Radix portals the
+//     content to <body>. Rows/tabs/buttons now also expose full keyboard
+//     parity (Enter/Space) for accessibility.
 //
 // Other features:
 //   - Pulse ring + bouncing BellRing icon when there are unread items
@@ -245,7 +254,12 @@ export function NotificationBell() {
   // navigates — and only when actionUrl is set + non-empty + not just "/".
   const handleRowClick = async (
     notification: (typeof notifications)[number],
+    e?: React.MouseEvent,
   ) => {
+    // Event isolation — a click on a row must NEVER reach an ancestor
+    // handler (e.g. a wrapping <Link>) and trigger a rogue navigation.
+    e?.preventDefault();
+    e?.stopPropagation();
     // Mark as read if unread (fire-and-forget).
     if (notification.readAt === null) {
       void markRead({ notificationId: notification._id as never }).catch(() => {});
@@ -262,27 +276,48 @@ export function NotificationBell() {
     });
   };
 
+  // Keyboard parity with pointer click (a11y — the row is focusable).
+  const handleRowKeyDown = (
+    notification: (typeof notifications)[number],
+    e: React.KeyboardEvent,
+  ) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      void handleRowClick(notification);
+    }
+  };
+
   // Navigate ONLY when the user explicitly clicks the "View →" button.
   // We also guard against actionUrl being "/", "" or undefined — those
   // cases show no button at all, so this should never be called with a
-  // bad URL, but the guard is here for safety.
+  // bad URL, but the guard is here for safety. External http(s) links
+  // open in a new tab instead of being fed to the SPA router.
   const handleViewClick = (
     notification: (typeof notifications)[number],
     e: React.MouseEvent,
   ) => {
+    e.preventDefault();
     e.stopPropagation();
     const url = notification.actionUrl;
     if (!url || url === "/" || url === "") return;
     setOpen(false);
-    navigate(url);
+    if (/^https?:\/\//i.test(url)) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      navigate(url);
+    }
   };
 
-  const handleMarkAll = async () => {
+  const handleMarkAll = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     await markAllRead().catch(() => {});
     toast.success("All notifications marked as read.");
   };
 
   const handleDismiss = async (id: Id<"notifications">, e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     try {
       await deleteNotification({ notificationId: id as never });
@@ -298,7 +333,9 @@ export function NotificationBell() {
     }
   };
 
-  const handleClearRead = async () => {
+  const handleClearRead = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     try {
       const result = await clearReadNotifications({});
       if (result && result.deleted > 0) {
@@ -379,6 +416,20 @@ export function NotificationBell() {
         align="end"
         sideOffset={8}
         className="glass-panel w-[min(92vw,420px)] rounded-3xl border-white/10 p-0"
+        // ── EVENT WALL ──────────────────────────────────────────────────
+        // React synthetic events inside a portal bubble through the REACT
+        // tree, not the DOM tree. Without this wall, every click in the
+        // panel (rows, tabs, Clear read, View all…) used to bubble into
+        // whatever ancestor wrapped the bell — historically the sidebar's
+        // <Link to="/"> — and yank the student to the landing page.
+        // This wall makes the panel a hermetically sealed interaction
+        // zone: nothing inside it can EVER leak out as a click. Safe for
+        // Radix: its outside-dismiss logic uses document-level capture
+        // listeners, which are unaffected by React stopPropagation here.
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
       >
         {/* Header — title + animated unread chip + View all link */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
@@ -411,7 +462,7 @@ export function NotificationBell() {
                 variant="ghost"
                 size="sm"
                 className="h-7 cursor-pointer gap-1 rounded-lg px-2 font-mono text-[10px] text-primary hover:bg-primary/10"
-                onClick={() => void handleMarkAll()}
+                onClick={(e) => void handleMarkAll(e)}
               >
                 <CheckCheck className="size-3" /> Mark all
               </Button>
@@ -436,7 +487,12 @@ export function NotificationBell() {
                 return (
                   <button
                     key={tab}
-                    onClick={() => setFilter(tab)}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setFilter(tab);
+                    }}
                     className={cn(
                       "relative flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition-colors",
                       active
@@ -521,7 +577,11 @@ export function NotificationBell() {
                               transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                               onMouseEnter={() => setHoveredId(notification._id)}
                               onMouseLeave={() => setHoveredId(null)}
-                              onClick={() => void handleRowClick(notification)}
+                              onClick={(e) => void handleRowClick(notification, e)}
+                              onKeyDown={(e) => handleRowKeyDown(notification, e)}
+                              role="button"
+                              tabIndex={0}
+                              aria-expanded={isExpanded}
                               className={cn(
                                 "group relative flex cursor-pointer items-start gap-3 rounded-2xl px-3 py-3 transition-colors",
                                 isUnread
@@ -656,9 +716,19 @@ export function NotificationBell() {
         {/* Footer actions — View all + Clear read */}
         {hasAny && (
           <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] px-3 py-3">
+            {/* Deterministic navigation: preventDefault takes the click out
+                of react-router's hands (and out of any ancestor Link's),
+                then we navigate explicitly. No double-navigation race, no
+                landing-page hijack — this link goes to /notifications and
+                ONLY to /notifications. */}
             <Link
               to="/notifications"
-              onClick={() => setOpen(false)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(false);
+                navigate("/notifications");
+              }}
               className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-primary transition-colors hover:bg-primary/10"
             >
               <Inbox className="size-3" /> View all
@@ -669,7 +739,7 @@ export function NotificationBell() {
                 variant="ghost"
                 size="sm"
                 className="h-7 cursor-pointer gap-1.5 rounded-lg px-2 font-mono text-[10px] text-muted-foreground hover:text-rose-300"
-                onClick={() => void handleClearRead()}
+                onClick={(e) => void handleClearRead(e)}
               >
                 <Trash2 className="size-3" /> Clear read
               </Button>

@@ -245,27 +245,45 @@ export function DashboardShell({
           transition={{ type: "spring", stiffness: 400, damping: 34, mass: 0.8 }}
           className="student-sidebar sidebar-collapsible h-full min-h-0 hidden flex-col rounded-2xl p-3 xl:flex"
         >
-          {/* Logo + brand */}
-          <Link
-            to="/"
+          {/* Logo + brand + notification bell.
+              ⚠ EVENT-ISOLATION FIX (do not nest the bell inside the Link):
+              Radix portals dropdown content to <body>, but React synthetic
+              events still bubble through the REACT tree — so any click inside
+              the notifications panel (rows, tabs, "Clear read", "View all")
+              used to bubble up into this <Link to="/"> and yank the student
+              to the landing page. The bell is now a SIBLING of the Link, so
+              panel clicks can never reach a navigation handler again. */}
+          <div
             className={cn(
-              "student-brand-lockup group relative flex items-center gap-3 rounded-2xl border border-white/10 px-3 py-3 transition-all hover:border-primary/35 hover:bg-primary/[0.06]",
-              collapsed && "justify-center border-transparent px-0 hover:bg-white/5",
+              "student-brand-lockup relative flex items-center gap-0.5 rounded-2xl border border-white/10 p-1 transition-all hover:border-primary/35 hover:bg-primary/[0.05]",
+              collapsed && "border-transparent p-0 hover:bg-transparent",
             )}
           >
-            <span className="relative shrink-0">
-              <img src={logo} alt="Learnyx Academy ET 🇪🇹 logo" className="size-10 rounded-xl transition-transform group-hover:scale-105" />
-              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
-            </span>
-            <div className={cn(
-              "sidebar-label min-w-0 leading-tight transition-all duration-300",
-              collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
-            )}>
-              <p className="text-sm font-extrabold tracking-tight">Learnyx Academy ET 🇪🇹</p>
-              <p className="text-[10px] text-muted-foreground">Exam prep & library</p>
-            </div>
-            {!collapsed && <NotificationBell />}
-          </Link>
+            <Link
+              to="/"
+              className={cn(
+                "group flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-1.5 transition-colors hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40",
+                collapsed && "justify-center px-0 py-0 hover:bg-white/5",
+              )}
+            >
+              <span className="relative shrink-0">
+                <img src={logo} alt="Learnyx Academy ET 🇪🇹 logo" className="size-10 rounded-xl transition-transform group-hover:scale-105" />
+                <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
+              </span>
+              <div className={cn(
+                "sidebar-label min-w-0 leading-tight transition-all duration-300",
+                collapsed ? "pointer-events-none absolute w-0 opacity-0" : "opacity-100",
+              )}>
+                <p className="text-sm font-extrabold tracking-tight">Learnyx Academy ET 🇪🇹</p>
+                <p className="text-[10px] text-muted-foreground">Exam prep & library</p>
+              </div>
+            </Link>
+            {!collapsed && (
+              <div className="shrink-0">
+                <NotificationBell />
+              </div>
+            )}
+          </div>
 
           {collapsed && (
             <div className="mt-1 flex justify-center">
