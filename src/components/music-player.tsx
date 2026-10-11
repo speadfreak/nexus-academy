@@ -852,7 +852,13 @@ export function MusicPlayer() {
   // player used to sit at `fixed bottom-4 z-40` over admin panels, dialogs
   // and the bulk-upload save bar. Outside /admin behavior is unchanged.
 
-  const [expanded, setExpanded] = useState(true);
+  // Executive fix — on phones the expanded 2-row deck floats over immersive
+  // page furniture (the Tutor composer). Start COLLAPSED under sm: the pill
+  // is a single compact row; the user can still expand to the full deck.
+  // Desktop keeps the expanded default.
+  const [expanded, setExpanded] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches,
+  );
   const [showMixer, setShowMixer] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [showYoutube, setShowYoutube] = useState(false);
@@ -872,18 +878,46 @@ export function MusicPlayer() {
     return () => clearTimeout(timer);
   }, []);
 
-  const categories: (TrackCategory | "All")[] = ["All", "Focus", "Calm", "Deep Work", "Energize", "Wind-down", "Classical"];
-  const filteredTracks = activeCategory === "All" ? TRACKS : TRACKS.filter(t => t.category === activeCategory);
-  const ytParsed = youtubeUrl ? parseYoutubeUrl(youtubeUrl) : null;
-
   // Hook-safe placement: this runs after every hook, so navigating between
   // /admin and student routes never changes the hook execution order.
   const onAdminRoute = useLocation().pathname.startsWith("/admin");
   const sessionActive = playing || youtubePlaying || audioSource === "youtube";
-  if (onAdminRoute && !sessionActive) return null;
 
+  // Publish the player's REAL rendered height as `--music-player-h` on the
+  // root element, so immersive pages (Tutor study room) can reserve exact
+  // bottom clearance instead of guessing with magic numbers. ResizeObserver
+  // tracks every state that changes the footprint (expand/collapse, mixer,
+  // browser, YouTube panel, suggestion banner). Listeners are cleaned up;
+  // the admin idle-return and unmount both reset the variable to 0.
+  const playerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (onAdminRoute && !sessionActive) {
+      root.style.setProperty("--music-player-h", "0px");
+      return;
+    }
+    const el = playerRef.current;
+    if (!el) return;
+    const publish = () => {
+      root.style.setProperty("--music-player-h", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.setProperty("--music-player-h", "0px");
+    };
+  }, [onAdminRoute, sessionActive]);
+
+  const categories: (TrackCategory | "All")[] = ["All", "Focus", "Calm", "Deep Work", "Energize", "Wind-down", "Classical"];
+  const filteredTracks = activeCategory === "All" ? TRACKS : TRACKS.filter(t => t.category === activeCategory);
+  const ytParsed = youtubeUrl ? parseYoutubeUrl(youtubeUrl) : null;
+
+  if (onAdminRoute && !sessionActive) return null;
   return (
     <div
+      ref={playerRef}
       // Mobile: width-constrained to viewport - 1.5rem, capped at 28rem
       // (max-w-md) so the expanded 2-row layout never overflows. Desktop:
       // sm:w-auto + sm:max-w-none lets the bar grow to its natural content

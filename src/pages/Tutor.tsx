@@ -637,16 +637,18 @@ const AssistantMessage = memo(function AssistantMessage({
         </span>
       </div>
 
-      {/* Body — flat text, generous line height */}
-      <div className="pl-0.5 text-[14.5px] leading-7 text-foreground/90">
+      {/* Body — flat text, generous line height; break-words keeps URLs and
+          long formulas from blowing out narrow phones. */}
+      <div className="min-w-0 break-words pl-0.5 text-[14.5px] leading-7 text-foreground/90">
         <MarkdownLite text={message.content} />
       </div>
 
-      {/* Hover actions */}
+      {/* Hover actions — touch devices have no hover: keep the row visible
+          there so copy/retry/listen stay reachable (same rule as user msgs). */}
       <div
         className={cn(
           "-ml-1 flex flex-wrap items-center gap-0.5 pl-0.5 transition-opacity duration-200",
-          "opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100",
+          "opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
           isLast && "opacity-100",
         )}
       >
@@ -854,7 +856,7 @@ const UserMessage = memo(function UserMessage({
                 key={i}
                 src={src}
                 alt="Attached study material"
-                className="max-h-44 rounded-xl border border-primary/20 object-cover"
+                className="max-h-44 max-w-full rounded-xl border border-primary/20 object-cover"
               />
             ))}
           </div>
@@ -864,8 +866,9 @@ const UserMessage = memo(function UserMessage({
         </p>
       </div>
 
-      {/* Hover actions */}
-      <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover/msg:opacity-100 focus-within:opacity-100">
+      {/* Hover actions — on touch devices there is no hover, so the row is
+          always visible there (copy/edit are otherwise unreachable). */}
+      <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover/msg:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
         <MsgAction
           icon={Copy}
           label={t("tutor:copy", { defaultValue: "Copy" })}
@@ -1876,7 +1879,7 @@ function Composer({
   }, [input, inputRef]);
 
   return (
-    <div className="relative z-10 shrink-0 px-3 pb-3 pt-1 sm:px-6 sm:pb-5">
+    <div className="relative z-10 shrink-0 px-3 pb-[calc(1.5rem_+_var(--music-player-h,0px)_+_env(safe-area-inset-bottom,0px))] pt-1 sm:px-6 sm:pb-5">
       <div className="mx-auto w-full max-w-[960px]">
         {/* Grounded context chip — "I'm not just talking to an AI, I'm studying THIS." */}
         <AnimatePresence>
@@ -1956,7 +1959,8 @@ function Composer({
             }
             disabled={isAwaiting}
             className={cn(
-              "block max-h-[200px] w-full resize-none bg-transparent px-4 pt-3.5 type-body leading-6 outline-none placeholder:text-muted-foreground/60",
+              "block max-h-[200px] w-full resize-none bg-transparent px-4 pt-3.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/60 sm:text-[15px] sm:leading-[1.65]",
+              // 16px on phones — below it iOS Safari zooms the viewport on focus.
               speech.listening && "placeholder:text-rose-300",
             )}
           />
