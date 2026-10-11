@@ -1957,3 +1957,227 @@ html.high-contrast :focus-visible {
   0%, 80%, 100% { transform: translateY(0); }
   40% { transform: translateY(-4px); }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   LEARNYX COMMAND OS — design tokens ("Obsidian Executive")
+   Layered obsidian surfaces · restrained champagne-gold accents ·
+   thin low-contrast separators · calm motion. Scoped to .admin-surface
+   (plus .cmdos-dark-scope for portaled surfaces) so the student app is
+   untouched. The admin is a self-contained dark cockpit in BOTH app
+   themes — that is the Obsidian Executive identity, not a bug.
+   ════════════════════════════════════════════════════════════════════ */
+.admin-surface,
+.cmdos-dark-scope {
+  color-scheme: dark;
+  /* Theme-variable remap — every semantic Tailwind class inside the
+     cockpit (text-foreground, bg-popover, border, muted-…) resolves to
+     the obsidian ramp regardless of the app's light/dark theme. */
+  --background: #0b0a08;
+  --foreground: rgb(255 253 247 / 0.95);
+  --card: #14110c;
+  --card-foreground: rgb(255 253 247 / 0.95);
+  --popover: #17140f;
+  --popover-foreground: rgb(255 253 247 / 0.95);
+  --muted: rgb(255 255 255 / 0.05);
+  --muted-foreground: rgb(226 220 205 / 0.55);
+  --accent: rgb(255 255 255 / 0.06);
+  --accent-foreground: rgb(255 253 247 / 0.95);
+  --secondary: rgb(255 255 255 / 0.05);
+  --secondary-foreground: rgb(240 235 224 / 0.9);
+  --border: rgb(255 255 255 / 0.09);
+  --input: rgb(255 255 255 / 0.09);
+  --ring: #e6a72e;
+  /* Surface layers — deepest → most elevated */
+  --cmdos-bg-0: #0b0a08;           /* page obsidian */
+  --cmdos-bg-1: rgb(17 16 13 / 0.72);  /* panel charcoal */
+  --cmdos-bg-2: rgb(24 22 18 / 0.66);  /* raised panel */
+  --cmdos-bg-3: rgb(33 30 24 / 0.7);   /* hover / popover tone */
+  /* Champagne gold accent ramp */
+  --cmdos-gold: #e6a72e;
+  --cmdos-gold-soft: rgb(230 167 46 / 0.14);
+  --cmdos-gold-line: rgb(230 167 46 / 0.22);
+  /* Ink */
+  --cmdos-ink-hi: rgb(255 253 247 / 0.95);
+  --cmdos-ink: rgb(240 235 224 / 0.78);
+  --cmdos-ink-lo: rgb(226 220 205 / 0.5);
+  /* Thin separators */
+  --cmdos-line: rgb(255 255 255 / 0.07);
+  --cmdos-line-strong: rgb(255 255 255 / 0.11);
+  /* Semantic status (restrained, never neon) */
+  --cmdos-ok: #34d399;
+  --cmdos-warn: #fbbf24;
+  --cmdos-danger: #fb7185;
+  --cmdos-info: #7dd3fc;
+  /* Motion */
+  --cmdos-dur-fast: 140ms;
+  --cmdos-dur: 220ms;
+  --cmdos-dur-slow: 320ms;
+  --cmdos-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Radii */
+  --cmdos-r-sm: 0.5rem;
+  --cmdos-r-md: 0.75rem;
+  --cmdos-r-lg: 1rem;
+  --cmdos-r-xl: 1.25rem;
+}
+
+/* The cockpit container itself — a deliberate obsidian slab in both
+   app themes, framed by a thin separator and the ambient gold haze. */
+.admin-surface {
+  background:
+    radial-gradient(ellipse at 20% -12%, rgb(230 167 46 / 0.07), transparent 45%),
+    radial-gradient(ellipse at 92% -4%, rgb(141 166 125 / 0.045), transparent 42%),
+    var(--cmdos-bg-0);
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 1.5rem;
+  color: var(--cmdos-ink);
+}
+
+/* Legacy glass panels inside the cockpit follow the obsidian ramp —
+   later in the cascade, so it beats .light / .student-page-frame. */
+.admin-surface .glass-panel {
+  background: linear-gradient(180deg, rgb(20 18 14 / 0.85), rgb(13 12 9 / 0.8));
+  border-color: rgb(255 255 255 / 0.08);
+}
+.admin-surface .glass-soft {
+  background: rgb(255 255 255 / 0.04);
+  border-color: rgb(255 255 255 / 0.08);
+}
+.admin-surface .glass-chip {
+  background: rgb(255 255 255 / 0.05);
+  border-color: rgb(255 255 255 / 0.09);
+}
+
+/* Command OS panel — the standard elevated surface */
+.cmdos-panel {
+  position: relative;
+  border-radius: var(--cmdos-r-xl);
+  border: 1px solid var(--cmdos-line);
+  background: var(--cmdos-bg-1);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  transition: border-color var(--cmdos-dur) var(--cmdos-ease),
+    background-color var(--cmdos-dur) var(--cmdos-ease);
+}
+.cmdos-panel--raised {
+  background: var(--cmdos-bg-2);
+}
+.cmdos-panel--hover:hover {
+  border-color: var(--cmdos-line-strong);
+  background: var(--cmdos-bg-2);
+}
+.cmdos-panel--accent {
+  border-color: var(--cmdos-gold-line);
+  background: linear-gradient(160deg, var(--cmdos-gold-soft), var(--cmdos-bg-1) 55%);
+}
+
+/* Hairline divider — the Command OS separator */
+.cmdos-hairline {
+  height: 1px;
+  border: 0;
+  background: var(--cmdos-line);
+}
+
+/* Mono eyebrow — section kicker */
+.cmdos-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cmdos-ink-lo);
+}
+
+/* Gold gradient figure for headline numbers */
+.cmdos-figure {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(120deg, #f7d78a 0%, var(--cmdos-gold) 55%, #c9871c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Status dot with calm glow */
+.cmdos-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.cmdos-dot--ok { background: var(--cmdos-ok); box-shadow: 0 0 8px rgb(52 211 153 / 0.5); }
+.cmdos-dot--warn { background: var(--cmdos-warn); box-shadow: 0 0 8px rgb(251 191 36 / 0.5); }
+.cmdos-dot--danger { background: var(--cmdos-danger); box-shadow: 0 0 8px rgb(251 113 133 / 0.5); }
+.cmdos-dot--info { background: var(--cmdos-info); }
+.cmdos-dot--idle { background: rgb(255 255 255 / 0.25); }
+
+/* Focus visibility — keyboard standard for the whole admin */
+.admin-surface :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--cmdos-gold);
+  outline-offset: 2px;
+  border-radius: var(--cmdos-r-sm);
+}
+
+/* Skeleton shimmer for loading states */
+.cmdos-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--cmdos-r-sm);
+  background: rgb(255 255 255 / 0.05);
+}
+.cmdos-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent);
+  animation: cmdos-shimmer 1.6s var(--cmdos-ease) infinite;
+}
+@keyframes cmdos-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* Route/section enter transition — fast and light */
+.cmdos-enter {
+  animation: cmdos-arrive var(--cmdos-dur-slow) var(--cmdos-ease) both;
+}
+@keyframes cmdos-arrive {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Icon-rail tooltip fallback for collapsed nav (native title is the
+   accessible alternative; this is the visual hint) */
+.cmdos-rail-tip {
+  position: absolute;
+  left: calc(100% + 0.5rem);
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 60;
+  white-space: nowrap;
+  border-radius: var(--cmdos-r-sm);
+  border: 1px solid var(--cmdos-line-strong);
+  background: var(--cmdos-bg-3);
+  padding: 0.25rem 0.5rem;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.625rem;
+  color: var(--cmdos-ink);
+  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.7);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--cmdos-dur-fast) ease;
+}
+.cmdos-rail-item:hover .cmdos-rail-tip,
+.cmdos-rail-item:focus-visible .cmdos-rail-tip {
+  opacity: 1;
+}
+
+/* Reduced motion — kill decorative motion, keep instant state changes */
+@media (prefers-reduced-motion: reduce) {
+  .cmdos-enter,
+  .cmdos-skeleton::after {
+    animation: none;
+  }
+  .admin-surface * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

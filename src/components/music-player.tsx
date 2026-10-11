@@ -836,6 +836,8 @@ function parseYoutubeUrl(url: string): { videoId: string; listId?: string } | nu
 
 // ── Player bar ────────────────────────────────────────────────────────
 
+import { useLocation } from "react-router";
+
 export function MusicPlayer() {
   const {
     playing, track, volume, toggle, cycleTrack, setVolume, selectTrack,
@@ -844,6 +846,11 @@ export function MusicPlayer() {
     youtubeUrl, setYoutubeUrl, youtubePlaying, toggleYoutube,
     audioSource, setAudioSource,
   } = useMusic();
+
+  // Admin de-obstruction: on /admin the floating player only renders while a
+  // listening session is actually active (audio or YouTube playing). An idle
+  // player used to sit at `fixed bottom-4 z-40` over admin panels, dialogs
+  // and the bulk-upload save bar. Outside /admin behavior is unchanged.
 
   const [expanded, setExpanded] = useState(true);
   const [showMixer, setShowMixer] = useState(false);
@@ -868,6 +875,12 @@ export function MusicPlayer() {
   const categories: (TrackCategory | "All")[] = ["All", "Focus", "Calm", "Deep Work", "Energize", "Wind-down", "Classical"];
   const filteredTracks = activeCategory === "All" ? TRACKS : TRACKS.filter(t => t.category === activeCategory);
   const ytParsed = youtubeUrl ? parseYoutubeUrl(youtubeUrl) : null;
+
+  // Hook-safe placement: this runs after every hook, so navigating between
+  // /admin and student routes never changes the hook execution order.
+  const onAdminRoute = useLocation().pathname.startsWith("/admin");
+  const sessionActive = playing || youtubePlaying || audioSource === "youtube";
+  if (onAdminRoute && !sessionActive) return null;
 
   return (
     <div

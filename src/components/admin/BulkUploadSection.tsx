@@ -1910,7 +1910,7 @@ export function BulkUploadSection() {
 
           {/* Batch-edit toolbar */}
           {batchEditOpen && selectedCount > 0 && (
-            <div className="sticky bottom-4 z-10 rounded-2xl border border-primary/30 bg-background/95 p-4 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="sticky bottom-[5.75rem] z-10 rounded-2xl border border-primary/30 bg-background/95 p-4 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-background/80">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs font-semibold">
                   Bulk edit {selectedCount} selected row{selectedCount === 1 ? "" : "s"}
