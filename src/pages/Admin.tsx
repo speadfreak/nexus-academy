@@ -1,103 +1,74 @@
-// Admin command center — gated by the existing admin role check.
-// Layout: sidebar nav (left) + scrollable content (right).  Uses plain
-// button-based tab switching to avoid shadcn Tabs internal DOM breaking
-// the flex layout behind Cloudflare/Render.
+// Learnyx Command OS — admin page. Gated by the existing admin role check.
+// Shell: cmdos/AdminShell (grouped nav · command palette · notifications).
+// Dashboard: cmdos/CommandCenter. Users: AdminUsersSection. Every ?tab= ID
+// is preserved — route map in docs/command-os/AUDIT.md §4.
 
 import { api } from "@/convex/_generated/api";
 import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Wand2 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
-  Building2,
-  CalendarClock,
   CheckCircle2,
-  ChevronRight,
-  Crown,
   ExternalLink,
-  FileText,
   Flag,
-  Flame,
-  Grid3x3,
   Github,
   Globe,
   KeyRound,
   Loader2,
   Lock,
   Megaphone,
-  MessageSquareQuote,
-  Plug,
   Plus,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Plug,
   RefreshCw,
-  ScrollText,
-  Search,
   Send,
   ShieldCheck,
-  ShieldAlert,
   Terminal,
   Timer,
   Trash2,
-  TrendingUp,
-  Receipt,
-  Trophy,
-  UserRound,
   Users,
   Wallet,
-  XCircle,
   Zap,
 } from "lucide-react";
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { AdminAdminsSection } from "@/components/admin/AdminAdminsSection";
 import { AdminAuditLogSection } from "@/components/admin/AdminAuditLogSection";
-import { AdminSchoolsSection } from "@/components/admin/AdminSchoolsSection";
-import { AdminContentSection } from "@/components/admin/AdminContentSection";
-import { AdminMarketingSection } from "@/components/admin/AdminMarketingSection";
-import { AdminAffiliatesSection } from "@/components/admin/AdminAffiliatesSection";
-import { AdminSubscriptionsSection } from "@/components/admin/AdminSubscriptionsSection";
+import { AdminUsersSection } from "@/components/admin/AdminUsersSection";
+import { AdminFraudSection } from "@/components/admin/AdminFraudSection";
+import { AdminCoverageSection } from "@/components/admin/AdminCoverageSection";
 import { AdminTestimonialsSection } from "@/components/admin/AdminTestimonialsSection";
 import { AdminTopicsSection } from "@/components/admin/AdminTopicsSection";
-import { PaymentReviewsSection } from "@/components/admin/PaymentReviewsSection";
-import { ExamEngineAdmin } from "@/components/admin/ExamEngineAdmin";
-import { StatCard2 } from "@/components/admin/StatCard2";
 import { ContactGroupPanel } from "@/components/admin/ContactGroupPanel";
-import { AdminCoverageSection } from "@/components/admin/AdminCoverageSection";
-import { AdminFraudSection } from "@/components/admin/AdminFraudSection";
+import { StatCard2 } from "@/components/admin/StatCard2";
+import { AdminShell } from "@/components/admin/cmdos/AdminShell";
+import type { ShellNotification } from "@/components/admin/cmdos/AdminShell";
+import { CommandCenter } from "@/components/admin/cmdos/CommandCenter";
+import {
+  AXIS_COLOR,
+  CHART_COLORS,
+  ChartCard,
+  FinanceHeroBanner,
+  GRID_COLOR,
+  TOOLTIP_STYLE,
+  fmtMoney,
+} from "@/components/admin/cmdos/blocks";
+import type { AdminTabId } from "@/components/admin/cmdos/nav";
+import { ALL_SECTIONS } from "@/components/admin/cmdos/nav";
+import { SkeletonRows } from "@/components/admin/cmdos/kit";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -112,33 +83,38 @@ import { Switch } from "@/components/ui/switch";
 import { relativeTime } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
+/* Heavy workspaces load on demand — keeps the /admin route chunk light. */
+const AdminContentSection = lazy(() =>
+  import("@/components/admin/AdminContentSection").then((m) => ({ default: m.AdminContentSection })),
+);
+const AdminSchoolsSection = lazy(() =>
+  import("@/components/admin/AdminSchoolsSection").then((m) => ({ default: m.AdminSchoolsSection })),
+);
+const AdminAffiliatesSection = lazy(() =>
+  import("@/components/admin/AdminAffiliatesSection").then((m) => ({ default: m.AdminAffiliatesSection })),
+);
+const AdminSubscriptionsSection = lazy(() =>
+  import("@/components/admin/AdminSubscriptionsSection").then((m) => ({ default: m.AdminSubscriptionsSection })),
+);
+const AdminMarketingSection = lazy(() =>
+  import("@/components/admin/AdminMarketingSection").then((m) => ({ default: m.AdminMarketingSection })),
+);
+const PaymentReviewsSection = lazy(() =>
+  import("@/components/admin/PaymentReviewsSection").then((m) => ({ default: m.PaymentReviewsSection })),
+);
+const ExamEngineAdmin = lazy(() =>
+  import("@/components/admin/ExamEngineAdmin").then((m) => ({ default: m.ExamEngineAdmin })),
+);
+
+function SectionFallback() {
+  return (
+    <div className="cmdos-panel p-5">
+      <SkeletonRows rows={5} />
+    </div>
+  );
+}
+
 /* ── Constants ──────────────────────────────────────────────────────── */
-
-const AXIS_COLOR = "var(--muted-foreground)";
-const GRID_COLOR = "var(--border)";
-const TOOLTIP_STYLE: React.CSSProperties = {
-  background: "var(--popover)",
-  border: "1px solid var(--border)",
-  borderRadius: 12,
-  color: "var(--popover-foreground)",
-  fontSize: 12,
-  fontFamily: "JetBrains Mono, monospace",
-};
-const CHART_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-];
-
-const SUB_STATUS_STYLES: Record<string, string> = {
-  trial: "bg-primary/10 text-primary",
-  active: "bg-emerald-400/10 text-emerald-300",
-  expired: "bg-amber-400/10 text-amber-300",
-  canceled: "bg-rose-400/10 text-rose-300",
-  none: "bg-white/5 text-muted-foreground",
-};
 
 const PAY_STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-400/10 text-amber-300",
@@ -146,392 +122,12 @@ const PAY_STATUS_STYLES: Record<string, string> = {
   failed: "bg-rose-400/10 text-rose-300",
 };
 
-const STREAM_LABELS: Record<string, string> = {
-  natural: "Natural science",
-  social: "Social science",
-  onboarding: "Onboarding",
-};
-
-const CONTENT_TYPE_LABELS: Record<string, string> = {
-  textbook: "Textbooks",
-  past_exam: "Past exams",
-  worksheet: "Worksheets",
-  student_guide: "Student guides",
-  teacher_guide: "Teacher guides",
-};
-
-const ADMIN_TABS = [
-  { id: "dashboard", label: "Dashboard", index: "01", icon: Activity },
-  { id: "content", label: "Content", index: "02", icon: FileText },
-  { id: "coverage", label: "Coverage Gaps", index: "03", icon: Grid3x3 },
-  { id: "users", label: "Users", index: "04", icon: UserRound },
-  { id: "admins", label: "Admins", index: "05", icon: ShieldCheck },
-  { id: "keys", label: "Keys", index: "06", icon: KeyRound },
-  { id: "finance", label: "Finance", index: "07", icon: Wallet },
-  { id: "payments", label: "Payment Reviews", index: "08", icon: Receipt },
-  { id: "schools", label: "Schools", index: "09", icon: Building2 },
-  { id: "affiliates", label: "Affiliates", index: "10", icon: Megaphone },
-  { id: "fraud", label: "Fraud Patterns", index: "11", icon: ShieldAlert },
-  { id: "marketing", label: "Marketing", index: "12", icon: Megaphone },
-  { id: "testimonials", label: "Testimonials", index: "13", icon: MessageSquareQuote },
-  { id: "subscriptions", label: "Subscriptions", index: "14", icon: CalendarClock },
-  { id: "reports", label: "Reports", index: "15", icon: Flag },
-  { id: "terminal", label: "Terminal", index: "16", icon: Terminal },
-  { id: "broadcast", label: "Broadcast", index: "17", icon: Send },
-  { id: "system", label: "System", index: "18", icon: Plug },
-  { id: "audit", label: "Audit Log", index: "19", icon: ScrollText },
-  { id: "examengine", label: "Exam Engine", index: "20", icon: Wand2 },
-] as const;
-
-type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
-
-const ADMIN_TAB_GROUPS = [
-  { label: "OVERVIEW", ids: ["dashboard"] as const },
-  { label: "CONTENT", ids: ["content", "coverage"] as const },
-  { label: "MANAGEMENT", ids: ["admins", "users", "keys", "finance", "payments", "schools", "affiliates", "fraud", "marketing", "testimonials", "subscriptions"] as const },
-  { label: "TOOLS", ids: ["reports", "terminal", "broadcast", "system", "audit"] as const },
-] as const;
-
-/* ── Small helpers ──────────────────────────────────────────────────── */
-
-function LiveClock() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return (
-    <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-      {now.toLocaleTimeString([], { hour12: false })}{" "}
-      <span className="text-primary">UTC</span>
-    </span>
-  );
-}
-
-function Chip({
-  label,
-  tone,
-}: {
-  label: string;
-  tone?: "ok" | "warn";
-}) {
-  return (
-    <span
-      className={cn(
-        "glass-chip flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em]",
-        tone === "ok"
-          ? "text-emerald-300"
-          : tone === "warn"
-            ? "text-amber-300"
-            : "text-muted-foreground",
-      )}
-    >
-      <span
-        className={cn(
-          "size-1.5 animate-pulse rounded-full",
-          tone === "ok"
-            ? "bg-emerald-300"
-            : tone === "warn"
-              ? "bg-amber-300"
-              : "bg-muted-foreground/60",
-        )}
-      />
-      {label}
-    </span>
-  );
-}
-
-function fmtMoney(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return `${Math.round(n)}`;
-}
-
 function formatEventMeta(m: Record<string, unknown> | null) {
   if (!m) return "";
   return Object.entries(m)
     .filter(([, v]) => typeof v === "string" || typeof v === "number")
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(" ");
-}
-
-function initials(name: string) {
-  return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() ?? "")
-      .join("") || "N"
-  );
-}
-
-/* ── Reusable card components ───────────────────────────────────────── */
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  sub,
-  money,
-}: {
-  label: string;
-  value: string | number;
-  icon: LucideIcon;
-  sub?: string;
-  money?: boolean;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className={cn(
-        "admin-stat group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-4 transition-colors hover:border-primary/30",
-        money && "border-primary/25 bg-primary/[0.06]",
-      )}
-    >
-      <span className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          {label}
-        </span>
-        <span
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors",
-            money
-              ? "bg-primary/15 text-primary"
-              : "bg-white/5 text-muted-foreground group-hover:text-primary",
-          )}
-        >
-          <Icon className="size-3.5" />
-        </span>
-      </div>
-      <p className="mt-2.5 font-mono text-2xl font-bold tabular-nums text-gradient sm:text-3xl">
-        {value}
-      </p>
-      {sub && (
-        <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
-          {sub}
-        </p>
-      )}
-    </motion.div>
-  );
-}
-
-// ── Finance Hero Banner ──────────────────────────────────────────────
-//
-// A bold, futuristic, animated banner that surfaces the most important
-// finance metrics at a glance. The dashboard's "command center" feel —
-// the admin sees revenue trend, pending money, SLA health, and ARPU/LTV
-// without scrolling. Uses StatCard2 internally so each metric has its
-// own animated number + sparkline.
-
-function FinanceHeroBanner({
-  currency,
-  revenueTotal,
-  revenueThisMonth,
-  pendingRevenue,
-  pendingManualSubmissions,
-  slaBreached,
-  paymentSuccessRate,
-  arpu,
-  estimatedLtv,
-  revenueChange30d,
-  revenueByDay,
-  health,
-}: {
-  currency: string;
-  revenueTotal: number;
-  revenueThisMonth: number;
-  pendingRevenue: number;
-  pendingManualSubmissions: number;
-  slaBreached: number;
-  paymentSuccessRate: number;
-  arpu: number;
-  estimatedLtv: number;
-  revenueChange30d: number | null;
-  revenueByDay: { date: string; label: string; revenue: number; payments: number }[];
-  health: "green" | "amber" | "red";
-}) {
-  const sparkData = revenueByDay.map((d) => d.revenue);
-  const successPct = Math.round(paymentSuccessRate * 100);
-  const accent: "money" | "warning" | "danger" | "success" =
-    health === "green" ? "money" : health === "amber" ? "warning" : "danger";
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-primary/[0.06] via-white/[0.02] to-transparent p-5 sm:p-6"
-    >
-      {/* Ambient glow */}
-      <div
-        className="pointer-events-none absolute -top-20 -right-10 size-72 rounded-full blur-3xl"
-        style={{
-          background:
-            health === "green"
-              ? "radial-gradient(circle, rgba(251,191,36,0.18) 0%, rgba(251,191,36,0) 70%)"
-              : health === "amber"
-                ? "radial-gradient(circle, rgba(251,191,36,0.22) 0%, rgba(251,191,36,0) 70%)"
-                : "radial-gradient(circle, rgba(244,63,94,0.22) 0%, rgba(244,63,94,0) 70%)",
-        }}
-      />
-
-      {/* Header */}
-      <div className="relative flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 16 }}
-            className="flex size-11 items-center justify-center rounded-2xl bg-primary/15 text-primary"
-            style={{ boxShadow: "0 0 24px -4px var(--primary)" }}
-          >
-            <Wallet className="size-5.5" />
-          </motion.div>
-          <div>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-amber-300">
-              // finance pulse
-            </p>
-            <h2 className="text-lg font-extrabold tracking-tight">Finance Command Center</h2>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <FinanceHealthBadgeInline health={health} />
-          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60 sm:inline">
-            live · auto-refreshes
-          </span>
-        </div>
-      </div>
-
-      {/* Stats grid */}
-      <div className="relative mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
-        <StatCard2
-          label="total earned"
-          value={revenueTotal}
-          icon={Wallet}
-          money
-          currency={currency}
-          sub={`${currency} · all time`}
-          delta={revenueChange30d}
-          deltaSuffix="%"
-          sparkData={sparkData}
-          sparkColor="var(--primary)"
-          accent={accent}
-        />
-        <StatCard2
-          label="this month"
-          value={revenueThisMonth}
-          icon={TrendingUp}
-          money
-          currency={currency}
-          sub="completed payments"
-          accent="success"
-        />
-        <StatCard2
-          label="pending revenue"
-          value={pendingRevenue}
-          icon={Timer}
-          money
-          currency={currency}
-          sub={`${pendingManualSubmissions} manual · waiting`}
-          accent={pendingManualSubmissions > 0 ? "warning" : "default"}
-        />
-        <StatCard2
-          label="success rate"
-          value={successPct}
-          icon={ShieldCheck}
-          sub={`${successPct >= 85 ? "Healthy" : successPct >= 50 ? "Needs attention" : "Critical"} · ${slaBreached} SLA breach${slaBreached === 1 ? "" : "es"}`}
-          accent={successPct >= 85 ? "success" : successPct >= 50 ? "warning" : "danger"}
-        />
-        <StatCard2
-          label="est. LTV"
-          value={estimatedLtv}
-          icon={Crown}
-          money
-          currency={currency}
-          sub={`ARPU ${fmtMoney(arpu)} ${currency}/mo`}
-          accent="money"
-        />
-      </div>
-
-      {/* SLA alert strip — only when there are breaches */}
-      {slaBreached > 0 && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          className="relative mt-4 flex items-center gap-2.5 rounded-xl border border-rose-400/30 bg-rose-400/[0.06] p-3"
-        >
-          <AlertTriangle className="size-4 shrink-0 text-rose-300" />
-          <p className="text-xs font-semibold text-rose-200">
-            {slaBreached} pending submission{slaBreached === 1 ? "" : "s"} breached
-            the SLA — review them now in the Payments tab to avoid losing
-            student trust.
-          </p>
-        </motion.div>
-      )}
-    </motion.div>
-  );
-}
-
-function FinanceHealthBadgeInline({ health }: { health: "green" | "amber" | "red" }) {
-  const label = health === "green" ? "Healthy" : health === "amber" ? "Watch" : "Action needed";
-  const dotClass =
-    health === "green"
-      ? "bg-emerald-400"
-      : health === "amber"
-        ? "bg-amber-400"
-        : "bg-rose-400";
-  const textClass =
-    health === "green"
-      ? "text-emerald-300"
-      : health === "amber"
-        ? "text-amber-300"
-        : "text-rose-300";
-  const bgClass =
-    health === "green"
-      ? "bg-emerald-400/10 border-emerald-400/20"
-      : health === "amber"
-        ? "bg-amber-400/10 border-amber-400/20"
-        : "bg-rose-400/10 border-rose-400/20";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider",
-        bgClass,
-        textClass,
-      )}
-    >
-      <span className={cn("size-1.5 rounded-full", dotClass)} style={{ boxShadow: "0 0 6px currentColor" }} />
-      {label}
-    </span>
-  );
-}
-
-function ChartCard({
-  title,
-  sub,
-  children,
-  className,
-}: {
-  title: string;
-  sub?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("admin-chart glass-panel rounded-2xl p-5", className)}>
-      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-        {title}
-      </p>
-      {sub && (
-        <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
-      )}
-      <div className="mt-4">{children}</div>
-    </div>
-  );
 }
 
 /* ── Keys tab (API key configuration) ────────────────────────────── */
@@ -949,7 +545,7 @@ export default function Admin() {
   useEffect(() => {
     const onNavigate = (e: Event) => {
       const target = (e as CustomEvent<string>).detail;
-      if (typeof target === "string" && ADMIN_TABS.some((t) => t.id === target)) {
+      if (typeof target === "string" && ALL_SECTIONS.some((t) => t.id === target)) {
         setTab(target as AdminTabId);
       }
     };
@@ -959,86 +555,38 @@ export default function Admin() {
 
   const adminAccess = isAdmin?.isAdmin ?? false;
 
-  /* ── Dashboard ── */
+  /* ── Subscriptions — one per active workspace, not one per tab. ──
+     The shell-level queues below are the only always-on reads; everything
+     else subscribes when its tab is on screen. Convex dedupes identical
+     subscriptions, so sections re-subscribing the same query cost nothing. */
   const dashboard = useQuery(
     api.adminCenter.getAdminDashboard,
-    adminAccess ? undefined : "skip",
+    adminAccess && tab === "dashboard" ? undefined : "skip",
   );
 
-  /* ── Finance ── */
   const finance = useQuery(
     api.adminCenter.getFinanceOverview,
-    adminAccess ? undefined : "skip",
+    adminAccess && tab === "finance" ? undefined : "skip",
   );
 
-  /* ── Users ── */
-  const users = useQuery(
-    api.adminCenter.listUsers,
+  /* Shell notification queues — real operational signals only. */
+  const pendingPayments = useQuery(
+    api.manualPayments.getPendingCount,
     adminAccess ? undefined : "skip",
   );
-  const setUserPremium = useMutation(api.adminCenter.setUserPremium);
-  const [premiumAction, setPremiumAction] = useState<{
-    userId: string;
-    action: "activate" | "expire" | "cancel";
-  } | null>(null);
-  const [acting, setActing] = useState(false);
-  const [userQuery, setUserQuery] = useState("");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const pendingSeatSubmissions = useQuery(
+    api.schools.adminListSeatSubmissions,
+    adminAccess ? { status: "pending" as const } : "skip",
+  );
 
-  useEffect(() => {
-    try {
-      setSidebarCollapsed(window.localStorage.getItem("nexus-admin-sidebar") === "collapsed");
-    } catch {
-      // Preferences are non-critical.
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        "nexus-admin-sidebar",
-        sidebarCollapsed ? "collapsed" : "expanded",
-      );
-    } catch {
-      // Storage may be unavailable in private browsing.
-    }
-  }, [sidebarCollapsed]);
-
-  // Keyboard-first navigation keeps the admin surface fast for daily ops.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing =
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.isContentEditable;
-      if (typing && !(event.metaKey || event.ctrlKey)) return;
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        document.querySelector<HTMLInputElement>('input[placeholder="Search users…"]')?.focus();
-        return;
-      }
-      if (typing) return;
-
-      const number = Number(event.key);
-      if (number >= 1 && number <= visibleTabs.length) {
-        event.preventDefault();
-        setTab(visibleTabs[number - 1].id);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setTab]);
-
-  /* ── System ── */
+  /* ── System (System tab) + Integrations (Terminal & Broadcast tabs) ── */
   const system = useQuery(
     api.adminCenter.getSystemStatus,
-    adminAccess ? undefined : "skip",
+    adminAccess && tab === "system" ? undefined : "skip",
   );
   const integrations = useQuery(
     api.adminCenter.getIntegrationStatus,
-    adminAccess ? undefined : "skip",
+    adminAccess && (tab === "terminal" || tab === "broadcast") ? undefined : "skip",
   );
   const testIntegration = useAction(api.systemEvents.testIntegrationConnection);
   const [integrationResults, setIntegrationResults] = useState<
@@ -1087,7 +635,7 @@ export default function Admin() {
 
   const systemEvents = useQuery(
     api.systemEvents.getSystemEvents,
-    adminAccess
+    adminAccess && tab === "terminal"
       ? {
           eventType: eventFilter || undefined,
           status: (statusFilter || undefined) as
@@ -1108,7 +656,7 @@ export default function Admin() {
 
   const health = useQuery(
     api.systemEvents.getSystemHealthSummary,
-    adminAccess ? undefined : "skip",
+    adminAccess && (tab === "terminal" || tab === "dashboard") ? undefined : "skip",
   );
 
   const resetOlder = () => {
@@ -1149,15 +697,15 @@ export default function Admin() {
   /* ── Broadcast (Telegram) ── */
   const channels = useQuery(
     api.telegram.listTelegramChannels,
-    adminAccess ? undefined : "skip",
+    adminAccess && tab === "broadcast" ? undefined : "skip",
   );
   const templates = useQuery(
     api.telegram.getBroadcastTemplates,
-    adminAccess ? undefined : "skip",
+    adminAccess && tab === "broadcast" ? undefined : "skip",
   );
   const broadcastLog = useQuery(
     api.telegram.getBroadcastLog,
-    adminAccess ? undefined : "skip",
+    adminAccess && tab === "broadcast" ? undefined : "skip",
   );
   const addChannel = useMutation(api.telegram.addTelegramChannel);
   const removeChannel = useMutation(api.telegram.removeTelegramChannel);
@@ -1214,7 +762,7 @@ export default function Admin() {
   /* ── Reports ── */
   const reports = useQuery(
     api.safety.listReports,
-    adminAccess ? undefined : "skip",
+    adminAccess && tab === "reports" ? undefined : "skip",
   );
   const updateReportStatus = useMutation(api.safety.updateReportStatus);
   const [reportFilter, setReportFilter] = useState("open");
@@ -1332,29 +880,6 @@ export default function Admin() {
     }
   };
 
-  const handlePremiumAction = async () => {
-    if (!premiumAction || acting) return;
-    setActing(true);
-    try {
-      await setUserPremium({
-        userId: premiumAction.userId as never,
-        action: premiumAction.action,
-      });
-      toast.success(
-        premiumAction.action === "activate"
-          ? "Premium activated for this user."
-          : premiumAction.action === "expire"
-            ? "Premium expired for this user."
-            : "Subscription canceled for this user.",
-      );
-      setPremiumAction(null);
-    } catch {
-      toast.error("Action failed.");
-    } finally {
-      setActing(false);
-    }
-  };
-
   /* ── Early returns ── */
   if (isAdmin === undefined)
     return (
@@ -1388,560 +913,62 @@ export default function Admin() {
       </DashboardShell>
     );
 
-  /* ── Derived data ── */
-  const visibleTabs = ADMIN_TABS.filter((t) => {
-    if (isAdmin === undefined) return true; // loading — show all tabs
-    if (!isAdmin?.isAdmin) return false;
-    const myRole = isAdmin?.role;
-    // Moderators cannot manage admins, keys, audit, finance, or affiliates.
-    if (myRole === "moderator") {
-      if (t.id === "keys" || t.id === "admins" || t.id === "audit" || t.id === "finance" || t.id === "affiliates") return false;
-    }
-    return true;
-  });
-
-  const filteredUsers =
-    users?.filter((u) => {
-      const q = userQuery.trim().toLowerCase();
-      if (!q) return true;
-      return (
-        (u.email ?? "").toLowerCase().includes(q) ||
-        (u.name ?? "").toLowerCase().includes(q) ||
-        (u.displayName ?? "").toLowerCase().includes(q)
-      );
-    }) ?? [];
-
-  const donutData =
-    dashboard?.subscriptionBreakdown.filter((e) => e.count > 0) ?? [];
-  const maxStream = Math.max(
-    1,
-    ...(dashboard?.usersByStream.map((s) => s.count) ?? [1]),
-  );
+  /* ── Shell notifications — only real, non-zero queues render. ── */
+  const notifications: ShellNotification[] = [];
+  if ((pendingPayments?.count ?? 0) > 0) {
+    notifications.push({
+      id: "payments",
+      tone: "warn",
+      title: `${pendingPayments!.count} manual payment${pendingPayments!.count === 1 ? "" : "s"} awaiting review`,
+      detail: "TeleBirr transfers · Payment Reviews",
+      tab: "payments",
+    });
+  }
+  if ((pendingSeatSubmissions?.length ?? 0) > 0) {
+    notifications.push({
+      id: "seats",
+      tone: "info",
+      title: `${pendingSeatSubmissions!.length} school seat request${pendingSeatSubmissions!.length === 1 ? "" : "s"} pending`,
+      detail: "Bulk purchase approvals · Payment Reviews",
+      tab: "payments",
+    });
+  }
 
   /* ════════════════════════════════════════════════════════════════════
      RENDER
      ════════════════════════════════════════════════════════════════════ */
   return (
     <DashboardShell>
-      <div className="admin-surface flex min-h-0 flex-col gap-5 pb-32 sm:gap-6">
-        {/* ── Command header ── */}
-        <div className="admin-command-header admin-hero relative overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.035] px-4 py-5 sm:px-6 sm:py-6">
-          <div className="admin-grid-bg pointer-events-none absolute inset-0" />
-          <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-primary/10 blur-3xl" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(ellipse_at_right,rgba(112,196,255,0.12),transparent_68%)]" />
-          <div className="admin-hero-orbit admin-hero-orbit-one pointer-events-none absolute" />
-          <div className="admin-hero-orbit admin-hero-orbit-two pointer-events-none absolute" />
-          <div className="admin-hero-scan pointer-events-none absolute inset-x-0 top-0" />
-          <div className="relative">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-                // control center
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <Chip label="convex linked" tone="ok" />
-                <LiveClock />
-              </div>
-            </div>
-            <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl">
-              Command center
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Users, money, content, activity and safety — the whole platform
-              in one place.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setTab("content")}
-                className="interactive-press inline-flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-primary hover:bg-primary/15"
-              >
-                <Plus className="size-3.5" /> Add content
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("users")}
-                className="interactive-press inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground"
-              >
-                <Users className="size-3.5" /> Find a user
-              </button>
-              <span className="hidden items-center gap-1.5 font-mono text-[10px] text-muted-foreground/50 sm:inline-flex">
-                <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5">1–9</kbd>
-                jump sections
-              </span>
-            </div>
+      <AdminShell
+        tab={tab}
+        onTabChange={setTab}
+        role={isAdmin?.role}
+        notifications={notifications}
+      >
+        {/* ══════ DASHBOARD — Executive Command Center ══════ */}
+        {tab === "dashboard" && (
+          <CommandCenter
+            dashboard={dashboard}
+            health={health}
+            onNavigate={setTab}
+          />
+        )}
+
+        {/* ══════ CONTENT ══════ */}
+        {tab === "content" && (
+          <div className="min-w-0 flex flex-col gap-6">
+            <Suspense fallback={<SectionFallback />}>
+              <AdminContentSection />
+            </Suspense>
+            <AdminTopicsSection />
           </div>
-        </div>
+        )}
 
-        {/* ── Main layout: sidebar + content ── */}
-        <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:gap-6">
-          {/* ── Mobile: horizontal scrollable tab bar (< xl) ── */}
-          <nav className="glass-panel flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-1.5 sm:p-2 xl:hidden" data-scroll-contain>
-            {visibleTabs.map(({ id, label, icon: TabIcon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                className={cn(
-                  "interactive-press hover-lift group flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs font-medium transition-all sm:text-sm",
-                  tab === id
-                    ? "border-l-2 border-l-primary bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(112,196,255,0.18),0_8px_24px_-18px_rgba(112,196,255,0.8)]"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                )}
-              >
-                <span
-                  className={cn(
-                    "flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors",
-                    tab === id
-                      ? "bg-primary/15 text-primary"
-                      : "bg-white/5 text-muted-foreground group-hover:text-primary",
-                  )}
-                >
-                  <TabIcon className="size-4" />
-                </span>
-                <span>{label}</span>
-              </button>
-            ))}
-          </nav>
+        {/* ══════ COVERAGE GAPS ══════ */}
+        {tab === "coverage" && <AdminCoverageSection />}
 
-          {/* ── Desktop: vertical grouped sidebar (>= xl) ── */}
-          <nav className="admin-rail glass-panel hidden shrink-0 flex-col rounded-2xl p-2.5 xl:flex xl:sticky xl:top-24 xl:self-start xl:overflow-y-auto transition-all duration-300" data-scroll-contain style={{ width: sidebarCollapsed ? '4.5rem' : '15.5rem' }}>
-            {/* Learnyx Academy ET 🇪🇹 admin brand lockup */}
-            <Link
-              to="/dashboard"
-              title="Return to Learnyx Academy ET 🇪🇹 library"
-              className={cn(
-                "admin-brand-lockup group mb-3 flex items-center rounded-2xl border border-white/10 bg-white/[0.035] p-2.5 transition hover:border-primary/35 hover:bg-primary/[0.06]",
-                sidebarCollapsed ? "justify-center" : "gap-3",
-              )}
-            >
-              <span className="admin-brand-mark relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#6d7cff] via-[#4777ff] to-[#23c8ed] text-xl font-black text-white shadow-[0_0_24px_rgba(71,119,255,0.42)]">
-                N
-                <span className="absolute -right-1 -top-1 size-2 rounded-full bg-[#f5c542] shadow-[0_0_10px_#f5c542]" />
-              </span>
-              <AnimatePresence mode="wait">
-                {!sidebarCollapsed && (
-                  <motion.span
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -6 }}
-                    className="min-w-0 overflow-hidden"
-                  >
-                    <span className="block truncate text-sm font-extrabold tracking-tight text-foreground">Learnyx Academy ET 🇪🇹</span>
-                    <span className="mt-0.5 block truncate type-mono text-[9px] uppercase tracking-[0.12em] text-primary/70">exam-prep · library</span>
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </Link>
-
-            {!sidebarCollapsed && (
-              <div className="admin-sidebar-status mb-3 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.05] px-3 py-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="type-mono text-[9px] uppercase tracking-[0.14em] text-emerald-200/80">Admin network</span>
-                  <span className="flex items-center gap-1.5 type-mono text-[9px] text-emerald-300"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> ONLINE</span>
-                </div>
-                <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full w-[78%] rounded-full bg-gradient-to-r from-emerald-400 via-teal-300 to-primary" />
-                </div>
-                <p className="mt-1.5 type-mono text-[9px] text-muted-foreground">secure control plane · v2.7</p>
-                {isAdmin?.role && (
-                  <Badge variant="outline" className="mt-1 text-[8px]">{isAdmin.role.replace('_', ' ')}</Badge>
-                )}
-              </div>
-            )}
-
-            {/* Collapse toggle at top */}
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((p) => !p)}
-              className={cn(
-                "interactive-press mb-2 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-white/5 hover:text-foreground",
-              )}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-              <AnimatePresence mode="wait">
-                {!sidebarCollapsed && (
-                  <motion.span
-                    initial={{ opacity: 0, width: 0 }}
-                    animate={{ opacity: 1, width: 'auto' }}
-                    exit={{ opacity: 0, width: 0 }}
-                    className="overflow-hidden whitespace-nowrap"
-                  >
-                    Collapse
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </button>
-
-            {/* Grouped tabs */}
-            {ADMIN_TAB_GROUPS.map((group, gi) => (
-              <div key={group.label} className={cn(gi > 0 && "mt-2 border-t border-white/[0.06] pt-2")}>
-                <AnimatePresence mode="wait">
-                  {!sidebarCollapsed && (
-                    <motion.p
-                      key="label"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="type-caption type-mono mb-1.5 px-3 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/50"
-                    >
-                      {group.label}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-                {group.ids.map((tabId) => {
-                  const found = visibleTabs.find((t) => t.id === tabId);
-                  if (!found) return null;
-                  const { id, label, index, icon: TabIcon } = found;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setTab(id)}
-                      title={sidebarCollapsed ? `${label} · ${index}` : undefined}
-                      aria-current={tab === id ? "page" : undefined}
-                      className={cn(
-                        "admin-rail-item interactive-press hover-lift group flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all",
-                        sidebarCollapsed ? "justify-center" : "justify-start",
-                        tab === id
-                          ? "admin-rail-item-active border-l-2 border-l-primary bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors",
-                          tab === id
-                            ? "bg-primary/15 text-primary"
-                            : "bg-white/5 text-muted-foreground group-hover:text-primary",
-                        )}
-                      >
-                        <TabIcon className="size-4" />
-                      </span>
-                      <AnimatePresence mode="wait">
-                        {!sidebarCollapsed && (
-                          <motion.span
-                            initial={{ opacity: 0, width: 0 }}
-                            animate={{ opacity: 1, width: 'auto' }}
-                            exit={{ opacity: 0, width: 0 }}
-                            className="overflow-hidden whitespace-nowrap"
-                          >
-                            {label}
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                      <AnimatePresence mode="wait">
-                        {!sidebarCollapsed && (
-                          <motion.span
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="type-mono ml-auto text-[9px] text-muted-foreground/50"
-                          >
-                            {index}
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-
-            {/* Bottom: clock + collapse toggle */}
-            <div className="mt-auto border-t border-white/[0.06] pt-2">
-              <div className="flex items-center justify-center px-3 py-2">
-                <LiveClock />
-              </div>
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed((p) => !p)}
-                className={cn(
-                  "interactive-press flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-muted-foreground transition-all hover:bg-white/5 hover:text-foreground",
-                )}
-              >
-                {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-                <AnimatePresence mode="wait">
-                  {!sidebarCollapsed && (
-                    <motion.span
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: 'auto' }}
-                      exit={{ opacity: 0, width: 0 }}
-                      className="overflow-hidden whitespace-nowrap"
-                    >
-                      Collapse
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </button>
-            </div>
-          </nav>
-
-          {/* Content area */}
-          <main className="flex min-w-0 flex-1 flex-col gap-4">
-            {/* ══════ DASHBOARD ══════ */}
-            {tab === "dashboard" && (
-              <div className="flex min-w-0 flex-col gap-4">
-                {dashboard === undefined ? (
-                  <div className="flex h-40 items-center justify-center">
-                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  <>
-                    {/* Finance Health Hero Banner — gives the admin a one-glance
-                        pulse on the finance system, with the most critical metrics
-                        surfaced as big animated numbers. */}
-                    <FinanceHeroBanner
-                      currency={dashboard.totals.currency}
-                      revenueTotal={dashboard.totals.revenueTotal}
-                      revenueThisMonth={dashboard.totals.revenueThisMonth}
-                      pendingRevenue={dashboard.totals.pendingRevenue}
-                      pendingManualSubmissions={dashboard.totals.pendingManualSubmissions}
-                      slaBreached={dashboard.totals.slaBreachedSubmissions}
-                      paymentSuccessRate={dashboard.totals.paymentSuccessRate}
-                      arpu={dashboard.totals.arpu}
-                      estimatedLtv={dashboard.totals.estimatedLtv}
-                      revenueChange30d={dashboard.totals.revenueChangePercent30d}
-                      revenueByDay={dashboard.revenueByDay}
-                      health={dashboard.totals.financeHealth}
-                    />
-
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
-                      <StatCard label="users" value={dashboard.totals.users} icon={Users} sub="all accounts" />
-                      <StatCard label="active this week" value={dashboard.totals.activeThisWeek} icon={Activity} sub={`${dashboard.totals.activeToday} today`} />
-                      <StatCard label="paying / trial" value={dashboard.totals.payingUsers} icon={Crown} sub="with premium access" />
-                      <StatCard label="total earned" value={`${fmtMoney(dashboard.totals.revenueTotal)} ${dashboard.totals.currency}`} icon={Wallet} money sub={`${dashboard.totals.paymentsCompleted} payments`} />
-                      <StatCard label="this month" value={`${fmtMoney(dashboard.totals.revenueThisMonth)} ${dashboard.totals.currency}`} icon={TrendingUp} money sub="completed payments" />
-                      <StatCard label="content items" value={dashboard.totals.contentItems} icon={FileText} sub="in the library" />
-                    </div>
-
-                    <div className="grid gap-4 2xl:grid-cols-3">
-                      <ChartCard title="revenue · last 12 months" sub={`Money earned from completed payments, in ${dashboard.totals.currency}`} className="lg:col-span-2">
-                        <div className="h-56">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={dashboard.revenueByMonth} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                              <defs><linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} /><stop offset="100%" stopColor="var(--primary)" stopOpacity={0} /></linearGradient></defs>
-                              <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
-                              <XAxis dataKey="label" tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-                              <YAxis tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} width={46} />
-                              <Tooltip contentStyle={TOOLTIP_STYLE} />
-                              <Area type="monotone" dataKey="revenue" stroke="var(--primary)" strokeWidth={2} fill="url(#revGrad)" name="ETB" />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </ChartCard>
-                      <ChartCard title="subscriptions" sub="Premium access split">
-                        <div className="h-40">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie data={donutData} dataKey="count" nameKey="status" innerRadius={46} outerRadius={68} paddingAngle={3} stroke="none">
-                                {donutData.map((e, i) => <Cell key={e.status} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                              </Pie>
-                              <Tooltip contentStyle={TOOLTIP_STYLE} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {dashboard.subscriptionBreakdown.map((e, i) => (
-                            <Badge key={e.status} variant="outline" className="gap-1 font-mono text-[9px] text-muted-foreground">
-                              <span className="size-2 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                              {e.status} · {e.count}
-                            </Badge>
-                          ))}
-                        </div>
-                      </ChartCard>
-                    </div>
-
-                    <div className="grid gap-4 2xl:grid-cols-3">
-                      <ChartCard title="new users · last 6 months">
-                        <div className="h-44">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={dashboard.newUsersByMonth} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                              <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
-                              <XAxis dataKey="label" tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "var(--accent)" }} />
-                              <Bar dataKey="count" fill="var(--chart-2)" radius={[6, 6, 0, 0]} name="new users" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </ChartCard>
-                      <ChartCard title="revenue by provider" sub={`${dashboard.totals.currency} from completed payments`}>
-                        <div className="h-44">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={dashboard.revenueByProvider} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                              <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
-                              <XAxis dataKey="provider" tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: AXIS_COLOR, fontSize: 11 }} axisLine={false} tickLine={false} width={46} />
-                              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "var(--accent)" }} />
-                              <Bar dataKey="total" fill="var(--chart-3)" radius={[6, 6, 0, 0]} name="ETB" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </ChartCard>
-              <div className="admin-inventory glass-panel flex flex-col gap-4 rounded-2xl p-5">
-                        <div>
-                          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">streams</p>
-                          <div className="mt-3 flex flex-col gap-2.5">
-                            {dashboard.usersByStream.map((e) => (
-                              <div key={e.stream}>
-                                <div className="flex items-center justify-between font-mono text-[10px]">
-                                  <span className="text-muted-foreground">{STREAM_LABELS[e.stream] ?? e.stream}</span>
-                                  <span className="font-bold tabular-nums">{e.count}</span>
-                                </div>
-                                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/5">
-                                  <div className="h-full rounded-full bg-primary/70" style={{ width: `${(e.count / maxStream) * 100}%` }} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">content inventory</p>
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {dashboard.contentByType.map((e) => (
-                              <Badge key={e.contentType} className="gap-1 bg-white/5 font-mono text-[9px] text-muted-foreground">
-                                {CONTENT_TYPE_LABELS[e.contentType] ?? e.contentType} · {e.count}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 lg:grid-cols-5">
-                      <div className="glass-panel rounded-2xl p-5 lg:col-span-3">
-                        <p className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                          <Trophy className="size-3.5 text-primary" /> power users · ranked by XP
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">The students actually using the platform — XP aggregates every study action.</p>
-                        <div className="mt-4 flex flex-col gap-2">
-                          {dashboard.powerUsers.length === 0 ? (
-                            <p className="py-8 text-center text-sm text-muted-foreground">No study activity yet.</p>
-                          ) : (
-                            dashboard.powerUsers.map((u, i) => (
-                              <div key={u.userId} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
-                                <span className="flex size-6 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-extrabold text-muted-foreground">{i + 1}</span>
-                                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 font-mono text-xs font-extrabold text-primary">{initials(u.name)}</div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold">{u.name}</p>
-                                  <p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">{u.hours} h · {u.sessions} sessions · {u.quizzes} quizzes</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="flex items-center justify-end gap-1 font-mono text-sm font-extrabold tabular-nums text-primary"><Zap className="size-3" /> {u.xp}</p>
-                                  <p className="flex items-center justify-end gap-1 font-mono text-[9px] text-muted-foreground"><Flame className="size-3 text-amber-300" /> {u.streak}d streak</p>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                      <div className="glass-panel rounded-2xl p-5 lg:col-span-2">
-                        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">recent signups</p>
-                        <div className="mt-4 flex flex-col gap-2">
-                          {dashboard.recentSignups.map((u) => (
-                            <div key={u.userId} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
-                              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 font-mono text-xs font-extrabold text-muted-foreground">{initials(u.name)}</div>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold">{u.name}{u.isAnonymous && <span className="ml-1.5 font-mono text-[9px] text-muted-foreground">guest</span>}</p>
-                                <p className="truncate font-mono text-[10px] text-muted-foreground">{u.email ?? "no email"}</p>
-                              </div>
-                              <p className="shrink-0 font-mono text-[10px] text-muted-foreground">{relativeTime(u.createdAt)}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ══════ CONTENT ══════ */}
-            {tab === "content" && (
-              <div className="min-w-0 flex flex-col gap-6">
-                <AdminContentSection />
-                <AdminTopicsSection />
-              </div>
-            )}
-
-            {/* ══════ COVERAGE GAPS ══════ */}
-            {tab === "coverage" && <AdminCoverageSection />}
-
-            {/* ══════ USERS ══════ */}
-            {tab === "users" && (
-              <div className="glass-panel rounded-2xl p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-extrabold tracking-tight">Users</h2>
-                    <p className="text-sm text-muted-foreground">Who signed up, who's actually studying, and premium access management.</p>
-                  </div>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="Search users…" className="h-9 w-56 rounded-xl bg-white/5 pl-9 font-mono text-xs" />
-                  </div>
-                </div>
-                <div className="mt-4 overflow-x-auto">
-                  {users === undefined ? (
-                    <div className="flex h-32 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
-                  ) : filteredUsers.length === 0 ? (
-                    <p className="py-10 text-center text-sm text-muted-foreground">No users match.</p>
-                  ) : (
-                    <Table>
-                      <TableHeader><TableRow className="hover:bg-transparent"><TableHead>User</TableHead><TableHead>Stream</TableHead><TableHead>Subscription</TableHead><TableHead>Usage</TableHead><TableHead>Last active</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {filteredUsers.map((u) => (
-                          <TableRow key={u._id} className="hover:bg-white/5">
-                            <TableCell className="max-w-[13rem]">
-                              <p className="truncate font-semibold">{u.displayName ?? u.name ?? "Guest"}{u.isAnonymous && <span className="ml-1.5 font-mono text-[9px] text-muted-foreground">anonymous</span>}</p>
-                              <p className="truncate font-mono text-[10px] text-muted-foreground">{u.email ?? "no email"}</p>
-                            </TableCell>
-                            <TableCell className="font-mono text-[11px] text-muted-foreground">{u.stream ?? "—"}</TableCell>
-                            <TableCell>
-                              <Badge className={cn("gap-1 font-mono text-[10px]", SUB_STATUS_STYLES[u.subscriptionStatus])}>
-                                {u.subscriptionStatus}{u.subscriptionStatus === "trial" ? ` · ${u.trialActiveDays}/${u.freeTrialDays}` : ""}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <p className="font-mono text-[10px] tabular-nums text-muted-foreground">{u.usage.studyHours} h · {u.usage.sessions} sess · {u.usage.quizzes} quiz</p>
-                              <p className="font-mono text-[10px] font-bold tabular-nums text-primary">{u.usage.xp} XP</p>
-                            </TableCell>
-                            <TableCell className="font-mono text-[10px] text-muted-foreground">{u.usage.lastActiveAt ? relativeTime(u.usage.lastActiveAt) : "never"}</TableCell>
-                            <TableCell className="text-right">
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="outline" size="sm" className="h-8 cursor-pointer rounded-lg bg-white/5 font-mono text-[10px]"><Crown className="size-3" /> Manage</Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent className="glass-panel">
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Manage premium access</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      <span className="font-semibold">{u.displayName ?? u.name ?? u.email ?? "This user"}</span> is currently <span className="font-semibold">{u.subscriptionStatus}</span>.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <div className="flex flex-col gap-2">
-                                    <Button variant="outline" className="rounded-xl bg-white/5" onClick={() => setPremiumAction({ userId: u._id, action: "activate" })}><CheckCircle2 className="size-4 text-emerald-300" /> Activate premium (30 days)</Button>
-                                    <Button variant="outline" className="rounded-xl bg-white/5" onClick={() => setPremiumAction({ userId: u._id, action: "expire" })}><AlertTriangle className="size-4 text-amber-300" /> Expire premium now</Button>
-                                    <Button variant="outline" className="rounded-xl bg-white/5" onClick={() => setPremiumAction({ userId: u._id, action: "cancel" })}><XCircle className="size-4 text-rose-300" /> Cancel subscription</Button>
-                                  </div>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel className="rounded-xl">Close</AlertDialogCancel>
-                                    {premiumAction?.userId === u._id && (
-                                      <AlertDialogAction className="cursor-pointer rounded-xl" disabled={acting} onClick={() => handlePremiumAction()}>
-                                        {acting ? <Loader2 className="size-4 animate-spin" /> : <>Confirm <ChevronRight className="size-4" /></>}
-                                      </AlertDialogAction>
-                                    )}
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
-              </div>
-            )}
+        {/* ══════ USERS — People directory ══════ */}
+        {tab === "users" && <AdminUsersSection />}
 
             {/* ══════ ADMINS ══════ */}
             {tab === "admins" && (
@@ -2200,37 +1227,49 @@ export default function Admin() {
               </div>
             )}
 
-            {/* ══════ PAYMENT REVIEWS ══════ */}
-            {tab === "payments" && (
-              <PaymentReviewsSection />
-            )}
+        {/* ══════ PAYMENT REVIEWS ══════ */}
+        {tab === "payments" && (
+          <Suspense fallback={<SectionFallback />}>
+            <PaymentReviewsSection />
+          </Suspense>
+        )}
 
-            {/* ══════ SCHOOLS — school system management console ══════ */}
-            {tab === "schools" && <AdminSchoolsSection />}
+        {/* ══════ SCHOOLS — school system management console ══════ */}
+        {tab === "schools" && (
+          <Suspense fallback={<SectionFallback />}>
+            <AdminSchoolsSection />
+          </Suspense>
+        )}
 
-            {/* ══════ AFFILIATES — promoter/commission control room ══════ */}
-            {/* Usable even while the master toggle is OFF so the owner can
-                prepare promoters before launching — mirrors the Schools tab
-                pattern. Gated to admin+ like Payments/Finance. */}
-            {tab === "affiliates" && <AdminAffiliatesSection />}
+        {/* ══════ AFFILIATES — promoter/commission control room ══════ */}
+        {/* Usable even while the master toggle is OFF so the owner can
+            prepare promoters before launching — mirrors the Schools tab
+            pattern. Gated to admin+ like Payments/Finance. */}
+        {tab === "affiliates" && (
+          <Suspense fallback={<SectionFallback />}>
+            <AdminAffiliatesSection />
+          </Suspense>
+        )}
 
-            {/* ══════ FRAUD PATTERNS — review-only suspicious-pattern detection ══════ */}
-            {tab === "fraud" && <AdminFraudSection />}
+        {/* ══════ FRAUD PATTERNS — review-only suspicious-pattern detection ══════ */}
+        {tab === "fraud" && <AdminFraudSection />}
 
-            {/* ══════ MARKETING — referral + discounts + announcements ══════ */}
-            {tab === "marketing" && (
-              <AdminMarketingSection />
-            )}
+        {/* ══════ MARKETING — referral + discounts + announcements ══════ */}
+        {tab === "marketing" && (
+          <Suspense fallback={<SectionFallback />}>
+            <AdminMarketingSection />
+          </Suspense>
+        )}
 
-            {/* ══════ TESTIMONIALS — review queue + feature/reorder + manual add ══════ */}
-            {tab === "testimonials" && (
-              <AdminTestimonialsSection />
-            )}
+        {/* ══════ TESTIMONIALS — review queue + feature/reorder + manual add ══════ */}
+        {tab === "testimonials" && <AdminTestimonialsSection />}
 
-            {/* ══════ SUBSCRIPTIONS — trial program control ══════ */}
-            {tab === "subscriptions" && (
-              <AdminSubscriptionsSection />
-            )}
+        {/* ══════ SUBSCRIPTIONS — trial program control ══════ */}
+        {tab === "subscriptions" && (
+          <Suspense fallback={<SectionFallback />}>
+            <AdminSubscriptionsSection />
+          </Suspense>
+        )}
 
             {/* ══════ REPORTS ══════ */}
             {tab === "reports" && (
@@ -2529,25 +1568,16 @@ export default function Admin() {
               </div>
             )}
 
-            {/* ══════ AUDIT LOG ══════ */}
-            {tab === "audit" && (
-              <AdminAuditLogSection />
-            )}
+        {/* ══════ AUDIT LOG ══════ */}
+        {tab === "audit" && <AdminAuditLogSection />}
 
-            {/* ══════ EXAM ENGINE (digital past-paper QC) ══════ */}
-            {tab === "examengine" && (
-              <ExamEngineAdmin />
-            )}
-          </main>
-        </div>
-
-        {/* ── Footer ── */}
-        <div className="admin-foot mt-1 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-2.5 font-mono text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-emerald-300" /> nexus://admin · 11 modules online</span>
-          <span className="hidden sm:inline">convex reactive · no polling</span>
-          <span className="flex items-center gap-2"><ShieldCheck className="size-3.5 text-primary" /> access: admin <LiveClock /></span>
-        </div>
-      </div>
+        {/* ══════ EXAM ENGINE (digital past-paper QC) ══════ */}
+        {tab === "examengine" && (
+          <Suspense fallback={<SectionFallback />}>
+            <ExamEngineAdmin />
+          </Suspense>
+        )}
+      </AdminShell>
     </DashboardShell>
   );
 }

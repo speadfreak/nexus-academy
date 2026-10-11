@@ -11,8 +11,8 @@
 //      is granted)
 //   3. Shows a Sonner toast with the student name + amount
 //   4. Vibrates the device (if supported, e.g. on mobile)
-// The poller runs every 10 seconds via Convex's reactive useQuery — when
-// the pending count or latest submission ID changes, the notification fires.
+// Fully reactive via Convex's useQuery — when the pending count or latest
+// submission ID changes, the notification fires. No polling.
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";

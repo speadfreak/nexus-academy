@@ -23,16 +23,12 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useQuery } from "convex/react";
 import {
-  AlertTriangle,
   CheckCircle2,
-  Eye,
   FileText,
   Loader2,
   Pause,
   Play,
-  RotateCw,
   Sparkles,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -355,10 +351,3 @@ export function BrandingPanel() {
     </div>
   );
 }
-
-// Avoid unused warnings
-void Eye;
-void X;
-void AlertTriangle;
-void RotateCw;
-void CheckCircle2;

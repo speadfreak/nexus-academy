@@ -145,7 +145,7 @@ export function AdminFraudSection() {
 
         {/* Quick stats */}
         {report.totalFlags > 0 && (
-          <div className="relative mt-4 grid grid-cols-3 gap-2">
+          <div className="relative mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
             <QuickStatCard
               icon={<Users className="size-4" />}
               label="Referral farms"
