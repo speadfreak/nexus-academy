@@ -8,29 +8,44 @@ so the student app is untouched in both themes.
 
 ## 1. The cockpit principle
 
-The admin is a **self-contained dark cockpit in both app themes**. The shell
-remaps every semantic theme variable (`--background`, `--foreground`,
+The admin is a **self-contained cockpit that follows the app theme**. The
+shell remaps every semantic theme variable (`--background`, `--foreground`,
 `--popover`, `--muted-foreground`, …) inside `.admin-surface`, so any
-component using standard Tailwind semantic classes renders correctly on
-obsidian regardless of the student app's light/dark setting. Portaled
+component using standard Tailwind semantic classes renders correctly on the
+cockpit ramp regardless of the student app's light/dark setting. Portaled
 surfaces (palette, popover, drawer) opt back in with `cmdos-dark-scope`.
+
+Two coordinated palettes ship in `src/index.css`:
+
+- **Obsidian Executive (dark)** — the base token block. Layered obsidian
+  surfaces, champagne gold `#e6a72e`, warm ink, white-alpha hairlines.
+- **Executive Daylight (light)** — the `html.light` block that follows it.
+  The SAME geometry on warm paper: ivory surface ramp (`#f2efe7` →
+  `#fffdf8`), charcoal ink, darkened champagne gold (`#a87314`) for AA
+  contrast, warm hairlines. It also remaps the white-alpha utilities the
+  sections were authored with (`bg-white/5`, `border-white/10`, …) to
+  warm-charcoal equivalents inside the cockpit scope, so legacy sections
+  flip without touching their call sites.
+
+An in-cockpit sun/moon toggle in the shell header flips the app theme;
+the ThemeProvider persists and roams the choice.
 
 ## 2. Color tokens
 
-### Surface layers (deepest → most elevated)
-| Token | Value | Use |
+### Surface layers (deepest → most elevated) — dark / light
+| Token | Dark | Light |
 |---|---|---|
-| `--cmdos-bg-0` | `#0b0a08` | cockpit page background |
-| `--cmdos-bg-1` | `rgb(17 16 13 / 0.72)` | standard panel (`.cmdos-panel`) |
-| `--cmdos-bg-2` | `rgb(24 22 18 / 0.66)` | raised panel / hover tone |
-| `--cmdos-bg-3` | `rgb(33 30 24 / 0.7)` | popover / tooltip tone |
+| `--cmdos-bg-0` | `#0b0a08` obsidian page | `#f2efe7` warm paper |
+| `--cmdos-bg-1` | `rgb(17 16 13 / 0.72)` panel | `rgb(255 253 248 / 0.85)` porcelain panel |
+| `--cmdos-bg-2` | `rgb(24 22 18 / 0.66)` raised | `#fffdf8` raised |
+| `--cmdos-bg-3` | `rgb(33 30 24 / 0.7)` popover | `#fffdf8` popover |
 
-### Champagne gold accent (restrained)
-| Token | Value |
-|---|---|
-| `--cmdos-gold` | `#e6a72e` |
-| `--cmdos-gold-soft` | `rgb(230 167 46 / 0.14)` |
-| `--cmdos-gold-line` | `rgb(230 167 46 / 0.22)` |
+### Champagne gold accent (restrained) — dark / light
+| Token | Dark | Light |
+|---|---|---|
+| `--cmdos-gold` | `#e6a72e` | `#a87314` |
+| `--cmdos-gold-soft` | `rgb(230 167 46 / 0.14)` | `rgb(168 115 20 / 0.09)` |
+| `--cmdos-gold-line` | `rgb(230 167 46 / 0.22)` | `rgb(168 115 20 / 0.24)` |
 
 Gold is reserved for: primary actions, active navigation, headline figures
 (`.cmdos-figure` gold gradient), and the gold-toned metric accent.

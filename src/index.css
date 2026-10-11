@@ -1959,12 +1959,14 @@ html.high-contrast :focus-visible {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   LEARNYX COMMAND OS — design tokens ("Obsidian Executive")
-   Layered obsidian surfaces · restrained champagne-gold accents ·
-   thin low-contrast separators · calm motion. Scoped to .admin-surface
-   (plus .cmdos-dark-scope for portaled surfaces) so the student app is
-   untouched. The admin is a self-contained dark cockpit in BOTH app
-   themes — that is the Obsidian Executive identity, not a bug.
+   LEARNYX COMMAND OS — design tokens ("Obsidian Executive" / dark +
+   "Executive Daylight" / light). Layered surfaces · restrained
+   champagne-gold accents · thin low-contrast separators · calm motion.
+   Scoped to .admin-surface (plus .cmdos-dark-scope for portaled
+   surfaces) so the student app is untouched. The base tokens below are
+   the dark cockpit; the html.light block further down remaps every
+   token — and the white-alpha utilities the sections were built with —
+   so the SAME layout reads as a warm-paper cockpit in light mode.
    ════════════════════════════════════════════════════════════════════ */
 .admin-surface,
 .cmdos-dark-scope {
@@ -2180,4 +2182,176 @@ html.high-contrast :focus-visible {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   COMMAND OS — "Executive Daylight" (light-theme variant)
+   The SAME cockpit geometry on warm paper: ivory surface ramp,
+   charcoal ink, darkened champagne-gold for AA contrast, warm hairlines.
+   The token remap covers var-driven classes; the utility remaps below
+   cover the white-alpha classes the sections were authored with
+   (bg-white/5, border-white/10, …) so legacy sections flip too, without
+   touching 570+ call sites. Portaled surfaces (.cmdos-dark-scope) get
+   the same treatment — and same-element compounds are covered.
+   ════════════════════════════════════════════════════════════════════ */
+html.light .admin-surface,
+html.light .cmdos-dark-scope {
+  color-scheme: light;
+  --background: #f7f5f0;
+  --foreground: rgb(28 25 18 / 0.96);
+  --card: #fffdf8;
+  --card-foreground: rgb(28 25 18 / 0.96);
+  --popover: #fffdf8;
+  --popover-foreground: rgb(28 25 18 / 0.96);
+  --muted: rgb(28 25 18 / 0.05);
+  --muted-foreground: rgb(58 52 40 / 0.62);
+  --accent: rgb(28 25 18 / 0.05);
+  --accent-foreground: rgb(28 25 18 / 0.96);
+  --secondary: rgb(28 25 18 / 0.05);
+  --secondary-foreground: rgb(43 39 30 / 0.9);
+  --border: rgb(28 25 18 / 0.1);
+  --input: rgb(28 25 18 / 0.12);
+  --ring: #a87314;
+  --cmdos-bg-0: #f2efe7;
+  --cmdos-bg-1: rgb(255 253 248 / 0.85);
+  --cmdos-bg-2: #fffdf8;
+  --cmdos-bg-3: #fffdf8;
+  --cmdos-gold: #a87314;
+  --cmdos-gold-soft: rgb(168 115 20 / 0.09);
+  --cmdos-gold-line: rgb(168 115 20 / 0.24);
+  --cmdos-ink-hi: rgb(28 25 18 / 0.95);
+  --cmdos-ink: rgb(43 39 30 / 0.82);
+  --cmdos-ink-lo: rgb(43 39 30 / 0.54);
+  --cmdos-line: rgb(28 25 18 / 0.09);
+  --cmdos-line-strong: rgb(28 25 18 / 0.17);
+  --cmdos-ok: #0f8f63;
+  --cmdos-warn: #a16207;
+  --cmdos-danger: #d63d58;
+  --cmdos-info: #0e6f9e;
+}
+
+/* Container — paper slab with the same ambient gold/sage haze */
+html.light .admin-surface {
+  background:
+    radial-gradient(ellipse at 20% -12%, rgb(168 115 20 / 0.06), transparent 45%),
+    radial-gradient(ellipse at 92% -4%, rgb(141 166 125 / 0.08), transparent 42%),
+    var(--cmdos-bg-0);
+  border: 1px solid rgb(28 25 18 / 0.08);
+  box-shadow: 0 24px 48px -36px rgb(28 25 18 / 0.25);
+}
+
+/* Legacy glass panels follow the paper ramp */
+html.light .admin-surface .glass-panel {
+  background: linear-gradient(180deg, rgb(255 253 248 / 0.92), rgb(255 253 248 / 0.78));
+  border-color: rgb(28 25 18 / 0.1);
+}
+html.light .admin-surface .glass-soft {
+  background: rgb(28 25 18 / 0.03);
+  border-color: rgb(28 25 18 / 0.09);
+}
+html.light .admin-surface .glass-chip {
+  background: rgb(28 25 18 / 0.04);
+  border-color: rgb(28 25 18 / 0.1);
+}
+
+/* Panel top hairline becomes a paper-light bevel */
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-panel {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65);
+}
+
+/* Gold figure — darkened ramp keeps AA contrast on paper */
+html.light .admin-surface .cmdos-figure {
+  background: linear-gradient(120deg, #a97a1c 0%, #8a6210 55%, #6f4e0a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Status dots — idle neutral + softened glows */
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-dot--idle {
+  background: rgb(28 25 18 / 0.3);
+}
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-dot--ok {
+  box-shadow: 0 0 8px rgb(15 143 99 / 0.3);
+}
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-dot--warn {
+  box-shadow: 0 0 8px rgb(161 98 7 / 0.3);
+}
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-dot--danger {
+  box-shadow: 0 0 8px rgb(214 61 88 / 0.3);
+}
+
+/* Skeleton — faint charcoal base, white shimmer */
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-skeleton {
+  background: rgb(28 25 18 / 0.06);
+}
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.65), transparent);
+}
+
+/* Rail tooltip shadow reads on paper */
+html.light :is(.admin-surface, .cmdos-dark-scope) .cmdos-rail-tip {
+  box-shadow: 0 12px 32px -12px rgb(28 25 18 / 0.28);
+}
+
+/* ── White-alpha utility remap (light) ───────────────────────────────
+   Scoped so the student app is untouched. Same-element compounds
+   included for surfaces that carry .cmdos-dark-scope directly. */
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-white\/\[0\.02\],
+html.light .cmdos-dark-scope.bg-white\/\[0\.02\] { background-color: rgb(28 25 18 / 0.03); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-white\/\[0\.03\],
+html.light .cmdos-dark-scope.bg-white\/\[0\.03\] { background-color: rgb(28 25 18 / 0.035); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-white\/\[0\.035\],
+html.light .cmdos-dark-scope.bg-white\/\[0\.035\] { background-color: rgb(28 25 18 / 0.04); }
+html.light :is(.admin-surface, .cmdos-dark-scope) :is(.bg-white\/4, .bg-white\/\[0\.04\]),
+html.light .cmdos-dark-scope:is(.bg-white\/4, .bg-white\/\[0\.04\]) { background-color: rgb(28 25 18 / 0.04); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-white\/5,
+html.light .cmdos-dark-scope.bg-white\/5 { background-color: rgb(28 25 18 / 0.05); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-white\/\[0\.06\],
+html.light .cmdos-dark-scope.bg-white\/\[0\.06\] { background-color: rgb(28 25 18 / 0.06); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-white\/10,
+html.light .cmdos-dark-scope.bg-white\/10 { background-color: rgb(28 25 18 / 0.08); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-white\/15,
+html.light .cmdos-dark-scope.bg-white\/15 { background-color: rgb(28 25 18 / 0.1); }
+
+html.light :is(.admin-surface, .cmdos-dark-scope) .hover\:bg-white\/\[0\.03\]:hover { background-color: rgb(28 25 18 / 0.06); }
+html.light :is(.admin-surface, .cmdos-dark-scope) :is(.hover\:bg-white\/5, .hover\:bg-white\/\[0\.05\]):hover { background-color: rgb(28 25 18 / 0.08); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .hover\:bg-white\/\[0\.06\]:hover { background-color: rgb(28 25 18 / 0.09); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .hover\:bg-white\/10:hover { background-color: rgb(28 25 18 / 0.12); }
+
+html.light :is(.admin-surface, .cmdos-dark-scope) .border-white\/5,
+html.light .cmdos-dark-scope.border-white\/5 { border-color: rgb(28 25 18 / 0.08); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .border-white\/8,
+html.light .cmdos-dark-scope.border-white\/8 { border-color: rgb(28 25 18 / 0.1); }
+html.light :is(.admin-surface, .cmdos-dark-scope) :is(.border-white\/\[0\.03\], .border-white\/\[0\.04\], .border-white\/\[0\.05\]),
+html.light .cmdos-dark-scope:is(.border-white\/\[0\.03\], .border-white\/\[0\.04\], .border-white\/\[0\.05\]) { border-color: rgb(28 25 18 / 0.09); }
+html.light :is(.admin-surface, .cmdos-dark-scope) :is(.border-white\/\[0\.06\], .border-white\/\[0\.07\]),
+html.light .cmdos-dark-scope:is(.border-white\/\[0\.06\], .border-white\/\[0\.07\]) { border-color: rgb(28 25 18 / 0.1); }
+html.light :is(.admin-surface, .cmdos-dark-scope) :is(.border-white\/\[0\.08\], .border-white\/\[0\.09\]),
+html.light .cmdos-dark-scope:is(.border-white\/\[0\.08\], .border-white\/\[0\.09\]) { border-color: rgb(28 25 18 / 0.12); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .border-white\/10,
+html.light .cmdos-dark-scope.border-white\/10 { border-color: rgb(28 25 18 / 0.13); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .border-white\/15,
+html.light .cmdos-dark-scope.border-white\/15 { border-color: rgb(28 25 18 / 0.17); }
+
+html.light :is(.admin-surface, .cmdos-dark-scope) .hover\:border-white\/\[0\.14\]:hover { border-color: rgb(28 25 18 / 0.2); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .hover\:border-white\/25:hover { border-color: rgb(28 25 18 / 0.28); }
+
+/* Alpha text tints (empty stars, muted labels in legacy sections) */
+html.light :is(.admin-surface, .cmdos-dark-scope) .text-white\/15 { color: rgb(28 25 18 / 0.18); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .text-white\/25 { color: rgb(28 25 18 / 0.28); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .text-white\/50 { color: rgb(28 25 18 / 0.52); }
+html.light :is(.admin-surface, .cmdos-dark-scope) .text-white\/70 { color: rgb(28 25 18 / 0.72); }
+
+/* Authored obsidian surfaces — portaled palette / drawer / popovers and
+   the affiliates slide-over become warm porcelain in light mode */
+html.light .admin-surface .bg-\[\#0b0e13\],
+html.light .cmdos-dark-scope .bg-\[\#16130e\],
+html.light .cmdos-dark-scope.bg-\[\#16130e\] {
+  background-color: #fffdf8;
+}
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-\[\#12100d\]\/97,
+html.light .cmdos-dark-scope.bg-\[\#12100d\]\/97,
+html.light :is(.admin-surface, .cmdos-dark-scope) .bg-\[\#141210\]\/97,
+html.light .cmdos-dark-scope.bg-\[\#141210\]\/97 {
+  background-color: rgb(255 253 248 / 0.97);
 }

@@ -13,11 +13,13 @@ import {
   ChevronRight,
   Command as CommandIcon,
   Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Pin,
   PinOff,
   Search,
+  Sun,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +36,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { useTheme } from "@/components/theme-provider";
 import { StatusDot } from "./kit";
 import {
   getSection,
@@ -172,6 +175,9 @@ export function AdminShell({
   const [collapsed, setCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Executive Daylight — the cockpit follows the app theme; this toggle
+  // is the in-cockpit control (persisted + roamed by ThemeProvider).
+  const { theme, toggleTheme } = useTheme();
   const { pins, toggle: togglePin } = useAdminPins();
   const scrollTops = useRef<Partial<Record<AdminTabId, number>>>({});
   const firstRender = useRef(true);
@@ -369,6 +375,20 @@ export function AdminShell({
 
         {/* Global actions */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={
+              theme === "dark"
+                ? "Switch to light mode"
+                : "Switch to dark mode"
+            }
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
+            className="interactive-press flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+          </button>
+
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
