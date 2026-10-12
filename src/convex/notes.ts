@@ -231,7 +231,7 @@ export const enhanceNote = action({
 - Bullet points for key terms
 - A "Remember:" section with a memorable summary
 
-Keep the student's original content — don't add new information, just organize and clarify what they wrote. Use markdown-style formatting.
+Keep the student's original content — don't add new information, just organize and clarify what they wrote. Use markdown-style formatting. All math must be LaTeX inside $…$ (inline) or $$…$$ (display) delimiters — the app typesets it professionally; never leave raw LaTeX commands outside delimiters.
 
 Student's raw notes:
 ${args.content}
@@ -296,7 +296,7 @@ Student's question: "${args.question}"
 Student's notes:
 ${noteContext}
 
-Answer the question based on the notes above. Be concise (2-3 sentences). If you found relevant notes, mention what they wrote. If the answer isn't in their notes, say "I couldn't find anything about that in your notes."`;
+Answer the question based on the notes above. Be concise (2-3 sentences). If you found relevant notes, mention what they wrote. If the answer isn't in their notes, say "I couldn't find anything about that in your notes." Math must be LaTeX inside $…$ delimiters — the app typesets it.`;
 
     try {
       const raw = await callGroq(ctx, {

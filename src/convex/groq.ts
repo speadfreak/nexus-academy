@@ -192,6 +192,23 @@ export interface GroqCallOptions {
  * Throws on non-OK status or empty response.
  */
 export async function callGroq(ctx: ActionCtx, opts: GroqCallOptions): Promise<string> {
+  const result = await callGroqDetailed(ctx, opts);
+  return result.text;
+}
+
+export interface GroqCallResult {
+  text: string;
+  /** "stop" = natural finish · "length" = hit max_tokens (truncated). */
+  finishReason: string | null;
+  model: string;
+}
+
+/**
+ * Detailed variant — same call, but exposes finish_reason so callers can
+ * detect truncation. A reply cut off mid-formula is the #1 cause of broken
+ * math in a typeset lesson; callers append an honest "continue" marker.
+ */
+export async function callGroqDetailed(ctx: ActionCtx, opts: GroqCallOptions): Promise<GroqCallResult> {
   const apiKey = await resolveGroqKey(ctx);
   let model = opts.model || DEFAULT_MODEL;
 
@@ -244,13 +261,17 @@ export async function callGroq(ctx: ActionCtx, opts: GroqCallOptions): Promise<s
   }
 
   const data = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: { message?: { content?: string }; finish_reason?: string }[];
   };
   const text = data.choices?.[0]?.message?.content?.trim() ?? "";
   if (!text) {
     throw new Error("Groq returned an empty response.");
   }
-  return text;
+  return {
+    text,
+    finishReason: data.choices?.[0]?.finish_reason ?? null,
+    model,
+  };
 }
 
 /** Fire a chat-completion request at Groq. */

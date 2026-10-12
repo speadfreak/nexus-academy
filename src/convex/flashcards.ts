@@ -63,6 +63,9 @@ async function requestFlashcards(
       "for national examinations (EHEEE/ESSLCE). Each flashcard has a concise " +
       "front (question, concept, or term) and a clear back (answer or definition). " +
       "Cards should test understanding, not just recall. " +
+      "Mathematics and scientific notation must be LaTeX inside $…$ (inline) — " +
+      "e.g. $x^2 + 1$, $\\frac{a}{b}$, $\\Delta H < 0$ — the app typesets it " +
+      "professionally; never write raw LaTeX outside delimiters. " +
       "Respond ONLY with valid JSON — no markdown, no explanation.",
     userMessage:
       `Create exactly ${count} flashcards for ${subjectName} (${stream} stream).\n` +
@@ -390,7 +393,7 @@ Keep your response under 150 words. Write in clear, encouraging English.`;
 
     try {
       const raw = await callGroq(ctx, {
-        systemPrompt: "You are a precise, encouraging tutor. Explain concepts clearly and concisely for Ethiopian students preparing for the EHEEE. Never use emojis. Always be accurate.",
+        systemPrompt: "You are a precise, encouraging tutor. Explain concepts clearly and concisely for Ethiopian students preparing for the EHEEE. Never use emojis. Always be accurate. All mathematics must be LaTeX inside $…$ or $$…$$ delimiters (the app typesets it) — never raw LaTeX outside delimiters. Verify any computation you show.",
         userMessage: prompt,
         maxTokens: 256,
         temperature: 0.3,
@@ -453,7 +456,7 @@ Generate a mini-learning-loop to help the student fix this mistake. Return STRIC
   "followUpAnswer": "The answer to the follow-up question."
 }
 
-Keep each field concise (1-2 sentences max). Write in clear English.`;
+All mathematics in every field must be LaTeX inside $…$ delimiters (e.g. $x^2$) — the app typesets it. Verify any computation. Keep each field concise (1-2 sentences max). Write in clear English.`;
 
     try {
       const raw = await callGroq(ctx, {

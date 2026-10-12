@@ -43,6 +43,7 @@ import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { cn } from "@/lib/utils";
+import { AiText } from "@/components/math";
 
 function FileTextIcon() {
   return <BookOpen className="size-3" />;
@@ -142,7 +143,7 @@ function MistakeContext({
           <p className="type-caption text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
             Why
           </p>
-          <p className="type-caption mt-1 leading-5 text-muted-foreground">{mistake.explanation}</p>
+          <AiText text={mistake.explanation} className="type-caption mt-1 leading-5 text-muted-foreground" />
         </div>
       )}
     </section>

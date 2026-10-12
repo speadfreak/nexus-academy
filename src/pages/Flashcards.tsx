@@ -67,6 +67,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFriendlyError, errorMessage } from "@/lib/errors";
+import { AiText } from "@/components/math";
 import { cn } from "@/lib/utils";
 
 // ── Difficulty levels ─────────────────────────────────────────────────
@@ -629,12 +630,12 @@ function ExamAttackView() {
         <div className="absolute inset-0 rounded-2xl" style={{ transformStyle: "preserve-3d", transition: "transform 500ms cubic-bezier(0.4, 0, 0.2, 1)", transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}>
           <div className="glass-panel absolute inset-0 flex flex-col items-center justify-center rounded-2xl p-8" style={{ backfaceVisibility: "hidden" }}>
             <p className="type-mono mb-2 text-xs text-rose-300">⚔️ EXAM ATTACK</p>
-            <p className="type-body-lg text-center leading-7">{currentCard.front}</p>
+            <AiText text={currentCard.front} className="type-body-lg text-center leading-7" />
             <p className="type-caption mt-4 text-muted-foreground">tap to flip</p>
           </div>
           <div className="glass-panel absolute inset-0 flex flex-col items-center justify-center rounded-2xl p-8" style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}>
             <p className="type-mono mb-2 text-xs text-amber-300">ANSWER</p>
-            <p className="type-body-lg text-center leading-7">{currentCard.back}</p>
+            <AiText text={currentCard.back} className="type-body-lg text-center leading-7" />
           </div>
         </div>
       </div>
@@ -828,12 +829,12 @@ function CramModeView() {
         <div className="absolute inset-0 rounded-2xl" style={{ transformStyle: "preserve-3d", transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1)", transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}>
           <div className="glass-panel absolute inset-0 flex flex-col items-center justify-center rounded-2xl p-8" style={{ backfaceVisibility: "hidden" }}>
             <p className="type-mono mb-2 text-xs text-rose-300">🚨 CRAM MODE</p>
-            <p className="type-body-lg text-center leading-7">{currentCard.front}</p>
+            <AiText text={currentCard.front} className="type-body-lg text-center leading-7" />
             <p className="type-caption mt-4 text-muted-foreground">tap to flip · be fast!</p>
           </div>
           <div className="glass-panel absolute inset-0 flex flex-col items-center justify-center rounded-2xl p-8" style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}>
             <p className="type-mono mb-2 text-xs text-amber-300">ANSWER</p>
-            <p className="type-body-lg text-center leading-7">{currentCard.back}</p>
+            <AiText text={currentCard.back} className="type-body-lg text-center leading-7" />
           </div>
         </div>
       </div>
@@ -1160,7 +1161,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
                 </p>
                 <p className="text-2xl font-extrabold text-violet-300">{speakResult.accuracy}%</p>
               </div>
-              <p className="mt-2 text-sm text-foreground/90">{speakResult.feedback}</p>
+              <AiText text={speakResult.feedback} className="mt-2 text-sm text-foreground/90" />
               {speakResult.missingConcepts.length > 0 && (
                 <div className="mt-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-amber-300">Missing concepts:</p>
@@ -1262,13 +1263,13 @@ function StudyView({ onBack }: { onBack: () => void }) {
                           <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="size-4 rounded-full border-2 border-amber-400/30 border-t-amber-400" />
                         </div>
                       ) : (
-                        <motion.p
+                        <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           className="text-sm leading-relaxed text-foreground/90"
                         >
-                          {explanationText}
-                        </motion.p>
+                          <AiText text={explanationText ?? ""} />
+                        </motion.div>
                       )}
 
                       {/* Add to Notes button */}
@@ -1311,7 +1312,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
                       {mistakeData.simpleExplanation && (
                         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">1. Simple explanation</p>
-                          <p className="text-sm text-foreground/90">{mistakeData.simpleExplanation}</p>
+                          <AiText text={mistakeData.simpleExplanation} className="text-sm text-foreground/90" />
                         </div>
                       )}
 
@@ -1319,7 +1320,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
                       {mistakeData.whyWrong && (
                         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-rose-300">2. Why you got it wrong</p>
-                          <p className="text-sm text-foreground/90">{mistakeData.whyWrong}</p>
+                          <AiText text={mistakeData.whyWrong} className="text-sm text-foreground/90" />
                         </div>
                       )}
 
@@ -1327,7 +1328,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
                       {mistakeData.correctConcept && (
                         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">3. Correct concept</p>
-                          <p className="text-sm text-foreground/90">{mistakeData.correctConcept}</p>
+                          <AiText text={mistakeData.correctConcept} className="text-sm text-foreground/90" />
                         </div>
                       )}
 
@@ -1335,7 +1336,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
                       {mistakeData.quickExample && (
                         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-teal-300">4. Quick example</p>
-                          <p className="text-sm text-foreground/90">{mistakeData.quickExample}</p>
+                          <AiText text={mistakeData.quickExample} className="text-sm text-foreground/90" />
                         </div>
                       )}
 
@@ -1343,7 +1344,7 @@ function StudyView({ onBack }: { onBack: () => void }) {
                       {mistakeData.followUpQuestion && (
                         <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3">
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">5. Test yourself</p>
-                          <p className="text-sm font-semibold text-foreground/90">{mistakeData.followUpQuestion}</p>
+                          <AiText text={mistakeData.followUpQuestion} className="text-sm font-semibold text-foreground/90" />
                           {!showFollowUp ? (
                             <button
                               onClick={() => setShowFollowUp(true)}
@@ -1353,9 +1354,10 @@ function StudyView({ onBack }: { onBack: () => void }) {
                             </button>
                           ) : (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                              <p className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] p-2.5 text-sm text-emerald-200">
-                                {mistakeData.followUpAnswer}
-                              </p>
+                              <AiText
+                                text={mistakeData.followUpAnswer}
+                                className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] p-2.5 text-sm text-emerald-200"
+                              />
                               <button
                                 onClick={() => { setShowMistakeFlow(false); handleReview("hard"); }}
                                 className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-400/20"

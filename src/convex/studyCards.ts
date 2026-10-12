@@ -383,7 +383,7 @@ const STUDY_CARD_AI_SYSTEM_PROMPT =
   "  \"title\": \"short, 3-8 word title for the card\",\n" +
   "  \"whenToUseIt\": \"1-2 sentences explaining when a student would reach for this card — practical usage context\",\n" +
   "  \"commonMistake\": \"1-2 sentences on the most common mistake students make here — original wording, use the label 'Watch for'\",\n" +
-  "  \"bodyContent\": \"3-6 paragraphs of the core reference content. Can include simple math/formula notation. Separate paragraphs with \\n\\n. Plain text, no markdown.\"\n" +
+  "  \"bodyContent\": \"3-6 paragraphs of the core reference content. Math and formulas must be LaTeX inside $…$ (inline) or $$…$$ (display) — e.g. $v = u + at$, $$s = ut + \\frac{1}{2}at^2$$ — the app typesets them professionally. Separate paragraphs with \\n\\n. No markdown otherwise.\"\n" +
   "}\n\n" +
   "Ground the content in the real Ethiopian national curriculum for the requested " +
   "subject + grade. Original wording throughout — never copy verbatim from any " +

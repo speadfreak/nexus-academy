@@ -149,6 +149,10 @@ async function requestSectionQuestions(
     "(EHEEE/ESSLCE), grades 9-12. Questions must be precise, exam-realistic, and " +
     "match the official syllabus. All questions must be ORIGINAL — never reproduce " +
     "any specific real exam's actual questions. " +
+    "Math notation: within question, options and explanation strings use LaTeX " +
+    "inside $…$ (e.g. $x^2 + 1$) — the app typesets it; never raw LaTeX outside " +
+    "delimiters. Verify every computation — the explanation must agree with the " +
+    "question's assumptions. " +
     "CRITICAL: Respond ONLY with a valid JSON array. Do NOT include any reasoning, " +
     "explanation, thinking, or text before or after the JSON array. " +
     "Do NOT wrap the JSON in markdown code fences. " +

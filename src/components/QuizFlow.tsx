@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { useFriendlyError, errorCode, errorMessage } from "@/lib/errors";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
+import { AiText } from "@/components/math";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -408,7 +409,7 @@ export function QuizFlow({
                   className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-6 text-muted-foreground"
                 >
                   <span className="font-semibold text-foreground">Why: </span>
-                  {question.explanation}
+                  <AiText text={question.explanation} as="span" />
                 </motion.div>
               )}
 
@@ -527,9 +528,10 @@ export function QuizFlow({
                         </span>
                       </p>
                     )}
-                    <p className="mt-1 pl-6 text-xs leading-5 text-muted-foreground">
-                      {result.explanation}
-                    </p>
+                    <AiText
+                      text={result.explanation}
+                      className="mt-1 pl-6 text-xs leading-5 text-muted-foreground"
+                    />
                   </div>
                 ))}
               </div>

@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { AiText } from "@/components/math";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -158,9 +159,14 @@ export function AiCompanion({
                 : "mr-1 border border-foreground/[0.06] bg-foreground/[0.02] text-foreground/85",
             )}
           >
-            <p className={cn("whitespace-pre-wrap", message.role === "assistant" && "text-[12.5px] leading-[1.7]")}>
-              {message.content}
-            </p>
+            {message.role === "assistant" ? (
+              <AiText
+                text={message.content}
+                className="text-[12.5px] leading-[1.7]"
+              />
+            ) : (
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            )}
           </div>
         ))}
 

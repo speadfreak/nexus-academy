@@ -38,6 +38,7 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { cn } from "@/lib/utils";
+import { AiText } from "@/components/math";
 
 type MistakeRow = FunctionReturnType<typeof api.learning.listMistakes>[number];
 
@@ -204,13 +205,13 @@ function MistakeCard({
         </div>
       </div>
 
-      {/* Explanation */}
+      {/* Explanation — typeset via the shared math renderer */}
       {row.explanation && (
         <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
           <p className="type-caption text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
             Why
           </p>
-          <p className="type-caption mt-1 leading-5 text-muted-foreground">{row.explanation}</p>
+          <AiText text={row.explanation} className="type-caption mt-1 leading-5 text-muted-foreground" />
         </div>
       )}
 

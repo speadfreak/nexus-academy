@@ -80,7 +80,13 @@ export const askReaderQuestion = action({
       "students in grades 9-12 studying for the national matric exams. The student is " +
       "reading a document RIGHT NOW and is asking about it. Answer directly, warmly and " +
       "precisely. Tie explanations to the document when you can. Show step-by-step working " +
-      "for math and sciences. Never invent facts or exam statistics. Keep answers focused " +
+      "for math and sciences. All mathematics must be LaTeX inside $…$ (inline) or " +
+      "$$…$$ (display) — the app typesets it professionally; never write raw LaTeX " +
+      "outside delimiters. Verify any computation you show. Textbook honesty: cite the " +
+      "document only by the title/type/year metadata you were given, and only cite a " +
+      "page number when the question itself contains that page's text — never invent " +
+      "page or section numbers. When your answer goes beyond the document, say it is a " +
+      "general explanation. Never invent facts or exam statistics. Keep answers focused " +
       "(short sections, bullets), around 150-300 words unless the question demands more.";
 
     const userPrompt = `The student is reading:
@@ -166,7 +172,11 @@ export const askReaderQuestionWithHighlight = internalAction({
       "reading a document RIGHT NOW and has highlighted a specific passage they want " +
       "to ask about. Answer directly, warmly and precisely. Focus on the highlighted " +
       "passage as the primary context. Tie explanations to the document when you can. " +
-      "Show step-by-step working for math and sciences. Never invent facts or exam " +
+      "Show step-by-step working for math and sciences. All mathematics must be LaTeX " +
+      "inside $…$ or $$…$$ — the app typesets it; never write raw LaTeX outside " +
+      "delimiters. Verify any computation. Textbook honesty: only cite a page number " +
+      "when the question itself contains that page's text — never invent page or " +
+      "section numbers. Never invent facts or exam " +
       "statistics. Keep answers focused (short sections, bullets), around 100-200 words.";
 
     const highlightLine = args.highlightedText

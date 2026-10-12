@@ -69,6 +69,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AuthRequiredPrompt } from "@/components/AuthRequiredPrompt";
 import { cn } from "@/lib/utils";
+import { AiText } from "@/components/math";
 import { computePaceStats, formatDurationMs, paceBudgetMs } from "@/lib/examClock";
 import type { MockInsights } from "@/lib/mockInsights";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -2108,9 +2109,10 @@ function QuestionReviewRow({
         )}
       </div>
 
-      <p className="mt-2.5 text-sm font-semibold leading-relaxed text-foreground">
-        {question.question}
-      </p>
+      <AiText
+        text={question.question}
+        className="mt-2.5 text-sm font-semibold leading-relaxed text-foreground"
+      />
 
       <div className="mt-2 flex flex-col gap-1.5">
         {question.options.map((opt, oi) => {
@@ -2131,7 +2133,9 @@ function QuestionReviewRow({
               <span className="font-mono text-xs font-bold pt-0.5">
                 {String.fromCharCode(65 + oi)}
               </span>
-              <span className="flex-1">{opt}</span>
+              <span className="min-w-0 flex-1">
+                <AiText text={opt} as="span" />
+              </span>
               {isKey && (
                 <span className="shrink-0 text-[11px] font-bold text-emerald-300">answer key</span>
               )}
@@ -2144,9 +2148,10 @@ function QuestionReviewRow({
       </div>
 
       {question.explanation && (
-        <p className="mt-2.5 border-l-2 border-amber-400/30 pl-3 text-sm leading-relaxed text-muted-foreground">
-          {question.explanation}
-        </p>
+        <AiText
+          text={question.explanation}
+          className="mt-2.5 border-l-2 border-amber-400/30 pl-3 text-sm leading-relaxed text-muted-foreground"
+        />
       )}
     </div>
   );
