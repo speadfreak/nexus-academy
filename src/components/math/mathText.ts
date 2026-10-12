@@ -3,13 +3,21 @@
 // Everything here operates on AI-produced strings BEFORE markdown/KaTeX
 // parsing. Design rules (non-negotiable):
 //   1. NEVER transform anything inside fenced code blocks or inline code.
-//   2. NEVER turn a plain "$" (currency) into math — only convert explicit
-//      LaTeX delimiters \( \) and \[ \] into remark-math's $ / $$ dialect.
+//   2. NEVER turn a plain "$" (currency) into math — and never let a prose
+//      dollar pair with a real math dollar (that once typeset whole English
+//      sentences as italic math soup).
 //   3. Be idempotent — running the normalizer twice must equal running once
 //      (saved conversations render through the same path repeatedly).
 //   4. Incomplete math (truncated streams / max-token cut-offs) must degrade
-//      gracefully: close the open delimiter so KaTeX renders a partial
-//      expression instead of leaking raw LaTeX across the rest of the reply.
+//      gracefully: close the open delimiter/environment so KaTeX renders a
+//      partial expression instead of leaking raw LaTeX across the reply.
+//   5. Math bodies captured from $$…$$ / \[…\] / environments are preserved
+//      VERBATIM — no currency logic, no delimiter conversion, no wrapping
+//      ever runs inside an already-open math region (this is what killed the
+//      double-wrap bug that produced raw \begin{aligned} + stray $$).
+//   6. Emitted display math is CANONICAL: $$ / $$ on their own lines.
+//      remark-math treats content on the opener line as fence meta and
+//      drops it, so $$\begin{aligned}… used to leak half-rendered text.
 
 // ---------------------------------------------------------------------------
 // Segment scanning — split a string into "protected" (code) and "open" spans
@@ -96,152 +104,382 @@ function mapOpenSegments(
 }
 
 // ---------------------------------------------------------------------------
-// Currency guard — remark-math has NO currency rule: "$100 to $200" parses
-// as math. Escape dollar signs of currency-like pairs to \$ (micromark
-// renders that as a literal $).
+// The scanner — one pass, stateless re-entry, canonical emission.
+//
+// The previous implementation chained regex passes (\[…\] → $$, then an
+// env-wrapper, then a currency escaper, then a reflower). Each pass could
+// see — and corrupt — text produced by the previous one:
+//   • $$\n\begin{align}… was "wrapped again" (its opening-line check read
+//     the empty string before a leading \n) → empty math block, raw
+//     environment, stray $$.
+//   • $$content$$ emission put content on the opener line, which remark-math
+//     treats as fence meta → dropped content + unclosed math.
+//   • The currency guard capped at 40 chars, so longer prose spans paired
+//     with a real math dollar and got typeset as math.
+// The scanner below never re-enters a math body, so none of these can
+// recur by construction.
 // ---------------------------------------------------------------------------
 
-const CURRENCY_CONTENT =
-  /^[0-9][0-9,.]*(\s*(and|to|or|per|birr|each|-)(\s*[0-9][0-9,.]*)?)?$/i;
+/** LaTeX environments KaTeX supports and models commonly emit. */
+const MATH_ENVS = new Set([
+  "aligned", "alignedat", "align", "align*", "gather", "gather*", "gathered",
+  "cases", "dcases", "equation", "equation*", "split", "multline", "multline*",
+  "array", "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix",
+  "smallmatrix",
+]);
 
-function escapeCurrencyDollars(chunk: string): string {
-  // Collect positions of UNESCAPED dollar signs (skip \\ and \$).
-  const dollars: number[] = [];
-  for (let i = 0; i < chunk.length; i += 1) {
-    if (chunk[i] === "\\") {
-      i += 1; // skip escaped char
+const ENV_TOKEN_RE = /\\(begin|end)\{([a-zA-Z*]+)\}/g;
+
+/** A LaTeX marker anywhere means a $…$ span is intended as math. */
+const LATEX_MARKER = /[\\^_{}]/;
+
+/** "$5 and $10" / "$100 to $200" / "$100 to" — a number joined by a
+ *  commerce connector, with the second amount optional (it may live in the
+ *  next dollar pair). A bare "$2.4$" (no connector) stays math. */
+const CURRENCY_PAIR =
+  /^[0-9][0-9,.]*\s*(?:and|to|or|per|birr|each|-|only)\b(?:\s*[0-9][0-9,.]*)?\s*$/i;
+
+/**
+ * Decide whether the body between two single dollars is meant as math.
+ * Anything with LaTeX markers is math; a numeric commerce pair is currency;
+ * otherwise any English word (≥3 letters) makes it prose. Pure symbols,
+ * digits and single-letter variables stay math.
+ */
+function isInlineMathBody(body: string): boolean {
+  const t = body.trim();
+  if (t === "") return false; // "$ $" / "$$" residue → literal dollars
+  if (LATEX_MARKER.test(t)) return true;
+  if (CURRENCY_PAIR.test(t)) return false;
+  return !/[a-zA-Z]{3,}/.test(t);
+}
+
+/**
+ * Offset of the first prose-like line in an UNCLOSED math body, or -1.
+ *
+ * Real math is symbol-dense (\\ ^ _ { } & =) with short lines; a prose
+ * paragraph — e.g. the length-limit marker or the next answer's text once
+ * swallowed by a stray opener — is an English line without LaTeX symbols.
+ * Math lines like "S_n(1-r) &= a(1-r^n)" or "\\text{if } r>1" are guarded
+ * by the symbol checks; three-plus alphabetic tokens without any LaTeX
+ * marker is prose by construction.
+ */
+function firstProseLineOffset(body: string): number {
+  let offset = 0;
+  for (const raw of body.split("\n")) {
+    const t = raw.trim();
+    if (
+      t.length >= 10 &&
+      !LATEX_MARKER.test(t) &&
+      !/[&=]/.test(t) &&
+      (t.match(/[a-zA-Z]{2,}/g) ?? []).length >= 3
+    ) {
+      return offset;
+    }
+    offset += raw.length + 1;
+  }
+  return -1;
+}
+
+/** Append the \end{…} tokens for any environments left open in `body`. */
+function closeOpenEnvironments(body: string): string {
+  const stack: string[] = [];
+  ENV_TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = ENV_TOKEN_RE.exec(body)) !== null) {
+    if (m[1] === "begin") stack.push(m[2]);
+    else stack.pop();
+  }
+  if (stack.length === 0) return body;
+  let closers = "";
+  for (let k = stack.length - 1; k >= 0; k -= 1) {
+    closers += `\n\\end{${stack[k]}}`;
+  }
+  return `${body.replace(/\s*$/, "")}${closers}`;
+}
+
+/**
+ * KaTeX (like real LaTeX) rejects a bare & outside an environment —
+ * "ParseError: Expected 'EOF', got '&'" — and with throwOnError:false that
+ * surfaces the raw source as text. Models constantly write aligned-style
+ * derivations using only $$ delimiters:
+ *
+ *   $$
+ *   S_n - rS_n &= a - ar^n \\
+ *   S_n(1-r) &= a(1-r^n)
+ *   $$
+ *
+ * Give such bodies the aligned environment they obviously mean to have.
+ * Bodies that already contain \begin{…} are left untouched — their &
+ * belongs to that environment. \-only row breaks render fine and are not
+ * wrapped.
+ */
+function alignWrap(body: string): string {
+  if (!/(?<!\\)&/.test(body) || /\\begin\{/.test(body)) return body;
+  return `\\begin{aligned}\n${body}\n\\end{aligned}`;
+}
+
+function normalizeChunk(chunk: string): string {
+  let out = "";
+  let i = 0;
+  const n = chunk.length;
+
+  /** Emit a display block in canonical own-line form. Idempotent: the
+   *  separating newline is only added when the output does not already end
+   *  with one, so re-running the scanner never accumulates blank lines. */
+  const emitDisplay = (rawBody: string) => {
+    let body = rawBody.trim();
+    if (!body) return; // empty math renders nothing — drop silently
+    // A row separator cut in half by truncation ("…a \") is a KaTeX parse
+    // error — repair a lone trailing backslash into a row break.
+    body = body.replace(/(?<!\\)\\$/, "\\\\");
+    body = alignWrap(body);
+    if (out.length > 0 && !out.endsWith("\n")) out += "\n";
+    out += `$$\n${body}\n$$`;
+  };
+
+  /**
+   * Close an UNCLOSED math capture (a $$ / \[ / bare \begin{env} whose
+   * terminator never arrived before end-of-text).
+   *
+   * Two failure shapes reach this point and both must stay readable:
+   *   1. Pure math so far (truncation mid-derivation) → close the open
+   *      environments and emit a partial display block.
+   *   2. Math first, PROSE later — the historical killer: the backend once
+   *      appended its length-limit marker to a reply cut mid-$$, and
+   *      remark-math's flow math (blank lines included) typeset the marker
+   *      and everything after it as italic math soup. Split at the first
+   *      prose line: the leading math renders as a balanced partial block,
+   *      the prose (and any further math inside it) is re-scanned normally.
+   */
+  const balanceUnclosed = (rawBody: string) => {
+    const splitAt = firstProseLineOffset(rawBody);
+    if (splitAt === -1) {
+      emitDisplay(closeOpenEnvironments(rawBody));
+      return;
+    }
+    emitDisplay(closeOpenEnvironments(rawBody.slice(0, splitAt)));
+    if (out.length > 0 && !out.endsWith("\n\n")) {
+      out += out.endsWith("\n") ? "\n" : "\n\n";
+    }
+    out += normalizeChunk(rawBody.slice(splitAt).replace(/^\n+/, ""));
+  };
+
+  while (i < n) {
+    const ch = chunk[i];
+
+    if (ch === "\\") {
+      const next = chunk[i + 1] ?? "";
+
+      // Escaped dollar or row-break: literal, never a delimiter.
+      if (next === "$" || next === "\\") {
+        out += ch + next;
+        i += 2;
+        continue;
+      }
+
+      // \( … \) → inline math. Must close; unclosed \( at end-of-text only
+      // balances when the tail is LaTeX-marked.
+      if (next === "(") {
+        const close = chunk.indexOf("\\)", i + 2);
+        if (close !== -1) {
+          out += `$${alignWrap(chunk.slice(i + 2, close).trim())}$`;
+          i = close + 2;
+        } else {
+          const tail = chunk
+            .slice(i + 2)
+            .replace(/\n/g, " ")
+            .trim();
+          if (LATEX_MARKER.test(tail)) {
+            out += `$${alignWrap(tail)}$`;
+          } else {
+            out += "\\(";
+          }
+          i = n;
+        }
+        continue;
+      }
+
+      // \[ … \] → display block.
+      if (next === "[") {
+        const close = chunk.indexOf("\\]", i + 2);
+        if (close !== -1) {
+          emitDisplay(chunk.slice(i + 2, close));
+          i = close + 2;
+          if (i < n && chunk[i] !== "\n") out += "\n";
+        } else {
+          balanceUnclosed(chunk.slice(i + 2));
+          i = n;
+        }
+        continue;
+      }
+
+      // Bare \begin{env} outside any math → wrap in a display block.
+      // Stack-balanced so nested environments (align containing aligned)
+      // capture correctly. Math bodies are never scanned, so an
+      // environment already inside $$…$$ can never be double-wrapped.
+      const envOpen = /^\\begin\{([a-zA-Z*]+)\}/.exec(chunk.slice(i));
+      if (envOpen && MATH_ENVS.has(envOpen[1])) {
+        const env = envOpen[1];
+        let j = i + envOpen[0].length;
+        // \begin{array} takes a column-spec argument: {cclr}
+        if (env === "array") {
+          const arg = /^\s*\{[^{}]*\}/.exec(chunk.slice(j));
+          if (arg) j += arg[0].length;
+        }
+        const rest = chunk.slice(j);
+        ENV_TOKEN_RE.lastIndex = 0;
+        const depthStack: string[] = [env];
+        let endIdx = -1;
+        let tm: RegExpExecArray | null;
+        while ((tm = ENV_TOKEN_RE.exec(rest)) !== null) {
+          if (tm[1] === "begin") {
+            depthStack.push(tm[2]);
+          } else {
+            depthStack.pop();
+            if (depthStack.length === 0) {
+              endIdx = j + tm.index + tm[0].length;
+              break;
+            }
+          }
+        }
+        if (endIdx !== -1) {
+          emitDisplay(chunk.slice(i, endIdx));
+          i = endIdx;
+          if (i < n && chunk[i] !== "\n") out += "\n";
+        } else {
+          // Environment truncated before its \end — balance it.
+          balanceUnclosed(chunk.slice(i));
+          i = n;
+        }
+        continue;
+      }
+
+      // Any other backslash sequence in prose: emit the backslash and let
+      // the next character be processed normally (renders literally).
+      out += ch;
+      i += 1;
       continue;
     }
-    if (chunk[i] === "$") dollars.push(i);
-  }
-  if (dollars.length < 2) return chunk;
 
-  const escapeAt = new Set<number>();
-  for (let k = 0; k < dollars.length - 1; k += 1) {
-    const start = dollars[k];
-    const end = dollars[k + 1];
-    const content = chunk.slice(start + 1, end);
-    if (content.includes("\n")) continue; // multiline → real math
-    if (content.length > 40) continue;
-    if (CURRENCY_CONTENT.test(content.trim())) {
-      escapeAt.add(start);
-      escapeAt.add(end);
-      k += 1; // pair consumed
+    if (ch === "$") {
+      // ---- display ----
+      if (chunk.startsWith("$$", i)) {
+        const close = chunk.indexOf("$$", i + 2);
+        if (close !== -1) {
+          emitDisplay(chunk.slice(i + 2, close));
+          i = close + 2;
+          // Keep the closing fence on its own line (remark-math requires
+          // it) without accumulating blank lines across re-runs.
+          if (i < n && chunk[i] !== "\n") out += "\n";
+        } else {
+          // Unclosed $$ (truncated stream / stray opener) — see below.
+          balanceUnclosed(chunk.slice(i + 2));
+          i = n;
+        }
+        continue;
+      }
+
+      // ---- inline ----
+      // remark-math only pairs single $ within one line — mirror that, or
+      // prose dollars would pair across paragraphs.
+      const lineEndIdx = chunk.indexOf("\n", i);
+      let close = chunk.indexOf("$", i + 1);
+      if (close === -1 || (lineEndIdx !== -1 && close > lineEndIdx)) close = -1;
+
+      if (close === -1) {
+        const body = chunk.slice(i + 1, lineEndIdx === -1 ? n : lineEndIdx);
+        if (LATEX_MARKER.test(body)) {
+          out += `$${alignWrap(body.trim())}$`; // truncated inline math → close it
+          i = lineEndIdx === -1 ? n : lineEndIdx;
+        } else {
+          out += "\\$"; // "$5 with no pair" → literal dollar
+          i += 1;
+        }
+        continue;
+      }
+
+      const body = chunk.slice(i + 1, close);
+      if (isInlineMathBody(body)) {
+        out += `$${alignWrap(body.trim())}$`;
+        i = close + 1;
+      } else {
+        // Currency/prose span: escape the OPENER as a literal dollar and
+        // re-scan from the closing dollar, which then pairs with the next
+        // real math expression (greedy re-pairing).
+        out += `\\$${body}`;
+        i = close;
+      }
+      continue;
     }
-  }
-  if (escapeAt.size === 0) return chunk;
 
-  let out = "";
-  for (let i = 0; i < chunk.length; i += 1) {
-    if (escapeAt.has(i) && chunk[i] === "$") out += "\\$";
-    else out += chunk[i];
+    out += ch;
+    i += 1;
   }
-  return out;
-}
 
-/** Re-flow a single-line $$ … $$ into a real display block. */
-function reflowDisplayMath(chunk: string): string {
-  return chunk
-    .split("\n")
-    .map((line) => {
-      const m = /^\s*\$\$(.+?)\$\$\s*$/.exec(line);
-      if (!m) return line;
-      return `\n$$\n${m[1].trim()}\n$$\n`;
-    })
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n");
+  return out.replace(/\n{3,}/g, "\n\n");
 }
 
 // ---------------------------------------------------------------------------
-// Delimiter normalization — \( \) and \[ \] → $ / $$
+// Delimiter normalization — public entry point
 // ---------------------------------------------------------------------------
 
 /**
- * Convert LaTeX bracket delimiters to remark-math dollar delimiters.
- *  - \( … \)  → $ … $      (inline)
- *  - \[ … \]  → $$ … $$    (display; may span multiple lines)
- *  - \begin{equation}/\begin{equation*} … \end{…} → $$ … $$
- *  - Standalone \begin{align|align*|gather|gather*|cases} blocks (opening
- *    line carries no $) get wrapped in $$ … $$.
+ * Normalize AI-produced mathematics into remark-math's $ / $$ dialect.
  *
- * Code blocks and inline code are never touched. Currency like "$5 and $10"
- * is never created here — we only ever *consume* \( \) pairs.
+ *  - \( … \)   → $ … $          (inline)
+ *  - \[ … \]   → display block  ($$ / $$ on their own lines)
+ *  - $$ … $$   → display block  (canonical own-line form)
+ *  - bare \begin{aligned|align|cases|matrix|…} → display block
+ *
+ * Math bodies are preserved verbatim (alignment &, row separators \\,
+ * spacing \\[4pt] all survive untouched). Code fences and inline code are
+ * never touched. Currency like "$5 and $10" and prose dollars can never
+ * pair with real math dollars. Truncated math is balanced; a stray $$
+ * opener that would swallow prose is demoted to literal text.
+ *
+ * Deterministic, context-aware and idempotent — running it twice equals
+ * running it once.
  */
 export function normalizeMathDelimiters(text: string): string {
-  return mapOpenSegments(text, (chunk) => {
-    let out = chunk;
-
-    // \[ … \] → $$ … $$  (non-greedy, multiline)
-    out = out.replace(/\\\[([\s\S]+?)\\\]/g, (_all, body: string) => `$$${body.trim()}$$`);
-
-    // \( … \) → $ … $
-    out = out.replace(/\\\(([\s\S]+?)\\\)/g, (_all, body: string) => `$${body.trim()}$`);
-
-    // \begin{equation} … \end{equation} (and starred) → $$ … $$
-    out = out.replace(
-      /\\begin\{(equation\*?)\}([\s\S]*?)\\end\{\1\}/g,
-      (_all, _env: string, body: string) => `$$${body.trim()}$$`,
-    );
-
-    // Standalone align/gather/cases blocks without a $ on the opening line
-    // → wrap in $$ … $$ so remark-math treats them as display math.
-    const envNames = "align\\*?|gather\\*?|cases";
-    const envRegex = new RegExp(
-      `(^|\\n)[ \\t]*\\\\begin\\{(${envNames})\\}[\\s\\S]*?\\\\end\\{\\2\\}`,
-      "g",
-    );
-    let rebuilt = "";
-    let envCursor = 0;
-    let envMatch: RegExpExecArray | null;
-    while ((envMatch = envRegex.exec(out)) !== null) {
-      const matchText = envMatch[0];
-      const openingLine = (matchText.split("\n")[0] ?? "").trim();
-      rebuilt += out.slice(envCursor, envMatch.index);
-      if (openingLine.includes("$")) {
-        rebuilt += matchText; // already inside math — leave untouched
-      } else {
-        const lead = matchText.startsWith("\n") ? "\n" : "";
-        rebuilt += `${lead}$$\n${matchText.trim()}\n$$`;
-      }
-      envCursor = envMatch.index + matchText.length;
-    }
-    rebuilt += out.slice(envCursor);
-    out = rebuilt;
-
-    // Currency guard — escape "$5 and $10" style pairs so remark-math never
-    // typesets money. Runs AFTER delimiter conversion (\( \) pairs are real
-    // math and never look like prices).
-    out = escapeCurrencyDollars(out);
-
-    // Single-line $$ … $$ → real display block (remark only produces
-    // katex-display when the $$ fences stand on their own lines).
-    out = reflowDisplayMath(out);
-
-    return out;
-  });
+  const eol = text.replace(/\r\n?/g, "\n");
+  return mapOpenSegments(eol, normalizeChunk);
 }
 
 // ---------------------------------------------------------------------------
 // Incomplete-math guard — stream/truncation safety
 // ---------------------------------------------------------------------------
 
+/** Odd number of fence lines → the text ends inside an unterminated fence. */
+function closeUnterminatedFence(text: string): string {
+  const openers = text.match(/^[ \t]*(`{3,}|~{3,})[^\n]*$/gm) ?? [];
+  if (openers.length % 2 === 1) return `${text.replace(/\s*$/, "")}\n\`\`\``;
+  return text;
+}
+
 /**
- * If the text ends inside an unterminated math region (odd $$, odd single $,
- * or an unclosed \begin{env}), close it so KaTeX renders a *partial but
- * styled* expression instead of leaking raw LaTeX into the prose below.
+ * Return text with every dangling construct closed so the renderer shows a
+ * partial-but-styled result instead of leaking raw LaTeX:
+ *   - unterminated code fence → closed
+ *   - unclosed $$ / $ / \( / \[ / bare \begin{env} → balanced
+ *   - stray $$ opener that would swallow prose → demoted to literal text
  *
- * Returns the original string untouched when everything is balanced — so it
- * is safe to always run before rendering. Idempotent by construction.
+ * Idempotent; a fully balanced message passes through structurally
+ * unchanged (only delimiter dialect is canonicalized).
  */
 export function balanceTrailingMath(text: string): string {
-  const segments = splitCodeSegments(text);
+  return normalizeMathDelimiters(closeUnterminatedFence(text));
+}
 
-  // Track delimiter balance across open segments only.
-  let displayDepth = 0; // $$ pairs
-  let inlineDepth = 0; // single $ pairs (outside $$)
-  let lastUnclosed: { kind: "display" | "inline" } | null = null;
-
-  let unclosedInlineAt = -1;
+/**
+ * True when the text ends inside an unterminated math region (open $$,
+ * open single-$, or an unclosed \begin{env}) — i.e. a stream that stops
+ * here is still mid-expression. Guards truncated replies.
+ */
+export function endsInsideMath(text: string): boolean {
+  const segments = splitCodeSegments(text.replace(/\r\n?/g, "\n"));
+  let displayDepth = 0;
+  let inlineOpen = false;
+  const envStack: string[] = [];
 
   segments.forEach((seg) => {
     if (seg.protectedSpan) return;
@@ -249,31 +487,40 @@ export function balanceTrailingMath(text: string): string {
     while (j < seg.text.length) {
       const ch = seg.text[j];
       if (ch === "\\") {
-        j += 2; // escaped char (\$ and friends) — never a delimiter
-        continue;
-      }
-      if (seg.text.startsWith("$$", j)) {
-        displayDepth = displayDepth === 0 ? 1 : 0;
-        lastUnclosed = displayDepth === 1 ? { kind: "display" } : null;
-        unclosedInlineAt = -1;
+        const next = seg.text[j + 1] ?? "";
+        if (next === "$" || next === "\\") {
+          j += 2;
+          continue;
+        }
+        const envOpen = /^\\(begin|end)\{([a-zA-Z*]+)\}/.exec(seg.text.slice(j));
+        if (envOpen && MATH_ENVS.has(envOpen[2])) {
+          if (envOpen[1] === "begin") envStack.push(envOpen[2]);
+          else envStack.pop();
+          j += envOpen[0].length;
+          continue;
+        }
+        const bracketOpen = next === "(" || next === "[";
+        const bracketClose = next === ")" || next === "]";
+        if (bracketOpen || bracketClose) {
+          j += 2;
+          continue;
+        }
         j += 2;
         continue;
       }
       if (ch === "$") {
-        const prevChar = j > 0 ? seg.text[j - 1] : null;
-        const nextChar = seg.text[j + 1] ?? null;
-        // Mirror micromark-extension-math: opener must not be followed by
-        // whitespace; closer must not be preceded by whitespace.
-        const canOpen = nextChar !== null && !/\s/.test(nextChar);
-        const canClose = inlineDepth === 1 && prevChar !== null && !/\s/.test(prevChar);
-        if (canClose) {
-          inlineDepth = 0;
-          lastUnclosed = null;
-          unclosedInlineAt = -1;
-        } else if (inlineDepth === 0 && canOpen) {
-          inlineDepth = 1;
-          lastUnclosed = { kind: "inline" };
-          unclosedInlineAt = j;
+        if (seg.text.startsWith("$$", j)) {
+          displayDepth = displayDepth === 0 ? 1 : 0;
+          inlineOpen = false;
+          j += 2;
+          continue;
+        }
+        if (!inlineOpen) {
+          const nextChar = seg.text[j + 1] ?? "";
+          if (nextChar && !/\s/.test(nextChar)) inlineOpen = true;
+        } else {
+          const prevChar = seg.text[j - 1] ?? "";
+          if (!/\s/.test(prevChar)) inlineOpen = false;
         }
         j += 1;
         continue;
@@ -282,23 +529,7 @@ export function balanceTrailingMath(text: string): string {
     }
   });
 
-  if (!lastUnclosed) return text;
-  // TS can't narrow closure-mutated captures — the guard above is definitive.
-  const unclosed = lastUnclosed as { kind: "display" | "inline" };
-  if (unclosed.kind === "display") return `${text.replace(/\s*$/, "")}\n$$`;
-  // Unclosed inline $: only close it when the tail actually looks like
-  // LaTeX (currency "$5" at EOF would otherwise gain a stray $).
-  const tail = unclosedInlineAt >= 0 ? text.slice(unclosedInlineAt + 1) : "";
-  if (/[\\^_{}]/.test(tail)) return `${text}$`;
-  return text;
-}
-
-/**
- * True when the trailing content sits inside an unterminated math region.
- * Guards truncated (max-token) replies; also ready for a future stream.
- */
-export function endsInsideMath(text: string): boolean {
-  return balanceTrailingMath(text) !== text;
+  return displayDepth > 0 || inlineOpen || envStack.length > 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,11 @@ import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
 import { callGroq, callGroqDetailed, getModelName, resolveVisionModel } from "./groq";
+// Pure text pipeline (no browser/Node APIs) — shared with the renderer so the
+// stored message is balanced BEFORE the length-limit marker is appended.
+// Without this, a reply cut mid-$$ stores the marker INSIDE an unterminated
+// math region and remark-math typesets the marker as math.
+import { balanceTrailingMath } from "../components/math/mathText";
 
 // ---------------------------------------------------------------------------
 // Tutor modes — the student picks an explicit learning mode before/while
@@ -270,14 +275,20 @@ async function buildSystemPrompt(
       "$x^2 + 1$ and display equations as $$…$$ (or \\(…\\) and \\[…\\], which " +
       "the app converts automatically). NEVER leave a LaTeX command like " +
       "\\frac, \\sqrt or \\sum outside delimiters — the student would see raw code.",
+    "- Delimiters must be BALANCED: open and close them in pairs. Put " +
+      "opening $$ and closing $$ on their own lines. Never split a formula " +
+      "across two $$ blocks.",
+    "- Every \\begin{…} needs its matching \\end{…}. Put \\begin{aligned} " +
+      "and \\end{aligned} on their own lines, one relation per row, rows " +
+      "separated by \\\\. Keep each row short enough to read on a phone.",
     "- Put every important formula on its own line as a display equation " +
       "($$…$$): definitions of a_n, S_n, derivatives, integrals, theorems.",
     "- Inline math for variables and short expressions inside sentences ($r$, " +
       "$a_1$); display math for anything a student should study or copy.",
-    "- Multi-line derivations and systems use aligned environments inside " +
-      "$$…$$ (e.g. \\begin{aligned} … \\end{aligned}).",
     "- Keep normal prose as normal text — don't typeset whole sentences. " +
-      "Currency like $5 and $10 stays plain text; only real math goes in delimiters.",
+      "Never write prose, Markdown (bold, bullets, tables) or headings inside " +
+      "math delimiters. Currency like $5 and $10 stays plain text; only real " +
+      "math goes in delimiters.",
     "- Use Markdown structure (headers, numbered steps, tables, bold key " +
       "terms) — the renderer draws tables and code blocks properly. But adapt " +
       "the structure to the question; a quick question needs no headers.",
@@ -698,22 +709,26 @@ export const sendMessage = action({
     // callGroq retries once with a fresh model if it 404s mid-flight.
     const visionModel = images.length > 0 ? await resolveVisionModel(ctx) : undefined;
     try {
-      // 2048 tokens: full worked derivations + practice questions no longer
-      // get cut mid-formula (the #1 source of broken math in a lesson).
+      // 4096 tokens: full worked derivations + practice questions fit
+      // comfortably (gpt-oss-120b supports far more). Every truncation was
+      // the #1 source of broken math in a lesson — a reply cut mid-$$ or
+      // mid-aligned used to leak raw LaTeX into the chat.
       const result = await callGroqDetailed(ctx, {
         systemPrompt,
         userMessage: effectiveContent,
         history,
-        maxTokens: 2048,
+        maxTokens: 4096,
         temperature: 0.5,
         model: visionModel,
       });
       reply = result.text;
       // Truncated reply — say so honestly instead of letting a formula die
-      // mid-stream. The renderer also closes dangling delimiters, so the
-      // partial math still renders cleanly.
+      // mid-stream. Balance FIRST (close dangling $$ / $ / environments)
+      // so the marker lands outside any math region and the partial
+      // derivation still renders as typeset mathematics.
       if (result.finishReason === "length") {
-        reply +=
+        reply =
+          balanceTrailingMath(reply) +
           "\n\n*ⓘ The reply reached its length limit mid-answer. Say \"continue\" and I'll pick up exactly where I stopped.*";
       }
       await logEventAction(ctx, {
