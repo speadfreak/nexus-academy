@@ -77,7 +77,12 @@ export async function requestQuestions(
     "the key distractors are wrong — but must NOT reveal which option letter " +
     "is correct within the explanation text itself.\n" +
     "- For Mathematics/Physics/Chemistry: include real numerical computations " +
-    "that require multi-step problem solving, not single-formula recall.\n" +
+    "that require multi-step problem solving, not single-formula recall. " +
+    "Verify every computation before finalising the answer — the worked " +
+    "solution must agree with the question's assumptions.\n" +
+    "- Math notation: use LaTeX inside $…$ in the question, options and " +
+    "explanation (e.g. $x^2 + 1$) — the app typesets it professionally; " +
+    "never write raw LaTeX commands outside delimiters.\n" +
     "- For Biology: test understanding of processes and relationships, not just " +
     "definitions.\n" +
     "- For English: test grammar in context, reading comprehension inference, " +

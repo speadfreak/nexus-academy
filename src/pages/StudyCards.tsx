@@ -58,6 +58,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useFriendlyError } from "@/lib/errors";
+import { AiText } from "@/components/math";
 import { cn } from "@/lib/utils";
 
 interface StudyCard {
@@ -349,7 +350,7 @@ export default function StudyCardsPage() {
                       <p className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-emerald-300">
                         <Lightbulb className="size-3.5" /> When to use it
                       </p>
-                      <p className="mt-1.5 type-body text-foreground/90">{currentCard.whenToUseIt}</p>
+                      <AiText text={currentCard.whenToUseIt} className="mt-1.5 type-body text-foreground/90" />
                     </div>
 
                     {/* Watch for — common mistake */}
@@ -357,7 +358,7 @@ export default function StudyCardsPage() {
                       <p className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-rose-300">
                         <AlertTriangle className="size-3.5" /> Watch for
                       </p>
-                      <p className="mt-1.5 type-body text-foreground/90">{currentCard.commonMistake}</p>
+                      <AiText text={currentCard.commonMistake} className="mt-1.5 type-body text-foreground/90" />
                     </div>
 
                     {/* Body content — render with paragraph breaks */}
@@ -370,9 +371,11 @@ export default function StudyCardsPage() {
                           .split(/\n\n+/)
                           .filter((p) => p.trim().length > 0)
                           .map((para, i) => (
-                            <p key={i} className="type-body-lg text-foreground/90">
-                              {para}
-                            </p>
+                            <AiText
+                              key={i}
+                              text={para}
+                              className="type-body-lg text-foreground/90"
+                            />
                           ))}
                       </div>
                     </div>

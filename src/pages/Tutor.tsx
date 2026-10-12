@@ -77,6 +77,12 @@ import { clockTime, relativeTime } from "@/lib/dates";
 import { useFriendlyError, errorCode, errorMessage } from "@/lib/errors";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import {
+  AiText,
+  mathToPlainText,
+  mathToSpeech,
+  preloadMathRenderer,
+} from "@/components/math";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -281,19 +287,9 @@ type SessionState = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Strip markdown decorations so text-to-speech reads clean prose. */
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, " code block. ")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*\n]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/^#{1,4}\s+/gm, "")
-    .replace(/^\s*[-*•]\s+/gm, "")
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// NOTE: markdown/LaTeX-to-text conversions (speech, share) now live in the
+// shared Learnyx Math Renderer module — mathToSpeech() for text-to-speech,
+// mathToPlainText() for share/copy. Rendering is handled by <AiText />.
 
 /** Downscale an image file to a compact JPEG data URL for vision upload. */
 async function fileToDownscaledDataUrl(
@@ -321,123 +317,6 @@ async function fileToDownscaledDataUrl(
   if (!ctx) throw new Error("Canvas unavailable");
   ctx.drawImage(bitmap, 0, 0, width, height);
   return canvas.toDataURL("image/jpeg", quality);
-}
-
-/** Render inline markdown (bold / italic / code) as React nodes — no HTML. */
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  const regex = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`)/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-  let i = 0;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > last) parts.push(text.slice(last, match.index));
-    const token = match[0];
-    if (token.startsWith("**")) {
-      parts.push(
-        <strong
-          key={`${keyPrefix}-b${i}`}
-          className="font-semibold text-foreground"
-        >
-          {token.slice(2, -2)}
-        </strong>,
-      );
-    } else if (token.startsWith("`")) {
-      parts.push(
-        <code
-          key={`${keyPrefix}-c${i}`}
-          className="rounded bg-foreground/[0.07] px-1 py-0.5 font-mono text-[0.85em]"
-        >
-          {token.slice(1, -1)}
-        </code>,
-      );
-    } else {
-      parts.push(<em key={`${keyPrefix}-i${i}`}>{token.slice(1, -1)}</em>);
-    }
-    last = match.index + token.length;
-    i += 1;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
-
-/** Lightweight markdown renderer for assistant messages — headings, lists,
- * bold, italic, inline code. Deliberately minimal: the tutor's replies are
- * conversational study notes, not documents. Typography does the work. */
-function MarkdownLite({ text }: { text: string }) {
-  const blocks = useMemo(() => {
-    const lines = text.split("\n");
-    const out: React.ReactNode[] = [];
-    let list: { ordered: boolean; items: string[] } | null = null;
-    let key = 0;
-
-    const flush = () => {
-      if (!list) return;
-      const items = list.items;
-      out.push(
-        list.ordered ? (
-          <ol key={`l${key++}`} className="ml-5 list-decimal space-y-1 marker:text-primary/60">
-            {items.map((item, j) => (
-              <li key={j} className="pl-1">
-                {renderInline(item, `l${key}-${j}`)}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <ul key={`l${key++}`} className="ml-4 list-disc space-y-1 marker:text-primary/50">
-            {items.map((item, j) => (
-              <li key={j} className="pl-1">
-                {renderInline(item, `l${key}-${j}`)}
-              </li>
-            ))}
-          </ul>
-        ),
-      );
-      list = null;
-    };
-
-    lines.forEach((line, idx) => {
-      const heading = /^(#{1,4})\s+(.*)$/.exec(line);
-      const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
-      const ordered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
-      if (heading) {
-        flush();
-        out.push(
-          <p
-            key={`h${idx}`}
-            className="mt-2 text-[14px] font-bold tracking-wide text-foreground first:mt-0"
-          >
-            {renderInline(heading[2], `h${idx}`)}
-          </p>,
-        );
-      } else if (bullet) {
-        if (!list || list.ordered) {
-          flush();
-          list = { ordered: false, items: [] };
-        }
-        list.items.push(bullet[1]);
-      } else if (ordered) {
-        if (!list || !list.ordered) {
-          flush();
-          list = { ordered: true, items: [] };
-        }
-        list.items.push(ordered[1]);
-      } else if (line.trim() === "") {
-        flush();
-      } else {
-        flush();
-        out.push(
-          <p key={`p${idx}`} className="leading-7">
-            {renderInline(line, `p${idx}`)}
-          </p>,
-        );
-      }
-    });
-    flush();
-    return out;
-  }, [text]);
-
-  return <div className="flex flex-col gap-1.5">{blocks}</div>;
 }
 
 /** Readiness model — merges every completed result (paper exams, mock
@@ -607,6 +486,7 @@ const AssistantMessage = memo(function AssistantMessage({
   onReadAloud,
   onContinue,
   regenerating,
+  source,
 }: {
   message: MessageDoc;
   index: number;
@@ -617,6 +497,8 @@ const AssistantMessage = memo(function AssistantMessage({
   onReadAloud: (content: string) => void;
   onContinue: () => void;
   regenerating: boolean;
+  /** Honest textbook provenance — present only when the chat is grounded. */
+  source?: { contentId: string; title: string } | null;
 }) {
   const { t } = useTranslation(["tutor", "common"]);
   const navigate = useNavigate();
@@ -637,10 +519,25 @@ const AssistantMessage = memo(function AssistantMessage({
         </span>
       </div>
 
-      {/* Body — flat text, generous line height; break-words keeps URLs and
-          long formulas from blowing out narrow phones. */}
-      <div className="min-w-0 break-words pl-0.5 text-[14.5px] leading-7 text-foreground/90">
-        <MarkdownLite text={message.content} />
+      {/* Grounded textbook source — honest provenance, opens the real file */}
+      {source && (
+        <button
+          type="button"
+          onClick={() => navigate(`/read/${source.contentId}`)}
+          title={t("tutor:openInReader", { defaultValue: "Open in Reader" })}
+          className="flex w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.06] py-1 pl-2 pr-2.5 text-[10.5px] font-medium text-primary/90 transition-colors hover:border-primary/40 hover:bg-primary/10"
+        >
+          <BookOpen className="size-3 shrink-0" />
+          <span className="max-w-[240px] truncate">{source.title}</span>
+          <span className="type-mono text-[9px] text-muted-foreground/50">READER</span>
+        </button>
+      )}
+
+      {/* Body — professional math + markdown typesetting via the shared
+          Learnyx Math Renderer. min-w-0 keeps narrow phones overflow-safe;
+          display equations scroll horizontally inside their own container. */}
+      <div className="min-w-0 pl-0.5 text-[14.5px] leading-7 text-foreground/90">
+        <AiText text={message.content} />
       </div>
 
       {/* Hover actions — touch devices have no hover: keep the row visible
@@ -697,7 +594,7 @@ const AssistantMessage = memo(function AssistantMessage({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
-                const text = stripMarkdown(message.content).slice(0, 400);
+                const text = mathToPlainText(message.content).slice(0, 400);
                 if (navigator.share) {
                   void navigator.share({ title: "Learnyx Tutor", text }).catch(() => {});
                 } else {
@@ -2246,7 +2143,7 @@ export default function Tutor() {
     (text: string) => {
       if (!("speechSynthesis" in window)) return;
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(stripMarkdown(text).slice(0, 1200));
+      const utterance = new SpeechSynthesisUtterance(mathToSpeech(text).slice(0, 1400));
       utterance.lang = speechLang;
       const voice = window.speechSynthesis
         .getVoices()
@@ -2260,6 +2157,13 @@ export default function Tutor() {
     return () => {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     };
+  }, []);
+
+  // Warm the shared math renderer chunk (KaTeX + markdown) while the student
+  // reads — first message typesets instantly, no lazy-chunk pop-in.
+  useEffect(() => {
+    const timer = window.setTimeout(() => preloadMathRenderer(), 1500);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // ── Voice input ──
@@ -2842,6 +2746,15 @@ export default function Tutor() {
   const discussing =
     activeConversation?.contentTitle ?? contentMeta?.title ?? null;
 
+  // Honest textbook provenance — grounded chats show which document the
+  // discussion is anchored to and link to the real file in the Reader.
+  const groundSourceId =
+    (contentId ?? (activeConversation?.contentId as string | undefined)) ?? null;
+  const groundSource =
+    groundSourceId && discussing
+      ? { contentId: groundSourceId, title: discussing }
+      : null;
+
   const lastAssistantId = useMemo(() => {
     if (!messages) return null;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -3416,6 +3329,7 @@ export default function Tutor() {
                           onReadAloud={speak}
                           onContinue={onContinue}
                           regenerating={regenerating}
+                          source={groundSource}
                         />
                       ),
                     )}
@@ -3526,7 +3440,7 @@ export default function Tutor() {
                               <Sparkles className="size-3.5" />
                               {t("tutor:miniCheck", { defaultValue: "Test yourself — quick check" })}
                             </p>
-                            <p className="mt-2 text-sm text-foreground/90">{miniCheck.question}</p>
+                            <AiText text={miniCheck.question} className="mt-2 text-sm text-foreground/90" />
                             <div className="mt-3 flex flex-col gap-1.5">
                               {miniCheck.options.map((opt, idx) => (
                                 <button
@@ -3538,7 +3452,7 @@ export default function Tutor() {
                                   <span className="mr-2 font-mono text-[10px] text-muted-foreground">
                                     {String.fromCharCode(65 + idx)}
                                   </span>
-                                  {opt}
+                                  <AiText text={opt} as="span" />
                                 </button>
                               ))}
                             </div>
@@ -3557,7 +3471,7 @@ export default function Tutor() {
                                 <><XCircle className="size-4 text-rose-300" /> {t("tutor:miniWrong", { defaultValue: "Not quite." })}</>
                               )}
                             </p>
-                            <p className="mt-1 text-xs text-muted-foreground">{miniCheck.explanation}</p>
+                            <AiText text={miniCheck.explanation} className="mt-1 text-xs text-muted-foreground" />
                             <button
                               type="button"
                               onClick={() => { setMiniCheckAnswer(null); }}

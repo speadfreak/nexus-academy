@@ -50,6 +50,7 @@ import { DashboardShell } from "@/components/DashboardShell";
 import { AuthRequiredPrompt } from "@/components/AuthRequiredPrompt";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AiText } from "@/components/math";
 import type { QuizQuestion } from "@/convex/quizzes";
 
 // ── Types (mirror the backend return shapes) ────────────────────────────
@@ -529,7 +530,9 @@ function PracticePanel({
                   )}>
                     {String.fromCharCode(65 + i)}
                   </span>
-                  <span className="text-sm">{opt}</span>
+                  <span className="min-w-0 text-sm">
+                    <AiText text={opt} as="span" />
+                  </span>
                 </button>
               );
             })}
@@ -1041,15 +1044,17 @@ function DailyWarmupCard() {
             <p className="text-sm font-bold">
               {result.answeredCorrectly ? "✅ Correct!" : "❌ Not quite."}
             </p>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              {result.explanation}
-            </p>
+            <AiText
+              text={result.explanation}
+              className="mt-2 text-xs leading-relaxed text-muted-foreground"
+            />
           </motion.div>
         ) : (
           <>
-            <p className="mt-3 text-sm font-semibold leading-relaxed text-foreground">
-              {parsed.question}
-            </p>
+            <AiText
+              text={parsed.question}
+              className="mt-3 text-sm font-semibold leading-relaxed text-foreground"
+            />
             <div className="mt-3 flex flex-col gap-2">
               {parsed.options.map((opt, i) => (
                 <button
@@ -1069,7 +1074,9 @@ function DailyWarmupCard() {
                   )}>
                     {String.fromCharCode(65 + i)}
                   </span>
-                  <span className="text-sm">{opt}</span>
+                  <span className="min-w-0 text-sm">
+                    <AiText text={opt} as="span" />
+                  </span>
                 </button>
               ))}
             </div>

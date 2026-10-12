@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useFriendlyError, errorMessage } from "@/lib/errors";
+import { AiText } from "@/components/math";
 import { cn } from "@/lib/utils";
 
 type Difficulty = "easy" | "medium" | "hard";
@@ -383,7 +384,7 @@ export default function Notes() {
                 </div>
                 {askAnswer && (
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-3 rounded-xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
-                    <p className="text-sm leading-relaxed text-foreground/90">{askAnswer}</p>
+                    <AiText text={askAnswer} className="text-sm leading-relaxed text-foreground/90" />
                   </motion.div>
                 )}
               </div>
@@ -616,9 +617,7 @@ export default function Notes() {
                         </button>
                       </div>
                     </div>
-                    <p className="type-body mt-2.5 whitespace-pre-wrap leading-6">
-                      {note.content}
-                    </p>
+                    <AiText text={note.content} className="type-body mt-2.5 leading-6" />
                   </motion.div>
                 );
               })}

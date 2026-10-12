@@ -78,6 +78,7 @@ import {
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { AiText } from "@/components/math";
 import {
   OriginalPageButton,
   ReportIssueButton,
@@ -1324,7 +1325,7 @@ export function DigitalExamPlayer({
                         {q.explanation && (
                           <span className="flex items-start gap-2 type-caption leading-relaxed text-foreground/80">
                             <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-                            {q.explanation}
+                            <AiText text={q.explanation} as="span" />
                           </span>
                         )}
                         <span className="inline-flex items-center gap-1.5 type-caption text-muted-foreground/60">
@@ -1972,10 +1973,10 @@ function ResultsScreen({
                     </p>
                   )}
                   {x.explanation && (
-                    <p className="mt-1.5 flex items-start gap-1.5 type-caption leading-relaxed text-muted-foreground">
+                    <span className="mt-1.5 flex items-start gap-1.5 type-caption leading-relaxed text-muted-foreground">
                       <Lightbulb className="mt-0.5 size-3 shrink-0 text-amber-300/80" />
-                      {x.explanation}
-                    </p>
+                      <AiText text={x.explanation} as="span" />
+                    </span>
                   )}
                 </div>
                 {correct && <CheckCircle2 className="mt-1 size-4 shrink-0 text-emerald-400" />}

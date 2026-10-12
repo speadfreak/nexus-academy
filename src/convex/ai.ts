@@ -21,7 +21,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
-import { callGroq, getModelName, resolveVisionModel } from "./groq";
+import { callGroq, callGroqDetailed, getModelName, resolveVisionModel } from "./groq";
 
 // ---------------------------------------------------------------------------
 // Tutor modes — the student picks an explicit learning mode before/while
@@ -265,6 +265,37 @@ async function buildSystemPrompt(
       "explanation, not as a separate labeled \"Everyday example\" section.",
     "- For math and science, always show working step by step.",
     "",
+    "Mathematical typesetting (critical — the student sees beautifully typeset math, not raw code):",
+    "- ALL mathematics must be LaTeX inside math delimiters: inline math as " +
+      "$x^2 + 1$ and display equations as $$…$$ (or \\(…\\) and \\[…\\], which " +
+      "the app converts automatically). NEVER leave a LaTeX command like " +
+      "\\frac, \\sqrt or \\sum outside delimiters — the student would see raw code.",
+    "- Put every important formula on its own line as a display equation " +
+      "($$…$$): definitions of a_n, S_n, derivatives, integrals, theorems.",
+    "- Inline math for variables and short expressions inside sentences ($r$, " +
+      "$a_1$); display math for anything a student should study or copy.",
+    "- Multi-line derivations and systems use aligned environments inside " +
+      "$$…$$ (e.g. \\begin{aligned} … \\end{aligned}).",
+    "- Keep normal prose as normal text — don't typeset whole sentences. " +
+      "Currency like $5 and $10 stays plain text; only real math goes in delimiters.",
+    "- Use Markdown structure (headers, numbered steps, tables, bold key " +
+      "terms) — the renderer draws tables and code blocks properly. But adapt " +
+      "the structure to the question; a quick question needs no headers.",
+    "",
+    "Mathematical accuracy (a wrong formula teaches the student the wrong thing):",
+    "- Verify every computation line by line before you write it. Recheck " +
+      "signs, indices and arithmetic. The question's assumptions and the " +
+      "solution must agree.",
+    "- Convergence rules are strict: an infinite geometric series " +
+      "Σ arⁿ has a finite sum to infinity ONLY when |r| < 1. A geometric " +
+      "progression with ratio r = 1.2 (or any |r| ≥ 1) DIVERGES — never assign " +
+      "it a finite infinite sum.",
+    "- For worked examples, sanity-check the final answer against the setup " +
+      "(substitute back, check units, check the discriminant, check n is a " +
+      "positive integer where the problem demands it).",
+    "- If you are not certain a computation is right, say what is certain and " +
+      "what should be double-checked — never present a guess as a verified result.",
+    "",
     "Length and depth:",
     "- Be concise by default. Give the most useful direct answer first.",
     "- If there's more depth available, offer it briefly (one line) at the end — " +
@@ -460,6 +491,20 @@ async function buildSystemPrompt(
         `- Grade: ${content.grade}`,
         "Reference this document directly in your answers where relevant (its topics, " +
           "structure, or the questions it contains). This is the student's frame of reference.",
+        "",
+        "Textbook provenance rules (the app shows this document's title as the source of your answers — never break that trust):",
+        "- You may reference the document ONLY by the exact title, type, year and " +
+          "grade listed above.",
+        "- NEVER invent page numbers, section numbers, unit numbers or exercise " +
+          "numbers for it. You cannot see the document's internal pages — " +
+          "claiming \"page 45\" or \"Exercise 2.3\" would be fabrication.",
+        "- When your explanation goes beyond what the document's metadata " +
+          "guarantees, say plainly that it is a general explanation of the topic " +
+          "rather than something quoted from the document.",
+        "- Label worked examples you create yourself as tutor-created examples; " +
+          "never present them as examples copied from the document.",
+        "- Preserve mathematical notation faithfully: if the student quotes a " +
+          "formula from the document, keep its meaning intact while re-typesetting it.",
       );
     }
   }
@@ -653,14 +698,24 @@ export const sendMessage = action({
     // callGroq retries once with a fresh model if it 404s mid-flight.
     const visionModel = images.length > 0 ? await resolveVisionModel(ctx) : undefined;
     try {
-      reply = await callGroq(ctx, {
+      // 2048 tokens: full worked derivations + practice questions no longer
+      // get cut mid-formula (the #1 source of broken math in a lesson).
+      const result = await callGroqDetailed(ctx, {
         systemPrompt,
         userMessage: effectiveContent,
         history,
-        maxTokens: 1024,
+        maxTokens: 2048,
         temperature: 0.5,
         model: visionModel,
       });
+      reply = result.text;
+      // Truncated reply — say so honestly instead of letting a formula die
+      // mid-stream. The renderer also closes dangling delimiters, so the
+      // partial math still renders cleanly.
+      if (result.finishReason === "length") {
+        reply +=
+          "\n\n*ⓘ The reply reached its length limit mid-answer. Say \"continue\" and I'll pick up exactly where I stopped.*";
+      }
       await logEventAction(ctx, {
         eventType: "api_call",
         source: "ai.sendMessage.groq",
@@ -671,6 +726,7 @@ export const sendMessage = action({
           conversationId,
           hasImages: images.length > 0,
           mode: args.mode ?? "learn",
+          truncated: result.finishReason === "length",
         },
         durationMs: Date.now() - aiStart,
       });
@@ -762,6 +818,10 @@ export const generateFollowUps = action({
       "2 short follow-up questions the student might ask next (max 12 words each), " +
       "and 1 multiple-choice mini-check question testing the concept just explained. " +
       "The mini-check must have 4 options, 1 correct answer, and a 1-sentence explanation. " +
+      "Notation rules: follow-up questions are PLAIN TEXT (no LaTeX — they render as " +
+      "chips); the mini-check question, options and explanation may use math as " +
+      "$…$ or $$…$$ (e.g. $x^2 + 1$) — never raw LaTeX outside delimiters. " +
+      "Verify any computation in the mini-check. " +
       "Respond ONLY with valid JSON in this shape: " +
       '{"followUps": ["q1", "q2"], "miniCheck": {"question": "...", "options": ["A","B","C","D"], "correctIndex": 0, "explanation": "..."}}. ' +
       "If the topic doesn't lend itself to a quick check, set miniCheck to null.";
@@ -830,7 +890,9 @@ export const saveNotesFromConversation = action({
         "You compress a tutor explanation into concise study notes for an Ethiopian " +
         "student preparing for national exams. Output ONLY the note content: markdown " +
         "bullets, key definitions, formulas and one worked example if present. Max " +
-        "200 words. No preamble, no closing remarks.",
+        "200 words. No preamble, no closing remarks. All mathematics must be LaTeX " +
+        "inside $…$ (inline) or $$…$$ (display) — never raw LaTeX commands outside " +
+        "delimiters, never plain-text approximations like x^2 when $x^2$ is meant.",
       userMessage:
         `Compress this explanation into study notes:\n\n${lastAssistant.content.slice(0, 4000)}`,
       maxTokens: 600,
