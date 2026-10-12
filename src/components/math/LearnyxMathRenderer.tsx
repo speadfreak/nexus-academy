@@ -45,6 +45,8 @@ import { balanceTrailingMath, normalizeMathDelimiters } from "./mathText";
 
 const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 
+const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
+
 /** Find the original TeX source KaTeX embedded in the MathML annotation. */
 function latexSourceOf(display: Element): string | null {
   const annotation = display.querySelector(
@@ -59,7 +61,10 @@ function mountCopyButton(display: HTMLElement, latex: string): void {
   button.className = "lyx-eq-copy";
   button.setAttribute("aria-label", "Copy equation as LaTeX");
   button.title = "Copy LaTeX";
-  button.innerHTML = `${COPY_ICON}<span class="lyx-eq-copy-label">LaTeX</span>`;
+  // Icon-only by design: a persistent "LaTeX" text chip on every equation
+  // read as a confusing stray label in real lessons (and screen readers get
+  // the full meaning from aria-label instead).
+  button.innerHTML = COPY_ICON;
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -67,13 +72,12 @@ function mountCopyButton(display: HTMLElement, latex: string): void {
       .writeText(latex)
       .then(() => {
         button.classList.add("lyx-eq-copy--done");
+        button.innerHTML = CHECK_ICON;
         button.setAttribute("aria-label", "Equation copied");
-        const label = button.querySelector(".lyx-eq-copy-label");
-        if (label) label.textContent = "Copied";
         window.setTimeout(() => {
           button.classList.remove("lyx-eq-copy--done");
+          button.innerHTML = COPY_ICON;
           button.setAttribute("aria-label", "Copy equation as LaTeX");
-          if (label) label.textContent = "LaTeX";
         }, 1400);
       })
       .catch(() => {});

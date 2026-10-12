@@ -9,6 +9,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "preview": "vite preview",
+    "test:math:pipeline": "bun scripts/validate-math-render.mjs",
+    "test:math:browser": "playwright test",
     "deploy:backend": "npx convex deploy",
     "deploy:all": "npx convex deploy && tsc -b && vite build",
     "postinstall": "node scripts/sync-pdfjs.mjs"
@@ -97,6 +99,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.64.0",
     "@types/katex": "^0.16.8",
     "@types/node": "^24.10.1",
     "@types/qrcode": "^1.5.6",

@@ -43,3 +43,7 @@ isolate/
 .replit
 eng.traineddata
 tsconfig.tsbuildinfo
+node_modules
+dist
+test-results
+playwright/artifacts
