@@ -12,9 +12,11 @@ import { action, mutation, query } from "./_generated/server";
 import type { GenericQueryCtx } from "convex/server";
 import { internal } from "./_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { isAdmin, requireAdminMutation, requireAdminAction } from "./admin";
 import type { ImportRunSummary } from "./matricVault";
+import { computeDuplicateKey, computeContentVersion } from "./matricVault";
+import { SEED_BANK, SEED_SUBJECT_STREAMS, SEED_SUBJECT_NAMES } from "./matricSeedBank";
 
 /**
  * Read-only admin gate for QUERIES (mirrors examQuality.requireAdminRead):
@@ -257,5 +259,328 @@ export const adminRunVaultImport = action({
       startedBy: user._id,
     });
     return result;
+  },
+});
+
+// ── Starter bank seeding (curated practice questions) ──────────────────────
+//
+// The vault import materializes ONLY from real digitized papers. When no
+// papers have been digitized yet, the engine would have an empty vault and
+// every mode would honestly report "insufficient coverage" — correct, but
+// useless to students. The curated starter bank (matricSeedBank.ts, 58
+// human-authored + verified curriculum questions) solves the cold start
+// WITHOUT pretending to be official ESSLCE content:
+//   - bank rows carry paperTitle "Learnyx Verified Starter Bank — <Subject>"
+//   - examYear stays undefined (never a real sitting year)
+//   - verificationTier is "parser_verified" (deterministic key), NEVER
+//     "admin_verified" (that tier is reserved for the paper QC workflow)
+//
+// IDEMPOTENT: subjects/contentItems/questions are upserted; safe to re-run.
+
+const BANK_CONTENT_TYPE = "learnyx_practice_bank"; // invisible to the PDF library/Exam Prep (they list "past_exam")
+const BANK_SOURCE_MARKER = "learnyx-matric-starter-bank";
+
+export const adminSeedStarterBank = mutation({
+  args: {},
+  handler: async (ctx): Promise<SeedBankResult> => {
+    const { user } = await requireAdminMutation(ctx);
+    const now = Date.now();
+
+    // 1. Resolve (or lazily create) the subject rows.
+    const subjectsCreated: string[] = [];
+    const subjectIds = new Map<string, Id<"subjects">>();
+    for (const slug of Object.keys(SEED_SUBJECT_STREAMS) as (keyof typeof SEED_SUBJECT_STREAMS)[]) {
+      let subject: Doc<"subjects"> | null = await ctx.db
+        .query("subjects")
+        .withIndex("by_slug", (q) => q.eq("slug", slug))
+        .unique();
+      if (!subject) {
+        const stream = SEED_SUBJECT_STREAMS[slug];
+        const id = await ctx.db.insert("subjects", {
+          name: SEED_SUBJECT_NAMES[slug as keyof typeof SEED_SUBJECT_NAMES] ?? slug,
+          stream,
+          slug,
+        });
+        subject = await ctx.db.get(id);
+        subjectsCreated.push(SEED_SUBJECT_NAMES[slug as keyof typeof SEED_SUBJECT_NAMES] ?? slug);
+      }
+      if (subject) subjectIds.set(slug, subject._id);
+    }
+
+    // 2. Group questions per subject.
+    const bySubject = new Map<string, typeof SEED_BANK>();
+    for (const q of SEED_BANK) {
+      const list = bySubject.get(q.subjectSlug) ?? [];
+      list.push(q);
+      bySubject.set(q.subjectSlug, list);
+    }
+
+    // 3. Find-or-create the per-subject bank contentItem, then upsert rows.
+    let imported = 0;
+    let updated = 0;
+    let skippedUnchanged = 0;
+    let deactivated = 0;
+    const touchedSubjects: Id<"subjects">[] = [];
+    const perSubject: SeedBankSubjectResult[] = [];
+
+    for (const [slug, questions] of bySubject) {
+      const subjectId = subjectIds.get(slug);
+      if (!subjectId) continue; // unknown slug — skip honestly
+      const subjectName = SEED_SUBJECT_NAMES[slug as keyof typeof SEED_SUBJECT_NAMES] ?? slug;
+
+      // Find-or-create the bank "paper" (contentItem). One per subject,
+      // matched by the sourceName marker within the bank content type.
+      const existingItems = await ctx.db
+        .query("contentItems")
+        .withIndex("by_contentType", (q) => q.eq("contentType", BANK_CONTENT_TYPE))
+        .collect();
+      let item: Doc<"contentItems"> | undefined = existingItems.find(
+        (i) => i.subjectId === subjectId && i.sourceName === BANK_SOURCE_MARKER,
+      );
+      let itemCreated = false;
+      if (!item) {
+        const itemId = await ctx.db.insert("contentItems", {
+          title: `Learnyx Verified Starter Bank — ${subjectName}`,
+          contentType: BANK_CONTENT_TYPE,
+          grade: 12,
+          subjectId,
+          fileUrl: "",
+          sourceName: BANK_SOURCE_MARKER,
+          isPremium: false,
+          examPrepSubtype: "practice_set",
+          createdAt: now,
+        });
+        item = (await ctx.db.get(itemId)) ?? undefined;
+        itemCreated = true;
+      }
+      if (!item) continue; // defensive — insert+get cannot normally fail
+
+      // Upsert each question by (contentId, questionNumber).
+      const existingRows = await ctx.db
+        .query("matricQuestions")
+        .withIndex("by_content", (q) => q.eq("contentId", item._id))
+        .collect();
+      const byNumber = new Map(existingRows.map((r) => [r.questionNumber, r]));
+
+      const seenNumbers = new Set<number>();
+      let sImported = 0;
+      let sUpdated = 0;
+      let sSkipped = 0;
+
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const questionNumber = i + 1;
+        seenNumbers.add(questionNumber);
+        const choices = q.options.map((text, idx) => ({
+          label: String.fromCharCode(65 + idx),
+          text,
+        }));
+        const contentVersion = computeContentVersion(q.stem, choices, q.answer);
+        const duplicateKey = computeDuplicateKey(
+          q.stem,
+          choices.map((c) => c.text),
+        );
+        const base = {
+          contentId: item._id,
+          paperTitle: `Learnyx Verified Starter Bank — ${subjectName}`,
+          questionNumber,
+          subjectId,
+          stem: q.stem,
+          ...(q.passage !== undefined ? { passage: q.passage } : {}),
+          choices,
+          answerLabel: q.answer,
+          explanation: q.explanation,
+          topicText: q.topic,
+          verificationTier: "parser_verified" as const,
+          examEligible: true,
+          duplicateKey,
+          contentVersion,
+          active: true,
+          updatedAt: now,
+        };
+        const row = byNumber.get(questionNumber);
+        if (!row) {
+          await ctx.db.insert("matricQuestions", { ...base, importedAt: now });
+          sImported++;
+        } else if (row.contentVersion === contentVersion && row.active) {
+          skippedUnchanged++;
+          sSkipped++;
+        } else {
+          await ctx.db.patch(row._id, base);
+          sUpdated++;
+        }
+      }
+
+      // Soft-deactivate rows whose seed question disappeared.
+      for (const row of existingRows) {
+        if (!seenNumbers.has(row.questionNumber) && row.active) {
+          await ctx.db.patch(row._id, { active: false, updatedAt: now });
+          deactivated++;
+        }
+      }
+
+      imported += sImported;
+      updated += sUpdated;
+      touchedSubjects.push(subjectId);
+      perSubject.push({
+        slug,
+        subjectName,
+        subjectCreated: subjectsCreated.includes(subjectName),
+        paperCreated: itemCreated,
+        imported: sImported,
+        updated: sUpdated,
+        skippedUnchanged: sSkipped,
+      });
+    }
+
+    // 4. Refresh coverage stats for touched subjects.
+    if (touchedSubjects.length > 0) {
+      await ctx.runMutation(internal.matricVault.recomputeCoverage, {
+        subjectIds: touchedSubjects,
+      });
+    }
+
+    // 5. Audit.
+    await ctx.db.insert("adminAuditLog", {
+      actorUserId: user._id,
+      action: "matric.seed_bank_imported",
+      targetType: "vault",
+      details: JSON.stringify({ imported, updated, skippedUnchanged, deactivated, subjectsCreated }),
+      createdAt: now,
+    });
+    await ctx.runMutation(internal.systemEvents.logEvent, {
+      eventType: "content_event",
+      source: "matricAdmin.seedBank",
+      status: "success",
+      metadata: JSON.stringify({ imported, updated, skippedUnchanged, deactivated }),
+    });
+
+    return { imported, updated, skippedUnchanged, deactivated, subjectsCreated, perSubject };
+  },
+});
+
+export interface SeedBankSubjectResult {
+  slug: string;
+  subjectName: string;
+  subjectCreated: boolean;
+  paperCreated: boolean;
+  imported: number;
+  updated: number;
+  skippedUnchanged: number;
+}
+
+export interface SeedBankResult {
+  imported: number;
+  updated: number;
+  skippedUnchanged: number;
+  deactivated: number;
+  subjectsCreated: string[];
+  perSubject: SeedBankSubjectResult[];
+}
+
+/** Recalculate coverage stats for EVERY subject (admin repair op). */
+export const adminRecalculateCoverage = mutation({
+  args: {},
+  handler: async (ctx): Promise<{ subjects: number }> => {
+    const { user } = await requireAdminMutation(ctx);
+    const subjects = await ctx.db.query("subjects").collect();
+    await ctx.runMutation(internal.matricVault.recomputeCoverage, {
+      subjectIds: subjects.map((s) => s._id),
+    });
+    await ctx.db.insert("adminAuditLog", {
+      actorUserId: user._id,
+      action: "matric.coverage_recalculated",
+      targetType: "vault",
+      details: JSON.stringify({ subjects: subjects.length }),
+      createdAt: Date.now(),
+    });
+    return { subjects: subjects.length };
+  },
+});
+
+// ── Validation report (Phase: reliable vault init) ────────────────────────
+//
+// Answers "why is coverage what it is": counts of ineligible rows by
+// reason, duplicate groups, and the last import run's errors — so an admin
+// never has to guess why a subject shows zero.
+
+export const adminValidationReport = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminRead(ctx);
+    const rows = await ctx.db.query("matricQuestions").collect();
+    const subjects = await ctx.db.query("subjects").collect();
+    const subjectName = new Map(subjects.map((s) => [s._id, s.name]));
+
+    let eligible = 0;
+    let active = 0;
+    const reasons = {
+      noAnswerKey: 0,
+      choicesNotFour: 0,
+      emptyStem: 0,
+      unverifiedTier: 0,
+      deactivated: 0,
+    };
+    const ineligibleBySubject = new Map<string, number>();
+    for (const r of rows) {
+      if (!r.active) {
+        reasons.deactivated++;
+        continue;
+      }
+      active++;
+      if (r.examEligible) {
+        eligible++;
+        continue;
+      }
+      const sName = subjectName.get(r.subjectId) ?? "?";
+      ineligibleBySubject.set(sName, (ineligibleBySubject.get(sName) ?? 0) + 1);
+      if (!r.answerLabel) reasons.noAnswerKey++;
+      else if (r.choices.length !== 4) reasons.choicesNotFour++;
+      else if (!r.stem.trim()) reasons.emptyStem++;
+      else if (r.verificationTier === "unverified") reasons.unverifiedTier++;
+    }
+
+    const dupKeys = new Map<string, number>();
+    for (const r of rows) {
+      if (!r.active || !r.duplicateKey) continue;
+      dupKeys.set(r.duplicateKey, (dupKeys.get(r.duplicateKey) ?? 0) + 1);
+    }
+    let duplicateRows = 0;
+    for (const c of dupKeys.values()) if (c > 1) duplicateRows += c - 1;
+
+    const lastRun = await ctx.db
+      .query("matricImportRuns")
+      .withIndex("by_startedAt")
+      .order("desc")
+      .take(1);
+    let lastRunErrors: string[] = [];
+    if (lastRun[0]?.errorsJson) {
+      try {
+        lastRunErrors = JSON.parse(lastRun[0].errorsJson) as string[];
+      } catch {
+        lastRunErrors = ["(unparseable error log)"];
+      }
+    }
+
+    return {
+      totalRows: rows.length,
+      active,
+      eligible,
+      ineligibleReasons: reasons,
+      ineligibleBySubject: [...ineligibleBySubject.entries()]
+        .map(([subject, count]) => ({ subject, count }))
+        .sort((a, b) => b.count - a.count),
+      duplicateRows,
+      lastRun: lastRun[0]
+        ? {
+            startedAt: lastRun[0].startedAt,
+            status: lastRun[0].status,
+            dryRun: lastRun[0].dryRun,
+            trigger: lastRun[0].trigger,
+            papersScanned: lastRun[0].papersScanned,
+            errors: lastRunErrors,
+          }
+        : null,
+    };
   },
 });

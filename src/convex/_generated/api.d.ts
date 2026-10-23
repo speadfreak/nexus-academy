@@ -52,6 +52,7 @@ import type * as marketing from "../marketing.js";
 import type * as matricAdmin from "../matricAdmin.js";
 import type * as matricBlueprints from "../matricBlueprints.js";
 import type * as matricEngine from "../matricEngine.js";
+import type * as matricSeedBank from "../matricSeedBank.js";
 import type * as matricVault from "../matricVault.js";
 import type * as media from "../media.js";
 import type * as mockExam from "../mockExam.js";
@@ -146,6 +147,7 @@ declare const fullApi: ApiFromModules<{
   matricAdmin: typeof matricAdmin;
   matricBlueprints: typeof matricBlueprints;
   matricEngine: typeof matricEngine;
+  matricSeedBank: typeof matricSeedBank;
   matricVault: typeof matricVault;
   media: typeof media;
   mockExam: typeof mockExam;
