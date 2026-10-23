@@ -344,6 +344,11 @@ const app = (
                   el.id = "back-to-hub";
                   document.body.appendChild(el);
                 }}
+                onViewHistory={() => {
+                  const el = document.createElement("div");
+                  el.id = "view-history";
+                  document.body.appendChild(el);
+                }}
               />
             )}
           </div>

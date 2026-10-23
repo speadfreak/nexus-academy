@@ -5,7 +5,7 @@
 // server-authoritative deadline); results are reachable via ?session=<id>
 // so submission can deep-link straight into the debrief.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -13,6 +13,7 @@ import type { ActiveSessionPayload, CatalogPayload } from "@/convex/matricEngine
 import { MatricHub } from "@/components/matric/MatricHub";
 import { MatricPlayer } from "@/components/matric/MatricPlayer";
 import { MatricResults } from "@/components/matric/MatricResults";
+import { MatricNav } from "@/components/matric/MatricNav";
 import type { MatricResultsPayload } from "@/convex/matricEngine";
 import {
   Dialog,
@@ -26,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate, useSearchParams } from "react-router";
+import { localDateKey } from "@/lib/dates";
 import { useTheme } from "@/components/theme-provider";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck, Timer, ListChecks, Flag } from "lucide-react";
@@ -45,6 +47,22 @@ export default function MatricExam() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { theme } = useTheme();
+
+  // ── Workspace parity with DashboardShell pages ──
+  // Every shell page fires subscriptions.touch once per mount, which
+  // provisions the free trial and records the active day. Matric OS is a
+  // standalone full-screen workspace (no shell), so it must do the same —
+  // otherwise students arriving directly at /mock-exam never get their
+  // trial provisioned and every mode is wrongly premium-locked.
+  const touchSubscription = useMutation(api.subscriptions.touch);
+  const touchedRef = useRef(false);
+  useEffect(() => {
+    if (touchedRef.current) return;
+    touchedRef.current = true;
+    void touchSubscription({ localDate: localDateKey() }).catch(() => {
+      // Best-effort — the exam itself re-checks premium server-side.
+    });
+  }, [touchSubscription]);
 
   const catalog = useQuery(api.matricEngine.getMatricCatalog, {});
   const activeSession = useQuery(api.matricEngine.getMyActiveSession, {});
@@ -201,6 +219,41 @@ export default function MatricExam() {
     setSearchParams({}, { replace: true });
   }, [setSearchParams]);
 
+  // ── Recent-sittings shortcut (nav shell) ──
+  // On the hub: smooth-scroll to the history section (instant when the
+  // user prefers reduced motion). From results: return to the hub first,
+  // then scroll. Content can still be settling after the view switch
+  // (queries resolving, hero animation), so the anchor is re-asserted —
+  // mirroring ScrollManager's reassert pattern — until layout is stable.
+  const goToRecentSittings = useCallback(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior: ScrollBehavior = reduced ? "auto" : "smooth";
+    const anchor = () => document.getElementById("matric-recent-sittings");
+    const jump = () => anchor()?.scrollIntoView({ behavior, block: "start" });
+    const reassert = () =>
+      anchor()?.scrollIntoView({ behavior: "auto", block: "start" });
+
+    if (view === "hub") {
+      jump();
+      window.setTimeout(reassert, 400);
+    } else {
+      backToHub();
+      let tries = 0;
+      const attempt = () => {
+        tries += 1;
+        const el = anchor();
+        if (!el) {
+          if (tries < 15) window.setTimeout(attempt, 100);
+          return;
+        }
+        el.scrollIntoView({ behavior: "auto", block: "start" });
+        requestAnimationFrame(reassert);
+        window.setTimeout(reassert, 400);
+      };
+      window.setTimeout(attempt, 60);
+    }
+  }, [view, backToHub]);
+
   const resume = useCallback(() => {
     if (activeSession) {
       setPlayerPayload(activeSession);
@@ -241,7 +294,7 @@ export default function MatricExam() {
           </div>
         );
       }
-      return <MatricResults results={results as MatricResultsPayload} onBackToHub={backToHub} />;
+      return <MatricResults results={results as MatricResultsPayload} onBackToHub={backToHub} onViewHistory={goToRecentSittings} />;
     }
     // HUB (default)
     if (catalog === undefined) {
@@ -282,14 +335,20 @@ export default function MatricExam() {
     resume,
     handleSubmitted,
     backToHub,
+    goToRecentSittings,
     setSearchParams,
   ]);
 
   return (
     <div
-      className={`min-h-screen w-full ${isDark ? "bg-background" : "bg-background"} px-4 py-6 sm:px-6 sm:py-8`}
+      className={`min-h-screen w-full ${isDark ? "bg-background" : "bg-background"} px-4 pb-10 pt-4 sm:px-6 sm:pt-6`}
     >
-      <div className="mx-auto max-w-5xl">{content}</div>
+      {/* ── PREMIUM NAV SHELL — hub & results only. A timed examination
+          never shows this bar; the player renders its own focused header. ── */}
+      {view !== "player" && (
+        <MatricNav view={view === "results" ? "results" : "hub"} onRecentClick={goToRecentSittings} />
+      )}
+      <div className="mx-auto mt-4 max-w-5xl sm:mt-6">{content}</div>
 
       {/* ── EXAM INSTRUCTIONS DIALOG (Phase 4) ── */}
       <Dialog
