@@ -22,6 +22,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   FlaskConical,
+  Sparkles,
+  Calculator,
 } from "lucide-react";
 
 export function MatricAdmin() {
@@ -29,8 +31,11 @@ export function MatricAdmin() {
   const diagnostics = useQuery(api.matricAdmin.adminSessionDiagnostics, {});
   const duplicates = useQuery(api.matricAdmin.adminDuplicateDetection, {});
   const blueprints = useQuery(api.matricBlueprints.adminListBlueprints, {});
+  const validation = useQuery(api.matricAdmin.adminValidationReport, {});
 
   const runImport = useAction(api.matricAdmin.adminRunVaultImport);
+  const seedBank = useMutation(api.matricAdmin.adminSeedStarterBank);
+  const recalcCoverage = useMutation(api.matricAdmin.adminRecalculateCoverage);
   const retryIngestion = useMutation(api.matricAdmin.adminRetryIngestion);
   const toggleBlueprint = useMutation(api.matricBlueprints.adminSetBlueprintStatus);
   const reseed = useMutation(api.matricBlueprints.adminReseedBlueprints);
@@ -52,6 +57,36 @@ export function MatricAdmin() {
         );
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Import failed.");
+      } finally {
+        setImportBusy(null);
+      }
+    });
+  };
+
+  const doSeedBank = () => {
+    setImportBusy("seed");
+    startTransition(async () => {
+      try {
+        const res = await seedBank({});
+        toast.success(
+          `Starter bank imported — ${res.imported} new, ${res.updated} updated, ${res.skippedUnchanged} unchanged (${res.subjectsCreated.length ? `created subjects: ${res.subjectsCreated.join(", ")}` : "no new subjects"}).`,
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Starter bank import failed.");
+      } finally {
+        setImportBusy(null);
+      }
+    });
+  };
+
+  const doRecalcCoverage = () => {
+    setImportBusy("recalc");
+    startTransition(async () => {
+      try {
+        const res = await recalcCoverage({});
+        toast.success(`Coverage recalculated for ${res.subjects} subjects.`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Coverage recalc failed.");
       } finally {
         setImportBusy(null);
       }
@@ -100,6 +135,43 @@ export function MatricAdmin() {
           sub={`scanned ${duplicates?.scanned ?? 0} vault rows`}
         />
       </div>
+
+      {/* ── VAULT INITIALIZATION (starter bank + paper sync) ── */}
+      <Panel className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+              <Sparkles className="size-4 text-amber-300" /> Vault initialization
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Cold-start ops. The starter bank is 58 human-verified curriculum
+              questions (labeled "Learnyx Verified Starter Bank", never as
+              official ESSLCE). Paper sync materializes the vault from real
+              digitized papers. Both are idempotent — safe to re-run.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={importBusy !== null || pending}
+              onClick={doSeedBank}
+            >
+              <Sparkles className={`size-3.5 ${importBusy === "seed" ? "animate-spin" : "text-amber-300"}`} />
+              Import starter bank
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={importBusy !== null || pending}
+              onClick={doRecalcCoverage}
+            >
+              <Calculator className={`size-3.5 ${importBusy === "recalc" ? "animate-spin" : ""}`} />
+              Recalculate coverage
+            </Button>
+          </div>
+        </div>
+      </Panel>
 
       {/* ── IMPORT CONTROL ── */}
       <Panel className="p-4">
@@ -151,7 +223,7 @@ export function MatricAdmin() {
             <EmptyState
               icon={Database}
               title="No import runs yet"
-              hint="Run the first import to materialize the vault from digitized papers."
+              hint="Import the starter bank above for a day-one vault, then run the first paper sync to materialize real digitized papers."
             />
           ) : (
             <div className="overflow-x-auto">
@@ -204,6 +276,83 @@ export function MatricAdmin() {
             </div>
           )}
         </div>
+      </Panel>
+
+      {/* ── VALIDATION REPORT (why is coverage what it is) ── */}
+      <Panel className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+            <ShieldCheck className="size-4 text-muted-foreground" /> Validation report
+          </p>
+          {validation && validation.eligible === 0 && (
+            <StatusBadge tone="warn">vault empty — run initialization above</StatusBadge>
+          )}
+        </div>
+        {validation === undefined ? (
+          <SkeletonRows rows={3} className="mt-3" />
+        ) : (
+          <>
+            <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <MetricCard
+                label="Vault rows"
+                value={validation.totalRows.toLocaleString()}
+                icon={Database}
+                sub={`${validation.active.toLocaleString()} active`}
+              />
+              <MetricCard
+                label="Exam-eligible"
+                value={validation.eligible.toLocaleString()}
+                icon={CheckCircle2}
+                tone="ok"
+                sub="4-choice MCQ + verified key"
+              />
+              <MetricCard
+                label="Duplicate rows"
+                value={validation.duplicateRows.toLocaleString()}
+                icon={Copy}
+                tone={validation.duplicateRows > 0 ? "warn" : "default"}
+                sub="content-hash groups (deduped at selection)"
+              />
+              <MetricCard
+                label="Last paper sync"
+                value={validation.lastRun ? validation.lastRun.status : "—"}
+                icon={Activity}
+                sub={
+                  validation.lastRun
+                    ? `${validation.lastRun.trigger}${validation.lastRun.dryRun ? " · dry" : ""} · ${validation.lastRun.papersScanned} papers`
+                    : "never run"
+                }
+              />
+            </div>
+            {(validation.ineligibleReasons.noAnswerKey > 0 ||
+              validation.ineligibleReasons.choicesNotFour > 0 ||
+              validation.ineligibleReasons.emptyStem > 0 ||
+              validation.ineligibleReasons.unverifiedTier > 0 ||
+              validation.ineligibleReasons.deactivated > 0) && (
+              <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] font-mono">
+                {Object.entries(validation.ineligibleReasons)
+                  .filter(([, v]) => v > 0)
+                  .map(([k, v]) => (
+                    <span key={k} className="rounded border border-border/50 px-1.5 py-0.5 text-muted-foreground">
+                      {k}: {v}
+                    </span>
+                  ))}
+              </div>
+            )}
+            {validation.lastRun && validation.lastRun.errors.length > 0 && (
+              <div className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/[0.04] px-3 py-2">
+                <p className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
+                  <AlertTriangle className="size-3.5 text-rose-300" /> Import errors ({validation.lastRun.errors.length})
+                </p>
+                <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-muted-foreground">
+                  {validation.lastRun.errors.slice(0, 5).map((err, i) => (
+                    <li key={i} className="truncate">{err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </Panel>
 
       {/* ── COVERAGE BY SUBJECT ── */}

@@ -38,6 +38,7 @@ import {
   ChevronRight,
   RotateCcw,
   CircleAlert,
+  BookOpenCheck,
 } from "lucide-react";
 
 function minutes(seconds: number): string {
@@ -175,7 +176,10 @@ export function MatricHub({
           description="One subject, focused practice, server-scored against real answer keys."
         />
         {catalog.subjectMocks.length === 0 ? (
-          <EmptyCoverage note="No subject has verified questions yet. Papers are being digitized — check back soon." />
+          <EmptyCoverage
+            note="No subject has verified exam questions yet."
+            reason="empty-vault"
+          />
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {catalog.subjectMocks.map((s) => (
@@ -185,6 +189,13 @@ export function MatricHub({
                 meta={`${s.questionCount} questions · ${minutes(s.timeLimitSeconds)}`}
                 stats={`${s.eligibleCount} verified questions · ${s.paperCount} papers`}
                 state={!s.offered ? "insufficient" : !premium ? "premium" : "ready"}
+                hint={
+                  !s.offered
+                    ? `Needs ${Math.max(s.questionCount, 10)} verified questions — ${Math.max(0, Math.max(s.questionCount, 10) - s.eligibleCount)} more to go. Check back as more papers are verified.`
+                    : !premium
+                      ? "Mock exams are a premium feature."
+                      : undefined
+                }
                 onStart={() => startOrGate(s.blueprintId)}
                 starting={starting}
               />
@@ -456,6 +467,7 @@ function ModeCard({
   meta,
   stats,
   state,
+  hint,
   onStart,
   starting,
 }: {
@@ -463,6 +475,7 @@ function ModeCard({
   meta: string;
   stats: string;
   state: "ready" | "premium" | "insufficient";
+  hint?: string;
   onStart: () => void;
   starting: boolean;
 }) {
@@ -476,6 +489,7 @@ function ModeCard({
         <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
           <Database className="size-3" /> {stats}
         </p>
+        {hint && <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground/70">{hint}</p>}
       </div>
       <Button
         size="sm"
@@ -502,10 +516,25 @@ function ModeCard({
   );
 }
 
-function EmptyCoverage({ note }: { note: string }) {
+function EmptyCoverage({ note, reason }: { note: string; reason?: "empty-vault" | "none-offered" }) {
   return (
-    <div className="mt-4 rounded-2xl border border-dashed border-border/70 p-6 text-center">
-      <p className="text-sm text-muted-foreground">{note}</p>
+    <div className="mt-4 rounded-2xl border border-dashed border-border/70 p-6">
+      <div className="text-center">
+        <p className="text-sm font-semibold text-foreground">{note}</p>
+        <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">
+          {reason === "empty-vault"
+            ? "The verified question vault is empty right now — our team is digitizing and verifying real past papers. Mock exams unlock automatically for a subject as soon as it has enough verified questions."
+            : "Every subject below needs a minimum pool of verified questions before we can assemble a fair, honestly-scored exam. We won't pad exams with unverified content — coverage is being added continuously."}
+        </p>
+      </div>
+      <div className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-center gap-2">
+        <Button size="sm" variant="outline" onClick={() => (window.location.href = "/mistakes")}>
+          <BookOpenCheck className="size-3.5 text-amber-300" /> Review your mistakes
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => (window.location.href = "/tutor")}>
+          <GraduationCap className="size-3.5 text-teal-300" /> Study with the Tutor
+        </Button>
+      </div>
     </div>
   );
 }
