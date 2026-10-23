@@ -7,10 +7,11 @@
 // scores — ever.
 
 import { useMemo } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { motion } from "framer-motion";
 import type { MatricResultsPayload } from "@/convex/matricEngine";
 import { AiText } from "@/components/math";
+import { prefetchRoute } from "@/lib/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,12 +23,15 @@ import {
   Wrench,
   Clock3,
   ArrowRight,
+  ArrowLeft,
   BookOpenCheck,
   Flame,
   FileText,
   CircleCheck,
   CircleX,
   CircleDashed,
+  GraduationCap,
+  History,
 } from "lucide-react";
 
 function fmtDate(ts: number): string {
@@ -81,9 +85,11 @@ function ScoreDonut({ pct }: { pct: number }) {
 export function MatricResults({
   results,
   onBackToHub,
+  onViewHistory,
 }: {
   results: MatricResultsPayload;
   onBackToHub: () => void;
+  onViewHistory: () => void;
 }) {
   const navigate = useNavigate();
 
@@ -169,6 +175,54 @@ export function MatricResults({
           </div>
         )}
       </motion.div>
+
+      {/* ── RESULTS NAVIGATION — the debrief is a crossroads, never a dead
+          end: back into Matric OS, onward to prep, mistakes, resources and
+          history. Client-side links only, touch-friendly targets. ── */}
+      <nav
+        aria-label="Results navigation"
+        className="flex flex-wrap items-center gap-2"
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onBackToHub}
+          className="focus-ring h-10 gap-1.5 rounded-xl border-amber-400/30 bg-amber-400/[0.07] text-amber-200 hover:bg-amber-400/15 hover:text-amber-100 motion-reduce:transition-none"
+        >
+          <ArrowLeft className="size-4" /> Return to Matric OS
+        </Button>
+        <Link
+          to="/exam-prep"
+          onPointerEnter={() => prefetchRoute("/exam-prep")}
+          onFocus={() => prefetchRoute("/exam-prep")}
+          className="focus-ring inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-amber-400/30 hover:text-foreground motion-reduce:transition-none"
+        >
+          <BookOpenCheck className="size-4 text-amber-300" /> Exam Prep Hub
+        </Link>
+        <Link
+          to="/mistakes"
+          onPointerEnter={() => prefetchRoute("/mistakes")}
+          onFocus={() => prefetchRoute("/mistakes")}
+          className="focus-ring inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-rose-400/40 hover:text-foreground motion-reduce:transition-none"
+        >
+          <Wrench className="size-4 text-rose-300" /> Mistake Lab
+        </Link>
+        <Link
+          to="/tutor"
+          onPointerEnter={() => prefetchRoute("/tutor")}
+          onFocus={() => prefetchRoute("/tutor")}
+          className="focus-ring inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-teal-400/40 hover:text-foreground motion-reduce:transition-none"
+        >
+          <GraduationCap className="size-4 text-teal-300" /> Study with Tutor
+        </Link>
+        <button
+          type="button"
+          onClick={onViewHistory}
+          className="focus-ring inline-flex h-10 items-center gap-1.5 rounded-xl border border-border/70 bg-card/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground motion-reduce:transition-none"
+        >
+          <History className="size-4" /> View exam history
+        </button>
+      </nav>
 
       {/* ── NEXT ACTIONS — the Learnyx loop ── */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">

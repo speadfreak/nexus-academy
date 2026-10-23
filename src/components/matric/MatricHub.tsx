@@ -104,15 +104,15 @@ export function MatricHub({
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/40 bg-amber-400/[0.07] px-5 py-4"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/50 bg-amber-400/[0.10] px-5 py-4 dark:border-amber-400/40 dark:bg-amber-400/[0.07]"
         >
           <div className="flex items-center gap-3">
-            <CircleAlert className="size-5 shrink-0 text-amber-300" />
+            <CircleAlert className="size-5 shrink-0 text-amber-600 dark:text-amber-300" />
             <div>
-              <p className="text-sm font-bold text-amber-100">
+              <p className="text-sm font-bold text-amber-900 dark:text-amber-100">
                 Exam in progress — {catalog.activeSessionTitle}
               </p>
-              <p className="text-xs text-amber-200/70">
+              <p className="text-xs text-amber-800/90 dark:text-amber-200/70">
                 Your timer is still running server-side. Resume before it expires.
               </p>
             </div>
@@ -329,7 +329,7 @@ export function MatricHub({
       )}
 
       {/* ── HISTORY ── */}
-      <section>
+      <section id="matric-recent-sittings" className="scroll-mt-20">
         <ModeHeader
           icon={<History className="size-4 text-muted-foreground" />}
           title="Recent sittings"
@@ -517,6 +517,9 @@ function ModeCard({
 }
 
 function EmptyCoverage({ note, reason }: { note: string; reason?: "empty-vault" | "none-offered" }) {
+  // Client-side navigation only — window.location.href here previously
+  // triggered a full-page reload, dropping the SPA state and scroll.
+  const navigate = useNavigate();
   return (
     <div className="mt-4 rounded-2xl border border-dashed border-border/70 p-6">
       <div className="text-center">
@@ -528,10 +531,10 @@ function EmptyCoverage({ note, reason }: { note: string; reason?: "empty-vault" 
         </p>
       </div>
       <div className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => (window.location.href = "/mistakes")}>
+        <Button size="sm" variant="outline" onClick={() => navigate("/mistakes")} className="focus-ring">
           <BookOpenCheck className="size-3.5 text-amber-300" /> Review your mistakes
         </Button>
-        <Button size="sm" variant="outline" onClick={() => (window.location.href = "/tutor")}>
+        <Button size="sm" variant="outline" onClick={() => navigate("/tutor")} className="focus-ring">
           <GraduationCap className="size-3.5 text-teal-300" /> Study with the Tutor
         </Button>
       </div>

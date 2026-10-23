@@ -26,7 +26,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import {
   AlertDialog,
@@ -40,6 +39,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Flag,
@@ -49,6 +49,21 @@ import {
   CloudOff,
   Check,
 } from "lucide-react";
+
+// Focused-header mode badge — server mode string → human label.
+const MODE_LABELS: Record<string, string> = {
+  subject_mock: "Subject mock",
+  full_simulation: "Full simulation",
+  weakness_challenge: "Weakness challenge",
+  past_paper: "Past paper",
+};
+
+function modeLabel(mode: string): string {
+  const known = MODE_LABELS[mode];
+  if (known) return known;
+  const spaced = mode.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 type SaveState = "idle" | "saving" | "saved" | "offline";
 
@@ -91,6 +106,8 @@ export function MatricPlayer({
   const [submitOpen, setSubmitOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [exitOpen, setExitOpen] = useState(false);
+  const [exiting, setExiting] = useState(false);
 
   // Clock offset: serverNow vs client now at payload creation — every
   // save response refreshes it, keeping the countdown truthful.
@@ -101,6 +118,71 @@ export function MatricPlayer({
   const submittingRef = useRef(false);
   const dwellStartRef = useRef<number>(Date.now());
   const draftKey = `matric-os-draft-${sessionId}`;
+  // History guard: true once the student has confirmed leaving (or the exam
+  // was submitted) — popstate then stops intercepting navigation.
+  const exitingRef = useRef(false);
+
+  // ── Navigation-away guards ──
+  // The active exam is NEVER silently discarded, reset or submitted when the
+  // student navigates away. Three layers:
+  //
+  //   1. HISTORY GUARD — a sentinel history entry is pushed on mount, so a
+  //      browser back / mobile swipe-back pops the sentinel (not the real
+  //      previous route) and we can confirm intent first. Confirming exits
+  //      to the hub; cancelling re-arms the sentinel. The URL never leaves
+  //      /mock-exam, so nothing is lost and the session keeps running.
+  //   2. EXIT CONFIRMATION — the Exit Exam action always asks first and
+  //      explains exactly what persists (answers + server timer).
+  //   3. BEFOREUNLOAD — closing the tab / hard reload mid-exam asks for
+  //      confirmation (the server session and autosaved answers survive
+  //      regardless; the prompt is intent-confirmation, not data loss).
+  const disarmHistoryGuard = useCallback(() => {
+    exitingRef.current = true;
+    try {
+      // The sentinel is the CURRENT (top) history entry while in the player;
+      // rewriting its state disarms the popstate guard without disturbing
+      // the back stack the student came from.
+      if (window.history.state?.matricExamGuard) {
+        window.history.replaceState({}, "");
+      }
+    } catch {
+      // History API unavailable (rare embedding cases) — guard stays harmless.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (!window.history.state?.matricExamGuard) {
+        window.history.pushState({ matricExamGuard: true }, "");
+      }
+    } catch {
+      return; // no History API — SPA back-guard simply not available
+    }
+    const onPop = () => {
+      if (exitingRef.current) return;
+      // The student pressed back / swiped back: confirm intent, re-arm.
+      setExitOpen(true);
+      try {
+        if (!window.history.state?.matricExamGuard) {
+          window.history.pushState({ matricExamGuard: true }, "");
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (submittingRef.current || exitingRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   // Preload the math renderer shortly after mount.
   useEffect(() => {
@@ -232,6 +314,24 @@ export function MatricPlayer({
     };
   }, [flushSave]);
 
+  // ── Confirmed exit: final save, disarm guard, back to the hub ──
+  // Runs AFTER the autosave machinery above so the "Save & leave" flush
+  // uses the real save pipeline (server autosave + clock-offset refresh).
+  const handleExit = useCallback(async () => {
+    setExiting(true);
+    try {
+      // Flush any unsaved answers first — "Save & leave" must be literal.
+      await flushSave({ silent: true });
+    } catch {
+      // flushSave never throws in practice; the local draft + 15s safety
+      // loop still protect the student either way.
+    }
+    disarmHistoryGuard();
+    setExiting(false);
+    setExitOpen(false);
+    onExit();
+  }, [flushSave, disarmHistoryGuard, onExit]);
+
   // ── Server-authoritative countdown + auto-submit at zero ──
   useEffect(() => {
     const tick = () => {
@@ -275,6 +375,7 @@ export function MatricPlayer({
         if (source === "auto_expiry") {
           toast.info("Time is up — your exam was submitted automatically.");
         }
+        disarmHistoryGuard();
         onSubmitted(res.sessionId);
       } catch (e) {
         submittingRef.current = false;
@@ -282,13 +383,14 @@ export function MatricPlayer({
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("already") || msg.includes("graded")) {
           // Idempotent path — grading already happened; show results.
+          disarmHistoryGuard();
           onSubmitted(sessionId);
         } else {
           toast.error("Submission failed. Retrying is safe — your answers are saved.");
         }
       }
     },
-    [submitMatricExam, sessionId, draftKey, onSubmitted, idx],
+    [submitMatricExam, sessionId, draftKey, onSubmitted, idx, disarmHistoryGuard],
   );
 
   // ── Navigation + answer selection ──
@@ -377,54 +479,126 @@ export function MatricPlayer({
     );
   }
 
+  const saveIcon =
+    saveState === "offline" ? (
+      <CloudOff className="size-3.5 text-rose-300" />
+    ) : saveState === "saving" ? (
+      <Loader2 className="size-3.5 animate-spin" />
+    ) : saveState === "saved" ? (
+      <Check className="size-3.5 text-emerald-300" />
+    ) : (
+      <CloudUpload className="size-3.5" />
+    );
+
   return (
     <div className="flex flex-col gap-4">
-      {/* ── HEADER: title · timer · save status ── */}
-      <div className="sticky top-0 z-30 -mx-4 border-b border-border/60 bg-background/85 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">
-              {payload.title}
-            </p>
-            {currentSection && (
-              <p className="mt-0.5 truncate text-sm font-semibold text-amber-200">
-                {currentSection.subjectName}
-                {sections.length > 1 ? (
-                  <span className="ml-2 text-[11px] font-normal text-muted-foreground">
-                    Section {sectionOrdinal} of {sections.length}
-                  </span>
-                ) : null}
+      {/* ── FOCUSED EXAMINATION HEADER — the exam owns the screen. No site
+          navigation here by design: subject + mode · save status ·
+          server-authoritative timer · progress · flag & palette access ·
+          Exit Exam (always confirmed, never silent). ── */}
+      <div
+        className="sticky top-0 z-30 -mx-4 border-b border-border/60 bg-background/90 px-4 backdrop-blur-md sm:-mx-6 sm:px-6"
+        style={{
+          paddingTop: "max(0.5rem, env(safe-area-inset-top))",
+          paddingBottom: "0.5rem",
+        }}
+      >
+        <div className="mx-auto max-w-5xl">
+          {/* Row 1 — exit · identity · save · timer */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExitOpen(true)}
+              disabled={submitting}
+              className="focus-ring h-8 shrink-0 gap-1.5 rounded-lg border-border/70 px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground sm:h-9 sm:px-3 sm:text-sm"
+            >
+              <ArrowLeft className="size-3.5" />
+              <span className="hidden sm:inline">Exit exam</span>
+              <span className="sm:hidden">Exit</span>
+            </Button>
+            <div className="min-w-0 flex-1">
+              <p className="flex min-w-0 items-center gap-2">
+                <span className="shrink-0 rounded-md border border-amber-400/25 bg-amber-400/[0.07] px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-amber-300">
+                  {modeLabel(payload.mode)}
+                </span>
+                <span className="truncate text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  {payload.title}
+                </span>
               </p>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
+              {currentSection && (
+                <p className="mt-0.5 truncate text-sm font-semibold text-amber-200">
+                  {currentSection.subjectName}
+                  {sections.length > 1 ? (
+                    <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+                      Section {sectionOrdinal} of {sections.length}
+                    </span>
+                  ) : null}
+                </p>
+              )}
+            </div>
             <div
-              className={`font-mono text-lg font-bold tabular-nums sm:text-xl ${timerTone}`}
+              className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground"
+              aria-live="polite"
+              role="status"
+            >
+              {saveIcon}
+              <span className="hidden sm:inline">{saveLabel}</span>
+              <span className="sr-only sm:hidden">{saveLabel}</span>
+            </div>
+            <div
+              className={`shrink-0 font-mono text-lg font-bold tabular-nums sm:text-xl ${timerTone}`}
+              role="timer"
               aria-label={`Time remaining ${fmtClock(remaining)}`}
             >
               {fmtClock(remaining)}
             </div>
-            <div
-              className="hidden items-center gap-1.5 text-[11px] text-muted-foreground sm:flex"
+          </div>
+          {/* Row 2 — progress · flag · palette (mark-for-review access) */}
+          <div className="mt-2 flex items-center gap-2">
+            <Progress
+              value={(answeredCount / questions.length) * 100}
+              className="h-1 min-w-0 flex-1"
+              aria-label={`${answeredCount} of ${questions.length} questions answered`}
+            />
+            <span
+              className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
               aria-live="polite"
             >
-              {saveState === "offline" ? (
-                <CloudOff className="size-3.5 text-rose-300" />
-              ) : saveState === "saving" ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : saveState === "saved" ? (
-                <Check className="size-3.5 text-emerald-300" />
-              ) : (
-                <CloudUpload className="size-3.5" />
-              )}
-              {saveLabel}
-            </div>
+              {answeredCount}/{questions.length}
+            </span>
+            <button
+              type="button"
+              onClick={toggleFlag}
+              aria-pressed={flags[idx]}
+              aria-label={
+                flags[idx]
+                  ? "Remove flag from this question"
+                  : "Flag this question for review"
+              }
+              className={`focus-ring inline-flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                flags[idx]
+                  ? "border-rose-400/50 bg-rose-400/15 text-rose-200"
+                  : "border-border/70 text-muted-foreground hover:border-rose-400/30 hover:text-rose-200"
+              }`}
+            >
+              <Flag className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Open question palette"
+              className="focus-ring inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition-colors hover:border-amber-400/30 hover:text-foreground lg:hidden"
+            >
+              <LayoutGrid className="size-3.5" />
+            </button>
           </div>
         </div>
-        <div className="mx-auto mt-2 max-w-5xl">
-          <Progress value={(answeredCount / questions.length) * 100} className="h-1" />
-        </div>
       </div>
+
+      {/* Save status — full label lives in the document flow for screen
+          readers and desktop clarity; the header icon mirrors it live. */}
+      <p className="sr-only" aria-live="polite">{saveLabel}</p>
 
       <div className="mx-auto flex w-full max-w-5xl gap-6">
         {/* ── QUESTION COLUMN ── */}
@@ -518,29 +692,6 @@ export function MatricPlayer({
             <Button variant="outline" size="sm" onClick={() => goTo(idx - 1)} disabled={idx === 0}>
               <ChevronLeft className="size-4" /> Previous
             </Button>
-            <Sheet open={paletteOpen} onOpenChange={setPaletteOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="lg:hidden">
-                  <LayoutGrid className="size-4" />
-                  Palette
-                  <span className="ml-1 rounded bg-muted px-1.5 text-[10px]">
-                    {answeredCount}/{questions.length}
-                  </span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
-                <SheetHeader>
-                  <SheetTitle className="text-left">Question palette</SheetTitle>
-                </SheetHeader>
-                <PaletteGrid
-                  questions={questions}
-                  answers={answers}
-                  flags={flags}
-                  idx={idx}
-                  onJump={(i) => goTo(i)}
-                />
-              </SheetContent>
-            </Sheet>
             {idx === questions.length - 1 ? (
               <Button size="sm" onClick={() => setSubmitOpen(true)} className="bg-amber-400 text-black hover:bg-amber-300">
                 Review &amp; Submit
@@ -598,6 +749,22 @@ export function MatricPlayer({
         </aside>
       </div>
 
+      {/* ── QUESTION PALETTE (controlled — triggered from the focused header) ── */}
+      <Sheet open={paletteOpen} onOpenChange={setPaletteOpen}>
+        <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-left">Question palette</SheetTitle>
+          </SheetHeader>
+          <PaletteGrid
+            questions={questions}
+            answers={answers}
+            flags={flags}
+            idx={idx}
+            onJump={(i) => goTo(i)}
+          />
+        </SheetContent>
+      </Sheet>
+
       {/* ── SUBMIT CONFIRMATION ── */}
       <AlertDialog open={submitOpen} onOpenChange={setSubmitOpen}>
         <AlertDialogContent>
@@ -645,6 +812,52 @@ export function MatricPlayer({
                 </>
               ) : (
                 "Submit final answers"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── EXIT CONFIRMATION — leaving is never silent. Answers and the
+          server-side timer persist; nothing is submitted or discarded. ── */}
+      <AlertDialog open={exitOpen} onOpenChange={setExitOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave this exam?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  Your answers are <strong>autosaved</strong> — everything you
+                  have answered so far is safely stored on Learnyx servers.
+                </p>
+                <p>
+                  The timer <strong>keeps running on the server</strong> while
+                  you are away. Resume any time from the Matric OS hub; if time
+                  runs out first, your saved answers are submitted and graded
+                  automatically.
+                </p>
+                <p className="text-muted-foreground">
+                  Leaving never submits your exam early, resets it, or discards
+                  your progress.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={exiting}>Keep working</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={exiting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleExit();
+              }}
+            >
+              {exiting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Saving…
+                </>
+              ) : (
+                "Save & leave"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
