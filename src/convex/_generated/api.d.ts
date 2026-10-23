@@ -49,6 +49,8 @@ import type * as journey from "../journey.js";
 import type * as learning from "../learning.js";
 import type * as manualPayments from "../manualPayments.js";
 import type * as marketing from "../marketing.js";
+import type * as matricEngine from "../matricEngine.js";
+import type * as matricVault from "../matricVault.js";
 import type * as media from "../media.js";
 import type * as mockExam from "../mockExam.js";
 import type * as mockExamProviders from "../mockExamProviders.js";
@@ -139,6 +141,8 @@ declare const fullApi: ApiFromModules<{
   learning: typeof learning;
   manualPayments: typeof manualPayments;
   marketing: typeof marketing;
+  matricEngine: typeof matricEngine;
+  matricVault: typeof matricVault;
   media: typeof media;
   mockExam: typeof mockExam;
   mockExamProviders: typeof mockExamProviders;

@@ -99,4 +99,24 @@ crons.interval(
   internal.examConversionEngineDispatch.dispatchTick,
 );
 
+// Every 5 minutes: MATRIC OS expiry watchdog. Auto-submits exam sessions
+// whose server-authoritative deadline has passed (grading from the student's
+// SAVED answers — work is never lost) and invalidates interrupted CREATED
+// sessions. Indexed by (status, deadlineAt), so it exits immediately when
+// nothing is due.
+crons.interval(
+  "matric-expire-stale-sessions",
+  { minutes: 5 },
+  internal.matricEngine.expireStaleSessions,
+);
+
+// Daily: MATRIC OS vault freshness tick — quietly syncs one past paper into
+// the question vault so newly converted papers become available without
+// admin action. Full syncs remain an admin action (matricVault.syncVaultBatch).
+crons.daily(
+  "matric-vault-sync-tick",
+  { hourUTC: 3, minuteUTC: 30 },
+  internal.matricVault.cronSyncTick,
+);
+
 export default crons;

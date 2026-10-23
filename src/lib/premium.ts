@@ -16,7 +16,8 @@ export type GateReason =
   | "premium_content"
   | "premium_plans"
   | "premium_quizzes"
-  | "premium_analytics";
+  | "premium_analytics"
+  | "premium_mock_exams";
 
 export interface ComparisonRow {
   id: string;
@@ -149,5 +150,10 @@ export const PREMIUM_PROMPT_COPY: Record<GateReason, PremiumPromptCopy> = {
     title: "Your full journey is premium",
     body: "Score trends, topic completion and cross-subject links stay locked on free — your streak and hours always show. Upgrade to see the whole picture.",
     cta: "See what premium includes",
+  },
+  premium_mock_exams: {
+    title: "Mock exams are a premium feature",
+    body: "Full simulations and subject mocks are built from verified, exam-critical questions with server-side grading. Your streak, library and daily challenges stay free. Upgrade to unlock unlimited sittings.",
+    cta: "Unlock mock exams",
   },
 };

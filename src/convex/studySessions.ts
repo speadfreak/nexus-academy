@@ -58,15 +58,28 @@ export interface LogSessionResult {
   newAchievements: { id: string; name: string; tier: "bronze" | "silver" | "gold" }[];
 }
 
-export const logSession = mutation({
+// Shared logSession implementation. Exposed BOTH as a public mutation
+// (client focus timers) and as an internal mutation so server-side flows
+// (e.g. the Matric OS exam grader) can credit study time without a
+// client round-trip. Auth identity is preserved across internal calls.
+const logSessionArgs = {
+  subjectId: v.id("subjects"),
+  durationSeconds: v.number(),
+  startedAt: v.number(),
+  endedAt: v.number(),
+  localDate: v.string(), // client's local "YYYY-MM-DD"
+};
+
+async function logSessionHandler(
+  ctx: MutationCtx,
   args: {
-    subjectId: v.id("subjects"),
-    durationSeconds: v.number(),
-    startedAt: v.number(),
-    endedAt: v.number(),
-    localDate: v.string(), // client's local "YYYY-MM-DD"
+    subjectId: Id<"subjects">;
+    durationSeconds: number;
+    startedAt: number;
+    endedAt: number;
+    localDate: string;
   },
-  handler: async (ctx, args): Promise<LogSessionResult> => {
+): Promise<LogSessionResult> {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
@@ -136,7 +149,18 @@ export const logSession = mutation({
         tier: a.tier,
       })),
     };
-  },
+};
+
+export const logSession = mutation({
+  args: logSessionArgs,
+  handler: logSessionHandler,
+});
+
+// Internal alias for server-side flows (Matric OS grading) — same handler,
+// same auth-identity semantics, callable via ctx.runMutation(internal.…).
+export const logSessionInternal = internalMutation({
+  args: logSessionArgs,
+  handler: logSessionHandler,
 });
 
 /**

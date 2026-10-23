@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test:math:pipeline": "bun scripts/validate-math-render.mjs",
     "test:math:browser": "playwright test",
+    "test:matric": "bun scripts/matric-assembler.test.ts",
     "deploy:backend": "npx convex deploy",
     "deploy:all": "npx convex deploy && tsc -b && vite build",
     "postinstall": "node scripts/sync-pdfjs.mjs"

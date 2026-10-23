@@ -251,7 +251,14 @@ const outcomeShape = v.object({
   topicText: v.optional(v.string()), // free-text topic printed on papers
   contentId: v.optional(v.id("contentItems")),
   sourcePage: v.optional(v.number()),
-  origin: v.union(v.literal("official"), v.literal("ai_generated")),
+  // "official"      — extracted from a real past paper
+  // "ai_generated"  — produced by an AI generator
+  // "practice"      — human-authored Learnyx practice bank (Matric OS seed)
+  origin: v.union(
+    v.literal("official"),
+    v.literal("ai_generated"),
+    v.literal("practice"),
+  ),
   // Confidence calibration: optional pre-reveal self-report. Stored on the
   // mistake row only — it never changes correctness or mastery math.
   confidence: v.optional(v.union(v.literal("sure"), v.literal("unsure"))),
@@ -281,7 +288,7 @@ type Outcome = {
   topicText?: string;
   contentId?: Id<"contentItems">;
   sourcePage?: number;
-  origin: "official" | "ai_generated";
+  origin: "official" | "ai_generated" | "practice";
   confidence?: "sure" | "unsure";
   correct: boolean;
 };

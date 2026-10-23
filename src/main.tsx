@@ -136,6 +136,10 @@ const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
 const MockExam = lazy(() => import("./pages/MockExam.tsx"));
+// MATRIC OS — feature-flagged entry: /mock-exam serves the deterministic
+// engine when MATRIC_OS_ENABLED is on (default), legacy AI engine when off.
+// /mock-exam/legacy always reaches the old engine for direct comparison.
+const MockExamGate = lazy(() => import("./pages/MockExamGate.tsx"));
 const ExamPrep = lazy(() => import("./pages/ExamPrep.tsx"));
 const AptitudeHub = lazy(() => import("./pages/AptitudeHub.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -854,6 +858,14 @@ if (rootEl) {
                           />
                           <Route
                             path="/mock-exam"
+                            element={
+                              <RequireAuth>
+                                <MockExamGate />
+                              </RequireAuth>
+                            }
+                          />
+                          <Route
+                            path="/mock-exam/legacy"
                             element={
                               <RequireAuth>
                                 <MockExam />

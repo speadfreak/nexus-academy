@@ -1441,6 +1441,264 @@ const schema = defineSchema(
       .index("by_mockExam_status", ["mockExamId", "status"]),
 
     // ------------------------------------------------------------------
+    // MATRIC OS — deterministic non-AI exam engine
+    // ------------------------------------------------------------------
+    //
+    // Three tables power the rebuilt mock-exam system. Unlike mockExams /
+    // mockExamSections above (which depend on live AI generation and are
+    // preserved for history), Matric OS assembles every exam from a verified
+    // question vault with a persisted seed. No external AI call is required
+    // to create, take, resume, submit or score an exam.
+    //
+    //   matricQuestions — normalized, versioned question vault (Phase 1)
+    //   matricSessions  — one exam sitting with a strict state machine (Phase 5)
+    //   matricSections  — immutable per-section question snapshots + answers
+    //
+    // Data flows in from two sources, both AI-free:
+    //   1. digitalPapers (real past papers parsed deterministically by
+    //      examParser.ts + admin-verified) — synced by matricVault.syncVault.
+    //   2. A curated Learnyx starter practice bank (matricSeedBank.ts).
+    //
+    // Provenance is always preserved: every vault question references its
+    // source (contentId + questionNumber for papers, a stable fingerprint
+    // for seed questions). Answers are never sent to the client before the
+    // session reaches GRADED.
+
+    // ── Phase 1: Canonical Matric Question Vault ──────────────────────
+    // One row per gradable MCQ. Only questions WITH a known answer key are
+    // imported; structured / keyless questions are excluded from scored
+    // assembly by construction. verificationStatus is inherited from the
+    // source's real verification state — never assumed.
+    matricQuestions: defineTable({
+      // Stable identity. "paper:<contentId>:<number>" for past-paper
+      // imports, "seed:<slug>" for the starter bank. Idempotent upsert key.
+      fingerprint: v.string(),
+      sourceType: v.union(
+        v.literal("past_paper"),
+        v.literal("seed_practice"),
+      ),
+      // Past-paper provenance (null for seed questions).
+      contentId: v.optional(v.id("contentItems")),
+      questionNumber: v.number(),
+      sourceName: v.optional(v.string()),
+      sourcePage: v.optional(v.number()),
+      examYear: v.optional(v.number()),
+      // Curriculum linkage.
+      subjectId: v.id("subjects"),
+      stream: streamValidator, // copied from the subject for cheap filtering
+      topicText: v.optional(v.string()), // free-text topic (paper's printed topic or curated)
+      // Question content (MCQ only — gradable by construction).
+      stem: v.string(),
+      passage: v.optional(v.string()),
+      options: v.array(v.object({ label: v.string(), text: v.string() })),
+      // Verified correct option label ("A".."H"). Presence is required —
+      // keyless questions never enter the vault.
+      answer: v.string(),
+      explanation: v.optional(v.string()),
+      // Access & lifecycle.
+      verificationStatus: v.union(
+        v.literal("verified"), // admin-accepted paper or curated seed answer
+        v.literal("unverified"), // parsed but not yet admin-reviewed
+      ),
+      accessPolicy: v.union(v.literal("free"), v.literal("premium")), // inherited from contentItem.isPremium
+      activeStatus: v.boolean(), // false = retired from assembly (still referenced by old sessions)
+      // Versioning.
+      contentVersion: v.number(), // bumped when the source row changes materially
+      vaultVersion: v.number(), // import pipeline version that wrote this row
+    })
+      .index("by_fingerprint", ["fingerprint"])
+      .index("by_subject_active", ["subjectId", "activeStatus"])
+      .index("by_content", ["contentId"])
+      .index("by_subject_year", ["subjectId", "examYear"]),
+
+    // Aggregated vault statistics, recomputed by matricVault.recomputeStats
+    // after every sync/seed. Kept as ONE small doc so mode-eligibility checks
+    // cost a single read instead of scanning the whole vault.
+    matricStats: defineTable({
+      key: v.literal("global"),
+      bankVersion: v.number(), // bumped on every vault mutation batch
+      // subjectSlug -> coverage counts (verified/free/premium/unverified).
+      perSubject: v.record(
+        v.string(),
+        v.object({
+          subjectId: v.id("subjects"),
+          stream: streamValidator,
+          verified: v.number(),
+          verifiedFree: v.number(),
+          verifiedPremium: v.number(),
+          unverified: v.number(),
+          seedCount: v.number(),
+          paperCount: v.number(),
+          minYear: v.optional(v.number()),
+          maxYear: v.optional(v.number()),
+        }),
+      ),
+      totalVerified: v.number(),
+      // Past-paper registry — rebuilt during vault sync so the past-paper
+      // mode picker costs ONE stats read instead of loading whole
+      // digitalPapers documents (which embed full OCR text).
+      papers: v.record(
+        v.string(), // contentId string
+        v.object({
+          contentId: v.id("contentItems"),
+          title: v.string(),
+          subjectId: v.id("subjects"),
+          subjectSlug: v.string(),
+          examYear: v.optional(v.number()),
+          gradableCount: v.number(), // verified MCQs with keys in the vault
+          premium: v.boolean(),
+          durationMinutes: v.optional(v.number()),
+          verificationStatus: v.union(v.literal("verified"), v.literal("unverified")),
+        }),
+      ),
+      updatedAt: v.number(),
+    }).index("by_key", ["key"]),
+
+    // ── Phase 5: Session state machine ─────────────────────────────────
+    // CREATED → ACTIVE → SUBMITTED → GRADED, with EXPIRED / INVALIDATED as
+    // terminal side-states. All transitions are enforced server-side in
+    // matricEngine.ts. The server clock (deadlineAt) is the single source
+    // of truth for timing — the client timer is display-only.
+    matricSessions: defineTable({
+      userId: v.id("users"),
+      mode: v.union(
+        v.literal("full_simulation"),
+        v.literal("subject_mock"),
+        v.literal("weakness_challenge"),
+        v.literal("past_paper"),
+      ),
+      blueprintId: v.string(),
+      blueprintVersion: v.number(),
+      stream: streamValidator,
+      // subject_mock / weakness_challenge target; past_paper sets the
+      // paper's subject. Null for full_simulation.
+      subjectId: v.optional(v.id("subjects")),
+      contentId: v.optional(v.id("contentItems")), // past_paper mode only
+      title: v.string(),
+      status: v.union(
+        v.literal("CREATED"),
+        v.literal("ACTIVE"),
+        v.literal("SUBMITTED"),
+        v.literal("GRADED"),
+        v.literal("EXPIRED"),
+        v.literal("INVALIDATED"),
+      ),
+      // Deterministic assembly seed — persisted for audit/reproducibility.
+      seed: v.string(),
+      bankVersion: v.number(), // vault snapshot version used for assembly
+      questionCount: v.number(),
+      sectionCount: v.number(),
+      questionFingerprints: v.array(v.string()), // flat, section-ordered — quick reuse checks
+      startedAt: v.number(), // creation time
+      activatedAt: v.optional(v.number()), // CREATED → ACTIVE transition
+      deadlineAt: v.number(), // server-authoritative exam end (set on activation)
+      lastActiveAt: v.number(),
+      submittedAt: v.optional(v.number()),
+      gradedAt: v.optional(v.number()),
+      // Exactly-once guards for side effects (idempotent grading).
+      ingestedAt: v.optional(v.number()), // mistakes + topicMastery ingestion
+      xpAwardedAt: v.optional(v.number()),
+      sessionLoggedAt: v.optional(v.number()), // studySessions logging
+      // Immutable result snapshot (Phase 6/7) — written once at grading.
+      result: v.optional(
+        v.object({
+          totalScore: v.number(), // 0–100 percentage
+          totalCorrect: v.number(),
+          totalIncorrect: v.number(),
+          totalUnanswered: v.number(),
+          totalQuestions: v.number(),
+          timeSpentSeconds: v.number(),
+          generatedAt: v.number(),
+          sections: v.array(
+            v.object({
+              sectionIndex: v.number(),
+              subjectSlug: v.string(),
+              subjectName: v.string(),
+              score: v.number(),
+              correct: v.number(),
+              incorrect: v.number(),
+              unanswered: v.number(),
+              total: v.number(),
+              timeSpentSeconds: v.number(),
+            }),
+          ),
+          topics: v.array(
+            v.object({
+              subjectSlug: v.string(),
+              topicText: v.string(),
+              correct: v.number(),
+              total: v.number(),
+            }),
+          ),
+        }),
+      ),
+      // Administrative metadata.
+      invalidationReason: v.optional(v.string()),
+      expiryHandledAt: v.optional(v.number()),
+      resultVersion: v.optional(v.number()), // bumped on admin regrade
+      // True when the bank had fewer verified questions than the blueprint
+      // asked for and the student explicitly started a labeled REDUCED
+      // practice sitting instead of the full blueprint counts.
+      reducedPractice: v.optional(v.boolean()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_status", ["userId", "status"])
+      .index("by_user_startedAt", ["userId", "startedAt"])
+      .index("by_status", ["status"])
+      .index("by_status_deadline", ["status", "deadlineAt"]),
+
+    // ── Per-section immutable snapshot + student answer state ─────────
+    // Questions are snapshotted (denormalized) at assembly time so a session
+    // NEVER changes content after creation — even if the vault is edited
+    // mid-exam. The answer key lives server-side in this document only and
+    // is stripped from every client payload until the session is GRADED.
+    matricSections: defineTable({
+      sessionId: v.id("matricSessions"),
+      sectionIndex: v.number(),
+      subjectId: v.id("subjects"),
+      subjectSlug: v.string(),
+      subjectName: v.string(),
+      title: v.string(),
+      timeAllottedSeconds: v.number(),
+      // Snapshot of questions, section-ordered. `answer` is the correct
+      // option label — SERVER-SIDE ONLY, sanitized before any client read.
+      questions: v.array(
+        v.object({
+          questionId: v.id("matricQuestions"),
+          fingerprint: v.string(),
+          number: v.number(), // 1-based within the section
+          stem: v.string(),
+          passage: v.optional(v.string()),
+          options: v.array(v.object({ label: v.string(), text: v.string() })),
+          answer: v.string(),
+          explanation: v.optional(v.string()),
+          topicText: v.optional(v.string()),
+          sourceType: v.union(v.literal("past_paper"), v.literal("seed_practice")),
+          contentId: v.optional(v.id("contentItems")),
+          sourceName: v.optional(v.string()),
+          sourcePage: v.optional(v.number()),
+          examYear: v.optional(v.number()),
+          accessPolicy: v.union(v.literal("free"), v.literal("premium")),
+        }),
+      ),
+      // Student state — absolute values (idempotent saves), -1 = unanswered.
+      answers: v.array(v.number()),
+      flagged: v.array(v.boolean()),
+      timeMs: v.optional(v.array(v.number())), // per-question dwell time (ms)
+      timeSpentSeconds: v.number(),
+      savedAt: v.optional(v.number()),
+      submittedAt: v.optional(v.number()),
+      status: v.union(v.literal("in_progress"), v.literal("submitted")),
+      // Server-computed on submission.
+      score: v.optional(v.number()),
+      correctCount: v.optional(v.number()),
+      incorrectCount: v.optional(v.number()),
+      unansweredCount: v.optional(v.number()),
+    })
+      .index("by_session", ["sessionId"])
+      .index("by_session_index", ["sessionId", "sectionIndex"]),
+
+    // ------------------------------------------------------------------
     // Exam Prep Hub — real past-paper / practice-set attempt log
     // ------------------------------------------------------------------
     //
@@ -2026,7 +2284,13 @@ const schema = defineSchema(
       explanation: v.optional(v.string()),
       contentId: v.optional(v.id("contentItems")), // open the source paper
       sourcePage: v.optional(v.number()),
-      origin: v.union(v.literal("official"), v.literal("ai_generated")),
+      // "official" = from a real past paper, "ai_generated" = AI-generated,
+      // "practice" = human-authored Learnyx practice bank (Matric OS seed).
+      origin: v.union(
+        v.literal("official"),
+        v.literal("ai_generated"),
+        v.literal("practice"),
+      ),
       // Confidence calibration (3.0): the student's OPTIONAL self-report
       // captured BEFORE the answer was revealed ("sure" / "unsure"). The
       // latest report at score time wins. A confident miss is the most
