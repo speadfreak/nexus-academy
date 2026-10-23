@@ -268,6 +268,11 @@ const ingestArgs = v.object({
   ),
   sourceRefId: v.string(),
   outcomes: v.array(outcomeShape),
+  // Explicit user override for INTERNAL callers that run OUTSIDE a user
+  // session (the Matric OS cron sweeper grades expired sessions with no
+  // browser attached — without this, getAuthUserId returns null and the
+  // whole ingestion silently no-ops). Authenticated callers never need it.
+  userIdOverride: v.optional(v.id("users")),
 });
 
 type Outcome = {
@@ -295,7 +300,7 @@ type Outcome = {
 export const ingestQuestionOutcomes = internalMutation({
   args: ingestArgs,
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = args.userIdOverride ?? (await getAuthUserId(ctx));
     if (!userId) return { masteryRows: 0, mistakesRecorded: 0 };
     if (args.outcomes.length === 0) return { masteryRows: 0, mistakesRecorded: 0 };
 

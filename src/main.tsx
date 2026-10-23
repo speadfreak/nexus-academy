@@ -18,6 +18,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { MusicProvider } from "@/components/music-player";
 import { useSchoolFeatureEnabled } from "@/hooks/useSchoolFeature";
+import { useMatricOsEnabled } from "@/hooks/useMatricOsEnabled";
 // SCROLLING — NATIVE BY DESIGN: the Lenis wheel-easing library was removed
 // on purpose. It hijacked every wheel event and replayed it over 1.2s,
 // which made trackpads feel rubbery, added main-thread work on every
@@ -136,6 +137,7 @@ const Upgrade = lazy(() => import("./pages/Upgrade.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
 const AdminContentUpload = lazy(() => import("./pages/AdminContentUpload.tsx"));
 const MockExam = lazy(() => import("./pages/MockExam.tsx"));
+const MatricExam = lazy(() => import("./pages/MatricExam.tsx"));
 const ExamPrep = lazy(() => import("./pages/ExamPrep.tsx"));
 const AptitudeHub = lazy(() => import("./pages/AptitudeHub.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -599,6 +601,17 @@ function SchoolFeatureGate({
   return <>{children}</>;
 }
 
+/**
+ * MATRIC OS ROUTE SWITCH — /mock-exam serves the deterministic non-AI
+ * exam engine when MATRIC_OS_ENABLED (default ON), and the legacy
+ * AI-generated mock exam page when the admin flips the key off. Both
+ * engines share the route; both keep their own history tables readable.
+ */
+function MatricExamRouteSwitch() {
+  const { enabled } = useMatricOsEnabled();
+  return enabled ? <MatricExam /> : <MockExam />;
+}
+
 // ─── Mount ────────────────────────────────────────────────────────────
 const rootEl = document.getElementById("root");
 if (rootEl) {
@@ -852,11 +865,21 @@ if (rootEl) {
                               </RequireAuth>
                             }
                           />
+                          {/* /mock-exam — MATRIC OS route switch. When
+                              MATRIC_OS_ENABLED (default on), serves the
+                              deterministic non-AI exam engine: instant
+                              assembly from the verified ESSLCE question
+                              vault, server-authoritative timer, secure
+                              scoring, zero AI providers in the critical
+                              path. When the admin flips the key off, the
+                              legacy AI-generated mock exam page is served
+                              unchanged — instant rollback, history
+                              preserved on both sides. */}
                           <Route
                             path="/mock-exam"
                             element={
                               <RequireAuth>
-                                <MockExam />
+                                <MatricExamRouteSwitch />
                               </RequireAuth>
                             }
                           />

@@ -7,6 +7,7 @@
 
 import {
   Activity,
+  GraduationCap,
   Building2,
   CalendarClock,
   FileText,
@@ -38,6 +39,7 @@ export type AdminTabId =
   | "content"
   | "coverage"
   | "examengine"
+  | "matric"
   | "finance"
   | "payments"
   | "affiliates"
@@ -117,6 +119,12 @@ export const ADMIN_SECTIONS: Record<AdminTabId, AdminSectionMeta> = {
     label: "Exam Engine",
     description: "Past-paper QC and digitization queue",
     icon: Wand2,
+  },
+  matric: {
+    id: "matric",
+    label: "Matric OS",
+    description: "Non-AI exam vault, blueprints and session ops",
+    icon: GraduationCap,
   },
   finance: {
     id: "finance",

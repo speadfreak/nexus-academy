@@ -99,4 +99,29 @@ crons.interval(
   internal.examConversionEngineDispatch.dispatchTick,
 );
 
+// Every 1 minute: Matric OS session sweeper. Two idempotent jobs:
+//  1. EXPIRY — active sessions whose server deadline + grace have passed are
+//     auto-submitted with whatever answers were saved and graded. The exam
+//     timer is server-authoritative; a closed browser or dead battery
+//     changes nothing.
+//  2. INGESTION RETRIES — graded sessions whose learning-loop ingestion is
+//     still pending/failed are retried (bounded, max 8 attempts) so Mistake
+//     Lab + Exam Twin eventually see every sitting exactly once.
+crons.interval(
+  "matric-session-sweeper",
+  { minutes: 1 },
+  internal.matricEngine.sweepMatricSessions,
+);
+
+// Daily: incremental Matric OS vault sync — materializes any digitized
+// papers updated in the last ~26h into the question vault (idempotent,
+// bounded to one run's page cap; the next run picks up any remainder).
+// Keeps blueprint coverage and student-facing eligibility counts honest
+// without admin intervention. Full rebuilds stay admin-triggered.
+crons.daily(
+  "matric-vault-sync",
+  { hourUTC: 3, minuteUTC: 30 },
+  internal.matricVault.autoVaultSync,
+);
+
 export default crons;

@@ -105,6 +105,9 @@ const PaymentReviewsSection = lazy(() =>
 const ExamEngineAdmin = lazy(() =>
   import("@/components/admin/ExamEngineAdmin").then((m) => ({ default: m.ExamEngineAdmin })),
 );
+const MatricAdmin = lazy(() =>
+  import("@/components/admin/MatricAdmin").then((m) => ({ default: m.MatricAdmin })),
+);
 
 function SectionFallback() {
   return (
@@ -1575,6 +1578,13 @@ export default function Admin() {
         {tab === "examengine" && (
           <Suspense fallback={<SectionFallback />}>
             <ExamEngineAdmin />
+          </Suspense>
+        )}
+
+        {/* ══════ MATRIC OS (non-AI exam engine ops) ══════ */}
+        {tab === "matric" && (
+          <Suspense fallback={<SectionFallback />}>
+            <MatricAdmin />
           </Suspense>
         )}
       </AdminShell>

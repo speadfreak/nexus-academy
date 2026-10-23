@@ -214,6 +214,30 @@ export const getMyExamPrepResults = query({
       });
     }
 
+    // ── 2b. Matric OS sittings (non-AI engine) ──
+    // Historical continuity: the rebuilt engine's sessions appear in the
+    // SAME readiness timeline as legacy AI mock exams, so students never
+    // lose their history across the migration.
+    const matricSessions = await ctx.db
+      .query("matricSessions")
+      .withIndex("by_user_startedAt", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(40);
+
+    for (const session of matricSessions) {
+      if (session.status === "invalidated") continue;
+      rows.push({
+        kind: "mock_exam",
+        refId: session._id,
+        title: `Matric OS · ${session.title}`,
+        subjectName: null,
+        date: session.gradedAt ?? session.startedAt,
+        scorePct: session.scorePct ?? null,
+        timeSeconds: session.timeSpentSeconds ?? null,
+        status: session.status === "graded" ? "completed" : "in_progress",
+      });
+    }
+
     // ── 3. Recent quiz attempts (exam-relevant subjects) ──
     const quizAttempts = await ctx.db
       .query("quizAttempts")
