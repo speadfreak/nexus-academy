@@ -2278,6 +2278,200 @@ const schema = defineSchema(
       .index("by_promoter_paidAt", ["promoterId", "paidAt"])
       .index("by_promoter", ["promoterId"])
       .index("by_paidAt", ["paidAt"]),
+
+    // ------------------------------------------------------------------
+    // LEARNYX MATRIC OS — non-AI examination engine
+    // ------------------------------------------------------------------
+    //
+    // The mock exam previously required live AI generation (Gemini →
+    // OpenRouter → Cerebras → Groq). When any provider was rate-limited,
+    // region-blocked, unconfigured or slow, the exam failed — the single
+    // biggest reliability hole in the product. Matric OS replaces that
+    // critical path with the deterministic vault below: real ESSLCE
+    // past-paper questions already parsed by the zero-AI conversion engine
+    // (digitalPapers + examParser.ts), assembled server-side from versioned
+    // blueprints, scored against preserved answer keys. NO external AI
+    // request is needed to create, start, take, save, resume, submit, score
+    // or display an exam.
+
+    // Normalized question vault — materialized from digitalPapers by the
+    // idempotent import (matricVault.ts). One row per (contentId,
+    // questionNumber). Provenance is preserved end-to-end; a question is
+    // NEVER marked exam-eligible unless its answer key actually exists and
+    // its paper passed the deterministic QC workflow.
+    matricQuestions: defineTable({
+      contentId: v.id("contentItems"), // source paper
+      paperTitle: v.string(), // denormalized for payload building
+      questionNumber: v.number(), // question number inside the source paper
+      subjectId: v.id("subjects"),
+      stem: v.string(),
+      passage: v.optional(v.string()),
+      choices: v.array(v.object({ label: v.string(), text: v.string() })),
+      // Verified option label ("A".."E"). Absent/empty = no key — such rows
+      // are imported for review but examEligible=false, never auto-scored.
+      answerLabel: v.optional(v.string()),
+      explanation: v.optional(v.string()),
+      topicId: v.optional(v.id("topics")), // resolved at import; never fabricated
+      topicText: v.optional(v.string()), // topic as printed on the paper
+      examYear: v.optional(v.number()),
+      sourcePage: v.optional(v.number()),
+      figureHint: v.optional(v.boolean()),
+      verificationTier: v.union(
+        v.literal("admin_verified"),
+        v.literal("parser_verified"),
+        v.literal("unverified"),
+      ),
+      // Hard gate: only true rows can be selected for scored exams.
+      examEligible: v.boolean(),
+      duplicateKey: v.optional(v.string()), // content hash (stem+choices) for dup detection
+      contentVersion: v.string(), // hash of stem+choices+answer — bumping re-imports in place
+      active: v.boolean(), // soft-off when the source question/paper disappears
+      importedAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_subject_eligible", ["subjectId", "examEligible", "active"])
+      .index("by_content", ["contentId"])
+      .index("by_dedupe", ["contentId", "questionNumber"])
+      .index("by_duplicate_key", ["duplicateKey"])
+      .index("by_topic", ["topicId"]),
+
+    // Per-subject aggregate coverage, recomputed by the import. Keeps the
+    // student-facing catalog reactive WITHOUT unbounded collects over the
+    // whole vault.
+    matricCoverageStats: defineTable({
+      subjectId: v.id("subjects"),
+      eligibleCount: v.number(),
+      adminVerifiedCount: v.number(),
+      paperCount: v.number(),
+      yearsCount: v.number(),
+      // [{ topicText, topicId?, count }] — top topics by eligible count.
+      byTopicJson: v.string(),
+      updatedAt: v.number(),
+    }).index("by_subject", ["subjectId"]),
+
+    // Versioned exam blueprints. specType is ALWAYS "learnyx_practice":
+    // Learnyx does not claim official ESA format equivalence — question
+    // counts and durations are Learnyx-designed practice configurations
+    // derived from real verified coverage.
+    matricBlueprints: defineTable({
+      key: v.string(), // "subject-mock:mathematics", "full-simulation:natural", ...
+      version: v.number(),
+      mode: v.union(
+        v.literal("full_simulation"),
+        v.literal("subject_mock"),
+        v.literal("weakness_challenge"),
+        v.literal("past_paper"),
+      ),
+      title: v.string(),
+      description: v.string(),
+      stream: v.optional(streamValidator),
+      subjects: v.array(
+        v.object({
+          subjectId: v.id("subjects"),
+          subjectSlug: v.string(),
+          subjectName: v.string(),
+          questionCount: v.number(),
+        }),
+      ),
+      timeLimitSeconds: v.number(),
+      perSubjectTimeSeconds: v.optional(v.number()),
+      status: v.union(v.literal("active"), v.literal("disabled")),
+      minCoverage: v.number(),
+      maxPerTopic: v.number(), // 0 = natural round-robin balance only
+      preferFreshCount: v.number(), // recent sessions checked for freshness (0 = reuse freely)
+      specType: v.literal("learnyx_practice"),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_key", ["key"])
+      .index("by_mode", ["mode"])
+      .index("by_status", ["status"]),
+
+    // One exam sitting. questionsJson is the IMMUTABLE snapshot INCLUDING
+    // answer keys — server-only, never returned to the client before
+    // grading. resultsJson preserves the exact scoring outcome. States:
+    // active → submitted → graded, plus expired (auto-graded by the cron
+    // sweeper) and invalidated (admin).
+    matricSessions: defineTable({
+      userId: v.id("users"),
+      blueprintId: v.id("matricBlueprints"),
+      blueprintKey: v.string(),
+      blueprintVersion: v.number(),
+      mode: v.union(
+        v.literal("full_simulation"),
+        v.literal("subject_mock"),
+        v.literal("weakness_challenge"),
+        v.literal("past_paper"),
+      ),
+      stream: v.optional(streamValidator),
+      title: v.string(),
+      status: v.union(
+        v.literal("active"),
+        v.literal("submitted"),
+        v.literal("graded"),
+        v.literal("expired"),
+        v.literal("invalidated"),
+      ),
+      sectionsJson: v.string(), // SessionSection[]
+      questionsJson: v.string(), // SnapshotQuestion[] — SERVER ONLY
+      vaultIdsJson: v.string(), // selected vault ids — powers freshness
+      answers: v.array(v.string()), // label per question, "" = unanswered
+      flags: v.array(v.boolean()),
+      timeMs: v.array(v.number()), // per-question dwell, sanitized server-side
+      questionCount: v.number(),
+      timeLimitSeconds: v.number(),
+      startedAt: v.number(), // server clock
+      deadlineAt: v.number(), // server-authoritative timer
+      seed: v.string(), // persisted — same seed + vault = same exam, auditable forever
+      poolStatsJson: v.optional(v.string()), // assembly audit (pool sizes, topics, freshness)
+      submittedAt: v.optional(v.number()),
+      gradedAt: v.optional(v.number()),
+      submissionSource: v.optional(
+        v.union(v.literal("student"), v.literal("auto_expiry"), v.literal("admin")),
+      ),
+      scorePct: v.optional(v.number()),
+      correctCount: v.optional(v.number()),
+      incorrectCount: v.optional(v.number()),
+      unansweredCount: v.optional(v.number()),
+      timeSpentSeconds: v.optional(v.number()),
+      resultsJson: v.optional(v.string()), // ScoredQuestion[] — immutable
+      breakdownJson: v.optional(v.string()), // { subjectBreakdown, topicBreakdown }
+      ingestState: v.union(
+        v.literal("pending"),
+        v.literal("done"),
+        v.literal("failed"),
+      ),
+      ingestAttempts: v.optional(v.number()),
+      ingestError: v.optional(v.string()),
+      gradingAuditJson: v.optional(v.string()),
+      invalidatedReason: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_status", ["userId", "status"])
+      .index("by_user_startedAt", ["userId", "startedAt"])
+      .index("by_status", ["status"])
+      .index("by_user_blueprint", ["userId", "blueprintKey"])
+      .index("by_ingest_state", ["ingestState"]),
+
+    // Import audit trail — every vault sync records what it did.
+    matricImportRuns: defineTable({
+      startedAt: v.number(),
+      finishedAt: v.optional(v.number()),
+      trigger: v.union(v.literal("admin"), v.literal("auto")),
+      dryRun: v.boolean(),
+      status: v.union(v.literal("running"), v.literal("done"), v.literal("failed")),
+      papersScanned: v.number(),
+      imported: v.number(),
+      updated: v.number(),
+      skippedUnchanged: v.number(),
+      excludedUnverified: v.number(),
+      deactivated: v.number(),
+      papersWithoutSubject: v.number(),
+      errorsJson: v.optional(v.string()),
+      startedBy: v.optional(v.id("users")),
+    }).index("by_startedAt", ["startedAt"]),
   },
 );
 

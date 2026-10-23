@@ -44,6 +44,10 @@ interface AppBootstrapValue {
   multiLanguageEnabled: boolean | undefined;
   /** SCHOOL_FEATURE_ENABLED config flag (undefined while loading). */
   schoolFeatureEnabled: boolean | undefined;
+  /** MATRIC_OS_ENABLED config flag (undefined while loading) — serves the
+      non-AI Matric OS engine at /mock-exam when true, legacy page when
+      false. */
+  matricOsEnabled: boolean | undefined;
   /** First-time tour status (undefined while loading). */
   tourStatus: BootstrapTourStatus | undefined;
 }
@@ -56,11 +60,12 @@ export function AppBootstrapProvider({ children }: { children: ReactNode }) {
   const adminInfo = useQuery(api.admin.isCurrentUserAdmin);
   const multiLanguageEnabled = useQuery(api.configKeys.getMultiLanguageEnabled);
   const schoolFeatureEnabled = useQuery(api.configKeys.getSchoolFeatureEnabled);
+  const matricOsEnabled = useQuery(api.configKeys.getMatricOsEnabled);
   const tourStatus = useQuery(api.tour.getTourStatus);
 
   const value = useMemo(
-    () => ({ profile, adminInfo, multiLanguageEnabled, schoolFeatureEnabled, tourStatus }),
-    [profile, adminInfo, multiLanguageEnabled, schoolFeatureEnabled, tourStatus],
+    () => ({ profile, adminInfo, multiLanguageEnabled, schoolFeatureEnabled, matricOsEnabled, tourStatus }),
+    [profile, adminInfo, multiLanguageEnabled, schoolFeatureEnabled, matricOsEnabled, tourStatus],
   );
 
   return (

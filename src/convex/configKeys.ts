@@ -103,6 +103,14 @@ export const INTEGRATION_KEYS = [
   { key: "AFFILIATE_ATTRIBUTION_DAYS", label: "Affiliate Attribution Window (days)", category: "affiliate", description: "How long after clicking a promoter link a brand-new signup can still be attributed to that promoter. Default: 30." },
   { key: "AFFILIATE_MIN_PAYOUT_ETB", label: "Affiliate Minimum Payout (ETB)", category: "affiliate", description: "Smallest payout the admin records without explicitly overriding. The admin gets a Telegram ping when a promoter's payable balance crosses this. Default: 200." },
   { key: "AFFILIATE_INCLUDE_SCHOOL_SEATS", label: "Affiliate Include School Seats", category: "affiliate", description: "When 'true', approved school bulk-seat purchases also accrue commissions for the attributed promoter (rare — schools come through directors, not promoters). Default: false (excluded)." },
+  // ── Matric OS (non-AI mock exam engine) ─────────────────────────────
+  // Master toggle for the database-driven mock exam rebuild. When 'true',
+  // /mock-exam serves the deterministic Matric OS engine (verified vault
+  // questions, instant start, no AI providers in the critical path). When
+  // unset/false, the legacy AI-generated mock exam page is served unchanged
+  // and all historical attempts remain readable. Kill-switch friendly:
+  // flipping to false instantly restores the legacy experience.
+  { key: "MATRIC_OS_ENABLED", label: "Matric OS Enabled (non-AI mock exams)", category: "system", description: "MASTER SWITCH for the rebuilt mock exam engine. When 'true', /mock-exam runs Matric OS: exams assemble instantly from the verified ESSLCE question vault with zero AI dependency. When unset/false, the legacy AI-generated mock exam is served. Existing attempt history is preserved either way." },
 ] as const;
 
 /**
@@ -149,6 +157,10 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   AFFILIATE_ATTRIBUTION_DAYS: "30",
   AFFILIATE_MIN_PAYOUT_ETB: "200",
   AFFILIATE_INCLUDE_SCHOOL_SEATS: "false",
+  // Matric OS is ON by default — the deterministic engine is the whole
+  // point of the rebuild (students start instantly, no AI dependency).
+  // Admin can still flip it off from Keys for an instant legacy rollback.
+  MATRIC_OS_ENABLED: "true",
 };
 
 const CATEGORIES: Record<string, { label: string; icon: string }> = {
@@ -394,6 +406,24 @@ export const getSchoolFeatureEnabled = query({
       .withIndex("by_key", (q) => q.eq("key", "SCHOOL_FEATURE_ENABLED"))
       .first();
     return row?.value === "true";
+  },
+});
+
+/**
+ * Matric OS master switch — when true, /mock-exam serves the deterministic
+ * non-AI exam engine; when false/unset, the legacy AI-generated mock exam
+ * page is served unchanged (instant rollback path). Defaults to true via
+ * CONFIG_DEFAULTS (the rebuild is the point), still kill-switchable from
+ * the Keys tab. Same pattern as getSchoolFeatureEnabled.
+ */
+export const getMatricOsEnabled = query({
+  args: {},
+  handler: async (ctx): Promise<boolean> => {
+    const row = await ctx.db
+      .query("configKeys")
+      .withIndex("by_key", (q) => q.eq("key", "MATRIC_OS_ENABLED"))
+      .first();
+    return row?.value !== "false"; // default ON; only an explicit "false" kills it
   },
 });
 
