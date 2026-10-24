@@ -296,9 +296,63 @@ const schema = defineSchema(
       durationSeconds: v.number(),
       startedAt: v.number(),
       endedAt: v.number(),
+      // FLOWSTATE: optional exactly-once key (e.g. "focus:<focusSessionId>")
+      // so a replayed write can never double-count minutes or XP.
+      dedupeKey: v.optional(v.string()),
     })
       .index("by_user", ["userId"])
-      .index("by_user_startedAt", ["userId", "startedAt"]),
+      .index("by_user_startedAt", ["userId", "startedAt"])
+      .index("by_user_dedupe", ["userId", "dedupeKey"]),
+
+    // FLOWSTATE — server-aware focus sessions (the in-progress timer lives
+    // here, not in the browser). startedAt/endsAt use the SERVER clock; the
+    // client derives remaining time from these stamps, so a reload, a dead
+    // battery or a second device all reconstruct the same truth. Exactly one
+    // session per user may be "active" at a time.
+    focusSessions: defineTable({
+      userId: v.id("users"),
+      mode: v.union(
+        v.literal("sprint"),
+        v.literal("pomodoro"),
+        v.literal("deep_work"),
+        v.literal("custom"),
+      ),
+      plannedSeconds: v.number(),
+      breakSeconds: v.optional(v.number()), // pomodoro/deep_work recovery break
+      startedAt: v.number(), // server clock
+      endsAt: v.number(), // server clock = startedAt + plannedSeconds*1000
+      status: v.union(
+        v.literal("active"),
+        v.literal("completed"),
+        v.literal("abandoned"),
+        v.literal("expired"),
+      ),
+      pausedAt: v.optional(v.number()), // server clock while paused
+      pausedTotalMs: v.number(), // accumulated paused time
+      completedAt: v.optional(v.number()),
+      completedSeconds: v.optional(v.number()),
+      endReason: v.optional(v.string()), // "timer" | "user" | "new_session" | "sweeper"
+      // Study mission links — canonical existing ids, all optional.
+      subjectId: v.optional(v.id("subjects")),
+      topicId: v.optional(v.id("topics")),
+      taskId: v.optional(v.id("todos")),
+      planId: v.optional(v.id("studyPlans")),
+      planWeek: v.optional(v.number()),
+      mistakeId: v.optional(v.id("mistakes")),
+      matricSessionId: v.optional(v.id("matricSessions")),
+      contentId: v.optional(v.id("contentItems")),
+      missionLabel: v.optional(v.string()), // display snapshot, e.g. "Ch 3 — Cell division"
+      // Optional post-session reflection (Phase 8 distraction tracking).
+      reflection: v.optional(v.string()), // "deep" | "solid" | "distracted"
+      distractions: v.optional(v.number()),
+      // Dedupe + provenance.
+      clientSessionId: v.string(), // client-generated, idempotent start
+      studySessionId: v.optional(v.id("studySessions")), // minutes row written on completion
+    })
+      .index("by_user_status", ["userId", "status"])
+      .index("by_user_client", ["userId", "clientSessionId"])
+      .index("by_user_startedAt", ["userId", "startedAt"])
+      .index("by_status", ["status"]),
 
     // Denormalized streak state — one row per user for fast dashboard reads.
     studyStreaks: defineTable({
