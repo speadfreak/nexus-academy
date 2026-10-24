@@ -54,6 +54,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
+import { useMusic } from "@/components/music-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -2133,10 +2134,20 @@ export default function Tutor() {
   useEffect(() => {
     voiceOutRef.current = voiceOut;
   }, [voiceOut]);
+  // FLOWSTATE audio ducking — while the tutor's voice is speaking, dip the
+  // study atmosphere so speech stays intelligible. Restored on end/cancel.
+  const music = useMusic();
+  const setDuckingRef = useRef(music.setDucking);
+  useEffect(() => {
+    setDuckingRef.current = music.setDucking;
+  }, [music.setDucking]);
   const changeVoiceOut = (next: boolean) => {
     setVoiceOut(next);
     localStorage.setItem(VOICE_OUT_STORAGE_KEY, String(next));
-    if (!next && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (!next && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      setDuckingRef.current(false);
+    }
   };
   const speechLang = i18n.language?.startsWith("am") ? "am-ET" : "en-US";
   const speak = useCallback(
@@ -2149,6 +2160,11 @@ export default function Tutor() {
         .getVoices()
         .find((v) => v.lang?.toLowerCase().startsWith(speechLang.slice(0, 2)));
       if (voice) utterance.voice = voice;
+      // FLOWSTATE: dip the study atmosphere under the tutor's voice.
+      setDuckingRef.current(true);
+      const restore = () => setDuckingRef.current(false);
+      utterance.onend = restore;
+      utterance.onerror = restore;
       window.speechSynthesis.speak(utterance);
     },
     [speechLang],
@@ -2156,6 +2172,7 @@ export default function Tutor() {
   useEffect(() => {
     return () => {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      setDuckingRef.current(false);
     };
   }, []);
 

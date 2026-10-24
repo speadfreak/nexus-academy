@@ -65,12 +65,34 @@ export const logSession = mutation({
     startedAt: v.number(),
     endedAt: v.number(),
     localDate: v.string(), // client's local "YYYY-MM-DD"
+    // FLOWSTATE: optional exactly-once key. When provided and already seen,
+    // the original result is returned again and NOTHING is re-counted.
+    dedupeKey: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<LogSessionResult> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     }
+
+    // Exactly-once guard: a replayed mutation (offline queue flush, StrictMode
+    // double-fire, retry after timeout) must never double-insert or double-XP.
+    if (args.dedupeKey) {
+      const existing = await ctx.db
+        .query("studySessions")
+        .withIndex("by_user_dedupe", (q) => q.eq("userId", userId).eq("dedupeKey", args.dedupeKey!))
+        .first();
+      if (existing) {
+        return {
+          ok: true,
+          xpAwarded: 0, // already awarded on the first call
+          levelUp: false,
+          newLevel: 0,
+          newAchievements: [],
+        };
+      }
+    }
+
     if (!Number.isFinite(args.durationSeconds) || args.durationSeconds <= 0) {
       throw new ConvexError({ message: "Session duration must be positive.", code: "invalid" });
     }
@@ -95,6 +117,7 @@ export const logSession = mutation({
       durationSeconds: args.durationSeconds,
       startedAt: args.startedAt,
       endedAt: args.endedAt,
+      dedupeKey: args.dedupeKey,
     });
 
     // Streak math lives in the shared internal mutation so the daily
@@ -242,8 +265,20 @@ export const logSessionFromAction = internalMutation({
     localDate: v.string(),
     xpReason: v.optional(v.string()), // defaults to "focus_session"
     xpAmount: v.optional(v.number()), // defaults to XP_VALUES.focus_session
+    // FLOWSTATE: optional exactly-once key — replayed calls return ok:true
+    // with xpAwarded 0 and write nothing.
+    dedupeKey: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<LogSessionFromActionResult> => {
+    if (args.dedupeKey) {
+      const existing = await ctx.db
+        .query("studySessions")
+        .withIndex("by_user_dedupe", (q) => q.eq("userId", args.userId).eq("dedupeKey", args.dedupeKey!))
+        .first();
+      if (existing) {
+        return { ok: true, xpAwarded: 0, levelUp: false, newLevel: 1, newAchievements: [] };
+      }
+    }
     if (args.durationSeconds <= 0 || args.durationSeconds > 12 * 60 * 60) {
       throw new ConvexError({ message: "Duration out of range.", code: "invalid" });
     }
@@ -260,6 +295,7 @@ export const logSessionFromAction = internalMutation({
       durationSeconds: args.durationSeconds,
       startedAt: args.startedAt,
       endedAt: args.endedAt,
+      dedupeKey: args.dedupeKey,
     });
 
     await ctx.runMutation(internal.studySessions.recordStudyDay, {

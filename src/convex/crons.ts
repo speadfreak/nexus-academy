@@ -113,6 +113,19 @@ crons.interval(
   internal.matricEngine.sweepMatricSessions,
 );
 
+// Every 5 minutes: FLOWSTATE focus-session sweeper. The focus timer is
+// server-aware (startedAt/endsAt on the server clock), so a session whose
+// planned time has passed — browser closed, battery died, tab never
+// returned — is auto-completed from server truth: status completed, real
+// elapsed seconds (pause-adjusted) written to studySessions exactly once
+// (dedupeKey), completion XP only if the session genuinely finished. Nothing
+// is lost and nothing is ever double-counted.
+crons.interval(
+  "focus-session-sweeper",
+  { minutes: 5 },
+  internal.focusSessions.expireStale,
+);
+
 // Daily: incremental Matric OS vault sync — materializes any digitized
 // papers updated in the last ~26h into the question vault (idempotent,
 // bounded to one run's page cap; the next run picks up any remainder).

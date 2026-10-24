@@ -39,6 +39,7 @@ import type * as examPrepDigital from "../examPrepDigital.js";
 import type * as examPrepDigitalConstants from "../examPrepDigitalConstants.js";
 import type * as examQuality from "../examQuality.js";
 import type * as flashcards from "../flashcards.js";
+import type * as focusSessions from "../focusSessions.js";
 import type * as fraudDetection from "../fraudDetection.js";
 import type * as gemini from "../gemini.js";
 import type * as github from "../github.js";
@@ -134,6 +135,7 @@ declare const fullApi: ApiFromModules<{
   examPrepDigitalConstants: typeof examPrepDigitalConstants;
   examQuality: typeof examQuality;
   flashcards: typeof flashcards;
+  focusSessions: typeof focusSessions;
   fraudDetection: typeof fraudDetection;
   gemini: typeof gemini;
   github: typeof github;
