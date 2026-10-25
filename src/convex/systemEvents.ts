@@ -194,6 +194,80 @@ export const logEventRateLimited = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
+// Retention — telemetry decays, audit logs don't
+// ---------------------------------------------------------------------------
+
+/**
+ * RETENTION PRUNE — systemEvents is operational telemetry, not an audit
+ * trail (adminAuditLog is append-forever; this table is not). The Terminal
+ * reads a 24h window and the health summary caps at 2,000 rows, so rows
+ * older than a month add table bloat and index cost with zero signal.
+ *
+ * Two bounded delete passes, both indexed — never a table scan:
+ *   1. AGE RETENTION — every row older than `olderThanMs` (default 30
+ *      days) up to PRUNE_BATCH rows per run; the daily cron catches up
+ *      over consecutive runs if the batch is ever exhausted.
+ *   2. TARGETED NOISE PURGE — only when `errorSources` is passed: delete
+ *      status=error rows whose `source` matches one of the given values
+ *      and whose createdAt < `beforeMs` (default: 20 minutes ago, so
+ *      anything logged after a fresh deploy always survives for review).
+ *      Used once to purge the pre-hardening unfiltered client captor
+ *      noise (window.onerror "Script error." floods from browser
+ *      extensions, wallet-injection probes, stale-chunk import failures)
+ *      that inflated the Terminal's error rate while carrying no signal.
+ *
+ * Returns exact counts so ops runs are auditable in the Terminal itself.
+ */
+const PRUNE_BATCH = 500;
+
+export const pruneSystemEvents = internalMutation({
+  args: {
+    olderThanMs: v.optional(v.number()),
+    errorSources: v.optional(v.array(v.string())),
+    beforeMs: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ ageDeleted: number; noiseDeleted: number; ageHorizonAt: number }> => {
+    const olderThanMs = Math.min(Math.max(args.olderThanMs ?? 30 * 24 * 60 * 60 * 1000, 0), 365 * 24 * 60 * 60 * 1000);
+    const ageHorizonAt = Date.now() - olderThanMs;
+
+    // 1) Age retention via by_createdAt — bounded batch, cron catches up.
+    let ageDeleted = 0;
+    const aged = await ctx.db
+      .query("systemEvents")
+      .withIndex("by_createdAt", (q) => q.lt("createdAt", ageHorizonAt))
+      .take(PRUNE_BATCH);
+    for (const row of aged) {
+      await ctx.db.delete(row._id);
+      ageDeleted += 1;
+    }
+
+    // 2) Targeted noise purge via by_type_createdAt (eventType="error") —
+    //    exact source match only; recent post-deploy rows are spared.
+    let noiseDeleted = 0;
+    if (args.errorSources && args.errorSources.length > 0) {
+      const sources = new Set(args.errorSources);
+      const beforeMs = args.beforeMs ?? Date.now() - 20 * 60 * 1000;
+      const candidates = await ctx.db
+        .query("systemEvents")
+        .withIndex("by_type_createdAt", (q) =>
+          q.eq("eventType", "error").lt("createdAt", beforeMs),
+        )
+        .take(PRUNE_BATCH);
+      for (const row of candidates) {
+        if (!sources.has(row.source)) continue;
+        await ctx.db.delete(row._id);
+        noiseDeleted += 1;
+      }
+    }
+
+    return { ageDeleted, noiseDeleted, ageHorizonAt };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Admin read API — live feed + health summary
 // ---------------------------------------------------------------------------
 
