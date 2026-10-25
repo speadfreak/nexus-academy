@@ -285,6 +285,88 @@ const elig = loadTs("src/lib/matric/eligibility.ts");
   check("label null → null", elig.studentStreamLabel(null) === null);
 }
 
+// ── seed bank integrity + Social Science expansion (VAULT 2.2) ────────────
+{
+  const bank = loadTs("src/convex/matricSeedBank.ts");
+  const seed = bank.SEED_BANK;
+  const subjectStreams = bank.SEED_SUBJECT_STREAMS;
+
+  check("seed bank non-empty", Array.isArray(seed) && seed.length > 150);
+
+  // Per-question shape + uniqueness.
+  const ids = new Set();
+  const stems = new Set();
+  const validAnswers = new Set(["A", "B", "C", "D"]);
+  const validSlugs = new Set(Object.keys(subjectStreams));
+  let shapeOk = true;
+  let answersOk = true;
+  let slugsOk = true;
+  let optionsOk = true;
+  for (const q of seed) {
+    if (!q.id || ids.has(q.id)) shapeOk = false;
+    ids.add(q.id);
+    if (!q.stem || stems.has(q.stem)) shapeOk = false;
+    stems.add(q.stem);
+    if (!validAnswers.has(q.answer)) answersOk = false;
+    if (!validSlugs.has(q.subjectSlug)) slugsOk = false;
+    if (!Array.isArray(q.options) || q.options.length !== 4 || q.options.some((o) => typeof o !== "string" || o.length === 0)) optionsOk = false;
+    if (typeof q.topic !== "string" || q.topic.length === 0) shapeOk = false;
+    if (typeof q.explanation !== "string" || q.explanation.length === 0) shapeOk = false;
+  }
+  check("seed ids and stems unique", shapeOk);
+  check("seed answers are A–D", answersOk);
+  check("seed subject slugs valid", slugsOk);
+  check("seed options are 4 non-empty strings", optionsOk);
+
+  // Per-subject counts — the Social Science main subjects must now clear the
+  // blueprint thresholds: subject mock needs ≥10, full-sim tier ≥30.
+  const bySubject = {};
+  for (const q of seed) bySubject[q.subjectSlug] = (bySubject[q.subjectSlug] ?? 0) + 1;
+  check("history ≥ 40 verified questions", (bySubject.history ?? 0) >= 40);
+  check("geography ≥ 40 verified questions", (bySubject.geography ?? 0) >= 40);
+  check("economics ≥ 40 verified questions", (bySubject.economics ?? 0) >= 40);
+  check("SAT ≥ 12 verified questions (joins full sims)", (bySubject["scholastic-aptitude-test"] ?? 0) >= 12);
+  check("natural seed subjects intact", (bySubject.physics ?? 0) >= 6 && (bySubject.chemistry ?? 0) >= 6 && (bySubject.biology ?? 0) >= 6);
+  check("common seed subjects intact", (bySubject.english ?? 0) >= 10 && (bySubject.mathematics ?? 0) >= 10);
+
+  // Expansion numbering stability: the appended questions must come AFTER the
+  // originals per subject, so the (contentId, questionNumber) upsert mapping
+  // never rewrites an existing vault row's content.
+  for (const slug of ["history", "geography", "economics", "scholastic-aptitude-test"]) {
+    const order = seed.filter((q) => q.subjectSlug === slug).map((q) => q.id);
+    const lastOriginal = parseInt(order[4].split("-")[1], 10); // 5 originals (…-05)
+    const firstExpanded = parseInt(order[5].split("-")[1], 10); // 6th question = first expansion
+    check(
+      `${slug}: expansion appended after originals (stable numbering)`,
+      firstExpanded === lastOriginal + 1 && order.length > 5,
+    );
+  }
+
+  // Honest provenance markers remain intact.
+  check(
+    "SEED_SUBJECT_STREAMS keeps social = history/geography/economics",
+    subjectStreams.history === "social" && subjectStreams.geography === "social" && subjectStreams.economics === "social",
+  );
+}
+
+// ── canonical admin ownership (platform owner email allowlist) ────────────
+{
+  const canonical = loadTs("src/convex/canonicalAdmin.ts");
+  check(
+    "canonical owner email accepted (case-insensitive, trimmed)",
+    canonical.isCanonicalSuperAdminEmail("  JOSSYMAN783@Gmail.Com ") === true,
+  );
+  check("non-owner email rejected", canonical.isCanonicalSuperAdminEmail("someone-else@gmail.com") === false);
+  check("empty email rejected", canonical.isCanonicalSuperAdminEmail("") === false);
+  check("null email rejected", canonical.isCanonicalSuperAdminEmail(null) === false);
+  check("undefined email rejected", canonical.isCanonicalSuperAdminEmail(undefined) === false);
+  check("allowlist has exactly one owner", canonical.SUPER_ADMIN_EMAILS.length === 1);
+  check(
+    "owner email is jossyman783@gmail.com",
+    canonical.SUPER_ADMIN_EMAILS[0] === "jossyman783@gmail.com",
+  );
+}
+
 console.log(`\nMATRIC ENGINE TESTS: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
   console.log("FAILURES:");

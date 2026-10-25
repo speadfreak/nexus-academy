@@ -6,7 +6,7 @@
 import { api } from "@/convex/_generated/api";
 import { useAppBootstrap } from "@/components/AppBootstrap";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -529,10 +529,29 @@ function KeysTabContent({ adminAccess }: { adminAccess: boolean }) {
 
 export default function Admin() {
   const { adminInfo: isAdmin } = useAppBootstrap(); // shared subscription (AppBootstrap)
+  const adminIdentity = useQuery(api.admin.getCurrentAdminInfo);
   const promoteSelf = useMutation(api.admin.promoteSelfIfBootstrap);
+  const enforceCanonical = useMutation(api.admin.enforceCanonicalAdmins);
+  const canonicalEnforcedRef = useRef(false);
 
-  // Auto-persist bootstrap promotion: if user is admin (bootstrap) but has no
-  // persisted role, call promoteSelf to write super_admin to the DB.
+  // Canonical ownership sweep (idempotent, once per session): the platform
+  // owner's email is pinned in convex/canonicalAdmin.ts. When they open the
+  // admin workspace, one mutation promotes them to super_admin, demotes
+  // EVERY other elevated account to plain "user", voids pending admin
+  // invites for non-canonical emails, and writes one audit entry. Safe on
+  // every visit — subsequent sweeps find nothing to change.
+  useEffect(() => {
+    if (!adminIdentity?.isCanonical || canonicalEnforcedRef.current) return;
+    canonicalEnforcedRef.current = true;
+    void enforceCanonical().catch(() => {
+      // Never block the workspace on the sweep; it retries next visit.
+      canonicalEnforcedRef.current = false;
+    });
+  }, [adminIdentity?.isCanonical, enforceCanonical]);
+
+  // Persist the owner's super_admin role if it isn't written yet (queries
+  // never write; the first gated mutation would, but this makes the role
+  // visible immediately in the Admins section).
   useEffect(() => {
     if (isAdmin?.isAdmin && !isAdmin.role) {
       void promoteSelf();

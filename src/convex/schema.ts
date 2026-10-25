@@ -302,7 +302,10 @@ const schema = defineSchema(
     })
       .index("by_user", ["userId"])
       .index("by_user_startedAt", ["userId", "startedAt"])
-      .index("by_user_dedupe", ["userId", "dedupeKey"]),
+      .index("by_user_dedupe", ["userId", "dedupeKey"])
+      // Global recency index — "active right now" style dashboards (admin
+      // Terminal health) query recent sessions without scanning the table.
+      .index("by_startedAt", ["startedAt"]),
 
     // FLOWSTATE — server-aware focus sessions (the in-progress timer lives
     // here, not in the browser). startedAt/endsAt use the SERVER clock; the
