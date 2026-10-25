@@ -172,12 +172,16 @@ http.route({
       );
 
       if (!secret) {
-        await ctx.runMutation(internal.systemEvents.logEvent, {
+        // Rate-limited: this fires for every scanner hit on a public endpoint
+        // when the integration is unconfigured — one event per hour, not one
+        // per request, so the Terminal's error rate stays meaningful.
+        await ctx.runMutation(internal.systemEvents.logEventRateLimited, {
           eventType: "auth_event",
           source: "smsWebhook",
           status: "error",
           metadata: JSON.stringify({ error: "SMS_WEBHOOK_SECRET not configured" }),
           durationMs: 0,
+          windowMs: 60 * 60 * 1000,
         });
         return new Response(
           JSON.stringify({ ok: false, error: "not_configured" }),
@@ -203,9 +207,9 @@ http.route({
         signatureHeader.length !== expected.length ||
         signatureHeader.toLowerCase() !== expected
       ) {
-        await ctx.runMutation(internal.systemEvents.logEvent, {
+        await ctx.runMutation(internal.systemEvents.logEventRateLimited, {
           eventType: "auth_event",
-          source: "smsWebhook",
+          source: "smsWebhook.badSignature",
           status: "error",
           metadata: JSON.stringify({
             error: "bad_signature",
@@ -213,6 +217,7 @@ http.route({
             expectedLength: expected.length,
           }),
           durationMs: 0,
+          windowMs: 5 * 60 * 1000,
         });
         return new Response(
           JSON.stringify({ ok: false, error: "bad_signature" }),
@@ -417,11 +422,16 @@ http.route({
       token = null;
     }
     if (!token) {
-      await ctx.runMutation(internal.systemEvents.logEvent, {
+      // Rate-limited (1/hour): internet bots probe public webhook paths
+      // constantly. Logging every probe as an error event flooded the
+      // Terminal and inflated the 24h error rate. The response is still a
+      // friendly 200 so scanners don't retry.
+      await ctx.runMutation(internal.systemEvents.logEventRateLimited, {
         eventType: "api_call",
         source: "telegram.webhook.noToken",
         status: "error",
         metadata: JSON.stringify({ chatId }),
+        windowMs: 60 * 60 * 1000,
       });
       return new Response(JSON.stringify({ ok: true, skipped: true }), {
         status: 200,

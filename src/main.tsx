@@ -448,21 +448,111 @@ function ContentSafetyNet() {
 // Logs to admin Terminal.  The index.html already handles pre-mount
 // errors (script failures, dynamic import failures), this covers
 // post-mount runtime errors that slip through error boundaries.
+//
+// NOISE CONTROL — this captor used to forward EVERY uncaught error and
+// rejection straight to the admin Terminal, which flooded the event feed
+// and drove the 24h "error rate" stat into double digits from pure noise:
+//   • benign browser messages (ResizeObserver loop, cross-origin "Script
+//     error.", extension-injected DOM races, unload aborts, socket
+//     reconnects),
+//   • the SAME rejection repeated in a reactive retry loop,
+//   • one broken browser extension generating dozens of events per visit.
+// Now: benign classes are filtered locally, identical fingerprints are
+// capped at 3 reports per session, and a global 20/minute flood valve
+// bounds the worst case. Real app errors (error boundaries) bypass this
+// path entirely and are always reported.
 // ═══════════════════════════════════════════════════════════════════════
+
+/** Error classes that carry no actionable app signal. */
+function isBenignGlobalError(message: string, stack?: string): boolean {
+  const m = (message ?? "").toLowerCase();
+  const s = (stack ?? "").toLowerCase();
+  const haystack = `${m} ${s}`;
+  // Browser layout/animation observation loops — never actionable.
+  if (m.includes("resizeobserver loop")) return true;
+  // Cross-origin scripts are masked by the browser to "Script error." —
+  // no message, no stack, no signal.
+  if (m === "script error." || m === "script error") return true;
+  // Browser extensions inject DOM/scripts that race the app. Errors whose
+  // frames live inside an extension origin are not our bugs.
+  if (haystack.includes("chrome-extension://") ||
+      haystack.includes("moz-extension://") ||
+      haystack.includes("safari-extension://") ||
+      haystack.includes("edge-extension://")) return true;
+  // Extension/translate DOM races (classic "removeChild" / "not a child"
+  // errors triggered by third-party DOM mutation).
+  if ((m.includes("removechild") || m.includes("not a child of this node")) &&
+      haystack.includes("translate")) return true;
+  // Chunk-load failures are already surfaced + retried by the error
+  // boundary (and pre-mount by index.html) — skip the raw duplicates.
+  if (m.includes("loading chunk") || m.includes("dynamically imported") ||
+      m.includes("failed to fetch dynamically imported module")) return true;
+  // Navigation-time aborts: requests cancelled because the page is going
+  // away (reload/close) — the browser reports them, the app didn't fail.
+  if (m.includes("err_aborted") || m.includes("aborterror") ||
+      m.includes("the user aborted a request") || m.includes("err_network_changed")) return true;
+  // Realtime socket churn — Convex's client reconnects on its own.
+  if (m.includes("websocket connection") && (m.includes("failed") || m.includes("closed"))) return true;
+  // Third-party frame/storage denials (iframes, private-mode extensions).
+  if (m.includes("blocked a frame with origin") ||
+      m.includes("access to storage is not available") ||
+      m.includes("permission denied to access property")) return true;
+  return false;
+}
+
+/** Per-session report caps: 3 per identical fingerprint, 20 per minute. */
+const clientErrorCounts = new Map<string, number>();
+const clientErrorTimestamps: number[] = [];
+const MAX_REPORTS_PER_FINGERPRINT = 3;
+const MAX_REPORTS_PER_MINUTE = 20;
+
+function shouldReportGlobalError(source: string, message: string): boolean {
+  const fingerprint = `${source}|${message.slice(0, 200)}`;
+  const count = clientErrorCounts.get(fingerprint) ?? 0;
+  if (count >= MAX_REPORTS_PER_FINGERPRINT) return false;
+
+  const now = Date.now();
+  while (clientErrorTimestamps.length > 0 && now - clientErrorTimestamps[0]! > 60_000) {
+    clientErrorTimestamps.shift();
+  }
+  if (clientErrorTimestamps.length >= MAX_REPORTS_PER_MINUTE) return false;
+
+  clientErrorCounts.set(fingerprint, count + 1);
+  clientErrorTimestamps.push(now);
+  return true;
+}
 
 function GlobalErrorCaptor() {
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
-      // Skip errors already handled by error boundaries or the index.html script
-      if (event.message.includes("Loading chunk") ||
-          event.message.includes("dynamically imported")) return;
+      const message = event.message ?? "";
+      const stack = event.error instanceof Error ? event.error.stack : undefined;
+      if (isBenignGlobalError(message, stack)) {
+        console.warn("[Nexus] Suppressed benign global error:", message);
+        return;
+      }
+      if (!shouldReportGlobalError("window.onerror", message)) {
+        console.error("[Nexus] Uncaught error (deduped):", event.error ?? message);
+        return;
+      }
       console.error("[Nexus] Uncaught error:", event.error);
-      logErrorToServer("window.onerror", event.error || event.message);
+      logErrorToServer("window.onerror", event.error || message);
     };
 
     const onRejection = (event: PromiseRejectionEvent) => {
-      console.error("[Nexus] Unhandled rejection:", event.reason);
-      logErrorToServer("window.unhandledrejection", event.reason);
+      const reason = event.reason;
+      const message = reason instanceof Error ? reason.message : String(reason ?? "unknown");
+      const stack = reason instanceof Error ? reason.stack : undefined;
+      if (isBenignGlobalError(message, stack)) {
+        console.warn("[Nexus] Suppressed benign rejection:", message);
+        return;
+      }
+      if (!shouldReportGlobalError("window.unhandledrejection", message)) {
+        console.error("[Nexus] Unhandled rejection (deduped):", reason);
+        return;
+      }
+      console.error("[Nexus] Unhandled rejection:", reason);
+      logErrorToServer("window.unhandledrejection", reason);
     };
 
     window.addEventListener("error", onError);

@@ -12,6 +12,7 @@ import { ConvexError, v } from "convex/values";
 import {
   action,
   internalMutation,
+  internalQuery,
   query,
   type ActionCtx,
   type MutationCtx,
@@ -110,6 +111,87 @@ export async function logEventAction(
     // Observability must never break the flow it observes.
   }
 }
+
+/**
+ * ACTION-side rate-limited logging: writes the event only if no event with
+ * the SAME source was already written within `windowMs`. Use this for
+ * high-frequency, low-signal producers — public webhook endpoints pinged by
+ * internet scanners, unconfigured integrations, etc. — where one event per
+ * hit would flood the Terminal and poison the 24h error-rate stat.
+ */
+export async function logEventActionRateLimited(
+  ctx: ActionCtx,
+  args: {
+    eventType: SystemEventType;
+    source: string;
+    status: "success" | "error";
+    userId?: Id<"users"> | null;
+    metadata?: Record<string, unknown>;
+    durationMs?: number;
+    windowMs?: number;
+  },
+): Promise<void> {
+  try {
+    await ctx.runMutation(internal.systemEvents.logEventRateLimited, {
+      eventType: args.eventType,
+      source: args.source,
+      status: args.status,
+      userId: args.userId ?? undefined,
+      metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
+      durationMs: args.durationMs,
+      windowMs: args.windowMs,
+    });
+  } catch {
+    // Observability must never break the flow it observes.
+  }
+}
+
+/**
+ * Rate-limited writer: skips the insert when an event with the same
+ * `source` already exists within `windowMs` (default 10 minutes). The
+ * recency check is a small indexed lookback (by_createdAt desc, capped),
+ * so repeated scanner traffic costs one bounded read instead of N inserts.
+ */
+export const logEventRateLimited = internalMutation({
+  args: {
+    eventType: v.union(
+      v.literal("api_call"),
+      v.literal("error"),
+      v.literal("auth_event"),
+      v.literal("payment_event"),
+      v.literal("room_event"),
+      v.literal("content_event"),
+    ),
+    source: v.string(),
+    status: v.union(v.literal("success"), v.literal("error")),
+    userId: v.optional(v.id("users")),
+    metadata: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+    windowMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const windowMs = Math.min(Math.max(args.windowMs ?? 10 * 60 * 1000, 30_000), 6 * 60 * 60 * 1000);
+    const since = Date.now() - windowMs;
+    const recent = await ctx.db
+      .query("systemEvents")
+      .withIndex("by_createdAt", (q) => q.gte("createdAt", since))
+      .order("desc")
+      .take(64);
+    if (recent.some((row) => row.source === args.source && row.status === args.status)) {
+      return { ok: true, suppressed: true };
+    }
+    await ctx.db.insert("systemEvents", {
+      eventType: args.eventType,
+      source: args.source,
+      status: args.status,
+      userId: args.userId,
+      metadata: args.metadata,
+      durationMs: args.durationMs,
+      createdAt: Date.now(),
+    });
+    return { ok: true, suppressed: false };
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Admin read API — live feed + health summary
@@ -308,11 +390,13 @@ export const getSystemHealthSummary = query({
     // "Active right now": distinct users with any event in the last 15 min
     // (systemEvents carries userId on user-scoped calls). Also fold in
     // recent study sessions for students who studied without triggering a
-    // system event.
+    // system event. Indexed by_startedAt — never a table scan.
     const activeNow = new Set(seenUsers);
     const recentSessions = await ctx.db
       .query("studySessions")
-      .filter((q) => q.gte(q.field("startedAt"), Date.now() - 15 * 60 * 1000))
+      .withIndex("by_startedAt", (q) =>
+        q.gte("startedAt", Date.now() - 15 * 60 * 1000),
+      )
       .take(300);
     for (const session of recentSessions) activeNow.add(session.userId);
 
@@ -483,8 +567,60 @@ export const testIntegrationConnection = action({
  * to the systemEvents table so it's visible in the admin Terminal.
  *
  * No auth required — we want to capture errors even for unauthenticated
- * users (landing page, auth page).  The metadata is capped at 4 KB to
- * prevent abuse.
+ * users (landing page, auth page).
+ *
+ * NOISE CONTROL (why the Terminal's error rate stayed sane): the server
+ * dedupes identical (source, message) pairs within a 10-minute window, so
+ * a looping rejection in one browser writes ONE event instead of hundreds.
+ * The client (main.tsx GlobalErrorCaptor) filters benign errors and rate
+ * limits per fingerprint before ever calling this. Metadata is capped to
+ * keep rows small.
+ */
+/** Deterministic short fingerprint (djb2) for client-error dedupe. */
+function clientErrorFingerprint(message: string): string {
+  let hash = 5381;
+  for (let i = 0; i < message.length; i++) {
+    hash = ((hash << 5) + hash + message.charCodeAt(i)) | 0;
+  }
+  return `fp:${(hash >>> 0).toString(36)}`;
+}
+
+/** Internal lookback: has this exact (source, message fingerprint) error
+ *  already been reported within the window? Bounded indexed read. */
+export const recentClientErrorExists = internalQuery({
+  args: {
+    source: v.string(),
+    fingerprint: v.string(),
+    since: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("systemEvents")
+      .withIndex("by_createdAt", (q) => q.gte("createdAt", args.since))
+      .order("desc")
+      .take(64);
+    return rows.some(
+      (row) =>
+        row.source === args.source &&
+        row.status === "error" &&
+        (row.metadata ?? "").includes(args.fingerprint),
+    );
+  },
+});
+
+/**
+ * Log a client-side error (React error boundary, unhandled rejection, etc.)
+ * to the systemEvents table so it's visible in the admin Terminal.
+ *
+ * No auth required — we want to capture errors even for unauthenticated
+ * users (landing page, auth page).
+ *
+ * NOISE CONTROL (keeps the Terminal's error rate meaningful): identical
+ * (source, message) pairs within a 10-minute window are deduped server-side,
+ * so a looping rejection in one browser writes ONE event instead of
+ * hundreds. The client (main.tsx GlobalErrorCaptor) additionally filters
+ * benign errors and rate limits per fingerprint before ever calling this.
+ * Metadata is capped to keep rows small.
  */
 export const logClientError = action({
   args: {
@@ -495,12 +631,23 @@ export const logClientError = action({
   },
   handler: async (ctx, args) => {
     try {
+      const trimmedMessage = args.message.slice(0, 1000);
+      const fingerprint = clientErrorFingerprint(`${args.source}|${trimmedMessage}`);
+      const duplicate = await ctx.runQuery(internal.systemEvents.recentClientErrorExists, {
+        source: args.source,
+        fingerprint,
+        since: Date.now() - 10 * 60 * 1000,
+      });
+      if (duplicate) {
+        return { ok: true, deduped: true };
+      }
       await ctx.runMutation(internal.systemEvents.logEvent, {
         eventType: "error",
         source: args.source,
         status: "error",
         metadata: JSON.stringify({
-          message: args.message.slice(0, 1000),
+          fingerprint,
+          message: trimmedMessage,
           stack: args.stack?.slice(0, 3000),
           url: args.url?.slice(0, 500),
           userAgent: typeof navigator !== "undefined" ? navigator.userAgent?.slice(0, 300) : null,

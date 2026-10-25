@@ -12,6 +12,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { ROLE_LEVELS, ROLES } from "./schema";
+import { isCanonicalSuperAdminEmail } from "./canonicalAdmin";
 
 type DbCtx = QueryCtx | MutationCtx;
 type AnyCtx = DbCtx | ActionCtx;
@@ -119,23 +120,28 @@ export const anyAdminExists = internalQuery({
 export const listAdminUserIds = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const allUsers = await ctx.db.query("users").take(200);
-    return allUsers
-      .filter((u) => getUserRoleLevel(u) >= ADMIN_MIN_LEVEL)
-      .map((u) => u._id);
+    // Indexed per elevated role (by_role) — never scan the whole users table.
+    const ids: Id<"users">[] = [];
+    for (const role of ELEVATED_ROLES) {
+      const rows = await ctx.db
+        .query("users")
+        .withIndex("by_role", (q) => q.eq("role", role))
+        .collect();
+      for (const row of rows) ids.push(row._id);
+    }
+    return ids;
   },
 });
 
-async function adminExistsFromDb(ctx: DbCtx): Promise<boolean> {
-  return adminExistsIndexed(ctx);
-}
-
-/** Count super_admins (used by removeAdmin safeguard). */
+/** Count super_admins (used by removeAdmin safeguard) — indexed, scan-free. */
 export const countSuperAdmins = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const allUsers = await ctx.db.query("users").take(200);
-    return allUsers.filter((u) => u.role === ROLES.SUPER_ADMIN).length;
+    const rows = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", ROLES.SUPER_ADMIN))
+      .collect();
+    return rows.length;
   },
 });
 
@@ -144,21 +150,23 @@ export const countSuperAdmins = internalQuery({
 /**
  * Read-only admin check (safe from queries AND actions — never writes).
  *
- * A user is an admin when their role level >= 60 (moderator+). As a
- * bootstrap, when NO admin exists yet, the first non-anonymous user is
- * treated as an admin so the platform owner can get started. The promotion
- * is persisted to super_admin the first time a gated mutation/action runs.
+ * Two ways to be an admin:
+ *   1. CANONICAL OWNER: the user's email is on SUPER_ADMIN_EMAILS — always
+ *      true, even before the role is persisted. Gated mutations persist
+ *      super_admin lazily via requireRoleInternal.
+ *   2. PERSISTED ROLE: role level >= 60 (moderator+).
+ *
+ * The old "first non-anonymous user becomes admin" bootstrap is GONE —
+ * ownership is pinned to the canonical email allowlist, so nobody can
+ * claim the admin surface by merely being first.
  */
 export async function isAdmin(
   ctx: AnyCtx,
   user: UserDoc | null,
 ): Promise<boolean> {
-  if (isAdminDoc(user)) return true;
   if (!user || user.isAnonymous) return false;
-  const adminExists = "db" in ctx
-    ? await adminExistsFromDb(ctx)
-    : await ctx.runQuery(internal.admin.anyAdminExists);
-  return !adminExists;
+  if (isCanonicalSuperAdminEmail(user.email)) return true;
+  return isAdminDoc(user);
 }
 
 // ── Frontend-facing queries ──────────────────────────────────────────
@@ -195,11 +203,118 @@ export const isCurrentUserAdmin = query({
   handler: async (ctx) => {
     const user = await getCurrentUserFromDb(ctx);
     const admin = await isAdmin(ctx, user);
-    // Bootstrap admins are super_admins — report the role immediately
-    // even before it's persisted to the DB (persistence happens on first
-    // gated mutation/action).
+    // Canonical owners are super_admins even before the role is persisted
+    // (persistence happens on the first gated mutation/action).
     const role = admin ? (user?.role ?? ROLES.SUPER_ADMIN) : null;
     return { isAdmin: admin, role };
+  },
+});
+
+/**
+ * Rich admin identity for the Admin workspace shell:
+ * { isAdmin, role, isCanonical, email }. The workspace uses isCanonical to
+ * run the one-time canonical enforcement sweep (enforceCanonicalAdmins).
+ */
+export const getCurrentAdminInfo = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUserFromDb(ctx);
+    if (!user) return { isAdmin: false, role: null, isCanonical: false, email: null };
+    const admin = await isAdmin(ctx, user);
+    return {
+      isAdmin: admin,
+      role: admin ? (user.role ?? ROLES.SUPER_ADMIN) : null,
+      isCanonical: isCanonicalSuperAdminEmail(user.email),
+      email: user.email ?? null,
+    };
+  },
+});
+
+/**
+ * CANONICAL ENFORCEMENT SWEEP — one idempotent mutation that makes the
+ * platform ownership match the allowlist:
+ *
+ *   1. Caller must be signed in with a canonical owner email.
+ *   2. Caller is promoted to super_admin (persisted).
+ *   3. EVERY other elevated account (super_admin/admin/moderator) is
+ *      demoted to plain "user" via the by_role index.
+ *   4. Unclaimed pending admin invites for non-canonical emails are voided.
+ *   5. One audit entry records exactly what changed.
+ *
+ * Safe to call repeatedly (the Admin page calls it once per session when
+ * the canonical owner signs in) — the second run finds nothing to change.
+ */
+export const enforceCanonicalAdmins = mutation({
+  args: {},
+  handler: async (ctx): Promise<{
+    ok: boolean;
+    promotedSelf: boolean;
+    demoted: { email: string | null; role: string }[];
+    invitesVoided: number;
+  }> => {
+    const user = await getCurrentUserFromDb(ctx);
+    if (!user || user.isAnonymous) {
+      throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
+    }
+    if (!isCanonicalSuperAdminEmail(user.email)) {
+      throw new ConvexError({ message: "Admin access required.", code: "unauthorized" });
+    }
+
+    // 1. Persist the owner's super_admin role.
+    let promotedSelf = false;
+    if (getUserRoleLevel(user) < (ROLE_LEVELS[ROLES.SUPER_ADMIN] ?? 100)) {
+      await ctx.db.patch(user._id, { role: ROLES.SUPER_ADMIN });
+      promotedSelf = true;
+    }
+
+    // 2. Demote every non-canonical elevated account (indexed by role).
+    const demoted: { email: string | null; role: string }[] = [];
+    for (const role of ELEVATED_ROLES) {
+      const rows = await ctx.db
+        .query("users")
+        .withIndex("by_role", (q) => q.eq("role", role))
+        .collect();
+      for (const row of rows) {
+        if (row._id === user._id) continue;
+        if (isCanonicalSuperAdminEmail(row.email)) continue; // never demote an owner
+        await ctx.db.patch(row._id, { role: ROLES.USER });
+        demoted.push({ email: row.email ?? null, role });
+      }
+    }
+
+    // 3. Void unclaimed pending admin invites for non-canonical emails.
+    let invitesVoided = 0;
+    const invites = await ctx.db.query("pendingAdminInvites").collect();
+    for (const invite of invites) {
+      if (invite.claimed) continue;
+      if (isCanonicalSuperAdminEmail(invite.email)) continue;
+      await ctx.db.patch(invite._id, { claimed: true });
+      invitesVoided += 1;
+    }
+
+    // 4. Audit (one entry, exact changes).
+    await ctx.db.insert("adminAuditLog", {
+      actorUserId: user._id,
+      action: "admin.canonical_enforced",
+      targetType: "user",
+      targetId: user._id,
+      details: JSON.stringify({
+        ownerEmail: user.email ?? null,
+        promotedSelf,
+        demoted,
+        invitesVoided,
+      }),
+      createdAt: Date.now(),
+    });
+    await ctx.runMutation(internal.systemEvents.logEvent, {
+      eventType: "auth_event",
+      source: "admin.canonicalEnforced",
+      status: "success",
+      userId: user._id,
+      metadata: JSON.stringify({ promotedSelf, demotedCount: demoted.length, invitesVoided }),
+    });
+
+    return { ok: true, promotedSelf, demoted, invitesVoided };
   },
 });
 
@@ -236,30 +351,25 @@ async function requireRoleInternal(
     });
   }
 
+  // Canonical platform owner: persist super_admin on first gated call.
+  if (isCanonicalSuperAdminEmail(user.email)) {
+    if (getUserRoleLevel(user) < (ROLE_LEVELS[ROLES.SUPER_ADMIN] ?? 100)) {
+      await promote(user._id);
+      const promoted = await getUser();
+      if (promoted) return promoted;
+    }
+    return user;
+  }
+
   const userLevel = getUserRoleLevel(user);
   const minLevel = ROLE_LEVELS[minRole] ?? 0;
 
   // If user already has sufficient role, return immediately.
   if (userLevel >= minLevel) return user;
 
-  // User's role is too low — try bootstrap promotion.
-  const isBootstrap = "db" in ctx
-    ? !(await adminExistsFromDb(ctx))
-    : !(await ctx.runQuery(internal.admin.anyAdminExists));
-
-  if (isBootstrap) {
-    // No admin exists yet — promote this user to super_admin.
-    await promote(user._id);
-    const promoted = await getUser();
-    if (!promoted || getUserRoleLevel(promoted) < minLevel) {
-      throw new ConvexError({
-        message: `Access denied. Required: ${minRole}.`,
-        code: "unauthorized",
-      });
-    }
-    return promoted;
-  }
-
+  // NOTE: the old "no admin exists yet → first user becomes super_admin"
+  // bootstrap is intentionally gone. Ownership is pinned to the canonical
+  // email allowlist; everybody else gets a hard denial.
   throw new ConvexError({
     message: `Access denied. Required: ${minRole}.`,
     code: "unauthorized",
@@ -341,20 +451,21 @@ export const promoteToAdmin = internalMutation({
 });
 
 /**
- * Public mutation so an eligible (first) user can request promotion from the
- * admin page itself. Only works while no admin account exists yet.
+ * Public mutation so the canonical owner can persist their super_admin role
+ * from the admin page itself. Only the canonical owner email is eligible —
+ * there is no other promotion path.
  */
 export const promoteSelfIfBootstrap = mutation({
   args: {},
   handler: async (ctx) => {
     const user = await getCurrentUserFromDb(ctx);
     if (!user) return { promoted: false, reason: "signed-out" as const };
-    if (!(await isAdmin(ctx, user))) {
-      return { promoted: false, reason: "admin-exists" as const };
+    if (!isCanonicalSuperAdminEmail(user.email)) {
+      return { promoted: false, reason: "not-canonical" as const };
     }
     if (user.role !== ROLES.SUPER_ADMIN && user.role !== ROLES.ADMIN && user.role !== ROLES.MODERATOR) {
       await ctx.db.patch(user._id, { role: ROLES.SUPER_ADMIN });
     }
-    return { promoted: true, reason: "bootstrap" as const };
+    return { promoted: true, reason: "canonical" as const };
   },
 });

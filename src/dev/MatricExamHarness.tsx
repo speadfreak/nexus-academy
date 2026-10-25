@@ -349,11 +349,9 @@ function hubFixtures(streamParam: string): {
       mock(1, "English", "english", "common", 120, true),
       mock(2, "Mathematics", "mathematics", "common", 96, true),
       mock(3, "Scholastic Aptitude Test", "scholastic-aptitude-test", "common", 54, true),
-      stream === "social" || stream === null
-        ? mock(4, "Geography", "geography", "social", 46, true)
-        : mock(4, "Geography", "geography", "social", 46, true), // same coverage either way — ordering is computed by the hub
-      mock(5, "History", "history", "social", 38, true),
-      mock(6, "Economics", "economics", "social", 7, false),
+      mock(4, "Geography", "geography", "social", 46, true),
+      mock(5, "History", "history", "social", 45, true),
+      mock(6, "Economics", "economics", "social", 45, true),
       mock(7, "Physics", "physics", "natural", 64, true),
       mock(8, "Chemistry", "chemistry", "natural", 51, true),
       mock(9, "Biology", "biology", "natural", 12, true),
@@ -386,10 +384,10 @@ function hubFixtures(streamParam: string): {
           { subjectName: "English", questionCount: 30, eligibleCount: 120 },
           { subjectName: "Mathematics", questionCount: 30, eligibleCount: 96 },
           { subjectName: "Geography", questionCount: 30, eligibleCount: 46 },
-          { subjectName: "History", questionCount: 30, eligibleCount: 38 },
-          { subjectName: "Economics", questionCount: 30, eligibleCount: 7 },
+          { subjectName: "History", questionCount: 30, eligibleCount: 45 },
+          { subjectName: "Economics", questionCount: 30, eligibleCount: 45 },
         ],
-        offered: false,
+        offered: true,
       },
     ],
     weakness: {
