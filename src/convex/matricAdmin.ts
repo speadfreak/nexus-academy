@@ -104,6 +104,143 @@ export const adminVaultOverview = query({
 
 // ── Duplicate detection ────────────────────────────────────────────────────
 
+// ── MATRIC OS 2.1: stream readiness diagnostics ────────────────────────────
+// Per-stream readiness with the EXACT reason a subject/mode is unavailable —
+// verified-pool size vs requirement, missing keys, blueprint state. Answers
+// "why can't a Social Science student sit this yet?" without guesswork.
+
+export interface StreamReadinessSubject {
+  subjectId: Id<"subjects">;
+  subjectName: string;
+  stream: string;
+  eligibleCount: number;
+  adminVerifiedCount: number;
+  unverifiedCount: number; // parsed-but-unverified rows (missing/ambiguous keys)
+  paperCount: number;
+  yearsCount: number;
+  blueprintStatus: "active" | "disabled" | "missing";
+  requiredCount: number | null; // blueprint's planned question count (null = no blueprint)
+  minCoverage: number | null;
+  /** Human-readable WHY for the current unavailability (empty when ready). */
+  blocker: string;
+  readyForMock: boolean;
+}
+
+export interface StreamReadinessRow {
+  stream: "natural" | "social";
+  streamLabel: string;
+  subjects: StreamReadinessSubject[];
+  sharedSubjects: StreamReadinessSubject[];
+  fullSimulation: {
+    blueprintId: Id<"matricBlueprints">;
+    status: "active" | "disabled";
+    coveredSubjects: number;
+    totalPlanned: number;
+    totalEligible: number;
+    blocker: string;
+  } | null;
+  summary: {
+    readyMocks: number;
+    blockedMocks: number;
+    missingKeys: number;
+  };
+}
+
+export const adminStreamReadiness = query({
+  args: {},
+  handler: async (ctx): Promise<StreamReadinessRow[]> => {
+    await requireAdminRead(ctx);
+    const subjects = await ctx.db.query("subjects").collect();
+    const stats = await ctx.db.query("matricCoverageStats").collect();
+    const statBySubject = new Map(stats.map((s) => [s.subjectId, s]));
+    const blueprints = await ctx.db.query("matricBlueprints").collect();
+    const mockBySlug = new Map(
+      blueprints.filter((b) => b.mode === "subject_mock").map((b) => [b.subjects[0]?.subjectSlug ?? "", b]),
+    );
+    const simByStream = new Map(
+      blueprints.filter((b) => b.mode === "full_simulation").map((b) => [b.stream ?? "", b]),
+    );
+
+    const MIN_FOR_MOCK = 10; // mirrors matricBlueprints SUBJECT_MOCK_MIN
+
+    const buildRow = (subject: Doc<"subjects">): StreamReadinessSubject => {
+      const stat = statBySubject.get(subject._id);
+      const eligible = stat?.eligibleCount ?? 0;
+      const adminVerified = stat?.adminVerifiedCount ?? 0;
+      const bp = mockBySlug.get(subject.slug);
+      const required = bp?.subjects[0]?.questionCount ?? null;
+      const minCoverage = bp?.minCoverage ?? null;
+      const disabled = bp?.status === "disabled";
+      let blocker = "";
+      if (!bp) {
+        blocker = `No blueprint seeded — fewer than ${MIN_FOR_MOCK} verified questions.`;
+      } else if (disabled) {
+        blocker = "Blueprint disabled by an administrator.";
+      } else if (eligible < Math.max(required ?? 0, minCoverage ?? 0)) {
+        const need = Math.max(required ?? 0, minCoverage ?? 0);
+        blocker = `Needs ${need} verified questions — ${eligible} available (${need - eligible} more to go).`;
+      }
+      return {
+        subjectId: subject._id,
+        subjectName: subject.name,
+        stream: subject.stream,
+        eligibleCount: eligible,
+        adminVerifiedCount: adminVerified,
+        unverifiedCount: Math.max(0, eligible - adminVerified),
+        paperCount: stat?.paperCount ?? 0,
+        yearsCount: stat?.yearsCount ?? 0,
+        blueprintStatus: bp ? (bp.status as "active" | "disabled") : "missing",
+        requiredCount: required,
+        minCoverage,
+        blocker,
+        readyForMock: !!bp && bp.status === "active" && eligible >= Math.max(required ?? 0, minCoverage ?? 0),
+      };
+    };
+
+    const rows: StreamReadinessRow[] = [];
+    for (const stream of ["natural", "social"] as const) {
+      const streamSubjects = subjects.filter((s) => s.stream === stream).map(buildRow);
+      const shared = subjects.filter((s) => s.stream === "common").map(buildRow);
+      const simBp = simByStream.get(stream);
+      const simSubjects = simBp?.subjects ?? [];
+      const simEligible = simSubjects.reduce((acc, p) => acc + (statBySubject.get(p.subjectId)?.eligibleCount ?? 0), 0);
+      const simPlanned = simSubjects.reduce((acc, p) => acc + p.questionCount, 0);
+      let simBlocker = "";
+      if (!simBp) simBlocker = "No full-simulation blueprint seeded for this stream.";
+      else if (simBp.status === "disabled") simBlocker = "Disabled by an administrator.";
+      else if (simSubjects.some((p) => (statBySubject.get(p.subjectId)?.eligibleCount ?? 0) < Math.max(p.questionCount, simBp.minCoverage))) {
+        const lacking = simSubjects
+          .filter((p) => (statBySubject.get(p.subjectId)?.eligibleCount ?? 0) < Math.max(p.questionCount, simBp.minCoverage))
+          .map((p) => p.subjectName)
+          .join(", ");
+        simBlocker = `Insufficient verified coverage: ${lacking}.`;
+      }
+      rows.push({
+        stream,
+        streamLabel: stream === "natural" ? "Natural Science" : "Social Science",
+        subjects: streamSubjects.sort((a, b) => b.eligibleCount - a.eligibleCount),
+        sharedSubjects: shared.sort((a, b) => b.eligibleCount - a.eligibleCount),
+        fullSimulation: simBp
+          ? {
+              blueprintId: simBp._id,
+              status: simBp.status as "active" | "disabled",
+              coveredSubjects: simSubjects.length,
+              totalPlanned: simPlanned,
+              totalEligible: simEligible,
+              blocker: simBlocker,
+            }
+          : null,
+        summary: {
+          readyMocks: streamSubjects.filter((s) => s.readyForMock).length,
+          blockedMocks: streamSubjects.filter((s) => !s.readyForMock).length,
+          missingKeys: streamSubjects.reduce((acc, s) => acc + Math.max(0, s.eligibleCount - s.adminVerifiedCount), 0),
+        },
+      });
+    }
+    return rows;
+  },
+});
+
 export const adminDuplicateDetection = query({
   args: {},
   handler: async (ctx) => {

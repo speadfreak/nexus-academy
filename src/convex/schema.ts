@@ -2458,6 +2458,11 @@ const schema = defineSchema(
         v.literal("past_paper"),
       ),
       stream: v.optional(streamValidator),
+      // True when the student sat the OTHER stream's pathway via the explicit
+      // "explore the other stream" consent (never a profile change). Results
+      // surfaces use this to keep exploratory sittings correctly labeled
+      // forever, even after the student later changes their saved stream.
+      exploredOtherStream: v.optional(v.boolean()),
       title: v.string(),
       status: v.union(
         v.literal("active"),

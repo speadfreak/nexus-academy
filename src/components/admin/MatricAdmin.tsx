@@ -24,6 +24,7 @@ import {
   FlaskConical,
   Sparkles,
   Calculator,
+  Compass,
 } from "lucide-react";
 
 export function MatricAdmin() {
@@ -32,6 +33,8 @@ export function MatricAdmin() {
   const duplicates = useQuery(api.matricAdmin.adminDuplicateDetection, {});
   const blueprints = useQuery(api.matricBlueprints.adminListBlueprints, {});
   const validation = useQuery(api.matricAdmin.adminValidationReport, {});
+  // MATRIC OS 2.1 — per-stream readiness diagnostics.
+  const streamReadiness = useQuery(api.matricAdmin.adminStreamReadiness, {});
 
   const runImport = useAction(api.matricAdmin.adminRunVaultImport);
   const seedBank = useMutation(api.matricAdmin.adminSeedStarterBank);
@@ -393,6 +396,91 @@ export function MatricAdmin() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </Panel>
+
+      {/* ── STREAM READINESS (MATRIC OS 2.1) — exactly WHY a subject is unavailable ── */}
+      <Panel className="p-4">
+        <div className="flex items-center gap-2">
+          <Compass className="size-4 text-violet-300" />
+          <p className="text-sm font-bold text-foreground">Stream readiness</p>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Per-stream examination readiness with the exact blocker per subject —
+          verified-pool size vs requirement, missing keys, and blueprint state.
+        </p>
+        {streamReadiness === undefined ? (
+          <SkeletonRows rows={2} className="mt-3" />
+        ) : (
+          <div className="mt-3 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {streamReadiness.map((row) => (
+              <div key={row.stream} className="rounded-xl border border-border/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-foreground">{row.streamLabel}</p>
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <span className="rounded-full border border-emerald-400/40 px-2 py-0.5 text-emerald-300">
+                      {row.summary.readyMocks} ready
+                    </span>
+                    <span className="rounded-full border border-amber-400/40 px-2 py-0.5 text-amber-300">
+                      {row.summary.blockedMocks} blocked
+                    </span>
+                    {row.summary.missingKeys > 0 && (
+                      <span className="rounded-full border border-rose-400/40 px-2 py-0.5 text-rose-300">
+                        {row.summary.missingKeys} keys unverified
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {row.fullSimulation && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    <span className="font-semibold text-foreground">Full simulation:</span>{" "}
+                    {row.fullSimulation.status === "active" && !row.fullSimulation.blocker
+                      ? `available — ${row.fullSimulation.totalPlanned} planned across ${row.fullSimulation.coveredSubjects} subjects`
+                      : row.fullSimulation.blocker || `status: ${row.fullSimulation.status}`}
+                  </p>
+                )}
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border/60 text-muted-foreground">
+                        <th className="py-1 pr-3 font-medium">Subject</th>
+                        <th className="py-1 pr-3 font-medium">Eligible</th>
+                        <th className="py-1 pr-3 font-medium">Keys verified</th>
+                        <th className="py-1 pr-3 font-medium">Needs</th>
+                        <th className="py-1 pr-3 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...row.subjects, ...row.sharedSubjects].map((s) => (
+                        <tr key={s.subjectId} className="border-b border-border/40 last:border-0">
+                          <td className="py-1.5 pr-3 font-semibold text-foreground">
+                            {s.subjectName}
+                            {s.stream === "common" && (
+                              <span className="ml-1 text-[10px] text-muted-foreground">(shared)</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 pr-3 font-mono">{s.eligibleCount}</td>
+                          <td className="py-1.5 pr-3 font-mono">{s.adminVerifiedCount}</td>
+                          <td className="py-1.5 pr-3 font-mono">{s.requiredCount ?? "—"}</td>
+                          <td className="max-w-[240px] py-1.5 pr-3">
+                            {s.readyForMock ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-300">
+                                <CheckCircle2 className="size-3" /> ready
+                              </span>
+                            ) : (
+                              <span className="text-amber-300/90" title={s.blocker}>
+                                {s.blocker}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Panel>
