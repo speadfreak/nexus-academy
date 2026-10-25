@@ -25,7 +25,14 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireActiveSubscriptionDb } from "./subscriptions";
 import { XP_VALUES } from "./constants";
+import { streamValidator } from "./schema";
 import { selectQuestions } from "../lib/matric/selection";
+import {
+  evaluateStreamEligibility,
+  studentStreamLabel,
+  type StudentStream,
+  type SubjectEligibilityStream,
+} from "../lib/matric/eligibility";
 import type { VaultQuestionLike } from "../lib/matric/types";
 import { scoreSession, type SnapshotQuestion } from "../lib/matric/scoring";
 import type {
@@ -81,6 +88,8 @@ export interface PastPaperOption {
   contentId: Id<"contentItems">;
   title: string;
   subjectName: string | null;
+  /** Paper's subject stream — "common" for English/Math/SAT papers. */
+  stream: SubjectEligibilityStream | null;
   examYear: number | null;
   durationMinutes: number | null;
   isPremium: boolean;
@@ -96,6 +105,12 @@ export interface CatalogPayload {
   hasActiveSession: boolean;
   activeSessionId: Id<"matricSessions"> | null;
   activeSessionTitle: string | null;
+  // ── MATRIC OS 2.1: canonical academic identity (userProfiles) ──
+  // null = stream not selected (or legacy "common") — the hub shows a
+  // graceful prompt instead of silently defaulting to Natural Science.
+  studentStream: StudentStream;
+  studentStreamLabel: string | null;
+  gradeLevel: 9 | 10 | 11 | 12 | null;
 }
 
 export const vaultPoolForSubject = internalQuery({
@@ -345,6 +360,12 @@ export const assembleSessionInternal = internalMutation({
     blueprintId: v.id("matricBlueprints"),
     pastPaperContentId: v.optional(v.id("contentItems")),
     userPremium: v.boolean(),
+    // Set by startMatricExam after the stream eligibility check — records an
+    // explicit cross-stream exploration so results stay correctly labeled.
+    exploredOtherStream: v.optional(v.boolean()),
+    // The eligibility-validated stream snapshot for THIS sitting (blueprint
+    // stream, else the subject's stream, else "common"). Immutable history.
+    effectiveStream: v.optional(streamValidator),
   },
   handler: async (ctx, args): Promise<AssembleResult> => {
     const now = Date.now();
@@ -444,6 +465,8 @@ export const assembleSessionInternal = internalMutation({
         timeLimitSeconds,
         startedAt: now,
         pastPaperContentId: args.pastPaperContentId,
+        exploredOtherStream: args.exploredOtherStream,
+        effectiveStream: args.effectiveStream,
       });
     }
 
@@ -522,6 +545,8 @@ export const assembleSessionInternal = internalMutation({
         startedAt: now,
         widenedToSubject: widened,
         evidenceKind: evidence.kind,
+        exploredOtherStream: args.exploredOtherStream,
+        effectiveStream: args.effectiveStream,
       });
     }
 
@@ -582,6 +607,8 @@ export const assembleSessionInternal = internalMutation({
       poolStats,
       timeLimitSeconds: blueprint.timeLimitSeconds,
       startedAt: now,
+      exploredOtherStream: args.exploredOtherStream,
+      effectiveStream: args.effectiveStream,
     });
   },
 });
@@ -608,6 +635,8 @@ async function persistSession(
     pastPaperContentId?: Id<"contentItems">;
     widenedToSubject?: boolean;
     evidenceKind?: string;
+    exploredOtherStream?: boolean;
+    effectiveStream?: "natural" | "social" | "common";
   },
 ): Promise<{
   sessionId: Id<"matricSessions">;
@@ -627,7 +656,12 @@ async function persistSession(
     blueprintKey: opts.blueprint.key,
     blueprintVersion: opts.blueprint.version,
     mode: opts.blueprint.mode,
-    ...(opts.blueprint.stream ? { stream: opts.blueprint.stream } : {}),
+    // History keeps its ORIGINAL stream context even after the student later
+    // changes their saved stream: the eligibility-validated sitting stream is
+    // snapshotted here (blueprint stream, else the subject's stream) and the
+    // explore consent is recorded separately.
+    ...(opts.effectiveStream ? { stream: opts.effectiveStream } : opts.blueprint.stream ? { stream: opts.blueprint.stream } : {}),
+    ...(opts.exploredOtherStream ? { exploredOtherStream: true } : {}),
     title: opts.blueprint.title,
     status: "active" as const,
     sectionsJson: JSON.stringify(opts.sections),
@@ -667,6 +701,7 @@ async function persistSession(
       questionCount: opts.snapshot.length,
       subjects: opts.sections.map((s) => s.subjectName),
       pastPaperContentId: opts.pastPaperContentId,
+      exploredOtherStream: opts.exploredOtherStream ?? false,
     }),
   });
 
@@ -693,6 +728,10 @@ export const startMatricExam = mutation({
   args: {
     blueprintId: v.id("matricBlueprints"),
     pastPaperContentId: v.optional(v.id("contentItems")),
+    // Explicit, per-attempt consent to sit the OTHER stream's pathway. Never
+    // mutates the academic profile; the session is recorded with
+    // exploredOtherStream=true so every results surface stays honest.
+    exploreOtherStream: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<AssembleResult> => {
     const userId = await getAuthUserId(ctx);
@@ -715,6 +754,77 @@ export const startMatricExam = mutation({
       });
     }
 
+    const blueprint = await ctx.db.get(args.blueprintId);
+    if (!blueprint) {
+      throw new ConvexError({ message: "Exam configuration not found.", code: "not_found" });
+    }
+
+    // ── MATRIC OS 2.1: backend stream eligibility (spec §6) ────────────────
+    // The canonical academic identity lives on userProfiles (single source
+    // of truth). Eligibility is enforced HERE on the server — the hub's
+    // grouping is presentation only, never the gate.
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const studentStream: StudentStream =
+      profile?.stream === "natural" || profile?.stream === "social"
+        ? profile.stream
+        : null; // undefined / legacy "common" → unselected (never defaulted)
+
+    // Resolve the exam's stream: full simulations declare it on the
+    // blueprint; subject-scoped modes inherit it from their subject.
+    let subjectStream: SubjectEligibilityStream | undefined;
+    if (blueprint.mode === "subject_mock") {
+      const plan = blueprint.subjects[0];
+      if (plan) {
+        const subject = await ctx.db.get(plan.subjectId);
+        subjectStream =
+          subject?.stream === "natural" || subject?.stream === "social"
+            ? subject.stream
+            : "common";
+      }
+    } else if (blueprint.mode === "past_paper") {
+      if (args.pastPaperContentId) {
+        const item = await ctx.db.get(args.pastPaperContentId);
+        const subject = item?.subjectId ? await ctx.db.get(item.subjectId) : null;
+        subjectStream =
+          subject?.stream === "natural" || subject?.stream === "social"
+            ? subject.stream
+            : "common";
+      }
+    }
+
+    const eligibility = evaluateStreamEligibility({
+      studentStream,
+      blueprintStream: blueprint.stream as "natural" | "social" | undefined,
+      subjectStream,
+      exploreOtherStream: args.exploreOtherStream ?? false,
+    });
+    if (!eligibility.allowed) {
+      await ctx.runMutation(internal.systemEvents.logEvent, {
+        eventType: "content_event",
+        source: "matricEngine.stream_eligibility_denied",
+        status: "error",
+        userId,
+        metadata: JSON.stringify({
+          blueprintKey: blueprint.key,
+          studentStream,
+          blueprintStream: blueprint.stream ?? null,
+          subjectStream: subjectStream ?? null,
+        }),
+      });
+      throw new ConvexError({
+        message: eligibility.reason,
+        code: "stream_mismatch",
+      });
+    }
+
+    // The sitting's immutable stream snapshot: blueprint stream, else the
+    // subject's stream, else "common" (shared subjects).
+    const effectiveStream: "natural" | "social" | "common" =
+      (blueprint.stream as "natural" | "social" | undefined) ?? subjectStream ?? "common";
+
     const result = await ctx.runMutation(internal.matricEngine.assembleSessionInternal, {
       userId,
       blueprintId: args.blueprintId,
@@ -722,6 +832,8 @@ export const startMatricExam = mutation({
         ? { pastPaperContentId: args.pastPaperContentId }
         : {}),
       userPremium: true, // gate above already enforced premium
+      exploredOtherStream: eligibility.exploredOtherStream,
+      effectiveStream,
     });
     return result;
   },
@@ -1266,6 +1378,8 @@ export interface CatalogSubjectMock {
   key: string;
   subjectName: string;
   slug: string;
+  /** Subject stream — "common" subjects are sat by every stream. */
+  stream: SubjectEligibilityStream;
   questionCount: number;
   timeLimitSeconds: number;
   eligibleCount: number;
@@ -1305,6 +1419,27 @@ export const getMatricCatalog = query({
     const statBySubject = new Map(stats.map((s) => [s.subjectId, s]));
     const eligibleOf = (subjectId: Id<"subjects">) => statBySubject.get(subjectId)?.eligibleCount ?? 0;
 
+    // ── MATRIC OS 2.1: canonical academic identity ──
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const studentStream: StudentStream =
+      profile?.stream === "natural" || profile?.stream === "social" ? profile.stream : null;
+    const gradeLevel = profile?.gradeLevel ?? null;
+
+    // Subject streams for honest tagging (bounded batch — subjects are few).
+    const subjectIds = new Set<string>();
+    for (const b of blueprints) {
+      for (const p of b.subjects) subjectIds.add(p.subjectId);
+    }
+    const subjectDocs = await Promise.all([...subjectIds].map((id) => ctx.db.get(id as Id<"subjects">)));
+    const streamOf = new Map<string, SubjectEligibilityStream>(
+      subjectDocs
+        .filter(Boolean)
+        .map((s) => [s!._id, (s!.stream as SubjectEligibilityStream) ?? "common"]),
+    );
+
     const subjectMocks: CatalogSubjectMock[] = [];
     const fullSimulations: CatalogFullSimulation[] = [];
     let weakness: { blueprintId: Id<"matricBlueprints">; title: string; description: string } | null = null;
@@ -1319,6 +1454,7 @@ export const getMatricCatalog = query({
           key: b.key,
           subjectName: plan.subjectName,
           slug: plan.subjectSlug,
+          stream: streamOf.get(plan.subjectId) ?? "common",
           questionCount: plan.questionCount,
           timeLimitSeconds: b.timeLimitSeconds,
           eligibleCount: eligibleOf(plan.subjectId),
@@ -1352,7 +1488,20 @@ export const getMatricCatalog = query({
       }
     }
 
-    subjectMocks.sort((a, b) => Number(b.offered) - Number(a.offered) || a.subjectName.localeCompare(b.subjectName));
+    // Stream-aware ordering: the student's stream first, then shared
+    // subjects, then the other stream (exploration section). Presentation
+    // only — eligibility is enforced server-side at start time.
+    const streamRank = (s: SubjectEligibilityStream): number => {
+      if (studentStream && s === studentStream) return 0;
+      if (s === "common") return 1;
+      return 2;
+    };
+    subjectMocks.sort(
+      (a, b) =>
+        streamRank(a.stream) - streamRank(b.stream) ||
+        Number(b.offered) - Number(a.offered) ||
+        a.subjectName.localeCompare(b.subjectName),
+    );
 
     // Premium status for THIS student (trial or active).
     const sub = await ctx.db
@@ -1375,6 +1524,9 @@ export const getMatricCatalog = query({
       hasActiveSession: !!activeSession,
       activeSessionId: activeSession?._id ?? null,
       activeSessionTitle: activeSession?.title ?? null,
+      studentStream,
+      studentStreamLabel: studentStreamLabel(studentStream),
+      gradeLevel,
     };
   },
 });
@@ -1405,6 +1557,12 @@ export const getPastPaperOptions = query({
         contentId: paper.contentId,
         title: item.title,
         subjectName: subject?.name ?? null,
+        stream:
+          subject?.stream === "natural" || subject?.stream === "social"
+            ? subject.stream
+            : subject
+              ? "common"
+              : null,
         examYear: item.examYear ?? null,
         durationMinutes: item.durationMinutes ?? null,
         isPremium: item.isPremium,
@@ -1427,6 +1585,13 @@ export interface MatricHistoryRow {
   startedAt: number;
   timeSpentSeconds: number | null;
   submissionSource: string | null;
+  // ── MATRIC OS 2.1: smart history (stream/subject filters) ──
+  /** Sitting's immutable stream snapshot — survives profile changes. */
+  stream: string | null;
+  /** True when this was an explicit other-stream exploration sitting. */
+  exploredOtherStream: boolean;
+  /** First section's subject (primary subject for mocks/past papers). */
+  primarySubjectName: string | null;
 }
 
 /** Recent sittings for the hub (old mockExams history is preserved separately). */
@@ -1440,17 +1605,283 @@ export const getMyMatricHistory = query({
       .withIndex("by_user_startedAt", (q) => q.eq("userId", userId))
       .order("desc")
       .take(Math.min(args.limit ?? 12, 30));
-    return sessions.map((s): MatricHistoryRow => ({
-      sessionId: s._id,
-      title: s.title,
-      mode: s.mode,
-      status: s.status,
-      scorePct: s.scorePct ?? null,
-      questionCount: s.questionCount,
-      startedAt: s.startedAt,
-      timeSpentSeconds: s.timeSpentSeconds ?? null,
-      submissionSource: s.submissionSource ?? null,
-    }));
+    return sessions.map((s): MatricHistoryRow => {
+      let primarySubjectName: string | null = null;
+      try {
+        const sections = JSON.parse(s.sectionsJson) as SessionSection[];
+        primarySubjectName = sections[0]?.subjectName ?? null;
+      } catch {
+        primarySubjectName = null;
+      }
+      return {
+        sessionId: s._id,
+        title: s.title,
+        mode: s.mode,
+        status: s.status,
+        scorePct: s.scorePct ?? null,
+        questionCount: s.questionCount,
+        startedAt: s.startedAt,
+        timeSpentSeconds: s.timeSpentSeconds ?? null,
+        submissionSource: s.submissionSource ?? null,
+        stream: s.stream ?? null,
+        exploredOtherStream: s.exploredOtherStream ?? false,
+        primarySubjectName,
+      };
+    });
+  },
+});
+
+// ── MATRIC OS 2.1 — Unified Grade 12 Examination Journey ───────────────────
+
+export interface MatricJourneyPayload {
+  kind: "resume" | "start" | "unavailable";
+  /** Resume: the active session. Start: the recommended blueprint. */
+  sessionId: Id<"matricSessions"> | null;
+  blueprintId: Id<"matricBlueprints"> | null;
+  title: string;
+  subjectName: string | null;
+  mode: string | null;
+  questionCount: number | null;
+  timeLimitSeconds: number | null;
+  stream: "natural" | "social" | null;
+  streamLabel: string | null;
+  /** Deterministic, honest reason — shown verbatim under the card. */
+  reason: string;
+  /** Review → Practice → Improve strip evidence (real counts only). */
+  review: { dueMistakes: number | null; weakestSubjectName: string | null; weakestScorePct: number | null };
+}
+
+/**
+ * "Your next exam" — deterministic recommendation assembled from REAL data:
+ * the active session, the verified vault coverage, the student's saved
+ * stream and their own graded results. No AI, no invented readiness scores,
+ * no national predictions. Rotation: the weakest subject is recommended
+ * unless it was just practiced, so revision spreads across the stream.
+ */
+export const getMatricJourney = query({
+  args: {},
+  handler: async (ctx): Promise<MatricJourneyPayload | null> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    // 1. An in-progress sitting always wins.
+    const active = await ctx.db
+      .query("matricSessions")
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
+      .unique();
+    if (active) {
+      return {
+        kind: "resume",
+        sessionId: active._id,
+        blueprintId: active.blueprintId,
+        title: active.title,
+        subjectName: null,
+        mode: active.mode,
+        questionCount: active.questionCount,
+        timeLimitSeconds: active.timeLimitSeconds,
+        stream: (active.stream as "natural" | "social" | undefined) ?? null,
+        streamLabel: studentStreamLabel(active.stream ?? null),
+        reason: "Your timer is still running server-side — resume before it expires.",
+        review: { dueMistakes: null, weakestSubjectName: null, weakestScorePct: null },
+      };
+    }
+
+    // 2. Canonical identity.
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const studentStream: StudentStream =
+      profile?.stream === "natural" || profile?.stream === "social" ? profile.stream : null;
+
+    // 3. Coverage + blueprints (same honest sources as the catalog).
+    const blueprints = await ctx.db
+      .query("matricBlueprints")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .collect();
+    const stats = await ctx.db.query("matricCoverageStats").collect();
+    const statBySubject = new Map(stats.map((s) => [s.subjectId, s]));
+    const eligibleOf = (id: Id<"subjects">) => statBySubject.get(id)?.eligibleCount ?? 0;
+
+    const mockCandidates = blueprints
+      .filter((b) => b.mode === "subject_mock" && b.subjects[0])
+      .map((b) => {
+        const plan = b.subjects[0];
+        return {
+          blueprintId: b._id,
+          title: b.title,
+          subjectName: plan!.subjectName,
+          questionCount: plan!.questionCount,
+          timeLimitSeconds: b.timeLimitSeconds,
+          eligibleCount: eligibleOf(plan!.subjectId),
+          offered: eligibleOf(plan!.subjectId) >= Math.max(plan!.questionCount, b.minCoverage),
+        };
+      })
+      .filter((c) => c.offered);
+    // Deterministic order: name (ties broken stably).
+    mockCandidates.sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+
+    // 4. The student's own graded evidence — recent sittings only, real
+    // per-subject scores from the immutable results snapshot.
+    const recent = await ctx.db
+      .query("matricSessions")
+      .withIndex("by_user_startedAt", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(14);
+    const graded = recent.filter((s) => s.status === "graded" && s.scorePct !== null);
+    const perSubject = new Map<string, { name: string; scores: number[] }>();
+    for (const s of graded) {
+      try {
+        const breakdown = JSON.parse(s.breakdownJson ?? "{}") as { subjectBreakdown?: SubjectBreakdownRow[] };
+        for (const row of breakdown.subjectBreakdown ?? []) {
+          const entry = perSubject.get(row.subjectName) ?? { name: row.subjectName, scores: [] };
+          entry.scores.push(row.scorePct);
+          perSubject.set(row.subjectName, entry);
+        }
+      } catch {
+        // corrupted breakdown is skipped — never invent a score
+      }
+    }
+    const subjectAverages = [...perSubject.values()]
+      .map((e) => ({
+        name: e.name,
+        avg: e.scores.reduce((a, b) => a + b, 0) / e.scores.length,
+        attempts: e.scores.length,
+      }))
+      .sort((a, b) => a.avg - b.avg || a.name.localeCompare(b.name));
+    const weakest = subjectAverages[0] ?? null;
+
+    // Due-mistake count for the Review strip (bounded read).
+    const openMistakes = await ctx.db
+      .query("mistakes")
+      .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "open"))
+      .take(200);
+    const nowMs = Date.now();
+    const dueMistakes = openMistakes.filter((m) => m.nextReviewAt <= nowMs).length;
+
+    const review = {
+      dueMistakes,
+      weakestSubjectName: weakest?.name ?? null,
+      weakestScorePct: weakest ? Math.round(weakest.avg) : null,
+    };
+
+    const streamLabel = studentStreamLabel(studentStream);
+    const streamNote =
+      studentStream === null
+        ? " Set your stream in Settings to get stream-tailored recommendations."
+        : "";
+
+    // 5. Recommendation.
+    if (mockCandidates.length === 0) {
+      const sim = blueprints.find(
+        (b) =>
+          b.mode === "full_simulation" &&
+          b.status === "active" &&
+          (studentStream === null || b.stream === studentStream),
+      );
+      if (sim && sim.subjects.length >= 2) {
+        return {
+          kind: "start",
+          sessionId: null,
+          blueprintId: sim._id,
+          title: sim.title,
+          subjectName: null,
+          mode: "full_simulation",
+          questionCount: sim.subjects.reduce((a, p) => a + p.questionCount, 0),
+          timeLimitSeconds: sim.timeLimitSeconds,
+          stream: (sim.stream as "natural" | "social" | undefined) ?? null,
+          streamLabel: streamLabel,
+          reason: `No single-subject mock is covered enough yet, but the full simulation has enough verified questions across ${sim.subjects.length} subjects.${streamNote}`,
+          review,
+        };
+      }
+      return {
+        kind: "unavailable",
+        sessionId: null,
+        blueprintId: null,
+        title: "No exam is covered enough yet",
+        subjectName: null,
+        mode: null,
+        questionCount: null,
+        timeLimitSeconds: null,
+        stream: studentStream,
+        streamLabel,
+        reason: `Subjects unlock automatically as real past papers are digitized and verified — we never pad exams with unverified content.${streamNote}`,
+        review,
+      };
+    }
+
+    // With evidence → weakest subject first (real observed scores), with
+    // rotation: skip the subject practiced most recently when others exist.
+    const lastPrimary = (() => {
+      try {
+        const sections = JSON.parse(graded[0]?.sectionsJson ?? "[]") as SessionSection[];
+        return sections[0]?.subjectName ?? null;
+      } catch {
+        return null;
+      }
+    })();
+
+    let pick =
+      weakest != null
+        ? mockCandidates.find((c) => c.subjectName === weakest.name) ?? null
+        : null;
+    if (pick && pick.subjectName === lastPrimary) {
+      const alternative =
+        mockCandidates.find((c) => c.subjectName !== lastPrimary) ?? null;
+      if (alternative) pick = alternative;
+    }
+
+    // No relevant evidence → strongest-coverage candidate; stream-specific
+    // subjects are preferred over shared ones for stream-selected students.
+    if (!pick) {
+      const streamSpecific = mockCandidates.filter(
+        (c) => studentStream !== null && c.subjectName !== "English" && c.subjectName !== "Mathematics" && c.subjectName !== "Scholastic Aptitude Test",
+      );
+      const pool = studentStream !== null && streamSpecific.length > 0 ? streamSpecific : mockCandidates;
+      pick = [...pool].sort(
+        (a, b) => b.eligibleCount - a.eligibleCount || a.subjectName.localeCompare(b.subjectName),
+      )[0];
+    }
+
+    if (!pick) {
+      return {
+        kind: "unavailable",
+        sessionId: null,
+        blueprintId: null,
+        title: "No exam is covered enough yet",
+        subjectName: null,
+        mode: null,
+        questionCount: null,
+        timeLimitSeconds: null,
+        stream: studentStream,
+        streamLabel,
+        reason: `Subjects unlock automatically as real past papers are digitized and verified.${streamNote}`,
+        review,
+      };
+    }
+
+    const reason =
+      weakest && pick.subjectName === weakest.name
+        ? `Your lowest recent average is ${Math.round(weakest.avg)}% in ${weakest.name} — this mock targets exactly that, based on your graded sittings.`
+        : studentStream !== null
+          ? `Based on your selected stream (${streamLabel}) and available verified questions.`
+          : "Based on available verified questions.";
+
+    return {
+      kind: "start",
+      sessionId: null,
+      blueprintId: pick.blueprintId,
+      title: pick.title,
+      subjectName: pick.subjectName,
+      mode: "subject_mock",
+      questionCount: pick.questionCount,
+      timeLimitSeconds: pick.timeLimitSeconds,
+      stream: studentStream,
+      streamLabel,
+      reason,
+      review,
+    };
   },
 });
 
@@ -1461,6 +1892,11 @@ export interface MatricResultsPayload {
   blueprintKey: string;
   status: string;
   submissionSource: string | null;
+  // ── MATRIC OS 2.1: stream context for honest labeling ──
+  /** Sitting's immutable stream snapshot. */
+  stream: string | null;
+  /** True for explicit other-stream explorations — always labeled. */
+  exploredOtherStream: boolean;
   scorePct: number;
   correctCount: number;
   incorrectCount: number;
@@ -1560,6 +1996,8 @@ export const getMatricResults = query({
       blueprintKey: session.blueprintKey,
       status: session.status,
       submissionSource: session.submissionSource ?? null,
+      stream: session.stream ?? null,
+      exploredOtherStream: session.exploredOtherStream ?? false,
       scorePct: session.scorePct ?? 0,
       correctCount: session.correctCount ?? 0,
       incorrectCount: session.incorrectCount ?? 0,

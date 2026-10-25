@@ -217,6 +217,74 @@ check("different seeds usually differ", JSON.stringify(s1) !== JSON.stringify(s3
   check("explanation carried", row.explanation === "Because algebra.");
 }
 
+// ── eligibility: stream rules (MATRIC OS 2.1) ─────────────────────────────
+const elig = loadTs("src/lib/matric/eligibility.ts");
+{
+  // Same-stream subject mock.
+  const same = elig.evaluateStreamEligibility({
+    studentStream: "social", blueprintStream: undefined, subjectStream: "social", exploreOtherStream: false,
+  });
+  check("social student + social mock → eligible", same.code === "eligible" && same.allowed && !same.exploredOtherStream);
+
+  // Same-stream full simulation (blueprint-level stream).
+  const simSame = elig.evaluateStreamEligibility({
+    studentStream: "natural", blueprintStream: "natural", subjectStream: undefined, exploreOtherStream: false,
+  });
+  check("natural student + natural full sim → eligible", simSame.code === "eligible" && simSame.allowed);
+
+  // Cross-stream WITHOUT consent → denied with an explanatory reason.
+  const cross = elig.evaluateStreamEligibility({
+    studentStream: "natural", blueprintStream: "social", subjectStream: undefined, exploreOtherStream: false,
+  });
+  check("natural student + social sim, no consent → stream_mismatch", cross.code === "stream_mismatch" && !cross.allowed);
+  check("denial mentions both pathways", cross.reason.includes("Social Science") && cross.reason.includes("Natural Science"));
+  check("denial does not mark exploration", cross.exploredOtherStream === false);
+
+  // Cross-stream WITH explicit consent → allowed AND labeled.
+  const explore = elig.evaluateStreamEligibility({
+    studentStream: "natural", blueprintStream: "social", subjectStream: undefined, exploreOtherStream: true,
+  });
+  check("natural student + social sim with consent → eligible_explored", explore.code === "eligible_explored" && explore.allowed);
+  check("exploration labeled for history/results", explore.exploredOtherStream === true);
+
+  // Shared subjects — every stream sits them; consent irrelevant.
+  const sharedNo = elig.evaluateStreamEligibility({
+    studentStream: "social", blueprintStream: undefined, subjectStream: "common", exploreOtherStream: false,
+  });
+  const sharedYes = elig.evaluateStreamEligibility({
+    studentStream: "natural", blueprintStream: undefined, subjectStream: "common", exploreOtherStream: true,
+  });
+  check("common subject eligible for social student", sharedNo.code === "eligible" && sharedNo.allowed && !sharedNo.exploredOtherStream);
+  check("common subject never flagged as exploration", sharedYes.code === "eligible" && !sharedYes.exploredOtherStream);
+
+  // Unselected stream → graceful, never blocked, never defaulted.
+  for (const raw of [null, undefined]) {
+    const r = elig.evaluateStreamEligibility({
+      studentStream: raw, blueprintStream: "natural", subjectStream: undefined, exploreOtherStream: false,
+    });
+    check(`unselected (${raw}) + natural sim → allowed but prompted`, r.allowed && r.code === "stream_unselected" && !r.exploredOtherStream);
+  }
+  // Legacy "common" student = unselected (handled before this function, but
+  // the null contract is what the mutation relies on).
+  const legacy = elig.evaluateStreamEligibility({
+    studentStream: null, blueprintStream: undefined, subjectStream: "social", exploreOtherStream: false,
+  });
+  check("legacy student + social mock → allowed with prompt", legacy.allowed && legacy.code === "stream_unselected");
+
+  // Subject stream takes effect when the blueprint has none.
+  const bySubject = elig.evaluateStreamEligibility({
+    studentStream: "social", blueprintStream: undefined, subjectStream: "natural", exploreOtherStream: false,
+  });
+  check("subject-level stream enforced for mocks", bySubject.code === "stream_mismatch" && !bySubject.allowed);
+
+  // Labels — no silent defaults.
+  check("label natural", elig.studentStreamLabel("natural") === "Natural Science");
+  check("label social", elig.studentStreamLabel("social") === "Social Science");
+  check("label legacy common → null", elig.studentStreamLabel("common") === null);
+  check("label undefined → null", elig.studentStreamLabel(undefined) === null);
+  check("label null → null", elig.studentStreamLabel(null) === null);
+}
+
 console.log(`\nMATRIC ENGINE TESTS: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
   console.log("FAILURES:");

@@ -32,6 +32,7 @@ import {
   CircleDashed,
   GraduationCap,
   History,
+  Compass,
 } from "lucide-react";
 
 function fmtDate(ts: number): string {
@@ -135,6 +136,21 @@ export function MatricResults({
             {results.submissionSource === "auto_expiry" && (
               <p className="mt-3 text-xs text-amber-300">
                 Time expired — the server submitted your saved answers automatically.
+              </p>
+            )}
+            {/* Sitting-native stream context — immutable, survives profile changes. */}
+            {(results.exploredOtherStream || results.stream) && (
+              <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+                {results.exploredOtherStream ? (
+                  <span className="inline-flex items-center gap-1 rounded border border-violet-400/40 bg-violet-400/[0.07] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-violet-300">
+                    <Compass className="size-3" /> exploratory sitting — other stream
+                  </span>
+                ) : null}
+                {results.stream && results.stream !== "common" && (
+                  <span className="inline-flex items-center rounded border border-border/60 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {results.stream === "natural" ? "natural science" : "social science"} pathway
+                  </span>
+                )}
               </p>
             )}
             <p className="mt-2 text-[11px] text-muted-foreground">

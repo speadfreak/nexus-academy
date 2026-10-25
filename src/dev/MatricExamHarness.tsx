@@ -179,6 +179,8 @@ const RESULTS_FIXTURE: MatricResultsPayload = {
   blueprintKey: "subject-mock:selftest",
   status: "graded",
   submissionSource: "student",
+  stream: "common",
+  exploredOtherStream: false,
   scorePct: 60,
   correctCount: 3,
   incorrectCount: 1,
@@ -306,13 +308,244 @@ const RESULTS_FIXTURE: MatricResultsPayload = {
   xpAwarded: 56,
 };
 
+// ─── Hub fixture — stream-aware hub (MATRIC OS 2.1) ──────────────────────
+// `?view=hub&stream=social|natural|none` renders the REAL MatricHub with
+// fixtures for a Social Science / Natural Science / unselected student.
+
+import { MatricHub } from "@/components/matric/MatricHub";
+import type { CatalogPayload, MatricJourneyPayload, MatricHistoryRow, PastPaperOption } from "@/convex/matricEngine";
+
+function hubFixtures(streamParam: string): {
+  catalog: CatalogPayload;
+  journey?: MatricJourneyPayload;
+  history: MatricHistoryRow[];
+  pastPaperOptions: PastPaperOption[];
+} {
+  const stream = streamParam === "natural" ? "natural" : streamParam === "social" ? "social" : null;
+  const premium = streamParam !== "none"; // "none" also demos the premium state? keep premium on
+  const mock = (
+    id: number,
+    subjectName: string,
+    slug: string,
+    streamTag: "natural" | "social" | "common",
+    eligible: number,
+    offered: boolean,
+  ) => ({
+    blueprintId: `bp-${id}` as never,
+    key: `subject-mock:${slug}`,
+    subjectName,
+    slug,
+    stream: streamTag,
+    questionCount: eligible >= 40 ? 40 : eligible >= 20 ? 20 : 10,
+    timeLimitSeconds: (eligible >= 40 ? 40 : eligible >= 20 ? 20 : 10) * 90,
+    eligibleCount: eligible,
+    adminVerifiedCount: Math.max(0, eligible - 2),
+    paperCount: eligible > 0 ? Math.max(1, Math.round(eligible / 30)) : 0,
+    offered,
+  });
+
+  const catalog: CatalogPayload = {
+    subjectMocks: [
+      mock(1, "English", "english", "common", 120, true),
+      mock(2, "Mathematics", "mathematics", "common", 96, true),
+      mock(3, "Scholastic Aptitude Test", "scholastic-aptitude-test", "common", 54, true),
+      stream === "social" || stream === null
+        ? mock(4, "Geography", "geography", "social", 46, true)
+        : mock(4, "Geography", "geography", "social", 46, true), // same coverage either way — ordering is computed by the hub
+      mock(5, "History", "history", "social", 38, true),
+      mock(6, "Economics", "economics", "social", 7, false),
+      mock(7, "Physics", "physics", "natural", 64, true),
+      mock(8, "Chemistry", "chemistry", "natural", 51, true),
+      mock(9, "Biology", "biology", "natural", 12, true),
+    ],
+    fullSimulations: [
+      {
+        blueprintId: "bp-sim-natural" as never,
+        key: "full-simulation:natural",
+        stream: "natural",
+        title: "Full Matric Simulation — Natural Science",
+        totalQuestions: 150,
+        timeLimitSeconds: 150 * 90,
+        subjects: [
+          { subjectName: "English", questionCount: 30, eligibleCount: 120 },
+          { subjectName: "Mathematics", questionCount: 30, eligibleCount: 96 },
+          { subjectName: "Physics", questionCount: 30, eligibleCount: 64 },
+          { subjectName: "Chemistry", questionCount: 30, eligibleCount: 51 },
+          { subjectName: "Biology", questionCount: 30, eligibleCount: 12 },
+        ],
+        offered: false, // Biology is short → honest unavailability
+      },
+      {
+        blueprintId: "bp-sim-social" as never,
+        key: "full-simulation:social",
+        stream: "social",
+        title: "Full Matric Simulation — Social Science",
+        totalQuestions: 150,
+        timeLimitSeconds: 150 * 90,
+        subjects: [
+          { subjectName: "English", questionCount: 30, eligibleCount: 120 },
+          { subjectName: "Mathematics", questionCount: 30, eligibleCount: 96 },
+          { subjectName: "Geography", questionCount: 30, eligibleCount: 46 },
+          { subjectName: "History", questionCount: 30, eligibleCount: 38 },
+          { subjectName: "Economics", questionCount: 30, eligibleCount: 7 },
+        ],
+        offered: false,
+      },
+    ],
+    weakness: {
+      blueprintId: "bp-weakness" as never,
+      title: "Weakness Challenge",
+      description:
+        "A 15-question challenge built from YOUR weakest topics (real evidence from your mistakes and mastery). Learnyx practice configuration.",
+    },
+    pastPaper: { blueprintId: "bp-pastpaper" as never },
+    premium,
+    hasActiveSession: false,
+    activeSessionId: null,
+    activeSessionTitle: null,
+    studentStream: stream,
+    studentStreamLabel:
+      stream === "natural" ? "Natural Science" : stream === "social" ? "Social Science" : null,
+    gradeLevel: streamParam === "none" ? null : 12,
+  };
+
+  const journey: MatricJourneyPayload =
+    stream === null
+      ? {
+          kind: "start",
+          sessionId: null,
+          blueprintId: "bp-1" as never,
+          title: "English Subject Mock",
+          subjectName: "English",
+          mode: "subject_mock",
+          questionCount: 40,
+          timeLimitSeconds: 40 * 90,
+          stream: null,
+          streamLabel: null,
+          reason:
+            "Based on available verified questions. Set your stream in Settings to get stream-tailored recommendations.",
+          review: { dueMistakes: 3, weakestSubjectName: null, weakestScorePct: null },
+        }
+      : {
+          kind: "start",
+          sessionId: null,
+          blueprintId: "bp-4" as never,
+          title: "Geography Subject Mock",
+          subjectName: "Geography",
+          mode: "subject_mock",
+          questionCount: 20,
+          timeLimitSeconds: 20 * 90,
+          stream,
+          streamLabel: stream === "natural" ? "Natural Science" : "Social Science",
+          reason:
+            "Your lowest recent average is 48% in Geography — this mock targets exactly that, based on your graded sittings.",
+          review: { dueMistakes: 4, weakestSubjectName: "Geography", weakestScorePct: 48 },
+        };
+
+  const history: MatricHistoryRow[] = [
+    {
+      sessionId: "hs-1" as never,
+      title: "Geography Subject Mock",
+      mode: "subject_mock",
+      status: "graded",
+      scorePct: 48,
+      questionCount: 20,
+      startedAt: Date.now() - 2 * 86400_000,
+      timeSpentSeconds: 1620,
+      submissionSource: "student",
+      stream: "social",
+      exploredOtherStream: false,
+      primarySubjectName: "Geography",
+    },
+    {
+      sessionId: "hs-2" as never,
+      title: "Mathematics Subject Mock",
+      mode: "subject_mock",
+      status: "graded",
+      scorePct: 66,
+      questionCount: 20,
+      startedAt: Date.now() - 5 * 86400_000,
+      timeSpentSeconds: 1500,
+      submissionSource: "student",
+      stream: "common",
+      exploredOtherStream: false,
+      primarySubjectName: "Mathematics",
+    },
+    {
+      sessionId: "hs-3" as never,
+      title: "Physics Subject Mock",
+      mode: "subject_mock",
+      status: "graded",
+      scorePct: 55,
+      questionCount: 20,
+      startedAt: Date.now() - 7 * 86400_000,
+      timeSpentSeconds: 1700,
+      submissionSource: "student",
+      stream: "natural",
+      exploredOtherStream: true,
+      primarySubjectName: "Physics",
+    },
+    {
+      sessionId: "hs-4" as never,
+      title: "Full Matric Simulation — Social Science",
+      mode: "full_simulation",
+      status: "expired",
+      scorePct: null,
+      questionCount: 120,
+      startedAt: Date.now() - 9 * 86400_000,
+      timeSpentSeconds: null,
+      submissionSource: "auto_expiry",
+      stream: "social",
+      exploredOtherStream: false,
+      primarySubjectName: "English",
+    },
+  ];
+
+  const pastPaperOptions: PastPaperOption[] = [
+    {
+      contentId: "pp-1" as never,
+      title: "ESSLCE Geography 2018",
+      subjectName: "Geography",
+      stream: "social",
+      examYear: 2018,
+      durationMinutes: 45,
+      isPremium: true,
+      eligibleCount: 32,
+    },
+    {
+      contentId: "pp-2" as never,
+      title: "ESSLCE History 2017",
+      subjectName: "History",
+      stream: "social",
+      examYear: 2017,
+      durationMinutes: 45,
+      isPremium: true,
+      eligibleCount: 24,
+    },
+    {
+      contentId: "pp-3" as never,
+      title: "ESSLCE Physics 2018",
+      subjectName: "Physics",
+      stream: "natural",
+      examYear: 2018,
+      durationMinutes: 60,
+      isPremium: true,
+      eligibleCount: 40,
+    },
+  ];
+
+  return { catalog, journey, history, pastPaperOptions };
+}
+
 // ─── Mount ────────────────────────────────────────────────────────────────
 
 const params = new URLSearchParams(window.location.search);
 const view = params.get("view") ?? "player";
-
+const hubStream = params.get("stream") ?? "social";
 // Unroutable port — the player's autosave fails → honest "offline" state.
 const client = new ConvexReactClient("http://127.0.0.1:65535");
+
+const HUB_FIXTURES = hubFixtures(hubStream);
 
 const app = (
   <StrictMode>
@@ -333,6 +566,32 @@ const app = (
                 onExit={() => {
                   const el = document.createElement("div");
                   el.id = "exited";
+                  document.body.appendChild(el);
+                }}
+              />
+            ) : view === "hub" ? (
+              <MatricHub
+                catalog={HUB_FIXTURES.catalog}
+                history={HUB_FIXTURES.history}
+                pastPaperOptions={HUB_FIXTURES.pastPaperOptions}
+                journey={HUB_FIXTURES.journey}
+                starting={false}
+                onStart={(blueprintId, pastPaperContentId, exploreOtherStream) => {
+                  const el = document.createElement("div");
+                  el.id = "hub-started";
+                  el.dataset.blueprintId = String(blueprintId);
+                  el.dataset.pastPaperContentId = pastPaperContentId ?? "";
+                  el.dataset.exploreOtherStream = exploreOtherStream ? "1" : "0";
+                  document.body.appendChild(el);
+                }}
+                onResume={() => {
+                  const el = document.createElement("div");
+                  el.id = "hub-resumed";
+                  document.body.appendChild(el);
+                }}
+                onOpenResults={() => {
+                  const el = document.createElement("div");
+                  el.id = "hub-results";
                   document.body.appendChild(el);
                 }}
               />

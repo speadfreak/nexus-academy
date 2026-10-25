@@ -41,6 +41,8 @@ interface PendingStart {
   subjectLines: string[];
   questionCount: number;
   timeLimitSeconds: number;
+  /** Explicit cross-stream exploration consent (per-attempt, never a profile change). */
+  exploreOtherStream?: boolean;
 }
 
 export default function MatricExam() {
@@ -68,6 +70,8 @@ export default function MatricExam() {
   const activeSession = useQuery(api.matricEngine.getMyActiveSession, {});
   const history = useQuery(api.matricEngine.getMyMatricHistory, { limit: 12 });
   const pastPaperOptions = useQuery(api.matricEngine.getPastPaperOptions, {});
+  // ── MATRIC OS 2.1: unified journey recommendation (deterministic) ──
+  const journey = useQuery(api.matricEngine.getMatricJourney, {});
 
   const startMutation = useMutation(api.matricEngine.startMatricExam);
   const resultsIdParam = searchParams.get("session");
@@ -93,12 +97,17 @@ export default function MatricExam() {
   }, [resultsIdParam]);
 
   const handleStart = useCallback(
-    async (blueprintId: Id<"matricBlueprints">, pastPaperContentId?: Id<"contentItems">) => {
+    async (
+      blueprintId: Id<"matricBlueprints">,
+      pastPaperContentId?: Id<"contentItems">,
+      exploreOtherStream?: boolean,
+    ) => {
       setStarting(true);
       try {
         const result = await startMutation({
           blueprintId,
           ...(pastPaperContentId !== undefined ? { pastPaperContentId } : {}),
+          ...(exploreOtherStream ? { exploreOtherStream: true } : {}),
         });
         setPlayerPayload({
           sessionId: result.sessionId,
@@ -130,6 +139,10 @@ export default function MatricExam() {
           });
         } else if (code === "session_in_progress") {
           toast.error(data?.message ?? "Finish your current exam first.");
+        } else if (code === "stream_mismatch") {
+          // Backend-enforced stream eligibility — the message explains the
+          // actual limitation and the two valid ways forward.
+          toast.error(data?.message ?? "This exam belongs to the other stream.", { duration: 8000 });
         } else if (code === "insufficient_coverage" || code === "no_evidence") {
           toast.error(data?.message ?? "Not enough verified questions yet.");
         } else {
@@ -143,7 +156,11 @@ export default function MatricExam() {
   );
 
   const openPendingInstructions = useCallback(
-    (blueprintId: Id<"matricBlueprints">, pastPaperContentId?: Id<"contentItems">) => {
+    (
+      blueprintId: Id<"matricBlueprints">,
+      pastPaperContentId?: Id<"contentItems">,
+      exploreOtherStream?: boolean,
+    ) => {
       // Build the instructions summary from the catalog.
       let title = "Exam";
       let subjectLines: string[] = [];
@@ -188,6 +205,7 @@ export default function MatricExam() {
         subjectLines,
         questionCount,
         timeLimitSeconds,
+        ...(exploreOtherStream ? { exploreOtherStream: true } : {}),
       });
       setInstructionsAccepted(false);
     },
@@ -198,7 +216,7 @@ export default function MatricExam() {
     if (!pending) return;
     const p = pending;
     setPending(null);
-    void handleStart(p.blueprintId, p.pastPaperContentId);
+    void handleStart(p.blueprintId, p.pastPaperContentId, p.exploreOtherStream);
   }, [pending, handleStart]);
 
   const handleSubmitted = useCallback(
@@ -312,6 +330,7 @@ export default function MatricExam() {
         catalog={catalog as CatalogPayload}
         history={history ?? []}
         pastPaperOptions={pastPaperOptions}
+        journey={journey ?? undefined}
         starting={starting}
         onStart={openPendingInstructions}
         onResume={resume}
@@ -330,6 +349,7 @@ export default function MatricExam() {
     catalog,
     history,
     pastPaperOptions,
+    journey,
     starting,
     openPendingInstructions,
     resume,
@@ -396,6 +416,15 @@ export default function MatricExam() {
                 <li>• No negative marking. Unanswered questions score zero.</li>
               </ul>
             </div>
+            {pending?.exploreOtherStream && (
+              <div className="rounded-xl border border-violet-400/25 bg-violet-400/[0.05] p-3">
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  <strong className="text-violet-200">Exploratory sitting.</strong> This exam belongs
+                  to your other stream. Your saved academic profile was not changed, and this sitting
+                  will stay clearly labeled as exploration in your history and results.
+                </p>
+              </div>
+            )}
             <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.05] p-3">
               <p className="flex items-center gap-2 font-semibold text-emerald-200">
                 <ShieldCheck className="size-4" /> Honest scoring
