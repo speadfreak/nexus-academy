@@ -137,4 +137,16 @@ crons.daily(
   internal.matricVault.autoVaultSync,
 );
 
+// Daily: systemEvents retention — telemetry decays, audit logs don't.
+// Deletes observability rows older than 30 days (bounded 500-row batch;
+// consecutive runs catch up if ever exhausted). Keeps the Terminal's 24h
+// window fast and the table size flat without losing any real signal —
+// adminAuditLog remains append-forever. See src/convex/systemEvents.ts.
+crons.daily(
+  "system-events-retention",
+  { hourUTC: 3, minuteUTC: 45 },
+  internal.systemEvents.pruneSystemEvents,
+  {},
+);
+
 export default crons;
