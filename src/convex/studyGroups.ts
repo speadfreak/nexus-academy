@@ -65,10 +65,10 @@ export const createGroup = mutation({
 
     let inviteCode = generateInviteCode();
     for (let attempt = 0; attempt < 5; attempt++) {
-      const existing = await ctx.db
+      const existing = (await ctx.db
         .query("studyGroups")
         .withIndex("by_inviteCode", (q) => q.eq("inviteCode", inviteCode))
-        .unique();
+        .order("asc").take(1))[0];
       if (!existing) break;
       inviteCode = generateInviteCode();
     }
@@ -109,10 +109,10 @@ export const joinGroup = mutation({
     if (!code) {
       throw new ConvexError({ message: "Enter an invite code.", code: "invalid" });
     }
-    const group = await ctx.db
+    const group = (await ctx.db
       .query("studyGroups")
       .withIndex("by_inviteCode", (q) => q.eq("inviteCode", code))
-      .unique();
+      .order("asc").take(1))[0];
     if (!group) {
       throw new ConvexError({
         message: "That invite code doesn't match any group. Double-check it with your friend.",

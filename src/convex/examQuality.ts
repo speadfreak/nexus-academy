@@ -164,10 +164,10 @@ export const adminListDigitalPapers = query({
     }[] = [];
 
     for (const item of items) {
-      const paper = await ctx.db
+      const paper = (await ctx.db
         .query("digitalPapers")
         .withIndex("by_content", (q) => q.eq("contentId", item._id))
-        .unique();
+        .order("asc").take(1))[0];
 
       const status = paper?.status ?? null;
       const reviewStatus = paper?.reviewStatus ?? null;
@@ -225,10 +225,10 @@ export const adminGetDigitalPaper = query({
   args: { contentId: v.id("contentItems") },
   handler: async (ctx, args) => {
     await requireAdminRead(ctx);
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row) return null;
     return {
       _id: row._id,
@@ -258,10 +258,10 @@ export const adminReviewDecide = mutation({
   },
   handler: async (ctx, args) => {
     const { user } = await requireAdminMutation(ctx);
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row || row.status !== "ready") {
       throw new ConvexError("Only a parsed (ready) paper can be reviewed.");
     }
@@ -297,10 +297,10 @@ export const adminFixQuestion = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdminMutation(ctx);
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row || row.status !== "ready") {
       throw new ConvexError("Only a ready paper can be edited.");
     }
@@ -697,10 +697,10 @@ export const adminAbandonScan = mutation({
   args: { contentId: v.id("contentItems"), reason: v.string() },
   handler: async (ctx, args) => {
     await requireAdminMutation(ctx);
-    const paper = await ctx.db
+    const paper = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (paper && paper.status === "processing") {
       await ctx.db.patch(paper._id, {
         status: "failed",
@@ -709,10 +709,10 @@ export const adminAbandonScan = mutation({
         updatedAt: Date.now(),
       });
     }
-    const job = await ctx.db
+    const job = (await ctx.db
       .query("examConversionJobs")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (job) {
       await ctx.db.patch(job._id, {
         status: "failed",
@@ -737,10 +737,10 @@ export const enqueueSinglePaper = mutation({
     const item = await ctx.db.get(args.contentId);
     if (!item) throw new ConvexError("Paper not found.");
 
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("examConversionJobs")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     const now = Date.now();
     if (existing) {
       if (existing.status === "queued" || existing.status === "running") {
@@ -759,10 +759,10 @@ export const enqueueSinglePaper = mutation({
       // Remove the old digital row entirely (INCLUDING scan-waiting rows —
       // the admin's reconvert is an explicit override) so the engine starts
       // clean.
-      const paper = await ctx.db
+      const paper = (await ctx.db
         .query("digitalPapers")
         .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-        .unique();
+        .order("asc").take(1))[0];
       if (paper) await ctx.db.delete(paper._id);
       return { queued: true as const };
     }

@@ -34,10 +34,10 @@ async function getProfileRow(
   userId: Id<"users">,
 ): Promise<Doc<"userProfiles"> | null> {
   return (
-    (await ctx.db
+    ((await ctx.db
       .query("userProfiles")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique()) ?? null
+      .order("asc").take(1))[0]) ?? null
   );
 }
 

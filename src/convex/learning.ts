@@ -334,10 +334,10 @@ export const ingestQuestionOutcomes = internalMutation({
 
       if (!o.correct) {
         const dedupeKey = `${args.source}:${args.sourceRefId}:${o.questionKey}`;
-        const existing = await ctx.db
+        const existing = (await ctx.db
           .query("mistakes")
           .withIndex("by_dedupe", (q) => q.eq("userId", userId).eq("dedupeKey", dedupeKey))
-          .unique();
+          .order("asc").take(1))[0];
         if (existing) {
           // Same question missed again (e.g. retaking the paper): reopen a
           // mastered row and pull the review forward. Never duplicate.
@@ -388,10 +388,10 @@ export const ingestQuestionOutcomes = internalMutation({
 
     // Upsert mastery rows (one per topic touched).
     for (const [topicId, results] of byTopic) {
-      const row = await ctx.db
+      const row = (await ctx.db
         .query("topicMastery")
         .withIndex("by_user_topic", (q) => q.eq("userId", userId).eq("topicId", topicId))
-        .unique();
+        .order("asc").take(1))[0];
       if (row) {
         const merged = [...row.recentResults, ...results].slice(-EVIDENCE_WINDOW);
         await ctx.db.patch(row._id, {
@@ -973,10 +973,10 @@ export const selectSimilarForMistake = internalQuery({
     }
 
     // ── Paper scan ────────────────────────────────────────────────────
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .unique();
+      .order("asc").take(1))[0];
     const hasPremium = isPremiumStatus(sub?.status);
 
     const subjectItems = await ctx.db
@@ -1003,10 +1003,10 @@ export const selectSimilarForMistake = internalQuery({
         premiumHiddenPapers += 1;
         continue;
       }
-      const dp = await ctx.db
+      const dp = (await ctx.db
         .query("digitalPapers")
         .withIndex("by_content", (q) => q.eq("contentId", paper._id))
-        .unique();
+        .order("asc").take(1))[0];
       if (!dp || dp.status !== "ready") continue;
       if (dp.reviewStatus === "needs_review" || dp.reviewStatus === "pdf_only") continue;
       if (dp.verification === "rejected") continue;
@@ -1084,12 +1084,12 @@ export const selectSimilarForMistake = internalQuery({
       if (ledgerChecks >= MAX_LEDGER_CHECKS) break;
       ledgerChecks += 1;
       const dedupeKey = `digital_paper:${c.contentId}:q${c.questionNumber}`;
-      const known = await ctx.db
+      const known = (await ctx.db
         .query("mistakes")
         .withIndex("by_dedupe", (q) =>
           q.eq("userId", args.userId).eq("dedupeKey", dedupeKey),
         )
-        .unique();
+        .order("asc").take(1))[0];
       if (known) continue; // already in the student's ledger — review owns it
       clean.push(c);
     }
@@ -1203,10 +1203,10 @@ export const getPracticeQuestions = query({
     const mistake = await ctx.db.get(session.mistakeId);
     if (!mistake || mistake.userId !== userId) return null;
 
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const hasPremium = isPremiumStatus(sub?.status);
 
     const attempts = await ctx.db
@@ -1240,10 +1240,10 @@ export const getPracticeQuestions = query({
         unavailable += 1;
         continue;
       }
-      const dp = await ctx.db
+      const dp = (await ctx.db
         .query("digitalPapers")
         .withIndex("by_content", (q) => q.eq("contentId", ref.contentId))
-        .unique();
+        .order("asc").take(1))[0];
       const q = dp?.status === "ready" ? dp.questions.find((x) => x.number === ref.questionNumber) : undefined;
       if (!q || q.kind === "structured" || !q.answer) {
         unavailable += 1;
@@ -1405,17 +1405,17 @@ export const submitMistakePractice = mutation({
     if (!paper) {
       throw new ConvexError({ message: "The source paper is no longer available.", code: "not_found" });
     }
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (paper.isPremium && !isPremiumStatus(sub?.status)) {
       throw new ConvexError({ message: "This paper is part of Learnyx Premium.", code: "premium_required" });
     }
-    const dp = await ctx.db
+    const dp = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     const q = dp?.status === "ready" ? dp.questions.find((x) => x.number === args.questionNumber) : undefined;
     if (!q || q.kind === "structured" || !q.answer) {
       throw new ConvexError({

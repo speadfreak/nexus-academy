@@ -37,10 +37,10 @@ export function levelFromXp(totalXp: number): number {
 export const getLevelByUser = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("userLevels")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });
 
 export const getRecentXpByUser = internalQuery({
@@ -104,10 +104,10 @@ export const awardXp = internalMutation({
       return { xpAwarded: 0, totalXp: 0, level: 1, levelUp: false };
     }
 
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("userLevels")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const before = row?.totalXp ?? 0;
     const totalXp = before + rounded;
     const level = levelFromXp(totalXp);
@@ -157,10 +157,10 @@ export const getMyLevel = query({
         recentXp: [],
       };
     }
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("userLevels")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const totalXp = row?.totalXp ?? 0;
     const currentLevel = row?.currentLevel ?? 1;
     const xpForNext = xpForLevel(currentLevel + 1);

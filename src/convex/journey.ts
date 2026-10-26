@@ -38,10 +38,10 @@ export const getJourney = query({
         correlations: [],
       };
     }
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const premiumAccess = sub !== null && isPremiumStatus(sub.status);
 
     // --- Hours per subject ------------------------------------------------

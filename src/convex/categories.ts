@@ -57,10 +57,10 @@ export const seedContentTypes = mutation({
     let created = 0;
     let existed = 0;
     for (const slug of CONTENT_TYPES) {
-      const existing = await ctx.db
+      const existing = (await ctx.db
         .query("contentTypes")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
-        .unique();
+        .order("asc").take(1))[0];
       if (existing) {
         existed += 1;
         continue;
@@ -93,10 +93,10 @@ export const addContentType = mutation({
     if (!slug) throw new ConvexError({ message: "Label is required.", code: "invalid" });
 
     // Check uniqueness
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("contentTypes")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) {
       throw new ConvexError({
         message: `Content type with slug "${slug}" already exists.`,
@@ -104,10 +104,10 @@ export const addContentType = mutation({
       });
     }
     // storageSlug must also be unique (it's the R2 path segment)
-    const storageSlugExisting = await ctx.db
+    const storageSlugExisting = (await ctx.db
       .query("contentTypes")
       .withIndex("by_storageSlug", (q) => q.eq("storageSlug", args.storageSlug.trim()))
-      .unique();
+      .order("asc").take(1))[0];
     if (storageSlugExisting) {
       throw new ConvexError({
         message: `Storage slug "${args.storageSlug}" already in use.`,
@@ -151,13 +151,14 @@ export const updateContentType = mutation({
     if (args.storageSlug !== undefined) {
       const storageSlug = args.storageSlug.trim();
       if (!storageSlug) throw new ConvexError({ message: "Storage slug cannot be empty.", code: "invalid" });
-      // Check uniqueness if changed
+      // Check uniqueness if changed — take(2) + some() keeps the guard
+      // exact even if duplicate rows already exist (fail-soft row reads).
       if (storageSlug !== existing.storageSlug) {
-        const other = await ctx.db
+        const others = await ctx.db
           .query("contentTypes")
           .withIndex("by_storageSlug", (q) => q.eq("storageSlug", storageSlug))
-          .unique();
-        if (other && other._id !== args.id) {
+          .order("asc").take(2);
+        if (others.some((other) => other._id !== args.id)) {
           throw new ConvexError({
             message: `Storage slug "${storageSlug}" already in use.`,
             code: "duplicate",
@@ -231,10 +232,10 @@ export const seedGrades = mutation({
     let created = 0;
     let existed = 0;
     for (const grade of GRADES) {
-      const existing = await ctx.db
+      const existing = (await ctx.db
         .query("grades")
         .withIndex("by_grade", (q) => q.eq("grade", grade))
-        .unique();
+        .order("asc").take(1))[0];
       if (existing) {
         existed += 1;
         continue;
@@ -264,10 +265,10 @@ export const addGrade = mutation({
         code: "invalid",
       });
     }
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("grades")
       .withIndex("by_grade", (q) => q.eq("grade", args.grade))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) {
       throw new ConvexError({
         message: `Grade ${args.grade} already exists.`,
@@ -354,10 +355,10 @@ export const addSubject = mutation({
     const name = args.name.trim();
     if (!name) throw new ConvexError({ message: "Name is required.", code: "invalid" });
     const slug = slugify(name);
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) {
       throw new ConvexError({
         message: `Subject with slug "${slug}" already exists.`,
@@ -389,12 +390,13 @@ export const updateSubject = mutation({
       if (!name) throw new ConvexError({ message: "Name cannot be empty.", code: "invalid" });
       const newSlug = slugify(name);
       if (newSlug !== existing.slug) {
-        // Check uniqueness of the new slug
-        const other = await ctx.db
+        // Check uniqueness of the new slug — take(2) + some() keeps the
+        // guard exact even if duplicate rows already exist.
+        const others = await ctx.db
           .query("subjects")
           .withIndex("by_slug", (q) => q.eq("slug", newSlug))
-          .unique();
-        if (other && other._id !== args.id) {
+          .order("asc").take(2);
+        if (others.some((other) => other._id !== args.id)) {
           throw new ConvexError({
             message: `Another subject already uses the slug "${newSlug}".`,
             code: "duplicate",

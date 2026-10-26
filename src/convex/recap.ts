@@ -20,10 +20,10 @@ import { callGroq } from "./groq";
 export const getStreakByUser = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) =>
-    await ctx.db
+    (await ctx.db
       .query("studyStreaks")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique(),
+      .order("asc").take(1))[0],
 });
 
 export const getRecentSessions = internalQuery({

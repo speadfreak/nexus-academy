@@ -57,10 +57,10 @@ export const seed = mutation({
     let existed = 0;
     for (const subject of SEED_SUBJECTS) {
       const slug = slugify(subject.name);
-      const existing = await ctx.db
+      const existing = (await ctx.db
         .query("subjects")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
-        .unique();
+        .order("asc").take(1))[0];
       if (existing) {
         existed += 1;
         continue;
