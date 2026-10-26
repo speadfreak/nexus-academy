@@ -16,7 +16,7 @@
 // The player is never mounted on /admin while idle, and publishes its real
 // height as --music-player-h so immersive pages can reserve clearance.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation } from "react-router";
 import {
   AudioLines,
@@ -54,6 +54,32 @@ import {
   type TrackMeta,
 } from "@/components/music-player";
 import { Switch } from "@/components/ui/switch";
+
+// ── Keyboard state bridge (MOBILE 3.0) ─────────────────────────────────
+//
+// The useKeyboardViewport hook (DashboardShell) toggles the `kb-open` class
+// on <html> while the virtual keyboard is up. ClassList isn't reactive, so
+// this tiny external store subscribes to that attribute and re-renders the
+// player when the keyboard opens/closes. Used ONLY for chrome decisions —
+// never playback: when the keyboard opens on a phone the deck miniaturizes
+// to its pill and the audio keeps playing, untouched.
+
+function subscribeKbClass(onChange: () => void) {
+  const mo = new MutationObserver(onChange);
+  mo.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => mo.disconnect();
+}
+
+function useKbOpen(): boolean {
+  return useSyncExternalStore(
+    subscribeKbClass,
+    () => document.documentElement.classList.contains("kb-open"),
+    () => false,
+  );
+}
 
 // ── YouTube URL parser ────────────────────────────────────────────────
 
@@ -762,6 +788,17 @@ export function MusicPlayer() {
   const [showYoutube, setShowYoutube] = useState(false);
   const [timeSuggestion, setTimeSuggestion] = useState<string | null>(null);
 
+  // MOBILE 3.0 — keyboard coordination: while the virtual keyboard is open
+  // on a phone, drop to the elegant mini pill so the Tutor composer keeps
+  // the stage and the deck never fights it for the bottom dock. Playback
+  // state is deliberately untouched — audio continues uninterrupted, and
+  // the pill's tap-to-expand keeps the full deck one tap away afterwards.
+  const kbOpen = useKbOpen();
+  useEffect(() => {
+    if (!kbOpen) return;
+    if (window.matchMedia("(max-width: 639px)").matches) setExpanded(false);
+  }, [kbOpen]);
+
   // Time-of-day suggestion (kept from the original player)
   useEffect(() => {
     const hour = new Date().getHours();
@@ -817,7 +854,7 @@ export function MusicPlayer() {
       // sm:w-auto + sm:max-w-none lets the bar grow to its natural content
       // width so all controls (prev/play/next/track-name/visualizer/volume/
       // 3 action buttons/minimize) have proper breathing room on a single row.
-      className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[calc(100vw-1.5rem)] max-w-md sm:w-auto sm:max-w-none"
+      className="fixed bottom-[calc(max(1rem,env(safe-area-inset-bottom,0px))+var(--kb-h,0px))] left-1/2 z-40 -translate-x-1/2 w-[calc(100vw-1.5rem)] max-w-md sm:w-auto sm:max-w-none"
       data-scroll-contain
     >
       {/* Time-of-day suggestion banner */}

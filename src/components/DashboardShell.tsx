@@ -38,6 +38,7 @@ import { prefetchRoute } from "@/lib/navigation";
 import { localDateKey } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useKeyboardViewport } from "@/hooks/useKeyboardViewport";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MusicPlayer } from "@/components/music-player";
@@ -65,6 +66,10 @@ export function DashboardShell({
   immersive?: boolean;
 }) {
   const { user, signOut } = useAuth();
+  // MOBILE 3.0 — one global owner of the virtual-keyboard dimension. Publishes
+  // --kb-h + kb-open so the Tutor composer and Vibe Player dock above the
+  // keyboard in lockstep instead of colliding.
+  useKeyboardViewport();
   // Shared admin-check subscription (AppBootstrap) — one for the whole app.
   const { adminInfo: isAdmin } = useAppBootstrap();
   const subscription = useQuery(api.subscriptions.getSubscriptionStatus);
@@ -88,6 +93,15 @@ export function DashboardShell({
   }, []);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  // MOBILE 3.0 — the Tutor study room replaces the shell's mobile header with
+  // its own compact app header, so it asks for the global navigation drawer
+  // through this tiny event channel instead of prop-drilling shell state.
+  useEffect(() => {
+    const open = () => setMobileOpen(true);
+    window.addEventListener("learnyx:open-nav", open);
+    return () => window.removeEventListener("learnyx:open-nav", open);
+  }, []);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -237,6 +251,11 @@ export function DashboardShell({
       className={cn(
         "student-app-shell relative mx-auto flex min-h-[100dvh] min-w-0 w-full max-w-[1600px] items-start gap-4 overflow-x-clip px-4 py-4 sm:px-6 sm:py-6 lg:px-8",
         immersive && "h-[100dvh] overflow-hidden",
+        // MOBILE 3.0 — immersive pages own every pixel of phone viewport:
+        // zero outer padding on phones (the page paints its own safe areas),
+        // a whisper of padding on tablets, and the EXACT legacy paddings
+        // from lg up so the desktop study room is pixel-identical.
+        immersive && "p-0 sm:p-3 lg:px-8 lg:py-6",
       )}
     >
 
@@ -420,6 +439,11 @@ export function DashboardShell({
         "student-app-main flex min-w-0 flex-1 flex-col gap-4 self-stretch",
         immersive && "min-h-0",
       )}>
+        {/* MOBILE 3.0 — the immersive Tutor room renders its own single-row
+            app header (identity + context chip + primary actions), so the
+            shell's generic mobile header would only duplicate chrome and
+            fragment the top of the screen. Non-immersive pages keep it. */}
+        {!immersive && (
         <header className="student-mobile-header glass-panel relative z-30 flex items-center justify-between rounded-2xl px-4 py-2.5 xl:hidden">
           <Link to="/" className="flex items-center gap-2">
             <img src={logo} alt="Learnyx Academy ET 🇪🇹 logo" className="size-8 rounded-lg" />
@@ -432,6 +456,7 @@ export function DashboardShell({
             </Button>
           </div>
         </header>
+        )}
 
         <main
           className={cn(
@@ -465,7 +490,13 @@ export function DashboardShell({
           {mobileOpen && (
             <>
               <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm xl:hidden" onClick={() => setMobileOpen(false)} aria-hidden="true" />
-              <motion.div key="drawer" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }} className="fixed inset-x-3 top-[4.5rem] z-[9999] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden" data-scroll-contain role="dialog" aria-label="Navigation menu">
+              {/* MOBILE 3.0 — when the immersive Tutor room opens this drawer
+                  it has no shell header above it, so the panel drops from the
+                  very top instead of the legacy 4.5rem offset. */}
+              <motion.div key="drawer" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }} className={cn(
+                "fixed inset-x-3 z-[9999] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-background/[0.97] p-2 shadow-2xl backdrop-blur-xl xl:hidden",
+                immersive ? "top-3" : "top-[4.5rem]",
+              )} data-scroll-contain role="dialog" aria-label="Navigation menu">
                 <nav aria-label="Mobile navigation" className="grid gap-1">
                   {navItems.map(renderMobileNavLink)}
                   <div className="my-1 h-px bg-white/[0.06]" />

@@ -54,6 +54,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useMusic } from "@/components/music-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -838,6 +839,17 @@ function ModeTabs({
   disabled: boolean;
 }) {
   const active = MODES.find((m) => m.id === mode) ?? MODES[0];
+  // MOBILE 3.0 — the bar scrolls on phones; whatever mode is current is
+  // always scrolled into view (mode persists across visits, so the active
+  // tab may start off-screen).
+  const activeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [mode]);
   return (
     <div className="flex items-center gap-3 px-2 sm:px-3">
       <div
@@ -847,26 +859,39 @@ function ModeTabs({
       >
         {MODES.map((m) => {
           const isActive = m.id === mode;
+          const Icon = m.icon;
           return (
             <button
               key={m.id}
+              ref={isActive ? activeRef : undefined}
               type="button"
               role="tab"
               aria-selected={isActive}
               disabled={disabled}
               onClick={() => onModeChange(m.id)}
               className={cn(
-                "relative shrink-0 cursor-pointer px-3 py-2.5 text-xs font-semibold transition-colors",
+                "relative shrink-0 cursor-pointer font-semibold transition-colors",
+                // MOBILE 3.0 — icon stacked over a compact label: a thumb-
+                // sized mode bar that never overflows. ≥sm: the calm text
+                // tabs, pixel-identical to the original.
+                "flex flex-col items-center gap-0.5 px-2.5 py-2 text-[10px]",
+                "sm:flex-row sm:gap-0 sm:px-3 sm:py-2.5 sm:text-xs",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 isActive ? "text-foreground" : "text-muted-foreground/70 hover:text-foreground",
               )}
             >
+              <Icon
+                className={cn(
+                  "size-3.5 shrink-0 sm:hidden",
+                  isActive ? "text-primary" : "opacity-70",
+                )}
+              />
               {m.label}
               {isActive && (
                 <motion.span
                   layoutId="tutor-mode-underline"
                   transition={{ type: "spring", stiffness: 500, damping: 40 }}
-                  className="absolute inset-x-2.5 -bottom-px h-[2px] rounded-full bg-primary shadow-[0_0_8px_rgb(230_167_46/0.55)]"
+                  className="absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-primary shadow-[0_0_8px_rgb(230_167_46/0.55)] sm:inset-x-2.5"
                 />
               )}
             </button>
@@ -1221,7 +1246,10 @@ function ExamCoachCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-      className="w-full rounded-2xl border border-primary/15 bg-primary/[0.04] p-4"
+      // MOBILE 3.0 — rich readiness analytics wait for a wider screen; the
+      // phone empty state stays focused (the context sheet + sidebar carry
+      // the essentials).
+      className="hidden w-full rounded-2xl border border-primary/15 bg-primary/[0.04] p-4 sm:block"
     >
       <div className="flex items-center justify-between gap-3">
         <p className="flex items-center gap-2 type-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
@@ -1355,19 +1383,22 @@ function WelcomeState({
   const missionPct = weakest?.readiness ?? 0;
 
   return (
-    <div className="flex w-full flex-col gap-6 py-2">
-      {/* ── Hero — the study room welcome ── */}
+    <div className="flex w-full flex-col gap-4 py-1 sm:gap-6 sm:py-2">
+      {/* ── Hero — the study room welcome ──
+          MOBILE 3.0: the oversized desktop hero (2rem headline, big top gap)
+          becomes a compact two-line welcome so the empty state never pushes
+          the composer below the fold. Desktop is untouched. */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="flex flex-col items-center gap-2.5 pt-4 text-center"
+        className="flex flex-col items-center gap-1.5 pt-0 text-center sm:gap-2.5 sm:pt-4"
       >
-        <TutorMark className="text-2xl" />
-        <h1 className="type-h1 tracking-tight">
+        <TutorMark className="text-base sm:text-2xl" />
+        <h1 className="text-[1.3rem] font-extrabold leading-[1.15] tracking-[-0.025em] sm:text-[2rem]">
           {t("tutor:whatLearning", { defaultValue: "WHAT ARE WE LEARNING?" })}
         </h1>
-        <p className="type-body max-w-lg text-muted-foreground">
+        <p className="type-body max-w-lg text-[13px] leading-6 text-muted-foreground sm:text-[15px] sm:leading-[1.65]">
           {t("tutor:welcomeSubStudyRoom", {
             defaultValue:
               "Ask a question, upload a problem, or start an exam-focused session.",
@@ -1391,12 +1422,15 @@ function WelcomeState({
         </p>
       </motion.div>
 
-      {/* ── Journey stats ── */}
+      {/* ── Journey stats — MOBILE 3.0: the analytics suite (stats, exam
+          coach, recommended subjects, textbook shelf) stays a desktop
+          luxury; phones get the purposeful welcome (hero · mission ·
+          starters · session CTA). Nothing is deleted — it lives ≥sm. */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
-        className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4"
+        className="hidden w-full grid-cols-2 gap-2 sm:grid sm:grid-cols-4"
       >
         <StatTile
           icon={Flame}
@@ -1424,14 +1458,15 @@ function WelcomeState({
         />
       </motion.div>
 
-      {/* ── Mission + Exam Coach — side by side on wide screens ── */}
-      <div className="grid w-full gap-3 lg:grid-cols-2">
+      {/* ── Mission + Exam Coach — side by side on wide screens. The mission
+              card doubles as the phone's "continue your last lesson" row. ── */}
+      <div className="grid w-full gap-2 sm:gap-3 lg:grid-cols-2">
         {weakest && missionSubjectId && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="glass-soft w-full rounded-2xl p-4"
+            className="glass-soft w-full rounded-2xl p-3 sm:p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -1493,7 +1528,7 @@ function WelcomeState({
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full"
+          className="hidden w-full sm:block"
         >
           <p className="mb-2 px-1 type-mono text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
             {t("tutor:recommendedTitle", { defaultValue: "Recommended for you" })}
@@ -1534,7 +1569,7 @@ function WelcomeState({
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full"
+          className="hidden w-full sm:block"
         >
           <p className="mb-2 px-1 type-mono text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
             📖 {t("tutor:textbookTitle", { defaultValue: "Answer from your textbooks" })}
@@ -1581,7 +1616,7 @@ function WelcomeState({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
-        className="grid w-full gap-2.5 sm:grid-cols-2"
+        className="grid w-full gap-2 sm:grid-cols-2 sm:gap-2.5"
       >
         {starters.map((prompt, i) => (
           <motion.button
@@ -1593,7 +1628,7 @@ function WelcomeState({
             onClick={() => onSendStarter(prompt)}
             disabled={disabled}
             className={cn(
-              "cursor-pointer rounded-xl px-4 py-3.5 text-left text-[13px] leading-5 text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground disabled:opacity-50 interactive-press border border-transparent",
+              "cursor-pointer rounded-xl px-3 py-2.5 text-left text-xs leading-5 text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground disabled:opacity-50 interactive-press border border-transparent sm:px-4 sm:py-3.5 sm:text-[13px]",
               i === 0 && latestMock
                 ? "border-primary/20 bg-primary/[0.06] text-foreground hover:border-primary/40 hover:bg-primary/[0.1]"
                 : "glass-soft",
@@ -1616,9 +1651,9 @@ function WelcomeState({
           type="button"
           disabled={disabled}
           onClick={onStudySession}
-          className="group flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-primary/20 bg-primary/[0.06] p-4 text-left transition-all hover:border-primary/40 hover:bg-primary/[0.1] disabled:cursor-not-allowed disabled:opacity-50 interactive-press"
+          className="group flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-primary/20 bg-primary/[0.06] p-3 text-left transition-all hover:border-primary/40 hover:bg-primary/[0.1] disabled:cursor-not-allowed disabled:opacity-50 interactive-press sm:p-4"
         >
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary sm:size-10">
             <Timer className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -1715,6 +1750,255 @@ function ActionChips({
 }
 
 // ---------------------------------------------------------------------------
+// MOBILE 3.0 — Academic context sheet. The compact header chip opens this
+// bottom sheet instead of the old stacked selects: grade, stream, subject,
+// concise preference and textbook grounding in one thumb-friendly place.
+// The authoritative profile behavior is untouched — stream changes still
+// persist through the same changeStream handler (with an honest hint).
+// ---------------------------------------------------------------------------
+
+function AcademicContextSheet({
+  open,
+  onOpenChange,
+  grade,
+  onGradeChange,
+  stream,
+  onStreamChange,
+  subjects,
+  scopeSubjectId,
+  onSubjectPick,
+  concise,
+  onConciseChange,
+  textbooks,
+  activeTextbookId,
+  onGroundTextbook,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  grade: number | null;
+  onGradeChange: (grade: number | null) => void;
+  stream: "natural" | "social";
+  onStreamChange: (stream: "natural" | "social") => void;
+  subjects: SubjectRow[];
+  scopeSubjectId: string;
+  onSubjectPick: (subjectId: string | null) => void;
+  concise: boolean;
+  onConciseChange: (concise: boolean) => void;
+  textbooks: { _id: string; title: string; contentType: string; grade: number }[];
+  activeTextbookId: string | null;
+  onGroundTextbook: (book: { _id: string; title: string }) => void;
+}) {
+  const { t } = useTranslation(["tutor", "common"]);
+  const labelCls =
+    "px-0.5 pb-1.5 type-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70";
+  const chipCls = (active: boolean) =>
+    cn(
+      "flex h-9 cursor-pointer items-center justify-center rounded-xl border text-xs font-semibold transition-colors interactive-press",
+      active
+        ? "border-primary/50 bg-primary/15 text-primary"
+        : "border-border/70 bg-foreground/[0.04] text-muted-foreground hover:text-foreground",
+    );
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="max-h-[85dvh] rounded-t-3xl border-border/60 p-0 pb-[calc(0.875rem+env(safe-area-inset-bottom,0px))]"
+      >
+        <SheetHeader className="sr-only">
+          <SheetTitle>Academic context</SheetTitle>
+        </SheetHeader>
+
+        {/* Grabber */}
+        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-foreground/15" aria-hidden="true" />
+
+        <div
+          className="flex max-h-[calc(85dvh-2.5rem)] flex-col gap-4 overflow-y-auto px-4 pb-1 pt-3"
+          data-scroll-contain
+        >
+          {/* Identity */}
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_24px_-10px_rgb(230_167_46/0.7)]">
+              <Bot className="size-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-sm font-bold tracking-tight">
+                <TutorMark className="text-xs" />
+                {t("tutor:title", { defaultValue: "LEARNYX TUTOR" })}
+              </p>
+              <p className="type-mono text-[10px] text-muted-foreground">
+                {t("tutor:ctxSheetSub", {
+                  defaultValue: "Your academic context — answers adapt to it",
+                })}
+              </p>
+            </div>
+          </div>
+
+          {/* Grade */}
+          <div>
+            <p className={labelCls}>
+              {t("tutor:ctxGradeLabel", { defaultValue: "Grade" })}
+            </p>
+            <div className="grid grid-cols-5 gap-1.5">
+              <button
+                type="button"
+                className={chipCls(grade === null)}
+                onClick={() => onGradeChange(null)}
+              >
+                {t("tutor:ctxAll", { defaultValue: "All" })}
+              </button>
+              {[9, 10, 11, 12].map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  className={chipCls(grade === g)}
+                  onClick={() => onGradeChange(g)}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Stream — honest note: this is the saved profile stream */}
+          <div>
+            <p className={labelCls}>
+              {t("tutor:ctxStreamLabel", { defaultValue: "Stream" })}
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                className={chipCls(stream === "natural")}
+                onClick={() => onStreamChange("natural")}
+              >
+                {t("tutor:ctxNatural", { defaultValue: "Natural Science" })}
+              </button>
+              <button
+                type="button"
+                className={chipCls(stream === "social")}
+                onClick={() => onStreamChange("social")}
+              >
+                {t("tutor:ctxSocial", { defaultValue: "Social Science" })}
+              </button>
+            </div>
+            <p className="mt-1.5 px-0.5 type-mono text-[9px] leading-4 text-muted-foreground/60">
+              {t("tutor:ctxStreamHint", {
+                defaultValue:
+                  "Switching updates your saved profile stream and refilters subjects.",
+              })}
+            </p>
+          </div>
+
+          {/* Subject */}
+          <div>
+            <p className={labelCls}>
+              {t("tutor:ctxSubjectLabel", { defaultValue: "Subject" })}
+            </p>
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => onSubjectPick(null)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] font-medium transition-colors interactive-press",
+                  !scopeSubjectId
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground",
+                )}
+              >
+                <Globe className="size-3.5 shrink-0 opacity-70" />
+                <span className="flex-1">
+                  {t("tutor:ctxAllSubjects", { defaultValue: "All subjects" })}
+                </span>
+                {!scopeSubjectId && <Check className="size-3.5 shrink-0 text-primary" />}
+              </button>
+              {subjects.map((subject) => {
+                const Icon = getSubjectIcon(subject.name);
+                const isActive = subject._id === scopeSubjectId;
+                return (
+                  <button
+                    key={subject._id}
+                    type="button"
+                    onClick={() => onSubjectPick(subject._id)}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] font-medium transition-colors interactive-press",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="size-3.5 shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">{subject.name}</span>
+                    {isActive && <Check className="size-3.5 shrink-0 text-primary" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Concise preference */}
+          <button
+            type="button"
+            onClick={() => onConciseChange(!concise)}
+            className={cn(
+              "flex cursor-pointer items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors interactive-press",
+              concise
+                ? "bg-primary/15 text-primary"
+                : "bg-foreground/[0.05] text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t("tutor:memoryConcise", { defaultValue: "Prefers concise" })}
+            <span
+              className={cn(
+                "flex h-4 w-7 items-center rounded-full p-0.5 transition-colors",
+                concise ? "bg-primary/70" : "bg-foreground/15",
+              )}
+            >
+              <span
+                className={cn(
+                  "size-3 rounded-full bg-background transition-transform",
+                  concise && "translate-x-3",
+                )}
+              />
+            </span>
+          </button>
+
+          {/* Textbook grounding */}
+          {textbooks.length > 0 && (
+            <div>
+              <p className={labelCls}>
+                📖 {t("tutor:ctxTextbookLabel", { defaultValue: "Textbook context" })}
+              </p>
+              <div className="flex flex-col gap-1">
+                {textbooks.map((book) => (
+                  <button
+                    key={book._id}
+                    type="button"
+                    onClick={() => {
+                      onGroundTextbook(book);
+                      onOpenChange(false);
+                    }}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] transition-colors interactive-press",
+                      activeTextbookId === book._id
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground",
+                    )}
+                  >
+                    <BookOpen className="size-3.5 shrink-0 opacity-70" />
+                    <span className="min-w-0 flex-1 truncate font-medium">{book.title}</span>
+                    <span className="shrink-0 type-mono text-[9px] opacity-60">G{book.grade}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The study composer. Grows to ~200px, keeps its tools visible (image,
 // textbook grounding, voice), shows the grounded context chip, and sends
 // with Enter. The single most-used surface in the room — built like it.
@@ -1777,7 +2061,17 @@ function Composer({
   }, [input, inputRef]);
 
   return (
-    <div className="relative z-10 shrink-0 px-3 pb-[calc(1.5rem_+_var(--music-player-h,0px)_+_env(safe-area-inset-bottom,0px))] pt-1 sm:px-6 sm:pb-5">
+    <div className="relative z-10 shrink-0 px-3 pt-1.5 sm:px-6 sm:pb-5 sm:pt-1">
+      {/* MOBILE 3.0 — COORDINATED BOTTOM DOCK. The composer does not own the
+          viewport bottom independently: its padding reserves the EXACT
+          footprint of everything below it in one shared stack —
+            0.625rem gap · Vibe Player offset (max of 1rem / safe-area inset)
+            · Vibe Player real height (--music-player-h, ResizeObserver-published)
+            · keyboard height (--kb-h, useKeyboardViewport-published)
+          so the composer, the player and the keyboard can never collide —
+          they occupy one predictable column. Desktop keeps the legacy
+          sm:pb-5 geometry untouched. */}
+      <div className="pb-[calc(0.625rem+max(1rem,env(safe-area-inset-bottom,0px))+var(--music-player-h,0px)+var(--kb-h,0px))]">
       <div className="mx-auto w-full max-w-[960px]">
         {/* Grounded context chip — "I'm not just talking to an AI, I'm studying THIS." */}
         <AnimatePresence>
@@ -1789,9 +2083,9 @@ function Composer({
               transition={{ duration: 0.2 }}
               className="mb-2 flex"
             >
-              <span className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-primary">
-                <BookOpen className="size-3" />
-                <span className="max-w-[260px] truncate">{groundedTitle}</span>
+              <span className="flex max-w-[200px] items-center gap-1.5 truncate rounded-full border border-primary/30 bg-primary/10 py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-primary sm:max-w-[260px]">
+                <BookOpen className="size-3 shrink-0" />
+                <span className="max-w-[180px] truncate sm:max-w-[240px]">{groundedTitle}</span>
                 <button
                   type="button"
                   aria-label="Stop grounding answers in this document"
@@ -1848,6 +2142,7 @@ function Composer({
               }
             }}
             rows={1}
+            enterKeyHint="send"
             placeholder={
               speech.listening
                 ? t("tutor:listening", { defaultValue: "Listening… speak now" })
@@ -1857,7 +2152,9 @@ function Composer({
             }
             disabled={isAwaiting}
             className={cn(
-              "block max-h-[200px] w-full resize-none bg-transparent px-4 pt-3.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/60 sm:text-[15px] sm:leading-[1.65]",
+              // MOBILE 3.0 — capped at ~5 phone lines so a long paste never
+              // swallows the viewport; desktop keeps the 200px ceiling.
+              "block max-h-[132px] w-full resize-none bg-transparent px-4 pt-3.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/60 sm:max-h-[200px] sm:text-[15px] sm:leading-[1.65]",
               // 16px on phones — below it iOS Safari zooms the viewport on focus.
               speech.listening && "placeholder:text-rose-300",
             )}
@@ -2010,6 +2307,7 @@ function Composer({
           })}
         </p>
       </div>
+      </div>
     </div>
   );
 }
@@ -2067,6 +2365,9 @@ export default function Tutor() {
   const [searchQ, setSearchQ] = useState("");
   const [armDeleteId, setArmDeleteId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // MOBILE 3.0 — the compact academic-context sheet (grade · stream ·
+  // subject · textbook grounding) opened from the header context chip.
+  const [contextOpen, setContextOpen] = useState(false);
 
   // ── Tools drawer (persisted) ──
   const [toolsOpen, setToolsOpen] = useState(
@@ -2417,8 +2718,11 @@ export default function Tutor() {
   }, [messages, sending, isAwaiting, regenerating]);
 
   useEffect(() => {
-    // New conversation opened → land at the latest message instantly.
-    scrollToBottom(false);
+    // MOBILE 3.0 — an open conversation lands on its latest message
+    // instantly; the fresh room (no conversation) stays at the TOP of the
+    // empty state so the welcome is what a phone sees first (the old
+    // unconditional scroll-to-bottom landed the empty state at its end).
+    if (selectedId !== null) scrollToBottom(false);
     setEditing(null);
     setFollowUps([]);
     setMiniCheck(null);
@@ -2858,7 +3162,11 @@ export default function Tutor() {
 
   const busy = isAwaiting || branching;
 
-  const sidebarInner = (
+  // MOBILE 3.0 — the sidebar body is shared by the desktop rail and the
+  // mobile conversations drawer, parameterized: the mobile drawer drops the
+  // study-context card (that context now lives in the header chip + the
+  // academic-context sheet) so the drawer is a lean conversation list.
+  const sidebarInner = (showContextCard: boolean) => (
     <>
       <div className="flex items-center gap-2">
         <Button
@@ -2896,19 +3204,21 @@ export default function Tutor() {
         />
       ) : (
         <>
-          <StudyContextCard
-            displayName={profile?.displayName ?? null}
-            grade={grade}
-            streamLabel={
-              stream === "social"
-                ? t("tutor:ctxSocial", { defaultValue: "Social Science" })
-                : t("tutor:ctxNatural", { defaultValue: "Natural Science" })
-            }
-            weakestName={weakest?.name ?? null}
-            readinessOverall={readiness.overall}
-            concise={concise}
-            onConciseChange={changeConcise}
-          />
+          {showContextCard && (
+            <StudyContextCard
+              displayName={profile?.displayName ?? null}
+              grade={grade}
+              streamLabel={
+                stream === "social"
+                  ? t("tutor:ctxSocial", { defaultValue: "Social Science" })
+                  : t("tutor:ctxNatural", { defaultValue: "Natural Science" })
+              }
+              weakestName={weakest?.name ?? null}
+              readinessOverall={readiness.overall}
+              concise={concise}
+              onConciseChange={changeConcise}
+            />
+          )}
 
           <div className="flex items-center justify-between px-1 pt-1">
             <span className="type-caption font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
@@ -3000,33 +3310,101 @@ export default function Tutor() {
       <div className="flex h-full min-h-0 gap-0 lg:gap-5">
         {/* ── Left rail — the study room directory (desktop) ── */}
         <aside className="hidden w-[290px] shrink-0 flex-col gap-3 border-r border-border/60 py-1 pr-4 lg:flex">
-          {sidebarInner}
+          {sidebarInner(true)}
         </aside>
 
         {/* ── Workspace ── */}
         <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          {/* Header — small, calm, functional */}
-          <header className="flex items-center justify-between gap-3 border-b border-border/60 px-1 pb-3 pt-1 sm:px-2">
+          {/* MOBILE 3.0 APP HEADER — one calm row that replaces the old
+              fragmented stack (shell header + tutor header + three wrapped
+              selects ≈ 200px of chrome). Everything is one tap away:
+              ☰ conversations · identity + academic-context chip (opens the
+              grade/stream/subject/textbook sheet) · notifications · voice.
+              Safe-area top keeps it below the notch in PWA standalone. */}
+          <header className="flex items-center gap-1.5 border-b border-border/60 pb-2 pl-2 pr-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] lg:hidden">
+            {/* Conversations drawer */}
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-9 shrink-0 rounded-xl bg-foreground/5"
+                  aria-label="Open conversations"
+                >
+                  <PanelLeft className="size-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="w-[86vw] max-w-[320px] gap-3 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"
+              >
+                <SheetHeader className="sr-only">
+                  <SheetTitle>Conversations</SheetTitle>
+                </SheetHeader>
+                {sidebarInner(false)}
+              </SheetContent>
+            </Sheet>
+
+            {/* Identity + academic context chip — the whole block is one
+                button that opens the context sheet. */}
+            <button
+              type="button"
+              onClick={() => setContextOpen(true)}
+              aria-label="Change grade, stream or subject"
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xl border border-border/70 bg-foreground/[0.04] px-2 py-1.5 text-left transition-colors interactive-press active:border-primary/40"
+            >
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary shadow-[0_0_18px_-8px_rgb(230_167_46/0.7)]">
+                <Bot className="size-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="flex items-center gap-1 text-[11px] font-bold tracking-tight text-foreground">
+                  <TutorMark className="text-[9px]" />
+                  {t("tutor:title", { defaultValue: "LEARNYX TUTOR" })}
+                </span>
+                <span className="mt-px flex items-center gap-1 type-mono text-[9px] text-muted-foreground">
+                  <span className="truncate">
+                    {grade
+                      ? t("tutor:ctxGrade", { defaultValue: "Grade {{g}}", g: grade })
+                      : t("tutor:ctxAllGrades", { defaultValue: "Grade 9–12" })}
+                    {" · "}
+                    {stream === "social"
+                      ? t("tutor:ctxStreamShortSocial", { defaultValue: "Social" })
+                      : t("tutor:ctxStreamShortNatural", { defaultValue: "Natural" })}
+                    {" · "}
+                    {scopeSubject?.name ?? t("tutor:ctxAllSubjects", { defaultValue: "All subjects" })}
+                  </span>
+                  <ChevronDown className="ml-auto size-3 shrink-0 text-muted-foreground/60" />
+                </span>
+              </span>
+            </button>
+
+            <NotificationBell />
+
+            {/* Voice output toggle — Talk to Learnyx */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "size-8 shrink-0 rounded-lg interactive-press",
+                voiceOut ? "text-primary hover:text-primary" : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => changeVoiceOut(!voiceOut)}
+              aria-label={voiceOut ? "Disable voice replies" : "Enable voice replies"}
+              title={
+                voiceOut
+                  ? "Voice replies ON — the tutor reads answers aloud"
+                  : "Voice replies OFF — tap to have the tutor read answers aloud"
+              }
+            >
+              {voiceOut ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+            </Button>
+          </header>
+
+          {/* Header — small, calm, functional (desktop) */}
+          <header className="hidden items-center justify-between gap-3 border-b border-border/60 px-1 pb-3 pt-1 sm:px-2 lg:flex">
             <div className="flex min-w-0 items-center gap-2.5">
-              {/* Mobile conversations drawer */}
-              <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-9 shrink-0 rounded-xl bg-foreground/5 lg:hidden"
-                    aria-label="Open conversations"
-                  >
-                    <PanelLeft className="size-4" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="w-[300px] gap-3 p-3 sm:w-[320px]">
-                  <SheetHeader className="sr-only">
-                    <SheetTitle>Conversations</SheetTitle>
-                  </SheetHeader>
-                  {sidebarInner}
-                </SheetContent>
-              </Sheet>
+              {/* MOBILE 3.0 — the conversations drawer moved to the dedicated
+                  mobile header above; the desktop header is clean again. */}
 
               <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_24px_-10px_rgb(230_167_46/0.7)]">
                 <Bot className="size-4.5" />
@@ -3162,7 +3540,7 @@ export default function Tutor() {
 
           {/* Guided Study Session bar */}
           {session && (
-            <div className="border-b border-primary/15 bg-primary/[0.05] px-4 py-2">
+            <div className="border-b border-primary/15 bg-primary/[0.05] px-3 py-1.5 sm:px-4 sm:py-2">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5">
                   {SESSION_PHASES.map((phase, i) => (
@@ -3243,7 +3621,7 @@ export default function Tutor() {
               className="absolute inset-0 overflow-y-auto"
               data-scroll-contain
             >
-              <div className="mx-auto flex w-full max-w-[960px] flex-col gap-7 px-5 py-6 sm:px-8 sm:py-8">
+              <div className="mx-auto flex w-full max-w-[960px] flex-col gap-5 px-3.5 py-4 sm:gap-7 sm:px-8 sm:py-8">
                 {selectedId === null ? (
                   <WelcomeState
                     displayName={profile?.displayName ?? null}
@@ -3515,7 +3893,7 @@ export default function Tutor() {
                   exit={{ opacity: 0, y: 8, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
                   onClick={() => scrollToBottom(true)}
-                  className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-primary/30 bg-background/90 px-3.5 py-1.5 text-[11px] font-semibold text-foreground shadow-[0_8px_30px_-10px_rgb(230_167_46/0.5)] backdrop-blur-md transition-colors hover:border-primary/50"
+                  className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-primary/30 bg-background/90 px-3.5 py-1.5 text-[11px] font-semibold text-foreground shadow-[0_8px_30px_-10px_rgb(230_167_46/0.5)] backdrop-blur-md transition-colors hover:border-primary/50 sm:bottom-4"
                 >
                   <ChevronDown className="size-3.5 text-primary" />
                   {t("tutor:newMessages", { defaultValue: "New messages" })}
@@ -3763,6 +4141,28 @@ export default function Tutor() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* MOBILE 3.0 — academic context sheet (grade · stream · subject ·
+          textbook grounding), opened from the compact header chip. */}
+      <AcademicContextSheet
+        open={contextOpen}
+        onOpenChange={setContextOpen}
+        grade={grade}
+        onGradeChange={changeGrade}
+        stream={stream}
+        onStreamChange={changeStream}
+        subjects={streamSubjects}
+        scopeSubjectId={scopeSubjectId}
+        onSubjectPick={(subjectId) => {
+          setScopeSubjectId(subjectId ?? "");
+          setContextOpen(false);
+        }}
+        concise={concise}
+        onConciseChange={changeConcise}
+        textbooks={scopedTextbooks}
+        activeTextbookId={(contentId ?? (activeConversation?.contentId as string | undefined)) ?? null}
+        onGroundTextbook={groundTextbook}
+      />
 
       <PremiumPrompt
         open={capPromptOpen}

@@ -47,3 +47,4 @@ node_modules
 dist
 test-results
 playwright/artifacts
+.mobile3-shots/
