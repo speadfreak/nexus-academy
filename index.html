@@ -20,7 +20,12 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- interactive-widget=resizes-content: when the virtual keyboard opens on
+       Android Chrome the LAYOUT viewport resizes, so in-flow bottom docks
+       (Tutor composer) and fixed docks (Vibe Player) rise above the keyboard
+       instead of being covered. iOS is handled by the useKeyboardViewport
+       hook (--kb-h var). Desktop unaffected. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <!-- PWA — theme-color drives the browser UI chrome color on mobile.
        Light is the default; ThemeProvider keeps this in sync on toggle. -->
   <meta name="theme-color" content="#F7F5F0" />
