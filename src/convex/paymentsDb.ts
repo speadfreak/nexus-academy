@@ -21,12 +21,12 @@ export const getPaymentById = internalQuery({
 export const getPaymentByProviderTransactionId = internalQuery({
   args: { providerTransactionId: v.string() },
   handler: async (ctx, { providerTransactionId }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("payments")
       .withIndex("by_providerTransactionId", (q) =>
         q.eq("providerTransactionId", providerTransactionId),
       )
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });
 
 export const insertPaymentRow = internalMutation({

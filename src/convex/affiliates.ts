@@ -135,15 +135,15 @@ async function resolveCodeToPromoter(
 ): Promise<{ promoter: Doc<"affiliatePromoters">; campaignCode: string } | null> {
   const code = (codeRaw || "").trim().toUpperCase();
   if (!isValidCodeShape(code)) return null;
-  const promoter = await ctx.db
+  const promoter = (await ctx.db
     .query("affiliatePromoters")
     .withIndex("by_code", (q: any) => q.eq("code", code))
-    .unique();
+    .order("asc").take(1))[0];
   if (promoter) return { promoter, campaignCode: promoter.code };
-  const alias = await ctx.db
+  const alias = (await ctx.db
     .query("affiliateCodeAliases")
     .withIndex("by_alias", (q: any) => q.eq("aliasCode", code))
-    .unique();
+    .order("asc").take(1))[0];
   if (!alias) return null;
   const aliasPromoter = await ctx.db.get(alias.promoterId);
   if (!aliasPromoter) return null;
@@ -284,12 +284,12 @@ export const recordAffiliateVisitCore = internalMutation({
     const camp = (campaign || "").trim().slice(0, 40);
     const promoterId = hit.promoter._id;
 
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("affiliateDailyStats")
       .withIndex("by_promoter_date_campaign", (q) =>
         q.eq("promoterId", promoterId).eq("date", date).eq("campaign", camp),
       )
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) {
       await ctx.db.patch(existing._id, { visits: existing.visits + 1, updatedAt: Date.now() });
     } else {
@@ -378,10 +378,10 @@ export const attachAffiliateAttributionCore = internalMutation({
     }
 
     // FIRST attribution wins — never overwrite.
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("affiliateAttributions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) return { ok: false, reason: "already_attributed" };
 
     const hit = await resolveCodeToPromoter(ctx, code);
@@ -427,10 +427,10 @@ export const getMyPromoterPerk = query({
   ): Promise<{ perkCode: string | null; promoterName: string | null }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return { perkCode: null, promoterName: null };
-    const attribution = await ctx.db
+    const attribution = (await ctx.db
       .query("affiliateAttributions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!attribution) return { perkCode: null, promoterName: null };
     const promoter = await ctx.db.get(attribution.promoterId);
     if (!promoter || promoter.status === "archived") return { perkCode: null, promoterName: null };
@@ -473,10 +473,10 @@ export const accrueAffiliateCommission = internalMutation({
     { submissionId, source },
   ): Promise<{ accrued: boolean; reason?: string; commissionId?: string }> => {
     // Unique-submission guard — the idempotency lock. One read.
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("affiliateCommissions")
       .withIndex("by_submission", (q) => q.eq("submissionId", submissionId))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) return { accrued: false, reason: "already_accrued" };
 
     if (!(await isProgramEnabled(ctx))) return { accrued: false, reason: "program_disabled" };
@@ -506,10 +506,10 @@ export const accrueAffiliateCommission = internalMutation({
     if (!userId || gross <= 0) return { accrued: false, reason: "no_amount" };
 
     // Attribution → promoter.
-    const attribution = await ctx.db
+    const attribution = (await ctx.db
       .query("affiliateAttributions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!attribution) return { accrued: false, reason: "no_attribution" };
     const promoter = await ctx.db.get(attribution.promoterId);
     if (!promoter) return { accrued: false, reason: "promoter_missing" };
@@ -965,15 +965,15 @@ export const sendPayoutRecordedTelegram = internalAction({
 
 /** Does a code collide with any promoter primary code or alias? */
 async function isCodeTaken(ctx: any, code: string): Promise<boolean> {
-  const promoter = await ctx.db
+  const promoter = (await ctx.db
     .query("affiliatePromoters")
     .withIndex("by_code", (q: any) => q.eq("code", code))
-    .unique();
+    .order("asc").take(1))[0];
   if (promoter) return true;
-  const alias = await ctx.db
+  const alias = (await ctx.db
     .query("affiliateCodeAliases")
     .withIndex("by_alias", (q: any) => q.eq("aliasCode", code))
-    .unique();
+    .order("asc").take(1))[0];
   return Boolean(alias);
 }
 
@@ -1040,10 +1040,10 @@ export const createPromoter = mutation({
     // Perk must reference an existing discount code when provided.
     const perk = args.perkDiscountCode?.trim().toUpperCase() || undefined;
     if (perk) {
-      const discount = await ctx.db
+      const discount = (await ctx.db
         .query("discountCodes")
         .withIndex("by_code", (q) => q.eq("code", perk))
-        .unique();
+        .order("asc").take(1))[0];
       if (!discount) {
         throw new ConvexError({
           message: `Perk code "${perk}" is not an existing discount code. Create it in Marketing first.`,
@@ -1132,10 +1132,10 @@ export const updatePromoter = mutation({
     if (args.perkDiscountCode !== undefined) {
       const perk = args.perkDiscountCode.trim().toUpperCase();
       if (perk) {
-        const discount = await ctx.db
+        const discount = (await ctx.db
           .query("discountCodes")
           .withIndex("by_code", (q) => q.eq("code", perk))
-          .unique();
+          .order("asc").take(1))[0];
         if (!discount) {
           throw new ConvexError({
             message: `Perk code "${perk}" is not an existing discount code.`,
@@ -1969,10 +1969,10 @@ export const getPartnerStatsCore = internalQuery({
   handler: async (ctx, { token }): Promise<PartnerStatsData | null> => {
     const clean = (token || "").trim().toLowerCase();
     if (!clean || clean.length < 16) return null;
-    const promoter = await ctx.db
+    const promoter = (await ctx.db
       .query("affiliatePromoters")
       .withIndex("by_secretToken", (q) => q.eq("secretToken", clean))
-      .unique();
+      .order("asc").take(1))[0];
     if (!promoter) return null;
 
     // Visits per day (last 30) + lifetime.

@@ -166,10 +166,10 @@ async function checkRequirement(
     }
     case "first_streak_7":
     case "first_streak_30": {
-      const streak = await ctx.db
+      const streak = (await ctx.db
         .query("studyStreaks")
         .withIndex("by_user", (q) => q.eq("userId", userId))
-        .unique();
+        .order("asc").take(1))[0];
       if (!streak) return false;
       return streak.currentStreak >= (defId === "first_streak_7" ? 7 : 30);
     }

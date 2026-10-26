@@ -148,10 +148,10 @@ export const paperInfoForPastPaper = internalQuery({
   } | null> => {
     const item = await ctx.db.get(args.contentId);
     if (!item) return null;
-    const paper = await ctx.db
+    const paper = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     const subject = item.subjectId ? await ctx.db.get(item.subjectId) : null;
     return { item, paper, subject };
   },
@@ -743,10 +743,10 @@ export const startMatricExam = mutation({
     await requireActiveSubscriptionDb(ctx, userId, "premium_mock_exams");
 
     // One active session at a time — resume instead of stacking sittings.
-    const active = await ctx.db
+    const active = (await ctx.db
       .query("matricSessions")
       .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
-      .unique();
+      .order("asc").take(1))[0];
     if (active) {
       throw new ConvexError({
         message: "You already have an exam in progress. Resume it or submit it first.",
@@ -763,10 +763,10 @@ export const startMatricExam = mutation({
     // The canonical academic identity lives on userProfiles (single source
     // of truth). Eligibility is enforced HERE on the server — the hub's
     // grouping is presentation only, never the gate.
-    const profile = await ctx.db
+    const profile = (await ctx.db
       .query("userProfiles")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const studentStream: StudentStream =
       profile?.stream === "natural" || profile?.stream === "social"
         ? profile.stream
@@ -884,10 +884,10 @@ export const getMyActiveSession = query({
   handler: async (ctx): Promise<ActiveSessionPayload | null> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
-    const session = await ctx.db
+    const session = (await ctx.db
       .query("matricSessions")
       .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
-      .unique();
+      .order("asc").take(1))[0];
     if (!session) return null;
     return activeSessionPayload(session);
   },
@@ -1420,10 +1420,10 @@ export const getMatricCatalog = query({
     const eligibleOf = (subjectId: Id<"subjects">) => statBySubject.get(subjectId)?.eligibleCount ?? 0;
 
     // ── MATRIC OS 2.1: canonical academic identity ──
-    const profile = await ctx.db
+    const profile = (await ctx.db
       .query("userProfiles")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const studentStream: StudentStream =
       profile?.stream === "natural" || profile?.stream === "social" ? profile.stream : null;
     const gradeLevel = profile?.gradeLevel ?? null;
@@ -1504,16 +1504,16 @@ export const getMatricCatalog = query({
     );
 
     // Premium status for THIS student (trial or active).
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const premium = sub?.status === "trial" || sub?.status === "active";
 
-    const activeSession = await ctx.db
+    const activeSession = (await ctx.db
       .query("matricSessions")
       .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
-      .unique();
+      .order("asc").take(1))[0];
 
     return {
       subjectMocks,
@@ -1665,10 +1665,10 @@ export const getMatricJourney = query({
     if (!userId) return null;
 
     // 1. An in-progress sitting always wins.
-    const active = await ctx.db
+    const active = (await ctx.db
       .query("matricSessions")
       .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
-      .unique();
+      .order("asc").take(1))[0];
     if (active) {
       return {
         kind: "resume",
@@ -1687,10 +1687,10 @@ export const getMatricJourney = query({
     }
 
     // 2. Canonical identity.
-    const profile = await ctx.db
+    const profile = (await ctx.db
       .query("userProfiles")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const studentStream: StudentStream =
       profile?.stream === "natural" || profile?.stream === "social" ? profile.stream : null;
 

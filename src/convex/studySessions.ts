@@ -18,7 +18,7 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { XP_VALUES } from "./constants";
 
 function shiftDateKey(key: string, deltaDays: number): string {
@@ -33,10 +33,10 @@ async function getOrCreateStreakRow(
   ctx: MutationCtx,
   userId: Id<"users">,
 ) {
-  let row = await ctx.db
+  let row: Doc<"studyStreaks"> | null = (await ctx.db
     .query("studyStreaks")
     .withIndex("by_user", (q) => q.eq("userId", userId))
-    .unique();
+    .order("asc").take(1))[0];
   if (!row) {
     const id = await ctx.db.insert("studyStreaks", {
       userId,
@@ -350,10 +350,10 @@ export const getStreak = query({
         totalHoursStudied: 0,
       };
     }
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("studyStreaks")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     return (
       row ?? {
         currentStreak: 0,

@@ -416,10 +416,10 @@ export const directorCreateClass = mutation({
     // Generate a unique code (retry on collision)
     let classCode = generateClassCode();
     for (let i = 0; i < 5; i++) {
-      const existing = await ctx.db
+      const existing = (await ctx.db
         .query("schoolClasses")
         .withIndex("by_classCode", (q) => q.eq("classCode", classCode))
-        .unique();
+        .order("asc").take(1))[0];
       if (!existing) break;
       classCode = generateClassCode();
     }
@@ -536,18 +536,18 @@ export const studentJoinClass = mutation({
     if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     const code = args.classCode.trim().toUpperCase();
     if (!code) throw new ConvexError({ message: "Enter a class code.", code: "invalid" });
-    const classRow = await ctx.db
+    const classRow = (await ctx.db
       .query("schoolClasses")
       .withIndex("by_classCode", (q) => q.eq("classCode", code))
-      .unique();
+      .order("asc").take(1))[0];
     if (!classRow) {
       throw new ConvexError({ message: "That class code doesn't match any class.", code: "not_found" });
     }
     // Check if already a member
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("schoolClassMembers")
       .withIndex("by_class_student", (q) => q.eq("classId", classRow._id).eq("studentId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) {
       // Update shareProgress if changed
       if (args.shareProgress !== undefined && existing.shareProgressWithSchool !== args.shareProgress) {
@@ -621,10 +621,10 @@ export const studentToggleShareProgress = mutation({
   handler: async (ctx, { classId, share }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
-    const membership = await ctx.db
+    const membership = (await ctx.db
       .query("schoolClassMembers")
       .withIndex("by_class_student", (q) => q.eq("classId", classId).eq("studentId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!membership) throw new ConvexError({ message: "You're not in this class.", code: "not_found" });
     await ctx.db.patch(membership._id, { shareProgressWithSchool: share });
     return { ok: true, shareProgressWithSchool: share };

@@ -76,19 +76,56 @@ async function requestQuoteFromAI(ctx: any): Promise<{ text: string; author?: st
 export const getQuoteByDate = internalQuery({
   args: { date: v.string() },
   handler: async (ctx, { date }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("dailyQuotes")
       .withIndex("by_date", (q) => q.eq("dateAssigned", date))
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });
 
+/**
+ * ATOMIC QUOTE ENSURE — same lesson as dailyChallenge.ensureChallenge: the
+ * generating action (cron AND on-demand client actions) used to check-then-
+ * insert across the action→mutation boundary. Convex mutations serialize,
+ * so the existence check + insert inside THIS mutation is a true
+ * conditional insert — N racing generations yield exactly one row.
+ */
 export const insertQuote = internalMutation({
   args: {
     text: v.string(),
     author: v.optional(v.string()),
     dateAssigned: v.string(),
   },
-  handler: async (ctx, args) => await ctx.db.insert("dailyQuotes", args),
+  handler: async (ctx, args): Promise<{ created: boolean }> => {
+    const existing = (await ctx.db
+      .query("dailyQuotes")
+      .withIndex("by_date", (q) => q.eq("dateAssigned", args.dateAssigned))
+      .order("asc").take(1))[0];
+    if (existing) return { created: false };
+    await ctx.db.insert("dailyQuotes", args);
+    return { created: true };
+  },
+});
+
+/**
+ * DEDUPE SWEEP — collapse duplicate dailyQuotes by dateAssigned to the
+ * earliest-created winner. Idempotent; safe to re-run until removed: 0.
+ */
+export const dedupeDailyQuotes = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("dailyQuotes").collect();
+    const seen = new Set<string>();
+    let removed = 0;
+    for (const row of rows) {
+      if (!seen.has(row.dateAssigned)) {
+        seen.add(row.dateAssigned);
+        continue;
+      }
+      await ctx.db.delete(row._id);
+      removed += 1;
+    }
+    return { total: rows.length, unique: seen.size, removed };
+  },
 });
 
 export const generateTodaysQuoteAction = internalAction({
@@ -127,10 +164,10 @@ export const getTodaysQuote = query({
   args: {},
   handler: async (ctx) => {
     const date = todayKey();
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("dailyQuotes")
       .withIndex("by_date", (q) => q.eq("dateAssigned", date))
-      .unique();
+      .order("asc").take(1))[0];
     if (row) {
       return {
         text: row.text,

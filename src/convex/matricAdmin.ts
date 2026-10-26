@@ -427,10 +427,10 @@ export const adminSeedStarterBank = mutation({
     const subjectsCreated: string[] = [];
     const subjectIds = new Map<string, Id<"subjects">>();
     for (const slug of Object.keys(SEED_SUBJECT_STREAMS) as (keyof typeof SEED_SUBJECT_STREAMS)[]) {
-      let subject: Doc<"subjects"> | null = await ctx.db
+      let subject: Doc<"subjects"> | null = (await ctx.db
         .query("subjects")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
-        .unique();
+        .order("asc").take(1))[0];
       if (!subject) {
         const stream = SEED_SUBJECT_STREAMS[slug];
         const id = await ctx.db.insert("subjects", {

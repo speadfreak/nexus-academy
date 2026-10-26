@@ -55,10 +55,10 @@ async function ensureJobQueued(
   userId: Id<"users">,
   demand: "student" | "batch",
 ): Promise<Id<"examConversionJobs">> {
-  const existing = await ctx.db
+  const existing = (await ctx.db
     .query("examConversionJobs")
     .withIndex("by_content", (q: any) => q.eq("contentId", contentId))
-    .unique();
+    .order("asc").take(1))[0];
   const now = Date.now();
   if (existing) {
     if (existing.status === "queued") {
@@ -100,10 +100,10 @@ async function markJobByContent(
   status: "done" | "failed",
   error?: string,
 ) {
-  const job = await ctx.db
+  const job = (await ctx.db
     .query("examConversionJobs")
     .withIndex("by_content", (q: any) => q.eq("contentId", contentId))
-    .unique();
+    .order("asc").take(1))[0];
   if (!job) return;
   await ctx.db.patch(job._id, {
     status,
@@ -140,10 +140,10 @@ export const requestDigitization = mutation({
     const item = await ctx.db.get(args.contentId);
     if (!item) throw new ConvexError({ message: "Paper not found.", code: "not_found" });
 
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
 
     const now = Date.now();
 
@@ -253,10 +253,10 @@ export const markScanRoute = internalMutation({
       });
     }
     // Hand the claim to the client OCR runner (not the server engine).
-    const job = await ctx.db
+    const job = (await ctx.db
       .query("examConversionJobs")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (job) {
       await ctx.db.patch(job._id, {
         claimedBy: "client-ocr",
@@ -294,10 +294,10 @@ export const submitOcrPagesInternal = internalMutation({
       return { accepted: 0, done: false };
     }
 
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row || row.status !== "processing" || row.sourceMode !== "scan") {
       return { accepted: 0, done: false }; // row moved on — stop quietly
     }
@@ -324,10 +324,10 @@ export const submitOcrPagesInternal = internalMutation({
     });
 
     // Keep the job claim fresh while pages stream in.
-    const job = await ctx.db
+    const job = (await ctx.db
       .query("examConversionJobs")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (job && job.status === "running") {
       await ctx.db.patch(job._id, { claimedAt: now, updatedAt: now });
     }
@@ -398,10 +398,10 @@ export const submitOcrPageText = mutation({
       return { done: false, accepted: false };
     }
 
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row || row.status !== "processing" || row.sourceMode !== "scan") {
       // The row moved on (reconverted, rejected, OCR finished elsewhere).
       return { done: false, accepted: false };
@@ -435,10 +435,10 @@ export const submitOcrPageText = mutation({
       updatedAt: now,
     });
     // Keep the job claim fresh while pages stream in.
-    const job = await ctx.db
+    const job = (await ctx.db
       .query("examConversionJobs")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (job && job.status === "running") {
       await ctx.db.patch(job._id, { claimedAt: now, updatedAt: now });
     }
@@ -548,20 +548,20 @@ export const getDigitalPaper = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
 
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("digitalPapers")
       .withIndex("by_content", (q) => q.eq("contentId", args.contentId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row) return null;
 
     const item: Doc<"contentItems"> | null = await ctx.db.get(args.contentId);
     const needsPremium = Boolean(item?.isPremium);
     let hasPremium = false;
     if (needsPremium) {
-      const sub = await ctx.db
+      const sub = (await ctx.db
         .query("subscriptions")
         .withIndex("by_user", (q) => q.eq("userId", userId))
-        .unique();
+        .order("asc").take(1))[0];
       hasPremium = isPremiumStatus(sub?.status);
     }
 
@@ -613,10 +613,10 @@ export const getDigitalPaperStatuses = query({
       reviewStatus: string | null;
     }[] = [];
     for (const contentId of args.contentIds.slice(0, 1000)) {
-      const row = await ctx.db
+      const row = (await ctx.db
         .query("digitalPapers")
         .withIndex("by_content", (q) => q.eq("contentId", contentId))
-        .unique();
+        .order("asc").take(1))[0];
       if (row) {
         out.push({
           contentId,

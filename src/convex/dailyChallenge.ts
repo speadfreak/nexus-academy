@@ -88,22 +88,81 @@ export const getChallengeForDateSubject = internalQuery({
     subjectId: v.id("subjects"),
   },
   handler: async (ctx, { challengeDate, subjectId }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("dailyChallenges")
       .withIndex("by_date_subject", (q) =>
         q.eq("challengeDate", challengeDate).eq("subjectId", subjectId),
       )
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });
 
-export const insertChallenge = internalMutation({
+/**
+ * ATOMIC CHALLENGE ENSURE — the correctness backstop for concurrent
+ * generation. ensureDailyChallenges (an ACTION) used to check-then-insert
+ * across the action→mutation boundary: two dashboard loads racing on a cold
+ * cache both saw "missing" and BOTH inserted, producing duplicate
+ * (challengeDate, subjectId) rows. With every reader on .unique(), that
+ * duplicate then hard-crashed getTodaysChallenges for EVERY student — a
+ * full-day dashboard outage until the rows were removed by hand.
+ *
+ * Convex mutations are serializable, so check-and-insert inside ONE
+ * mutation is a true conditional insert: exactly one of N concurrent
+ * callers creates the row; the rest get the winner back. The action's
+ * pre-check still skips the (paid) AI generation when a row exists.
+ */
+export const ensureChallenge = internalMutation({
   args: {
     challengeDate: v.string(),
     subjectId: v.id("subjects"),
     questionJson: v.string(),
   },
-  handler: async (ctx, args) =>
-    await ctx.db.insert("dailyChallenges", { ...args, createdAt: Date.now() }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ created: boolean; challengeId: Id<"dailyChallenges"> | null }> => {
+    const existing = (await ctx.db
+      .query("dailyChallenges")
+      .withIndex("by_date_subject", (q) =>
+        q.eq("challengeDate", args.challengeDate).eq("subjectId", args.subjectId),
+      )
+      .order("asc").take(1))[0];
+    if (existing) return { created: false, challengeId: existing._id };
+    const id = await ctx.db.insert("dailyChallenges", {
+      ...args,
+      createdAt: Date.now(),
+    });
+    return { created: true, challengeId: id };
+  },
+});
+
+/**
+ * DEDUPE SWEEP — collapse any duplicate (challengeDate, subjectId) rows to
+ * the earliest-created winner, deleting the rest. Attempts reference
+ * (userId, challengeDate, subjectId) — NOT the challenge row id — so student
+ * history stays valid under any winner. collect() returns rows in
+ * _creationTime order, so the FIRST row seen per key is the canonical
+ * keeper. Idempotent; returns exactly what it removed for auditability.
+ * Run again (ops) until it reports removed: 0.
+ */
+export const dedupeDailyChallenges = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("dailyChallenges").collect();
+    const seen = new Set<string>();
+    let removed = 0;
+    const removedKeys: string[] = [];
+    for (const row of rows) {
+      const key = `${row.challengeDate}|${row.subjectId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        continue;
+      }
+      await ctx.db.delete(row._id);
+      removed += 1;
+      removedKeys.push(key);
+    }
+    return { total: rows.length, unique: seen.size, removed, removedKeys };
+  },
 });
 
 /** The dashboard view for one user on one date (shared by action + query). */
@@ -125,12 +184,12 @@ export const getChallengesViewInternal = internalQuery({
 
     const result = [];
     for (const subject of wanted) {
-      const challenge = await ctx.db
+      const challenge = (await ctx.db
         .query("dailyChallenges")
         .withIndex("by_date_subject", (q) =>
           q.eq("challengeDate", date).eq("subjectId", subject._id),
         )
-        .unique();
+        .order("asc").take(1))[0];
       let question: QuizQuestion | null = null;
       if (challenge) {
         try {
@@ -210,12 +269,12 @@ export const ensureDailyChallenges = action({
       }
       if (!question) continue;
 
-      await ctx.runMutation(internal.dailyChallenge.insertChallenge, {
+      const res = await ctx.runMutation(internal.dailyChallenge.ensureChallenge, {
         challengeDate: date,
         subjectId: subject._id,
         questionJson: JSON.stringify(question),
       });
-      generated += 1;
+      if (res.created) generated += 1;
     }
 
     const challenges: ChallengeView[] = await ctx.runQuery(
@@ -258,12 +317,12 @@ export const submitDailyChallenge = mutation({
     }
 
     const date = addisDateKey();
-    const challenge = await ctx.db
+    const challenge = (await ctx.db
       .query("dailyChallenges")
       .withIndex("by_date_subject", (q) =>
         q.eq("challengeDate", date).eq("subjectId", subjectId),
       )
-      .unique();
+      .order("asc").take(1))[0];
     if (!challenge) {
       throw new ConvexError({
         message: "Today's challenge isn't ready yet — give it a moment and try again.",

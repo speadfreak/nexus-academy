@@ -108,19 +108,19 @@ export type SubscriptionStatusView = {
 export const getSubscriptionByUser = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });
 
 export const ensureSubscription = internalMutation({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) return existing._id;
     return await ctx.db.insert("subscriptions", {
       userId,
@@ -140,10 +140,10 @@ export const ensureSubscription = internalMutation({
 export const recordActiveDay = internalMutation({
   args: { userId: v.id("users"), localDate: v.string() },
   handler: async (ctx, { userId, localDate }) => {
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!sub) return { ok: true };
     if (!/^^\d{4}-\d{2}-\d{2}$/.test(localDate)) return { ok: true };
     if (sub.lastActiveDate === localDate) return { ok: true }; // already counted
@@ -180,10 +180,10 @@ export const activateSubscription = internalMutation({
   args: { userId: v.id("users"), periodEnd: v.number() },
   handler: async (ctx, { userId, periodEnd }) => {
     await ctx.runMutation(internal.subscriptions.ensureSubscription, { userId });
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!sub) return { ok: false };
     await ctx.db.patch(sub._id, {
       status: "active",
@@ -235,10 +235,10 @@ export const getSubscriptionStatus = query({
         needsUpgrade: false,
       };
     }
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
 
     if (!sub) {
       return {
@@ -301,10 +301,10 @@ export const getEntitlements = query({
       };
     }
 
-    const sub = await ctx.db
+    const sub = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     const premiumAccess = sub !== null && isPremiumStatus(sub.status);
 
     // --- Real free-tier usage counts -------------------------------------
@@ -376,10 +376,10 @@ export async function requireActiveSubscriptionDb(
   userId: Id<"users">,
   reason: GateReason = "trial_expired",
 ): Promise<Doc<"subscriptions">> {
-  const sub = await ctx.db
+  const sub = (await ctx.db
     .query("subscriptions")
     .withIndex("by_user", (q) => q.eq("userId", userId))
-    .unique();
+    .order("asc").take(1))[0];
   if (!sub || !isPremiumStatus(sub.status)) {
     throw new ConvexError({
       message: "Premium access required. Your free trial has ended — upgrade to continue.",

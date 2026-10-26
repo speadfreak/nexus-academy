@@ -264,12 +264,12 @@ export const getMastery = internalQuery({
   args: { userId: v.id("users"), nodeSlug: v.string() },
   handler: async (ctx, { userId, nodeSlug }) => {
     return (
-      (await ctx.db
+      ((await ctx.db
         .query("userSkillMastery")
         .withIndex("by_user_node", (q) =>
           q.eq("userId", userId).eq("nodeSlug", nodeSlug),
         )
-        .unique()) ?? null
+        .order("asc").take(1))[0]) ?? null
     );
   },
 });
@@ -300,12 +300,12 @@ export const upsertMastery = internalMutation({
     lastPracticedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("userSkillMastery")
       .withIndex("by_user_node", (q) =>
         q.eq("userId", args.userId).eq("nodeSlug", args.nodeSlug),
       )
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) {
       await ctx.db.patch(existing._id, {
         masteryScore: args.masteryScore,

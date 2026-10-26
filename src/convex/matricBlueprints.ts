@@ -96,10 +96,10 @@ async function upsertBlueprint(
   },
 ) {
   const now = Date.now();
-  const existing = await ctx.db
+  const existing = (await ctx.db
     .query("matricBlueprints")
     .withIndex("by_key", (q) => q.eq("key", doc.key))
-    .unique();
+    .order("asc").take(1))[0];
   if (existing) {
     // Version bump on content change; admin's status decision is preserved
     // (an admin-disabled blueprint is never silently re-enabled by seeding).
@@ -163,10 +163,10 @@ export const seedBlueprints = internalMutation({
     for (const s of subjects) {
       const count = planCountFor(s.eligibleCount);
       if (count === 0) continue;
-      const before = await ctx.db
+      const before = (await ctx.db
         .query("matricBlueprints")
         .withIndex("by_key", (q) => q.eq("key", `subject-mock:${s.slug}`))
-        .unique();
+        .order("asc").take(1))[0];
       await upsertBlueprint(ctx, {
         key: `subject-mock:${s.slug}`,
         mode: "subject_mock",
@@ -218,10 +218,10 @@ export const seedBlueprints = internalMutation({
       }
       if (plans.length >= 2) {
         // A "full simulation" needs at least two covered subjects to be honest.
-        const before = await ctx.db
+        const before = (await ctx.db
           .query("matricBlueprints")
           .withIndex("by_key", (q) => q.eq("key", `full-simulation:${stream}`))
-          .unique();
+          .order("asc").take(1))[0];
         const totalQ = plans.reduce((acc, p) => acc + p.questionCount, 0);
         await upsertBlueprint(ctx, {
           key: `full-simulation:${stream}`,
@@ -243,10 +243,10 @@ export const seedBlueprints = internalMutation({
     }
 
     // ── Weakness Challenge (single dynamic blueprint) ──
-    const beforeW = await ctx.db
+    const beforeW = (await ctx.db
       .query("matricBlueprints")
       .withIndex("by_key", (q) => q.eq("key", "weakness-challenge"))
-      .unique();
+      .order("asc").take(1))[0];
     await upsertBlueprint(ctx, {
       key: "weakness-challenge",
       mode: "weakness_challenge",
@@ -263,10 +263,10 @@ export const seedBlueprints = internalMutation({
     else created++;
 
     // ── Past Paper Simulation (single template blueprint) ──
-    const beforeP = await ctx.db
+    const beforeP = (await ctx.db
       .query("matricBlueprints")
       .withIndex("by_key", (q) => q.eq("key", "past-paper-simulation"))
-      .unique();
+      .order("asc").take(1))[0];
     await upsertBlueprint(ctx, {
       key: "past-paper-simulation",
       mode: "past_paper",

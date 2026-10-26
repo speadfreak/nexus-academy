@@ -364,10 +364,10 @@ function parseAndValidateQuestions(raw: string, expectedCount: number): MockExam
 export const getSubjectBySlug = internalQuery({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });
 
 export const insertMockExam = internalMutation({

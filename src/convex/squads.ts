@@ -391,10 +391,10 @@ export const getSquadDashboard = query({
     // Today's mission row — get (NOT create) since this is a query. The
     // mutation `ensureTodayMission` below is the one that creates it on
     // first open.
-    const mission = await ctx.db
+    const mission = (await ctx.db
       .query("squadMissions")
       .withIndex("by_group_date", (q) => q.eq("groupId", groupId).eq("date", today))
-      .unique();
+      .order("asc").take(1))[0];
 
     // Active challenges count
     const activeChallenges = await ctx.db
@@ -487,10 +487,10 @@ export const ensureTodayMission = mutation({
   handler: async (ctx, { groupId }) => {
     const { userId } = await requireMember(ctx, groupId);
     const today = todayKey();
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("squadMissions")
       .withIndex("by_group_date", (q) => q.eq("groupId", groupId).eq("date", today))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) return existing;
 
     const missionId = await ctx.db.insert("squadMissions", {
@@ -524,10 +524,10 @@ export const bumpMissionToday = internalMutation({
   },
   handler: async (ctx, { groupId, delta }) => {
     const today = todayKey();
-    const mission = await ctx.db
+    const mission = (await ctx.db
       .query("squadMissions")
       .withIndex("by_group_date", (q) => q.eq("groupId", groupId).eq("date", today))
-      .unique();
+      .order("asc").take(1))[0];
     if (!mission) return null;
     const nextAchieved = mission.achievedActions + delta;
     const isComplete = nextAchieved >= mission.targetActions;
@@ -866,12 +866,12 @@ export const bumpChallengeProgress = mutation({
       throw new ConvexError({ message: "Challenge has ended.", code: "invalid" });
     }
 
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("squadChallengeProgress")
       .withIndex("by_challenge_user", (q) =>
         q.eq("challengeId", challengeId).eq("userId", userId),
       )
-      .unique();
+      .order("asc").take(1))[0];
     const nextCount = (existing?.count ?? 0) + delta;
     if (existing) {
       await ctx.db.patch(existing._id, { count: nextCount, lastUpdated: Date.now() });
@@ -1397,10 +1397,10 @@ export const joinSquadBattle = mutation({
     if (battle.status === "completed") {
       throw new ConvexError({ message: "This battle is over.", code: "invalid" });
     }
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("squadQuizBattleParticipants")
       .withIndex("by_battle_user", (q) => q.eq("battleId", battleId).eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) return { ok: true, already: true };
     // Initialize answers with -1 (no answer) for each question.
     const questions = JSON.parse(battle.questionsJson) as unknown[];
@@ -1462,10 +1462,10 @@ export const submitSquadBattleAnswer = mutation({
     if (battle.questionIndex !== questionIndex) {
       throw new ConvexError({ message: "That question is no longer active.", code: "invalid" });
     }
-    const participant = await ctx.db
+    const participant = (await ctx.db
       .query("squadQuizBattleParticipants")
       .withIndex("by_battle_user", (q) => q.eq("battleId", battleId).eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!participant) {
       throw new ConvexError({ message: "Join the battle first.", code: "invalid" });
     }
@@ -1612,12 +1612,12 @@ export const upsertBoardSlot = mutation({
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAdmin(ctx, args.groupId);
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("squadBoardItems")
       .withIndex("by_group_slot", (q) =>
         q.eq("groupId", args.groupId).eq("slot", args.slot),
       )
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) {
       await ctx.db.patch(existing._id, {
         content: args.content,

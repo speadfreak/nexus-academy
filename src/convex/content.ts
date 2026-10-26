@@ -262,10 +262,10 @@ export const getSubjectById = internalQuery({
 export const getSubjectBySlug = internalQuery({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });
 
 /** Total content items — used by the sample-library seeder to stay idempotent. */
@@ -521,10 +521,10 @@ export const getContent = query({
     let subject: Doc<"subjects"> | null = null;
     if (subjectSlug) {
       subject =
-        (await ctx.db
+        ((await ctx.db
           .query("subjects")
           .withIndex("by_slug", (q) => q.eq("slug", subjectSlug))
-          .unique()) ?? null;
+          .order("asc").take(1))[0]) ?? null;
     }
 
     const hasFilters =

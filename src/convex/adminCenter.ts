@@ -1171,10 +1171,10 @@ export const clearAuthRateLimits = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     if (args.email) {
-      const existing = await ctx.db
+      const existing = (await ctx.db
         .query("authRateLimits")
         .withIndex("identifier", (q) => q.eq("identifier", args.email!.toLowerCase()))
-        .unique();
+        .order("asc").take(1))[0];
       if (existing) await ctx.db.delete(existing._id);
       return { cleared: true, email: args.email };
     }

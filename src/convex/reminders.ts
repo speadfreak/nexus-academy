@@ -68,10 +68,10 @@ export const countSessionsSince = internalQuery({
 export const setPendingReminder = internalMutation({
   args: { userId: v.id("users"), date: v.string() },
   handler: async (ctx, { userId, date }) => {
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("reminderSettings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row) return { ok: false };
     await ctx.db.patch(row._id, {
       pendingReminder: true,
@@ -84,10 +84,10 @@ export const setPendingReminder = internalMutation({
 export const ensureReminderSettingsRow = internalMutation({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
-    const existing = await ctx.db
+    const existing = (await ctx.db
       .query("reminderSettings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (existing) return existing._id;
     return await ctx.db.insert("reminderSettings", {
       userId,
@@ -163,10 +163,10 @@ export const updateReminderSettings = mutation({
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     }
     await ctx.runMutation(internal.reminders.ensureReminderSettingsRow, { userId });
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("reminderSettings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row) return { ok: false };
     if (args.hour !== undefined && (args.hour < 0 || args.hour > 23 || !Number.isInteger(args.hour))) {
       throw new ConvexError({ message: "Reminder hour must be an integer 0-23.", code: "invalid" });
@@ -186,10 +186,10 @@ export const dismissReminder = mutation({
     if (!userId) {
       throw new ConvexError({ message: "Sign in required.", code: "unauthorized" });
     }
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("reminderSettings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     if (!row) return { ok: true };
     await ctx.db.patch(row._id, { pendingReminder: false });
     return { ok: true };
@@ -208,10 +208,10 @@ export const getReminderBanner = query({
     if (!userId) {
       return { show: false, hour: DEFAULT_REMINDER_HOUR, studiedToday: false };
     }
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("reminderSettings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
 
     const studiedToday =
       (await ctx.db
@@ -236,10 +236,10 @@ export const getReminderSettings = query({
     if (!userId) {
       return { enabled: true, hour: DEFAULT_REMINDER_HOUR, pendingReminder: false };
     }
-    const row = await ctx.db
+    const row = (await ctx.db
       .query("reminderSettings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
+      .order("asc").take(1))[0];
     return {
       enabled: row?.streakRemindersEnabled ?? true,
       hour: row?.reminderHour ?? DEFAULT_REMINDER_HOUR,
@@ -278,8 +278,8 @@ export const getReminderBannerAction = action({
 export const getReminderSettingsRowByUser = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) =>
-    (await ctx.db
+    ((await ctx.db
       .query("reminderSettings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique()) ?? null,
+      .order("asc").take(1))[0]) ?? null,
 });

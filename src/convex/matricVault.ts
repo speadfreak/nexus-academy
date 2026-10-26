@@ -541,10 +541,10 @@ export const recomputeCoverage = internalMutation({
         .sort((a, b) => b.count - a.count)
         .slice(0, 12);
 
-      const existing = await ctx.db
+      const existing = (await ctx.db
         .query("matricCoverageStats")
         .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
-        .unique();
+        .order("asc").take(1))[0];
       const payload = {
         subjectId,
         eligibleCount: rows.length,
