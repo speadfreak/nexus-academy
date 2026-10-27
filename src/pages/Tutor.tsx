@@ -30,6 +30,8 @@ import {
   MoreHorizontal,
   NotebookPen,
   PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Pencil,
@@ -55,6 +57,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { NotificationBell } from "@/components/NotificationBell";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useMusic } from "@/components/music-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -182,6 +185,10 @@ const GRADE_STORAGE_KEY = "learnyx.tutor.grade";
 const CONCISE_STORAGE_KEY = "learnyx.tutor.concise";
 const VOICE_OUT_STORAGE_KEY = "learnyx.tutor.voiceOut";
 const TOOLS_STORAGE_KEY = "learnyx.tutor.tools";
+// DESKTOP WORKSPACE — conversation-rail collapse preference. Unset falls back
+// to the viewport (expanded on xl+ desks, collapsed on narrower laptops where
+// chat readability wins — Phase 7 auto-collapse of secondary panels).
+const RAIL_STORAGE_KEY = "learnyx.tutor.railOpen";
 
 // ---------------------------------------------------------------------------
 // Starters — grounded in the Ethiopian curriculum + the student's stream.
@@ -537,8 +544,11 @@ const AssistantMessage = memo(function AssistantMessage({
 
       {/* Body — professional math + markdown typesetting via the shared
           Learnyx Math Renderer. min-w-0 keeps narrow phones overflow-safe;
-          display equations scroll horizontally inside their own container. */}
-      <div className="min-w-0 pl-0.5 text-[14.5px] leading-7 text-foreground/90">
+          display equations scroll horizontally inside their own container.
+          DESKTOP WORKSPACE — a comfortable reading measure on wide desks
+          (~85–95 characters); wide tables and equations still scroll
+          locally inside their own wrappers. */}
+      <div className="min-w-0 pl-0.5 text-[14.5px] leading-7 text-foreground/90 xl:max-w-[820px]">
         <AiText text={message.content} />
       </div>
 
@@ -2061,7 +2071,7 @@ function Composer({
   }, [input, inputRef]);
 
   return (
-    <div className="relative z-10 shrink-0 px-3 pt-1.5 sm:px-6 sm:pb-5 sm:pt-1">
+    <div className="relative z-10 shrink-0 px-3.5 pt-1.5 sm:px-8 sm:pt-1">
       {/* MOBILE 3.0 — COORDINATED BOTTOM DOCK. The composer does not own the
           viewport bottom independently: its padding reserves the EXACT
           footprint of everything below it in one shared stack —
@@ -2069,10 +2079,21 @@ function Composer({
             · Vibe Player real height (--music-player-h, ResizeObserver-published)
             · keyboard height (--kb-h, useKeyboardViewport-published)
           so the composer, the player and the keyboard can never collide —
-          they occupy one predictable column. Desktop keeps the legacy
-          sm:pb-5 geometry untouched. */}
-      <div className="pb-[calc(0.625rem+max(1rem,env(safe-area-inset-bottom,0px))+var(--music-player-h,0px)+var(--kb-h,0px))]">
-      <div className="mx-auto w-full max-w-[960px]">
+          they occupy one predictable column.
+          DESKTOP WORKSPACE — two precision fixes, ≥sm only:
+            1. The legacy sm:pb-5 is GONE (it double-reserved ~20px on top of
+               the dock calc — the "composer floats above dead space" bug).
+            2. The dock reserves --music-player-bar-h (the player pill/deck
+               alone) instead of the full container height, so opening the
+               Mixer or Sound Vault floats over the canvas as a transient
+               overlay instead of shoving the composer up the screen. The
+               bar itself never moves and never covers the composer. */}
+      <div className="pb-[calc(0.625rem+max(1rem,env(safe-area-inset-bottom,0px))+var(--music-player-h,0px)+var(--kb-h,0px))] transition-[padding-bottom] duration-300 sm:pb-[calc(0.625rem+max(1rem,env(safe-area-inset-bottom,0px))+var(--music-player-bar-h,var(--music-player-h,0px))+var(--kb-h,0px))]">
+      {/* Width parity with the conversation canvas: the canvas puts its
+          padding INSIDE its max-w-[960px] container, so the composer mirrors
+          that exactly (960 − 2×0.875rem on phones, 960 − 2×2rem on ≥sm) and
+          both columns share pixel-identical edges. */}
+      <div className="mx-auto w-full max-w-[calc(960px-1.75rem)] sm:max-w-[calc(960px-4rem)]">
         {/* Grounded context chip — "I'm not just talking to an AI, I'm studying THIS." */}
         <AnimatePresence>
           {groundedTitle && (
@@ -2124,7 +2145,12 @@ function Composer({
           </div>
         )}
 
-        {/* The composer shell — one border, no card-in-card */}
+        {/* The composer shell — one border, no card-in-card.
+            DESKTOP WORKSPACE — a proper input workspace, not a search bar:
+            the textarea rests at a comfortable two-line height on ≥sm, with
+            roomier internal padding, and the tool row is separated by a
+            hairline so input and actions read as two intentional levels
+            (ChatGPT-comfort proportions in Learnyx's gold-accented skin). */}
         <div
           className={cn(
             "rounded-2xl border border-border/80 bg-card/50 backdrop-blur-md transition-all duration-200",
@@ -2154,12 +2180,12 @@ function Composer({
             className={cn(
               // MOBILE 3.0 — capped at ~5 phone lines so a long paste never
               // swallows the viewport; desktop keeps the 200px ceiling.
-              "block max-h-[132px] w-full resize-none bg-transparent px-4 pt-3.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/60 sm:max-h-[200px] sm:text-[15px] sm:leading-[1.65]",
+              "block max-h-[132px] w-full resize-none bg-transparent px-4 pt-3.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/60 sm:max-h-[200px] sm:min-h-[56px] sm:px-5 sm:pt-4 sm:text-[15px] sm:leading-[1.65]",
               // 16px on phones — below it iOS Safari zooms the viewport on focus.
               speech.listening && "placeholder:text-rose-300",
             )}
           />
-          <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1.5">
+          <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1.5 sm:gap-1.5 sm:border-t sm:border-border/50 sm:px-3 sm:pb-2.5 sm:pt-2">
             {/* Image upload */}
             <input
               ref={fileInputRef}
@@ -2377,6 +2403,23 @@ export default function Tutor() {
     setToolsOpen(next);
     localStorage.setItem(TOOLS_STORAGE_KEY, String(next));
   };
+
+  // ── DESKTOP WORKSPACE — collapsible conversation rail (persisted) ───
+  // First visit has no stored preference: the rail opens on ≥1440 desks and
+  // starts collapsed on the 1024–1439 laptop band, where the app sidebar plus
+  // an open rail used to squeeze the chat to ~670px (Phase 7: auto-collapse
+  // secondary panels; chat readability wins). An explicit toggle is
+  // remembered and wins at every width ≥lg.
+  const [railOpen, setRailOpen] = useState<boolean>(() => {
+    const stored = localStorage.getItem(RAIL_STORAGE_KEY);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
+    return window.matchMedia("(min-width: 1440px)").matches;
+  });
+  const changeRailOpen = useCallback((next: boolean) => {
+    setRailOpen(next);
+    try { localStorage.setItem(RAIL_STORAGE_KEY, String(next)); } catch {}
+  }, []);
 
   // ── Tutor mode + academic memory (persisted client-side) ──
   const [mode, setMode] = useState<TutorMode>(() => {
@@ -3166,7 +3209,10 @@ export default function Tutor() {
   // mobile conversations drawer, parameterized: the mobile drawer drops the
   // study-context card (that context now lives in the header chip + the
   // academic-context sheet) so the drawer is a lean conversation list.
-  const sidebarInner = (showContextCard: boolean) => (
+  // DESKTOP WORKSPACE — showRailToggle adds the collapse control to the
+  // header row (desktop rail only; the phone drawer has nothing to collapse
+  // into).
+  const sidebarInner = (showContextCard: boolean, showRailToggle = false) => (
     <>
       <div className="flex items-center gap-2">
         <Button
@@ -3192,6 +3238,23 @@ export default function Tutor() {
         >
           <Search className="size-4" />
         </Button>
+        {showRailToggle && (
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-9 shrink-0 rounded-xl bg-foreground/5 interactive-press"
+                onClick={() => changeRailOpen(false)}
+                aria-label="Collapse conversations panel"
+                title="Collapse conversations panel"
+              >
+                <PanelLeftClose className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Collapse — more room for the chat</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {searchOpen ? (
@@ -3308,10 +3371,89 @@ export default function Tutor() {
   return (
     <DashboardShell immersive>
       <div className="flex h-full min-h-0 gap-0 lg:gap-5">
-        {/* ── Left rail — the study room directory (desktop) ── */}
-        <aside className="hidden w-[290px] shrink-0 flex-col gap-3 border-r border-border/60 py-1 pr-4 lg:flex">
-          {sidebarInner(true)}
-        </aside>
+        {/* ── Left rail — the study room directory (desktop, collapsible) ──
+            DESKTOP WORKSPACE — the rail collapses to a 60px icon strip so the
+            conversation owns the width. One motion.aside owns the geometry:
+            the width springs between 290px and 60px while the two layers
+            cross-fade, so there is no jump, no content squish and — because
+            this is pure presentation state — the active conversation never
+            resets. The border rides on the aside itself so the divider is
+            always exactly at the animating edge. */}
+        <motion.aside
+          initial={false}
+          animate={{ width: railOpen ? 290 : 60 }}
+          transition={{ type: "spring", stiffness: 400, damping: 34, mass: 0.8 }}
+          className="relative hidden shrink-0 overflow-hidden border-r border-border/60 lg:block"
+          aria-label="Conversations and study context"
+        >
+          {/* Expanded layer */}
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 flex min-h-0 w-[290px] flex-col gap-3 py-1 pr-4 transition-opacity duration-200",
+              railOpen ? "opacity-100" : "pointer-events-none opacity-0",
+            )}
+          >
+            {sidebarInner(true, true)}
+          </div>
+
+          {/* Collapsed rail — expand, new chat, search */}
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 flex w-[60px] flex-col items-center gap-1.5 py-2 transition-opacity duration-200",
+              railOpen ? "pointer-events-none opacity-0" : "opacity-100",
+            )}
+          >
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 shrink-0 rounded-xl text-muted-foreground interactive-press hover:text-foreground"
+                  onClick={() => changeRailOpen(true)}
+                  aria-label="Expand conversations panel"
+                >
+                  <PanelLeftOpen className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={10}>Conversations</TooltipContent>
+            </Tooltip>
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 shrink-0 rounded-xl text-muted-foreground interactive-press hover:text-foreground"
+                  onClick={handleNewChat}
+                  disabled={isAwaiting}
+                  aria-label="Start a new chat"
+                >
+                  <MessageSquarePlus className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={10}>New chat</TooltipContent>
+            </Tooltip>
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "size-9 shrink-0 rounded-xl text-muted-foreground interactive-press hover:text-foreground",
+                    searchOpen && "text-primary",
+                  )}
+                  onClick={() => {
+                    changeRailOpen(true);
+                    setSearchOpen(true);
+                  }}
+                  aria-label="Search your Tutor history"
+                >
+                  <Search className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={10}>Search history</TooltipContent>
+            </Tooltip>
+          </div>
+        </motion.aside>
 
         {/* ── Workspace ── */}
         <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">

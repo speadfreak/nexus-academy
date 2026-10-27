@@ -15,6 +15,12 @@
 //
 // The player is never mounted on /admin while idle, and publishes its real
 // height as --music-player-h so immersive pages can reserve clearance.
+// DESKTOP WORKSPACE — it also publishes --music-player-bar-h, the height of
+// the main pill/deck bar ALONE (excluding the mixer / vault / YouTube panels
+// that stack above it). Desktop surfaces reserve the bar so the composer
+// stays naturally anchored; the panels float over the canvas as transient
+// overlays instead of shoving the composer up the screen. Phones keep the
+// full-container reservation (--music-player-h) exactly as Mobile 3.0 built it.
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation } from "react-router";
@@ -823,23 +829,34 @@ export function MusicPlayer() {
   // browser, YouTube panel, suggestion banner). Listeners are cleaned up;
   // the admin idle-return and unmount both reset the variable to 0.
   const playerRef = useRef<HTMLDivElement>(null);
+  // DESKTOP WORKSPACE — separate ref on the main bar so its height can be
+  // published independently of the panels above it (see header comment).
+  const barRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = document.documentElement;
     if (onAdminRoute && !sessionActive) {
       root.style.setProperty("--music-player-h", "0px");
+      root.style.setProperty("--music-player-bar-h", "0px");
       return;
     }
     const el = playerRef.current;
     if (!el) return;
+    const bar = barRef.current;
     const publish = () => {
       root.style.setProperty("--music-player-h", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+      root.style.setProperty(
+        "--music-player-bar-h",
+        bar ? `${Math.ceil(bar.getBoundingClientRect().height)}px` : "0px",
+      );
     };
     publish();
     const ro = new ResizeObserver(publish);
     ro.observe(el);
+    if (bar) ro.observe(bar);
     return () => {
       ro.disconnect();
       root.style.setProperty("--music-player-h", "0px");
+      root.style.setProperty("--music-player-bar-h", "0px");
     };
   }, [onAdminRoute, sessionActive]);
 
@@ -903,6 +920,7 @@ export function MusicPlayer() {
       )}
 
       {/* Main player bar — responsive: wraps to 2 rows on mobile, single row on desktop.
+          barRef publishes this bar's own height as --music-player-bar-h.
           Layout breakdown:
             • Mobile collapsed: [icon + "vibe"/track-label] pill — fits viewport
             • Mobile expanded: row 1 = [prev][play][next][track-name][minimize],
@@ -913,6 +931,7 @@ export function MusicPlayer() {
               cluster + track name + volume cluster + action cluster — wider
               than mobile's gap-2 to avoid visual cramping on wide screens. */}
       <div
+        ref={barRef}
         className={cn(
           "glass-panel flex items-center gap-2.5 rounded-2xl px-3 py-2 transition-all duration-300 sm:gap-3 sm:px-4 sm:rounded-full sm:flex-nowrap flex-wrap",
           !expanded && "cursor-pointer flex-nowrap rounded-full",
