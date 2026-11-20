@@ -35,8 +35,25 @@ export interface ReadAloudApi {
 
 const RATE_KEY = "learnyx.readAloud.rate";
 
+// Safe accessor — speechSynthesis is MISSING on some Android WebViews and
+// in-app browsers. Every raw `window.speechSynthesis.x` call was a latent
+// "Cannot read properties of undefined (reading 'cancel')" crash, and the
+// unmount cleanup version fired during React's commit phase, killing the
+// whole DigitalExam route. All access now goes through this guard.
+function getSynth(): SpeechSynthesis | null {
+  try {
+    return typeof window !== "undefined" && "speechSynthesis" in window
+      ? window.speechSynthesis
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function pickVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
+  const synth = getSynth();
+  if (!synth) return null;
+  const voices = synth.getVoices();
   if (voices.length === 0) return null;
   const byLang = (prefix: string) =>
     voices.find((v) => v.lang.toLowerCase().startsWith(prefix));
@@ -54,8 +71,12 @@ export function useReadAloud(): ReadAloudApi {
   const [paused, setPaused] = useState(false);
   const [sentenceIndex, setSentenceIndex] = useState<number | null>(null);
   const [rate, setRateState] = useState<number>(() => {
-    const stored = Number(localStorage.getItem(RATE_KEY));
-    return stored >= 0.5 && stored <= 1.5 ? stored : 1;
+    try {
+      const stored = Number(localStorage.getItem(RATE_KEY));
+      return stored >= 0.5 && stored <= 1.5 ? stored : 1;
+    } catch {
+      return 1; // storage unavailable (privacy mode) — default rate
+    }
   });
 
   // Session id: every speak()/stop() bumps it; stale onend callbacks from a
@@ -66,7 +87,9 @@ export function useReadAloud(): ReadAloudApi {
 
   const hardStop = useCallback(() => {
     sessionRef.current += 1;
-    window.speechSynthesis.cancel();
+    // Guarded: speechSynthesis can be undefined on some WebViews — this
+    // function runs on every exam finish/exit, unsupported browsers included.
+    getSynth()?.cancel();
     setSpeaking(false);
     setPaused(false);
     setSentenceIndex(null);
@@ -77,6 +100,9 @@ export function useReadAloud(): ReadAloudApi {
       if (!supported) return;
       const trimmed = text.trim();
       if (!trimmed) return;
+
+      const synth = getSynth();
+      if (!synth) return; // engine vanished since mount — fail quiet
 
       hardStop();
       const sessionId = sessionRef.current;
@@ -104,7 +130,7 @@ export function useReadAloud(): ReadAloudApi {
             setSentenceIndex(null);
           }
         };
-        window.speechSynthesis.speak(u);
+        synth.speak(u);
       };
 
       setSpeaking(true);
@@ -116,13 +142,13 @@ export function useReadAloud(): ReadAloudApi {
 
   const pause = useCallback(() => {
     if (!supported || !speaking) return;
-    window.speechSynthesis.pause();
+    getSynth()?.pause();
     setPaused(true);
   }, [speaking, supported]);
 
   const resume = useCallback(() => {
     if (!supported || !paused) return;
-    window.speechSynthesis.resume();
+    getSynth()?.resume();
     setPaused(false);
   }, [paused, supported]);
 
@@ -130,7 +156,11 @@ export function useReadAloud(): ReadAloudApi {
     (next: number) => {
       const clamped = Math.max(0.5, Math.min(1.5, next));
       setRateState(clamped);
-      localStorage.setItem(RATE_KEY, String(clamped));
+      try {
+        localStorage.setItem(RATE_KEY, String(clamped));
+      } catch {
+        /* storage unavailable — rate still applies for this session */
+      }
       // Restart the current speech at the new rate — mid-queue utterances
       // keep the old rate otherwise.
       if (speaking) {
@@ -143,21 +173,28 @@ export function useReadAloud(): ReadAloudApi {
   );
 
   // Cleanup on unmount — never leave speech running after the exam closes.
+  // Fully guarded: this runs during React's commit phase, where a throw
+  // escalates to the route-level error boundary.
   useEffect(() => {
     return () => {
       sessionRef.current += 1;
-      window.speechSynthesis.cancel();
+      try {
+        getSynth()?.cancel();
+      } catch {
+        /* engine gone mid-teardown — nothing left to cancel */
+      }
     };
   }, []);
 
   // Warm the voice list (async on Chrome) so the first speak() has voices.
   useEffect(() => {
-    if (!supported) return;
-    window.speechSynthesis.getVoices();
-    const onChange = () => window.speechSynthesis.getVoices();
-    window.speechSynthesis.addEventListener?.("voiceschanged", onChange);
-    return () => window.speechSynthesis.removeEventListener?.("voiceschanged", onChange);
-  }, [supported]);
+    const synth = getSynth();
+    if (!synth) return;
+    synth.getVoices();
+    const onChange = () => synth.getVoices();
+    synth.addEventListener?.("voiceschanged", onChange);
+    return () => synth.removeEventListener?.("voiceschanged", onChange);
+  }, []);
 
   return {
     supported,

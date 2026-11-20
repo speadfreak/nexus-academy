@@ -25,6 +25,36 @@ type GenericError = {
   componentStack?: string;
 };
 
+// ─── Third-party noise filter ────────────────────────────────────────────
+// Browser extensions inject scripts into every page (wallets poke
+// window.ethereum, autofill tools define xbrowser / execute_auto_fill).
+// Their failures surface through OUR window.onerror and used to open the
+// runtime-error dialog and inflate the admin Terminal error rate — errors
+// the app code can neither cause nor fix. Known-injection signatures are
+// logged to the console only: no modal, no server report.
+const THIRD_PARTY_NOISE_PATTERNS: RegExp[] = [
+  /window\.ethereum\.selectedAddress/i,
+  /\bxbrowser\b/i,
+  /execute_auto_fill/i,
+  /ResizeObserver loop (limit exceeded|completed with undelivered)/i,
+  /^Script error\.?$/i, // cross-origin-masked error from a foreign script
+  /extension context invalidated/i,
+  /web-?store|chrome-extension|moz-extension/i,
+];
+
+function isThirdPartyNoise(message: string): boolean {
+  if (!message) return false;
+  return THIRD_PARTY_NOISE_PATTERNS.some((re) => re.test(message));
+}
+
+// Same-message dedupe — a crashing subscription query used to open the
+// modal on every render retry. One dialog per unique message per session.
+const SHOWN_ERROR_FINGERPRINTS = new Set<string>();
+function fingerprint(error: GenericError): string {
+  const firstStackLine = error.stack.split("\n").find(Boolean) ?? "";
+  return `${error.error}::${firstStackLine}`.slice(0, 300);
+}
+
 function normalizeError(value: unknown): GenericError {
   if (value instanceof Error) {
     return {
@@ -203,6 +233,12 @@ class ErrorBoundary extends React.Component<
     const normalizedError = normalizeError(error);
     const componentStack = info.componentStack?.trim();
 
+    // Extension-injected noise reaching a React boundary — log only.
+    if (isThirdPartyNoise(normalizedError.error)) {
+      console.warn("[third-party noise suppressed]", normalizedError.error);
+      return;
+    }
+
     reportErrorToVly({
       error: normalizedError.error,
       stackTrace: [normalizedError.stack, componentStack]
@@ -249,12 +285,34 @@ export function InstrumentationProvider({
       try {
         event.preventDefault();
         const normalizedError = normalizeError(event.error ?? event.message);
+
+        // Third-party injection noise — console only, never a modal/report.
+        if (isThirdPartyNoise(normalizedError.error)) {
+          console.warn("[third-party noise suppressed]", normalizedError.error);
+          return;
+        }
+
         const capturedError = {
           ...normalizedError,
           filename: event.filename || undefined,
           lineno: event.lineno || undefined,
           colno: event.colno || undefined,
         };
+
+        // Dedupe identical errors (a failing query retried by Convex fires
+        // many times) — one dialog per unique message per session.
+        const fp = fingerprint(normalizedError);
+        if (SHOWN_ERROR_FINGERPRINTS.has(fp)) {
+          console.error("[runtime error — deduped]", normalizedError.error);
+          return;
+        }
+        SHOWN_ERROR_FINGERPRINTS.add(fp);
+        if (SHOWN_ERROR_FINGERPRINTS.size > 20) {
+          // Keep the set bounded; oldest-inserted key eviction is fine.
+          const first = SHOWN_ERROR_FINGERPRINTS.values().next().value;
+          if (first) SHOWN_ERROR_FINGERPRINTS.delete(first);
+        }
+
         setError(capturedError);
 
         await reportErrorToVly({
@@ -272,7 +330,20 @@ export function InstrumentationProvider({
     const handleRejection = async (event: PromiseRejectionEvent) => {
       try {
         const normalizedError = normalizeError(event.reason);
+
+        // Third-party injection noise — console only, never a modal/report.
+        if (isThirdPartyNoise(normalizedError.error)) {
+          console.warn("[third-party noise suppressed]", normalizedError.error);
+          return;
+        }
+
         console.error("[Freebuff runtime error]", normalizedError.error);
+
+        // Same dedupe as window.onerror.
+        const fp = fingerprint(normalizedError);
+        if (SHOWN_ERROR_FINGERPRINTS.has(fp)) return;
+        SHOWN_ERROR_FINGERPRINTS.add(fp);
+
         setError(normalizedError);
 
         await reportErrorToVly({

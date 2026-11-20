@@ -192,24 +192,27 @@ export const sendWeeklyBusinessDigest = internalAction({
     // Resolve the bot token + admin chat ID.
     const token = await resolveConfigValue(ctx, "TELEGRAM_BOT_TOKEN");
     if (!token) {
+      // Expected pre-configuration state, NOT a failure — logging it as an
+      // error polluted the admin Terminal error-rate readout every week.
       await logEventAction(ctx, {
         eventType: "api_call",
         source: "adminDigest.weekly",
-        status: "error",
-        metadata: { reason: "telegram_not_configured" },
+        status: "success",
+        metadata: { reason: "telegram_not_configured", skipped: true },
       });
       return { ok: false, sent: false, reason: "telegram_not_configured" };
     }
     const adminChatId = await resolveConfigValue(ctx, "TELEGRAM_ADMIN_CHAT_ID");
     if (!adminChatId) {
+      // Not an error — the admin just hasn't set the chat ID yet. Log as a
+      // successful skip so the cron doesn't retry-spam and the Terminal
+      // error-rate stays truthful (these were previously counted as errors).
       await logEventAction(ctx, {
         eventType: "api_call",
         source: "adminDigest.weekly",
-        status: "error",
-        metadata: { reason: "no_admin_chat_id_configured" },
+        status: "success",
+        metadata: { reason: "no_admin_chat_id_configured", skipped: true },
       });
-      // Not an error per se — the admin just hasn't set the chat ID yet.
-      // Log + return ok so the cron doesn't retry-spam.
       return { ok: true, sent: false, reason: "no_admin_chat_id_configured" };
     }
 

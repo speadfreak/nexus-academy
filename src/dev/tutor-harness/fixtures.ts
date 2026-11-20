@@ -59,6 +59,23 @@ export const FIXTURES: Record<string, unknown> = {
       content:
         "Try $h(x) = e^{\\sin x} \\cdot \\ln(x^2 + 1)$ — apply the product rule first, then the chain rule inside each factor. The derivative is:\n\n$$h'(x) = e^{\\sin x}\\cos x\\,\\ln(x^2+1) + e^{\\sin x}\\,\\frac{2x}{x^2+1}$$",
     },
+    // File-attachment turn — verifies the document chips render in-thread.
+    {
+      _id: "msg-5",
+      role: "user",
+      content: "Can you summarize the unit on quadratic equations from this PDF?",
+      files: [
+        { name: "Grade-11-Mathematics-Unit4.pdf", mime: "application/pdf", size: 1_284_512, chars: 41_203, pages: 24 },
+      ],
+      createdAt: Date.now() - 30 * 60 * 1000,
+    },
+    {
+      _id: "msg-6",
+      role: "assistant",
+      createdAt: Date.now() - 29 * 60 * 1000,
+      content:
+        "Read your **Unit 4** PDF ([Page 3]–[Page 9]). The unit builds quadratics in three moves:\n\n1. **Standard form** $ax^2 + bx + c = 0$ and when the discriminant $b^2 - 4ac$ decides the roots.\n2. **Completing the square** — the PDF derives it on [Page 6] exactly the way the national exam asks.\n3. **Word problems** — [Page 9] has two exam-style ones you should attempt before our next session.",
+    },
   ],
 
   "ai.searchMessages": [],

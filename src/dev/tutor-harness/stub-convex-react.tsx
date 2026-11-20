@@ -58,3 +58,22 @@ export function useConvex() {
 export function useQueries() {
   return {};
 }
+
+// ── Coverage for transitive imports (@convex-dev/auth/react pulls
+// ConvexProviderWithAuth from "convex/react"; the harness never mounts it,
+// but the import must resolve for dependency optimization to pass).
+export function ConvexProviderWithAuth({ children }: { children?: React.ReactNode }) {
+  return <>{children}</>;
+}
+export function usePaginatedQuery() {
+  return { results: [], isLoading: false, loadMore: () => {} };
+}
+export function useSuspenseQuery() {
+  return { data: undefined };
+}
+export function useStableQuery(_ref?: unknown) {
+  return undefined;
+}
+export function useConvexClient() {
+  return {};
+}

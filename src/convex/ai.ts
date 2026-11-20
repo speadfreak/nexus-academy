@@ -94,6 +94,23 @@ const TUTOR_MODE_PROMPTS: Record<TutorMode, string> = {
 
 const HISTORY_LIMIT = 15;
 
+// File-attachment budgets. Kept in one place so the client extraction lib
+// (lib/tutorFiles.ts) and the server stay in agreement.
+const MAX_FILES_PER_MESSAGE = 2;
+const MAX_FILE_TEXT_CHARS = 60_000; // per file, stored in tutor file memory
+const MAX_TURN_FILE_CHARS = 24_000; // per file, injected into the model turn
+const MAX_FOLLOWUP_FILE_CHARS = 8_000; // re-grounding head on later turns
+const MAX_MEMORY_EXCERPT_CHARS = 400;
+
+interface TutorFileInput {
+  name: string;
+  mime: string;
+  size: number;
+  chars: number;
+  pages?: number;
+  text: string;
+}
+
 /** Resolve an API key: database (admin panel) first, then env var fallback. */
 async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
   return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
@@ -141,20 +158,28 @@ export const getMessagesByConversation = internalQuery({
 export const countUserMessagesSince = internalQuery({
   args: { userId: v.id("users"), since: v.number() },
   handler: async (ctx, { userId, since }) => {
+    // Newest-first walk with an early stop: a conversation's updatedAt
+    // always reflects its latest message, so the first conversation older
+    // than the window marks the end of relevant data. Keeps the cap check
+    // to a couple of indexed reads instead of a 50×200 crawl.
     const conversations = await ctx.db
       .query("conversations")
       .withIndex("by_user_updatedAt", (q) => q.eq("userId", userId))
+      .order("desc")
       .take(50);
     let count = 0;
     for (const conversation of conversations) {
+      if (conversation.updatedAt < since) break;
       const messages = await ctx.db
         .query("messages")
         .withIndex("by_conversation", (q) =>
           q.eq("conversationId", conversation._id),
         )
+        .order("desc")
         .take(200);
       for (const message of messages) {
-        if (message.role === "user" && message.createdAt >= since) {
+        if (message.createdAt < since) break;
+        if (message.role === "user") {
           count += 1;
         }
       }
@@ -170,6 +195,81 @@ export const getFirstMessage = internalQuery({
       .query("messages")
       .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
       .first()) ?? null,
+});
+
+// ---------------------------------------------------------------------------
+// Tutor file memory — what the student has uploaded, remembered across
+// conversations so the tutor always knows what they're studying.
+// ---------------------------------------------------------------------------
+
+/** Recent uploads (metadata + short excerpt) for the system prompt. */
+export const getRecentTutorFiles = internalQuery({
+  args: { userId: v.id("users"), limit: v.optional(v.number()) },
+  handler: async (ctx, { userId, limit }) => {
+    const take = Math.min(Math.max(limit ?? 6, 1), 10);
+    return await ctx.db
+      .query("tutorFileMemory")
+      .withIndex("by_user_updatedAt", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(take);
+  },
+});
+
+/** Full stored text for one named file (re-grounding on follow-up turns). */
+export const getTutorFileTextByName = internalQuery({
+  args: { userId: v.id("users"), name: v.string() },
+  handler: async (ctx, { userId, name }) => {
+    const rows = await ctx.db
+      .query("tutorFileMemory")
+      .withIndex("by_user_updatedAt", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(50);
+    return rows.find((row) => row.name === name) ?? null;
+  },
+});
+
+/**
+ * Upsert one uploaded file into memory. Deduped on (userId, name, size):
+ * re-uploading the same document refreshes it instead of duplicating rows.
+ */
+export const upsertTutorFileMemory = internalMutation({
+  args: {
+    userId: v.id("users"),
+    name: v.string(),
+    mime: v.string(),
+    size: v.number(),
+    chars: v.number(),
+    pages: v.optional(v.number()),
+    excerpt: v.string(),
+    text: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("tutorFileMemory")
+      .withIndex("by_user_updatedAt", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(50);
+    const existing = rows.find(
+      (row) => row.name === args.name && row.size === args.size,
+    );
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        mime: args.mime,
+        chars: args.chars,
+        pages: args.pages,
+        excerpt: args.excerpt,
+        text: args.text,
+        updatedAt: now,
+      });
+      return existing._id;
+    }
+    return await ctx.db.insert("tutorFileMemory", {
+      ...args,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
 });
 
 export const getSubjectById = internalQuery({
@@ -206,6 +306,17 @@ export const insertMessage = internalMutation({
     role: v.union(v.literal("user"), v.literal("assistant")),
     content: v.string(),
     images: v.optional(v.array(v.string())),
+    files: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          mime: v.string(),
+          size: v.number(),
+          chars: v.number(),
+          pages: v.optional(v.number()),
+        }),
+      ),
+    ),
     createdAt: v.number(),
   },
   handler: async (ctx, args) => await ctx.db.insert("messages", args),
@@ -238,6 +349,9 @@ async function buildSystemPrompt(
     grade?: number;
     concise?: boolean;
     hasImages?: boolean;
+    hasFiles?: boolean;
+    /** Head of a previously-uploaded file, re-injected on follow-up turns. */
+    recentFileContext?: { name: string; textHead: string } | null;
   },
 ): Promise<string> {
   const lines = [
@@ -366,6 +480,25 @@ async function buildSystemPrompt(
         "carefully: if it contains a question, solve it showing every step; if " +
         "it contains notes or a diagram, explain what it shows. If the image is " +
         "unclear or cut off, say exactly what you can and cannot read.",
+      "",
+    );
+  }
+  if (opts?.hasFiles) {
+    lines.push(
+      "FILE GROUNDING RULES (the student attached document(s) — their extracted " +
+        "text is in this message between the ATTACHED FILE markers):",
+      "- Answer from the REAL text in those files. Quote or reference the actual " +
+        "passage when you use it, and name the source file.",
+      "- When page/slide labels like [Page 3] or [Slide 2] appear, cite them the " +
+        "same way so the student can find the spot.",
+      "- NEVER invent content that is not in the extracted text. If the answer " +
+        "is not in the file, say so plainly and offer your general knowledge as " +
+        "a clearly-labeled alternative.",
+      "- If the extraction looks garbled, empty or cut off (truncation markers), " +
+        "tell the student exactly what you received and ask them to re-send the " +
+        "missing part (e.g. a photo of the page or the specific section).",
+      "- Math inside files is often flattened (x^2, 1/2, sqrt(3)) — re-typeset " +
+        "it into proper $…$ / $$…$$ LaTeX in your reply.",
       "",
     );
   }
@@ -520,6 +653,53 @@ async function buildSystemPrompt(
     }
   }
 
+  // ── Tutor file memory ──────────────────────────────────────────────────
+  // What the student uploaded before, remembered ACROSS conversations. The
+  // short excerpt keeps the tutor aware of the student's materials without
+  // burning tokens; the full text is re-injected only when a turn actually
+  // re-grounds on one file (see recentFileContext).
+  try {
+    const recentFiles = await ctx.runQuery(internal.ai.getRecentTutorFiles, {
+      userId,
+      limit: 6,
+    });
+    if (recentFiles.length > 0) {
+      lines.push(
+        "",
+        "Files the student has uploaded to the tutor (their study memory — newest first):",
+      );
+      for (const file of recentFiles) {
+        const pagesLabel = file.pages ? `, ${file.pages} pages` : "";
+        const excerpt = file.excerpt
+          .replace(/\s+/g, " ")
+          .slice(0, MAX_MEMORY_EXCERPT_CHARS);
+        lines.push(
+          `- "${file.name}" (${Math.round(file.chars / 1000)}k chars${pagesLabel}): ${excerpt}${file.excerpt.length > MAX_MEMORY_EXCERPT_CHARS ? "…" : ""}`,
+        );
+      }
+      lines.push(
+        "Treat these as materials the student is actively studying — reference them when " +
+          "relevant. If the student asks about a part of one of these files that the excerpt " +
+          "doesn't show, ask them to re-attach that file or paste the specific section.",
+        "",
+      );
+    }
+  } catch {
+    // Memory listing is non-critical — never let it break the tutor.
+  }
+
+  // Follow-up re-grounding: the current turn references a conversation where
+  // a file was recently attached. Inject its stored text head.
+  if (opts?.recentFileContext?.textHead) {
+    lines.push(
+      "",
+      `=== PREVIOUSLY UPLOADED FILE (head): ${opts.recentFileContext.name} ===`,
+      opts.recentFileContext.textHead,
+      "=== END PREVIOUSLY UPLOADED FILE (this is the first ~8,000 characters — if the question targets a later part, ask the student to re-attach or paste it) ===",
+      "",
+    );
+  }
+
   return lines.join("\n");
 }
 
@@ -541,8 +721,24 @@ export const sendMessage = action({
       v.literal(12),
     )),
     // Downscaled image attachments (data URLs) — routed to a vision model.
-    // Max 2 per message, each capped ~450 KB of base64 (≈ 330 KB binary).
+    // Max 3 per message, each capped ~450 KB of base64 (≈ 330 KB binary).
     images: v.optional(v.array(v.string())),
+    // Document attachments with CLIENT-EXTRACTED text (see lib/tutorFiles.ts).
+    // The text is re-validated and capped server-side before use; the full
+    // text is stored in tutorFileMemory, and up to 24k chars per file is
+    // injected into this turn.
+    files: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          mime: v.string(),
+          size: v.number(),
+          chars: v.number(),
+          pages: v.optional(v.number()),
+          text: v.string(),
+        }),
+      ),
+    ),
     // Persisted student preference (academic memory, client-side stored).
     concise: v.optional(v.boolean()),
   },
@@ -553,7 +749,8 @@ export const sendMessage = action({
     }
 
     const content = args.content.trim();
-    if (!content && !(args.images && args.images.length > 0)) {
+    const rawFiles = args.files ?? [];
+    if (!content && !(args.images && args.images.length > 0) && rawFiles.length === 0) {
       throw new ConvexError({ message: "Message cannot be empty.", code: "invalid" });
     }
     if (content.length > 4000) {
@@ -562,8 +759,8 @@ export const sendMessage = action({
 
     // --- Image attachment validation -------------------------------------
     const images = (args.images ?? []).filter((img) => typeof img === "string");
-    if (images.length > 2) {
-      throw new ConvexError({ message: "Attach at most 2 images per message.", code: "invalid" });
+    if (images.length > 3) {
+      throw new ConvexError({ message: "Attach at most 3 images per message.", code: "invalid" });
     }
     for (const img of images) {
       if (!/^data:image\/(jpeg|png|webp);base64,/.test(img)) {
@@ -579,7 +776,45 @@ export const sendMessage = action({
         });
       }
     }
-    const effectiveContent = content || "Solve this and explain every step.";
+
+    // --- Document attachment validation + memory-ready copies ------------
+    // The client extracted the text (lib/tutorFiles.ts) — the server never
+    // trusts client payloads blindly: names are sanitized, text is bounded,
+    // and the caps here mirror the client's extraction limits.
+    const files: TutorFileInput[] = [];
+    for (const file of rawFiles.slice(0, MAX_FILES_PER_MESSAGE)) {
+      const safeName = String(file.name ?? "")
+        .replace(/[\u0000-\u001f]/g, "")
+        .slice(0, 140);
+      if (!safeName) continue;
+      const safeText = String(file.text ?? "").slice(0, MAX_FILE_TEXT_CHARS);
+      if (!safeText.trim()) continue;
+      files.push({
+        name: safeName,
+        mime: String(file.mime ?? "application/octet-stream").slice(0, 100),
+        size: Math.max(0, Math.min(Number(file.size) || 0, 25_000_000)),
+        chars: safeText.length,
+        pages:
+          typeof file.pages === "number" && Number.isFinite(file.pages)
+            ? Math.max(1, Math.min(Math.round(file.pages), 5_000))
+            : undefined,
+        text: safeText,
+      });
+    }
+    if (rawFiles.length > MAX_FILES_PER_MESSAGE) {
+      throw new ConvexError({
+        message: `Attach at most ${MAX_FILES_PER_MESSAGE} documents per message.`,
+        code: "invalid",
+      });
+    }
+
+    const effectiveContent =
+      content ||
+      (images.length > 0
+        ? "Solve this and explain every step."
+        : files.length > 0
+          ? `Study "${files[0].name}" and teach me the key points, then check my understanding.`
+          : "");
 
     // --- Free-tier daily cap ---------------------------------------------
     const premium = await getPremiumAccess(ctx, userId);
@@ -656,18 +891,50 @@ export const sendMessage = action({
     }
 
     // --- Persist the user message --------------------------------------
+    // The message row keeps METADATA ONLY for files (text lives in tutor
+    // file memory below) — chat history stays lean for every future load.
     const now = Date.now();
     await ctx.runMutation(internal.ai.insertMessage, {
       conversationId,
       role: "user",
       content: effectiveContent,
       images: images.length > 0 ? images : undefined,
+      files:
+        files.length > 0
+          ? files.map(({ name, mime, size, chars, pages }) => ({
+              name,
+              mime,
+              size,
+              chars,
+              ...(pages !== undefined ? { pages } : {}),
+            }))
+          : undefined,
       createdAt: now,
     });
     await ctx.runMutation(internal.ai.patchConversation, {
       conversationId,
       updatedAt: now,
     });
+
+    // --- Save uploads into the student's tutor file memory --------------
+    // Exactly one row per unique (name, size); re-uploads refresh. Wrapped
+    // per-file: one weird file must never block the message itself.
+    for (const file of files) {
+      try {
+        await ctx.runMutation(internal.ai.upsertTutorFileMemory, {
+          userId,
+          name: file.name,
+          mime: file.mime,
+          size: file.size,
+          chars: file.chars,
+          ...(file.pages !== undefined ? { pages: file.pages } : {}),
+          excerpt: file.text.replace(/\s+/g, " ").trim().slice(0, MAX_MEMORY_EXCERPT_CHARS),
+          text: file.text,
+        });
+      } catch {
+        // Memory persistence is best-effort; the turn proceeds regardless.
+      }
+    }
 
     // --- Pull bounded history for context -------------------------------
     const historyRows: Doc<"messages">[] = await ctx.runQuery(
@@ -676,13 +943,53 @@ export const sendMessage = action({
     );
     const history = historyRows
       .slice(-HISTORY_LIMIT)
-      .map((message) => ({
-        role: message.role as "user" | "assistant",
-        // Image turns replay as text markers so history tokens stay bounded.
-        content: message.images?.length
-          ? `${message.content}\n[image attached]`
-          : message.content,
-      }));
+      .map((message) => {
+        const markers: string[] = [];
+        if (message.images?.length) markers.push("[image attached]");
+        if (message.files?.length) {
+          markers.push(
+            `[file attached: ${message.files.map((f) => f.name).join(", ")}]`,
+          );
+        }
+        return {
+          role: message.role as "user" | "assistant",
+          // Attachment turns replay as text markers so history tokens stay
+          // bounded — the real content is re-injected fresh where needed.
+          content: markers.length
+            ? `${message.content}\n${markers.join(" ")}`
+            : message.content,
+        };
+      });
+
+    // --- Follow-up re-grounding ------------------------------------------
+    // When the student asks "explain page 5 of that file" in a LATER turn
+    // (no new attachment), pull the head of the most recently attached
+    // file out of their memory so the tutor can still see the material.
+    let recentFileContext: { name: string; textHead: string } | null = null;
+    if (files.length === 0) {
+      const lastFileMessage = [...historyRows]
+        .reverse()
+        .find((m) => m.role === "user" && m.files && m.files.length > 0);
+      const targetName = lastFileMessage?.files?.[0]?.name;
+      if (targetName) {
+        try {
+          const memoryRow = (await ctx.runQuery(
+            internal.ai.getTutorFileTextByName,
+            { userId, name: targetName },
+          )) as Doc<"tutorFileMemory"> | null;
+          if (memoryRow && memoryRow.text.trim()) {
+            recentFileContext = {
+              name: memoryRow.name,
+              textHead: memoryRow.text
+                .slice(0, MAX_FOLLOWUP_FILE_CHARS)
+                .replace(/\s+\[Text truncated[^\]]*\]$/, ""),
+            };
+          }
+        } catch {
+          // Non-critical — the turn proceeds without re-grounding.
+        }
+      }
+    }
 
     // --- Call AI model ---------------------------------------------------
     const conversation = await ctx.runQuery(internal.ai.getConversationById, {
@@ -698,8 +1005,29 @@ export const sendMessage = action({
         grade: args.grade,
         concise: args.concise,
         hasImages: images.length > 0,
+        hasFiles: files.length > 0,
+        recentFileContext,
       },
     );
+
+    // Current-turn user message: the typed text + full extracted file text
+    // (up to MAX_TURN_FILE_CHARS per file) inside explicit grounding markers.
+    let userTurn = effectiveContent;
+    if (files.length > 0) {
+      const blocks = files.map((file) => {
+        const pagesLabel = file.pages ? `, ${file.pages} pages` : "";
+        const head =
+          file.text.length > MAX_TURN_FILE_CHARS
+            ? `${file.text.slice(0, MAX_TURN_FILE_CHARS)}\n[Text truncated at ${MAX_TURN_FILE_CHARS.toLocaleString()} characters — the student can re-send specific sections for deeper detail]`
+            : file.text;
+        return (
+          `=== ATTACHED FILE: ${file.name} (${file.mime}${pagesLabel}, ${file.chars.toLocaleString()} chars) ===\n` +
+          `${head}\n` +
+          `=== END FILE: ${file.name} ===`
+        );
+      });
+      userTurn = `${userTurn}\n\n${blocks.join("\n\n")}`;
+    }
 
     let reply: string;
     const aiStart = Date.now();
@@ -707,6 +1035,8 @@ export const sendMessage = action({
     // resolveVisionModel picks a LIVE image-capable model from Groq's
     // catalog (self-healing when Groq rotates/deprecates models) and
     // callGroq retries once with a fresh model if it 404s mid-flight.
+    // Document-only turns stay on the text model — the extracted text is
+    // already plain text, no vision needed.
     const visionModel = images.length > 0 ? await resolveVisionModel(ctx) : undefined;
     try {
       // 4096 tokens: full worked derivations + practice questions fit
@@ -715,7 +1045,7 @@ export const sendMessage = action({
       // mid-aligned used to leak raw LaTeX into the chat.
       const result = await callGroqDetailed(ctx, {
         systemPrompt,
-        userMessage: effectiveContent,
+        userMessage: userTurn,
         history,
         maxTokens: 4096,
         temperature: 0.5,
@@ -740,6 +1070,8 @@ export const sendMessage = action({
           model: visionModel ?? getModelName(),
           conversationId,
           hasImages: images.length > 0,
+          hasFiles: files.length > 0,
+          fileNames: files.map((f) => f.name),
           mode: args.mode ?? "learn",
           truncated: result.finishReason === "length",
         },
@@ -1137,12 +1469,45 @@ export const regenerateReply = action({
     const history = historyRows
       .filter((m) => m._id !== lastUser._id)
       .slice(-HISTORY_LIMIT)
-      .map((message) => ({
-        role: message.role as "user" | "assistant",
-        content: message.images?.length
-          ? `${message.content}\n[image attached]`
-          : message.content,
-      }));
+      .map((message) => {
+        const markers: string[] = [];
+        if (message.images?.length) markers.push("[image attached]");
+        if (message.files?.length) {
+          markers.push(
+            `[file attached: ${message.files.map((f) => f.name).join(", ")}]`,
+          );
+        }
+        return {
+          role: message.role as "user" | "assistant",
+          content: markers.length
+            ? `${message.content}\n${markers.join(" ")}`
+            : message.content,
+        };
+      });
+
+    // If the turn being regenerated attached files, re-ground on their
+    // stored memory text so the regenerated answer still cites the REAL
+    // content instead of hallucinating from the "[file attached]" marker.
+    let hasFiles = false;
+    let recentFileContext: { name: string; textHead: string } | null = null;
+    const regenFileName = lastUser.files?.[0]?.name;
+    if (regenFileName) {
+      hasFiles = true;
+      try {
+        const memoryRow = (await ctx.runQuery(internal.ai.getTutorFileTextByName, {
+          userId,
+          name: regenFileName,
+        })) as Doc<"tutorFileMemory"> | null;
+        if (memoryRow && memoryRow.text.trim()) {
+          recentFileContext = {
+            name: memoryRow.name,
+            textHead: memoryRow.text.slice(0, MAX_FOLLOWUP_FILE_CHARS * 2),
+          };
+        }
+      } catch {
+        // Non-critical — regenerate proceeds from the marker text.
+      }
+    }
 
     const systemPrompt = await buildSystemPrompt(
       ctx,
@@ -1154,6 +1519,8 @@ export const regenerateReply = action({
         grade: args.grade,
         concise: args.concise,
         hasImages: false,
+        hasFiles,
+        recentFileContext,
       },
     );
 
@@ -1162,9 +1529,13 @@ export const regenerateReply = action({
     try {
       reply = await callGroq(ctx, {
         systemPrompt,
-        userMessage: lastUser.content,
+        // If the last turn carried files, re-send its text head here too so
+        // the regenerated reply keeps the same grounding as the original.
+        userMessage: hasFiles && recentFileContext
+          ? `${lastUser.content}\n\n=== ATTACHED FILE (head): ${recentFileContext.name} ===\n${recentFileContext.textHead}\n=== END FILE ===`
+          : lastUser.content,
         history,
-        maxTokens: 1024,
+        maxTokens: 4096,
         temperature: 0.55, // a touch more variance than the first pass
       });
       await logEventAction(ctx, {
