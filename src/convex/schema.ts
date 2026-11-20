@@ -250,6 +250,13 @@ const schema = defineSchema(
       title: v.optional(v.string()),
       subjectId: v.optional(v.id("subjects")),
       contentId: v.optional(v.id("contentItems")),
+      // Rolling summary of the OLDER half of the conversation (the turns that
+      // no longer fit inside the 6-message window sent to the model). Written
+      // asynchronously after replies by aiRouter.maybeUpdateConversationSummary
+      // so the tutor keeps long-term context without burning input tokens.
+      summary: v.optional(v.string()),
+      // How many messages (counting from the thread start) the summary covers.
+      summarizedUpTo: v.optional(v.number()),
       createdAt: v.number(),
       updatedAt: v.number(),
     }).index("by_user_updatedAt", ["userId", "updatedAt"]),
@@ -282,6 +289,10 @@ const schema = defineSchema(
           }),
         ),
       ),
+      // True when this assistant reply came from the graceful offline mode
+      // (every AI provider exhausted — notes/FAQ snippet + honest hold
+      // message) rather than a live model call. Purely informational.
+      degraded: v.optional(v.boolean()),
       createdAt: v.number(),
     }).index("by_conversation", ["conversationId", "createdAt"]),
 
@@ -308,6 +319,136 @@ const schema = defineSchema(
     })
       .index("by_user_updatedAt", ["userId", "updatedAt"])
       .index("by_user_createdAt", ["userId", "createdAt"]),
+
+    // ------------------------------------------------------------------
+    // AI tutor reliability layer — rate-limit-proof multi-provider routing
+    // ------------------------------------------------------------------
+
+    // Live capacity state per provider+model. The router reads this BEFORE
+    // calling a provider so exhausted models are skipped without wasting a
+    // round-trip (pre-429 routing), and writes it after every attempt with
+    // what the provider's rate-limit headers/body told us.
+    aiProviderState: defineTable({
+      // "groq/openai/gpt-oss-120b" — provider/model key, unique per row.
+      key: v.string(),
+      provider: v.string(), // groq | gemini | cerebras | openrouter
+      model: v.string(),
+      // Cooldown: router skips this model until this timestamp. Set from the
+      // provider's "try again in Xs" / retry-after / headers.
+      cooldownUntil: v.optional(v.number()),
+      cooldownReason: v.optional(v.string()),
+      // Rolling RPM window (60s) — request count.
+      rpmWindowStart: v.optional(v.number()),
+      rpmUsed: v.optional(v.number()),
+      // Rolling TPM window (60s) — ESTIMATED token usage (input + output).
+      tpmWindowStart: v.optional(v.number()),
+      tpmUsedEst: v.optional(v.number()),
+      // Calendar-day (UTC) request counter for RPD-limited providers.
+      rpdDay: v.optional(v.string()), // "2026-11-21"
+      rpdUsed: v.optional(v.number()),
+      consecutiveFailures: v.optional(v.number()),
+      lastErrorAt: v.optional(v.number()),
+      lastErrorDetail: v.optional(v.string()),
+      // Catalog-rotation kill switch: models that 404 ("model_not_found")
+      // are disabled for 6h instead of retried every turn.
+      disabledUntil404: v.optional(v.number()),
+      updatedAt: v.number(),
+    })
+      .index("by_key", ["key"])
+      .index("by_updatedAt", ["updatedAt"]),
+
+    // One row per tutor AI turn (chat / regenerate / branch / follow-ups /
+    // notes / summary): provider + model chosen, every fallback hop, latency,
+    // token estimates, cache hits. Powers the super-admin AI Health panel.
+    aiCallLog: defineTable({
+      userId: v.optional(v.id("users")),
+      conversationId: v.optional(v.id("conversations")),
+      purpose: v.union(
+        v.literal("chat"),
+        v.literal("regenerate"),
+        v.literal("branch"),
+        v.literal("followups"),
+        v.literal("notes"),
+        v.literal("summary"),
+      ),
+      cacheHit: v.boolean(),
+      provider: v.optional(v.string()),
+      model: v.optional(v.string()),
+      hops: v.optional(
+        v.array(
+          v.object({
+            provider: v.string(),
+            model: v.string(),
+            status: v.string(), // ok | rate_limited | server_error | auth_error | model_missing | timeout | no_key | skipped
+            latencyMs: v.number(),
+            detail: v.optional(v.string()),
+          }),
+        ),
+      ),
+      latencyMs: v.optional(v.number()),
+      estInputTokens: v.optional(v.number()),
+      outputTokens: v.optional(v.number()),
+      queueWaitMs: v.optional(v.number()),
+      createdAt: v.number(),
+    })
+      .index("by_createdAt", ["createdAt"])
+      .index("by_purpose_createdAt", ["purpose", "createdAt"]),
+
+    // Answer cache — identical (or near-identical, normalized) questions in
+    // the same lesson context are served instantly without touching any
+    // provider. TTL'd; pruned by the daily AI maintenance cron.
+    aiAnswerCache: defineTable({
+      hash: v.string(),
+      answer: v.string(),
+      provider: v.optional(v.string()),
+      model: v.optional(v.string()),
+      hits: v.optional(v.number()),
+      createdAt: v.number(),
+      expiresAt: v.number(),
+    })
+      .index("by_hash", ["hash"])
+      .index("by_expiresAt", ["expiresAt"]),
+
+    // Short queue for tutor turns when EVERY provider is exhausted. The
+    // frontend shows a friendly "high demand" status with a live position;
+    // scheduled retries (exponential backoff + jitter) answer it as capacity
+    // returns — surviving page refreshes because it lives in Convex.
+    aiRequestQueue: defineTable({
+      userId: v.id("users"),
+      conversationId: v.id("conversations"),
+      // send = answer the latest user turn (already persisted);
+      // regenerate = re-answer the current last user turn.
+      kind: v.union(v.literal("send"), v.literal("regenerate")),
+      mode: v.optional(v.string()),
+      grade: v.optional(v.number()),
+      concise: v.optional(v.boolean()),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("delivered"),
+        v.literal("graceful"),
+        v.literal("abandoned"),
+      ),
+      attempts: v.optional(v.number()),
+      maxAttempts: v.optional(v.number()),
+      nextAttemptAt: v.optional(v.number()),
+      lastError: v.optional(v.string()),
+      gracefulReplied: v.optional(v.boolean()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_status_createdAt", ["status", "createdAt"])
+      .index("by_user_createdAt", ["userId", "createdAt"])
+      .index("by_conversation", ["conversationId"]),
+
+    // Per-user fairness ledger: one in-flight tutor request at a time (with
+    // a self-healing stale marker) so heavy users can't drain shared quota.
+    // Hourly message caps use the @convex-dev/rate-limiter component.
+    aiUserBudget: defineTable({
+      userId: v.id("users"),
+      inflightSince: v.optional(v.number()),
+      inflightKind: v.optional(v.string()),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
 
     // Student task list. priority: low | medium | high.
     todos: defineTable({

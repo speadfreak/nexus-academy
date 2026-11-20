@@ -29,6 +29,58 @@ The convex server has a separate set of environment variables that are accessibl
 
 Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
 
+# AI Tutor Reliability Layer — keys to create
+
+The AI tutor routes across multiple FREE-tier providers so students never see
+a rate limit. Add any or all of these — a provider without its key is simply
+skipped by the router. Set them either in the **Admin → Keys** tab (stored in
+the `configKeys` table, picked up instantly) or as Convex env vars
+(`npx convex env set <NAME> <VALUE>`). All are registered in
+`INTEGRATION_KEYS` (src/convex/configKeys.ts) so they appear in the admin UI.
+
+| Env var | Required? | Where to get it | Free tier (Nov 2026) |
+| --- | --- | --- | --- |
+| `GROQ_API_KEY` | Yes — primary | https://console.groq.com/keys | 30 RPM · 8,000 TPM · 1,000 RPD per model |
+| `GEMINI_API_KEY` | Recommended | https://aistudio.google.com/apikey | ~15–200 RPM · 250K+ TPM · ~1,400 RPD |
+| `CEREBRAS_API_KEY` | Optional | https://cerebras.ai | ~8 RPM · ~30K TPM (needs billing info even for $0) |
+| `OPENROUTER_API_KEY` | Optional | https://openrouter.ai/keys | 20 RPM · 50–1,000 RPD on `:free` models |
+| `AI_VISION_MODEL` | No | Admin → Keys | Optional pin; auto-picks an image-capable Groq model otherwise |
+
+How the layer behaves (src/convex/aiRouter.ts, src/convex/ai.ts):
+
+1. **Token diet** — 6-message history + a rolling Convex-stored summary of
+   older turns, a compact system prompt, relevance-scored file chunks, 720
+   max completion tokens and `reasoning_effort: "low"` on reasoning models,
+   all enforced against a hard ~6.2K-token per-request input budget.
+2. **Multi-provider fallback router** — Groq (gpt-oss-120b/20b, llama
+   3.3/3.1), Gemini flash, Cerebras, OpenRouter free models. On 429/5xx/401/
+   timeout it instantly falls to the next provider and never retries the
+   same exhausted model within a turn.
+3. **Rate-limit awareness** — cooldowns learned from each provider's
+   `retry-after`/body hints live in `aiProviderState`; rolling RPM/TPM/RPD
+   estimates route around exhaustion BEFORE a 429 happens.
+4. **Queue** — if every provider is busy the turn is queued in Convex
+   (`aiRequestQueue`) and answered by scheduled retries with exponential
+   backoff + jitter (~40s fast window, then ~3-minute capacity-return
+   cadence). The UI shows "Tutor is thinking… (high demand, hang tight)"
+   with a live position and survives a page refresh.
+5. **Caching** — identical/near-identical questions (normalized hash +
+   lesson context) are served from `aiAnswerCache` for 24h; stateful modes
+   (practice/exam/quiz) and image turns are never cached.
+6. **Fairness** — per-user hourly caps via the `@convex-dev/rate-limiter`
+   component (20/h free, 45/h premium) plus one in-flight request per user.
+7. **Graceful mode** — if everything is exhausted, the student gets an
+   honest "tutor is swamped" reply with snippets from their own notes/files;
+   the real answer still lands automatically when capacity returns.
+8. **Observability** — every turn logs provider, model, latency, hops and
+   cooldowns to `aiCallLog`; the **Admin → AI Health** tab shows live
+   provider health, cache hit rate, fallback usage and the queue.
+
+After adding keys, run `npm run deploy:backend` once so the Convex backend
+picks up the new component + tables (the rate limiter component registers
+new backend tables — see src/convex/convex.config.ts).
+
+
 
 # Using Authentication (Important!)
 

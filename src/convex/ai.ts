@@ -1,15 +1,24 @@
-// AI tutor — powered by Groq (fast, free LLM API).
+// AI tutor — the conversation orchestration layer.
 //
-// Called from a Convex action because actions are the only Convex function
-// type that can make external HTTP calls. The API key is read from
-// process.env (set it in the Keys / API keys tab, never hardcode it):
-//   GROQ_API_KEY     your Groq API key (https://console.groq.com/keys)
-//   AI_MODEL        optional — defaults to openai/gpt-oss-120b
+// Provider calls go through aiRouter.ts: a capacity-aware multi-provider
+// router (Groq, Gemini, Cerebras, OpenRouter — all free tiers) that skips
+// exhausted models BEFORE calling them, falls through on 429/5xx/timeout,
+// queues the turn in Convex when everything is busy, and answers cached
+// questions instantly. See the "AI Tutor reliability layer" section in
+// README.md for the provider keys this needs.
+//
+// TOKEN DIET (why prompts here look lean): Groq's free tier allows only
+// 8,000 tokens-per-minute per model, so every character in a turn is
+// budgeted: 6-message history + a rolling Convex-stored summary of older
+// turns, a compact system prompt, relevance-scored file chunks instead of
+// whole documents, 720 max completion tokens and reasoning_effort "low" for
+// reasoning models — all enforced against a hard per-request input budget.
 
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   mutation,
@@ -21,7 +30,13 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getPremiumAccess } from "./subscriptions";
 import { FREE_TUTOR_DAILY_LIMIT } from "./constants";
 import { logEventAction } from "./systemEvents";
-import { callGroq, callGroqDetailed, getModelName, resolveVisionModel } from "./groq";
+import {
+  routeChat,
+  estimateTokens,
+  HARD_INPUT_BUDGET_TOKENS,
+} from "./aiRouter";
+import { RateLimiter, HOUR } from "@convex-dev/rate-limiter";
+import { components } from "./_generated/api";
 // Pure text pipeline (no browser/Node APIs) — shared with the renderer so the
 // stored message is balanced BEFORE the length-limit marker is appended.
 // Without this, a reply cut mid-$$ stores the marker INSIDE an unterminated
@@ -50,56 +65,60 @@ export const tutorModeValidator = v.union(
 
 export type TutorMode = (typeof TUTOR_MODES)[number];
 
+// Compressed one-liners — full behavior in two sentences, not paragraphs.
+// Every token here rides on every request (see the token diet note above).
 const TUTOR_MODE_PROMPTS: Record<TutorMode, string> = {
   learn:
-    "TUTOR MODE: LEARN — the student wants to deeply understand a concept. " +
-    "Teach it step by step: start from what they already know, define every new " +
-    "term the moment it appears, build the idea in clear ordered steps, then " +
-    "walk through one worked example. End with ONE quick check question so the " +
-    "student can confirm the idea stuck — then wait for their answer.",
+    "TUTOR MODE: LEARN — teach step by step from what they know; define every " +
+    "new term; one worked example; end with ONE quick check question, then wait.",
   practice:
-    "TUTOR MODE: PRACTICE — the student wants to practice, not listen. Ask ONE " +
-    "exam-style question at a time at their grade's national-exam difficulty, " +
-    "then STOP and wait for their answer. Never answer your own question. When " +
-    "they answer: grade it honestly, show the correct working briefly, then " +
-    "offer the next question. Adapt the next question to what they got wrong.",
+    "TUTOR MODE: PRACTICE — ask ONE exam-style question at their grade's " +
+    "difficulty and wait. Grade their answer honestly, show correct working " +
+    "briefly, adapt the next question to what they missed. Never answer your own question.",
   exam:
-    "TUTOR MODE: EXAM — strict Ethiopian national exam (EHEEE/ESLCE) simulation. " +
-    "Serve multiple-choice questions in exact national-exam style with A-D " +
-    "options. No hints, no encouragement, no teaching mid-question — act like a " +
-    "strict examiner. Only after the student commits an answer, mark it strictly " +
-    "and show the model answer with brief working. If they ask for hints, refuse " +
-    "politely: a real exam doesn't give hints. Keep a running score.",
+    "TUTOR MODE: EXAM — strict Ethiopian national-exam simulation. Serve " +
+    "multiple-choice A-D questions with no hints; after they answer, mark " +
+    "strictly, show the model answer and keep a running score.",
   revision:
-    "TUTOR MODE: QUICK REVISION — the student is revising and needs speed. Answer " +
-    "in ultra-short form: key facts, formulas, definitions and the traps exams " +
-    "set. Maximum ~120 words, bullets over paragraphs, no headers, no long " +
-    "explanations. Bold the must-remember terms. End with a one-line memory hook " +
-    "when one exists.",
+    "TUTOR MODE: QUICK REVISION — ultra-short: key facts, formulas, definitions " +
+    "and exam traps. Max ~120 words, bullets, bold the must-remember terms, one-line memory hook.",
   solve:
-    "TUTOR MODE: SOLVE WITH ME — the student brings a problem and wants guided " +
-    "reasoning, not a handed-over answer. Never reveal the final answer straight " +
-    "away. Break the problem into steps, demonstrate the reasoning for the first " +
-    "step, then ask the student to attempt the next step before continuing. Coach " +
-    "like a patient teacher: hint, check, correct, continue. Reveal the full " +
-    "solution at the end — or sooner if they've made two genuine attempts and are " +
-    "still stuck.",
+    "TUTOR MODE: SOLVE WITH ME — guided reasoning, never the answer first. Break " +
+    "it into steps, demonstrate the first, have them attempt the next. Reveal the " +
+    "full solution at the end or after two genuine stuck attempts.",
   quiz:
-    "TUTOR MODE: QUIZ ME — adaptive quiz engine. Ask one question at a time and " +
-    "wait for the answer. Track which sub-topics they miss: successful answers " +
-    "unlock harder questions, missed ones drop back and get retested from a " +
-    "different angle. After 5 questions, stop and give a score summary: X/5, " +
-    "which sub-topics were weak, and one specific thing to review next.",
+    "TUTOR MODE: QUIZ ME — one adaptive question at a time; harder when right, " +
+    "retested from a new angle when wrong. After 5: score X/5, weak sub-topics, one review next-step.",
 };
 
-const HISTORY_LIMIT = 15;
+// ---------------------------------------------------------------------------
+// Token-diet budgets. The client extraction lib (lib/tutorFiles.ts) and the
+// server agree on storage caps; the TURN injection caps here are what keep a
+// request inside the router's hard input budget (HARD_INPUT_BUDGET_TOKENS).
+// ---------------------------------------------------------------------------
 
-// File-attachment budgets. Kept in one place so the client extraction lib
-// (lib/tutorFiles.ts) and the server stay in agreement.
+/** History window sent to the model (was 15 — now 6 + rolling summary). */
+const HISTORY_LIMIT = 6;
+/** Start rolling summaries once a thread exceeds this many messages. */
+const SUMMARY_TRIGGER_COUNT = 10;
+/** Summarize only when at least this many NEW turns fell out of the window. */
+const SUMMARY_MIN_NEW_TURNS = 4;
+/** Hard cap on the stored rolling summary. */
+const MAX_SUMMARY_CHARS = 1_100;
+/** Budget (estimated tokens) for each attached file's relevant chunk. */
+const FILE_CHUNK_TOKEN_BUDGET = 1_800;
+/** Re-grounding head on later turns (was 8,000 chars). */
+const MAX_FOLLOWUP_FILE_CHARS = 4_000;
+/** Max completion tokens for tutor replies (was 4096). */
+export const MAX_COMPLETION_TOKENS = 720;
+/** Per-message cap in the trimmed history window (chars). */
+const HISTORY_MESSAGE_CHAR_CAP = 500;
+/** Token reserve for chat-template overhead + safety margin. */
+const TOKEN_OVERHEAD_RESERVE = 350;
+
+// Storage caps for file memory (unchanged from the file-intelligence build).
 const MAX_FILES_PER_MESSAGE = 2;
 const MAX_FILE_TEXT_CHARS = 60_000; // per file, stored in tutor file memory
-const MAX_TURN_FILE_CHARS = 24_000; // per file, injected into the model turn
-const MAX_FOLLOWUP_FILE_CHARS = 8_000; // re-grounding head on later turns
 const MAX_MEMORY_EXCERPT_CHARS = 400;
 
 interface TutorFileInput {
@@ -111,23 +130,290 @@ interface TutorFileInput {
   text: string;
 }
 
-/** Resolve an API key: database (admin panel) first, then env var fallback. */
-async function resolveKey(ctx: ActionCtx, keyName: string): Promise<string | undefined> {
-  return (await ctx.runQuery(internal.configKeys.resolveConfigValue, { key: keyName })) ?? undefined;
-}
+// ---------------------------------------------------------------------------
+// Fairness + abuse protection
+// ---------------------------------------------------------------------------
+// Per-user hourly caps via the @convex-dev/rate-limiter component so a few
+// heavy users can't drain the shared free-tier quota (20/h free tier, 45/h
+// premium), plus a one-in-flight-request guard (aiUserBudget) so a client
+// firing concurrent sends can't multiply its share.
+
+const tutorLimiter = new RateLimiter(components.rateLimiter, {
+  tutorHourlyFree: { kind: "fixed window", rate: 20, period: HOUR },
+  tutorHourlyPremium: { kind: "fixed window", rate: 45, period: HOUR },
+});
+
+/** One in-flight tutor request per user; stale markers self-heal after 90s. */
+export const markTutorInflight = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const now = Date.now();
+    const row = await ctx.db
+      .query("aiUserBudget")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (row?.inflightSince && now - row.inflightSince < 90_000) {
+      return false;
+    }
+    if (row) {
+      await ctx.db.patch(row._id, {
+        inflightSince: now,
+        inflightKind: "tutor",
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("aiUserBudget", {
+        userId,
+        inflightSince: now,
+        inflightKind: "tutor",
+        updatedAt: now,
+      });
+    }
+    return true;
+  },
+});
+
+export const clearTutorInflight = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const row = await ctx.db
+      .query("aiUserBudget")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (row) {
+      await ctx.db.patch(row._id, {
+        inflightSince: undefined,
+        inflightKind: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Errors — asAiError is the LAST LINE of defense between internals and the
+// UI. Only human-written messages with known-safe codes reach a student;
+// anything else (provider strings, stack traces, infra noise) collapses to
+// the friendly fallback. The router itself never throws — exhausted capacity
+// degrades to queue + graceful mode — so reaching here at all is exceptional.
+// ---------------------------------------------------------------------------
 
 type AiErrorData = { message: string; code: string };
 
+const USER_SAFE_ERROR_CODES = new Set([
+  "unauthorized",
+  "invalid",
+  "not_found",
+  "daily_limit_reached",
+  "hourly_limit_reached",
+  "busy",
+  "ai_not_configured",
+  "tutor_busy",
+]);
+
 function asAiError(error: unknown, fallback: string): ConvexError<AiErrorData> {
-  if (error instanceof ConvexError) return error;
-  const message = error instanceof Error ? error.message : fallback;
-  return new ConvexError({ message, code: "ai_error" });
+  if (error instanceof ConvexError) {
+    const data = error.data as { code?: string } | undefined;
+    if (data && typeof data.code === "string" && USER_SAFE_ERROR_CODES.has(data.code)) {
+      return error;
+    }
+  }
+  return new ConvexError({ message: fallback, code: "ai_error" });
 }
 
 function truncate(text: string, max: number): string {
   const cleaned = text.replace(/\s+/g, " ").trim();
   if (cleaned.length <= max) return cleaned;
   return `${cleaned.slice(0, max).trimEnd()}…`;
+}
+
+// ---------------------------------------------------------------------------
+// Answer cache — identical/near-identical questions in the same lesson
+// context are served instantly without touching any provider.
+// ---------------------------------------------------------------------------
+
+const ANSWER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Modes where the SAME question must give a FRESH answer — never cached. */
+const NON_CACHEABLE_MODES = new Set<TutorMode>(["practice", "exam", "quiz"]);
+
+/** FNV-1a (two lanes) — deterministic, dependency-free, non-cryptographic. */
+function fnv1a64(text: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193 ^ text.length;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = (h1 ^ c) >>> 0;
+    h1 = Math.imul(h1, 16777619) >>> 0;
+    h2 = (h2 ^ ((c + i) & 0xff)) >>> 0;
+    h2 = Math.imul(h2, 2246822519) >>> 0;
+  }
+  return `${h1.toString(36)}${h2.toString(36)}`;
+}
+
+/** Normalize for near-identical matching: case/punctuation/whitespace-free. */
+function normalizeForCache(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cacheKey(parts: {
+  question: string;
+  mode: TutorMode;
+  grade?: number;
+  subjectId?: Id<"subjects">;
+  contentId?: Id<"contentItems">;
+  contextHash: string;
+}): string {
+  return fnv1a64(
+    `${normalizeForCache(parts.question)}|${parts.mode}|${parts.grade ?? ""}|` +
+      `${parts.subjectId ?? ""}|${parts.contentId ?? ""}|${parts.contextHash}`,
+  );
+}
+
+export const lookupAnswerCache = internalQuery({
+  args: { hash: v.string() },
+  handler: async (ctx, { hash }) => {
+    const row = await ctx.db
+      .query("aiAnswerCache")
+      .withIndex("by_hash", (q) => q.eq("hash", hash))
+      .first();
+    if (!row || row.expiresAt <= Date.now()) return null;
+    // Read-only by design — hit-rate analytics come from aiCallLog rows.
+    return row.answer;
+  },
+});
+
+export const storeAnswerCache = internalMutation({
+  args: {
+    hash: v.string(),
+    answer: v.string(),
+    provider: v.optional(v.string()),
+    model: v.optional(v.string()),
+  },
+  handler: async (ctx, { hash, answer, provider, model }) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("aiAnswerCache")
+      .withIndex("by_hash", (q) => q.eq("hash", hash))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        answer,
+        provider,
+        model,
+        createdAt: now,
+        expiresAt: now + ANSWER_CACHE_TTL_MS,
+      });
+      return;
+    }
+    await ctx.db.insert("aiAnswerCache", {
+      hash,
+      answer,
+      provider,
+      model,
+      hits: 0,
+      createdAt: now,
+      expiresAt: now + ANSWER_CACHE_TTL_MS,
+    });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Relevant-chunk selection — "send only the relevant chunk of the lesson,
+// never the whole thing". Scores file paragraphs against the question and
+// keeps the best-scoring ones within a token budget, in document order.
+// ---------------------------------------------------------------------------
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "are", "but", "not", "you", "all", "can", "her", "was",
+  "one", "our", "out", "day", "get", "has", "him", "his", "how", "man", "new",
+  "now", "old", "see", "two", "way", "who", "did", "its", "let", "she", "too",
+  "use", "that", "with", "this", "what", "when", "where", "which", "will",
+  "from", "they", "have", "explain", "please", "about", "into", "than", "then",
+]);
+
+function questionKeywords(question: string): Set<string> {
+  const words = normalizeForCache(question)
+    .split(" ")
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+  return new Set(words);
+}
+
+function chunkParagraphs(text: string): string[] {
+  const byBlank = text.split(/\n{2,}/);
+  if (byBlank.length >= 3) return byBlank;
+  const byLine = text.split(/\n/);
+  if (byLine.length >= 3) return byLine;
+  // One giant blob — fixed windows so scoring has something to rank.
+  const windows: string[] = [];
+  for (let i = 0; i < text.length; i += 800) {
+    windows.push(text.slice(i, i + 900));
+  }
+  return windows;
+}
+
+/**
+ * Pick the most question-relevant chunk of a document within maxTokens
+ * (estimated). Always keeps the document's opening paragraph for orientation
+ * and the highest-scoring passages around the question's keywords.
+ */
+export function relevantFileChunk(
+  question: string,
+  text: string,
+  maxTokens: number,
+): string {
+  if (estimateTokens(text) <= maxTokens) return text;
+  const paragraphs = chunkParagraphs(text).filter((p) => p.trim().length > 0);
+  if (paragraphs.length === 0) return "";
+  const keywords = questionKeywords(question);
+
+  const scored = paragraphs.map((p, index) => {
+    const words = normalizeForCache(p).split(" ");
+    const unique = new Set(words);
+    let hits = 0;
+    for (const k of keywords) {
+      if (unique.has(k)) hits += 1;
+      else {
+        // partial match keeps morphology variants ("ionization" ~ "ionize")
+        for (const w of unique) {
+          if (w.length > 4 && (w.startsWith(k.slice(0, 4)) || k.startsWith(w.slice(0, 4)))) {
+            hits += 0.5;
+            break;
+          }
+        }
+      }
+    }
+    // Orientation bonus: the first paragraph frames the document.
+    if (index === 0) hits += 1.5;
+    return { p, index, score: hits };
+  });
+
+  const kept: typeof scored = [];
+  let budget = maxTokens;
+  // The opening paragraph first (orientation), then by score.
+  const first = scored[0];
+  budget -= estimateTokens(first.p);
+  kept.push(first);
+  const rest = scored
+    .slice(1)
+    .sort((a, b) => b.score - a.score)
+    .filter((s) => s.score > 0);
+  for (const s of rest) {
+    const cost = estimateTokens(s.p);
+    if (cost > budget) continue;
+    budget -= cost;
+    kept.push(s);
+    if (budget <= 0) break;
+  }
+  kept.sort((a, b) => a.index - b.index);
+  return kept
+    .map((s, i) =>
+      i > 0 && kept[i - 1].index !== s.index - 1 ? `[…]\n${s.p}` : s.p,
+    )
+    .join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +603,8 @@ export const insertMessage = internalMutation({
         }),
       ),
     ),
+    // Graceful-mode marker — see messages.degraded in schema.ts.
+    degraded: v.optional(v.boolean()),
     createdAt: v.number(),
   },
   handler: async (ctx, args) => await ctx.db.insert("messages", args),
@@ -326,210 +614,111 @@ export const patchConversation = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     title: v.optional(v.string()),
+    // Rolling summary of older turns + how many messages it covers.
+    summary: v.optional(v.string()),
+    summarizedUpTo: v.optional(v.number()),
     updatedAt: v.number(),
   },
-  handler: async (ctx, { conversationId, title, updatedAt }) => {
-    await ctx.db.patch(conversationId, { title, updatedAt });
+  handler: async (ctx, { conversationId, title, summary, summarizedUpTo, updatedAt }) => {
+    await ctx.db.patch(conversationId, {
+      ...(title !== undefined ? { title } : {}),
+      ...(summary !== undefined ? { summary } : {}),
+      ...(summarizedUpTo !== undefined ? { summarizedUpTo } : {}),
+      updatedAt,
+    });
     return { ok: true };
   },
 });
 
+
 // ---------------------------------------------------------------------------
-// System prompt — built from the actual curriculum data so the tutor teaches
-// against what this platform covers, not a generic prompt.
+// System prompt — compact dieted builder. The base prompt is ~450 estimated
+// tokens (the old one was ~2,300); every dynamic block earns its place.
 // ---------------------------------------------------------------------------
+
+interface PromptOpts {
+  mode?: TutorMode;
+  grade?: number;
+  concise?: boolean;
+  hasImages?: boolean;
+  hasFiles?: boolean;
+  includeTopics?: boolean;
+  /** Rolling summary of turns outside the 6-message window. */
+  summary?: string | null;
+  /** Head of a previously-uploaded file, re-injected on follow-up turns. */
+  recentFileContext?: { name: string; textHead: string } | null;
+}
+
+const TUTOR_BASE_PROMPT = [
+  "You are the Learnyx Academy AI tutor for Ethiopian students in grades 9-12 preparing for the national matric (ESLCE) exams. Warm, direct, energetic — a real tutor invested in the student doing well, not a textbook or a service bot.",
+  "VOICE: write like a person who's good at teaching. When the student is wrong, say so honestly but kindly, then show the right path. No fake hype, no emoji spam.",
+  "SHAPE: let the question decide. Quick question → quick direct answer, no padding. \"Walk me through\" → true step-by-step with working shown. Conceptual → longer and structured, because the question asked for it. NEVER use a fixed section template.",
+  "GROUNDED: use real, locally relevant Ethiopian examples woven naturally into explanations. For math and science, always show working step by step.",
+  // Math typesetting is the #1 student-visible failure mode — keep it tight.
+  "MATH TYPESETTING (critical — the app renders LaTeX): ALL math is LaTeX inside delimiters — inline $x^2 + 1$, display $$…$$ with $$ on their own lines. NEVER leave \\frac, \\sqrt or \\sum outside delimiters; delimiters BALANCED in pairs; never split a formula across $$ blocks; every \\begin{…} needs its matching \\end{…} (one relation per row, rows end with \\\\). Prose/Markdown stays OUTSIDE math. Currency ($5) stays plain text.",
+  "ACCURACY: verify every computation line by line before writing it; recheck signs and arithmetic. Never invent facts, figures, dates or exam statistics — if unsure, say so. Out of scope → say so briefly and offer the closest relevant help.",
+  "LENGTH: concise by default; the most useful answer first. Offer deeper material in one line at the end. Markdown (headers, numbered steps, bold key terms) only when it genuinely helps.",
+].join("\n");
 
 async function buildSystemPrompt(
   ctx: ActionCtx,
   userId: Id<"users">,
   subjectId?: Id<"subjects">,
   contentId?: Id<"contentItems">,
-  opts?: {
-    mode?: TutorMode;
-    grade?: number;
-    concise?: boolean;
-    hasImages?: boolean;
-    hasFiles?: boolean;
-    /** Head of a previously-uploaded file, re-injected on follow-up turns. */
-    recentFileContext?: { name: string; textHead: string } | null;
-  },
+  opts?: PromptOpts,
 ): Promise<string> {
-  const lines = [
-    "You are the Learnyx Academy ET 🇪🇹 AI tutor for Ethiopian students in grades 9–12 " +
-      "preparing for the national matric examinations (ESLCE). You're a sharp, " +
-      "genuinely engaged tutor who's invested in the student doing well — " +
-      "not a textbook, not a customer service bot.",
-    "",
-    "Voice and tone:",
-    "- Write like a real person who's good at teaching. Direct, warm, a little energetic.",
-    "- A well-placed \"here's the thing\" or \"okay so\" is fine when natural — " +
-      "never forced slang, never fake hype, never emoji spam.",
-    "- When a student is wrong, say so honestly but kindly, then show the right path.",
-    "- When it's genuinely a good question, a quick \"nice question\" before " +
-      "answering is fine — don't overdo it.",
-    "",
-    "Response shape — let the question decide:",
-    "- A quick definition or factual question gets a quick, direct answer. Don't pad it.",
-    "- A \"walk me through this\" or problem-solving question should actually walk " +
-      "through it step by step, in order, with working shown.",
-    "- A \"explain this deeply\" or conceptual question can go longer and more " +
-      "structured — but only because the question asked for it, not by default.",
-    "- NEVER use a fixed section template (statement → example → why it matters " +
-      "→ resource → cross-subject link). Every response should feel shaped by " +
-      "what was actually asked.",
-    "",
-    "Examples and grounding:",
-    "- Ground abstract concepts in real, locally relevant situations (Ethiopian " +
-      "context, markets, daily life) — but weave these naturally INTO your " +
-      "explanation, not as a separate labeled \"Everyday example\" section.",
-    "- For math and science, always show working step by step.",
-    "",
-    "Mathematical typesetting (critical — the student sees beautifully typeset math, not raw code):",
-    "- ALL mathematics must be LaTeX inside math delimiters: inline math as " +
-      "$x^2 + 1$ and display equations as $$…$$ (or \\(…\\) and \\[…\\], which " +
-      "the app converts automatically). NEVER leave a LaTeX command like " +
-      "\\frac, \\sqrt or \\sum outside delimiters — the student would see raw code.",
-    "- Delimiters must be BALANCED: open and close them in pairs. Put " +
-      "opening $$ and closing $$ on their own lines. Never split a formula " +
-      "across two $$ blocks.",
-    "- Every \\begin{…} needs its matching \\end{…}. Put \\begin{aligned} " +
-      "and \\end{aligned} on their own lines, one relation per row, rows " +
-      "separated by \\\\. Keep each row short enough to read on a phone.",
-    "- Put every important formula on its own line as a display equation " +
-      "($$…$$): definitions of a_n, S_n, derivatives, integrals, theorems.",
-    "- Inline math for variables and short expressions inside sentences ($r$, " +
-      "$a_1$); display math for anything a student should study or copy.",
-    "- Keep normal prose as normal text — don't typeset whole sentences. " +
-      "Never write prose, Markdown (bold, bullets, tables) or headings inside " +
-      "math delimiters. Currency like $5 and $10 stays plain text; only real " +
-      "math goes in delimiters.",
-    "- Use Markdown structure (headers, numbered steps, tables, bold key " +
-      "terms) — the renderer draws tables and code blocks properly. But adapt " +
-      "the structure to the question; a quick question needs no headers.",
-    "",
-    "Mathematical accuracy (a wrong formula teaches the student the wrong thing):",
-    "- Verify every computation line by line before you write it. Recheck " +
-      "signs, indices and arithmetic. The question's assumptions and the " +
-      "solution must agree.",
-    "- Convergence rules are strict: an infinite geometric series " +
-      "Σ arⁿ has a finite sum to infinity ONLY when |r| < 1. A geometric " +
-      "progression with ratio r = 1.2 (or any |r| ≥ 1) DIVERGES — never assign " +
-      "it a finite infinite sum.",
-    "- For worked examples, sanity-check the final answer against the setup " +
-      "(substitute back, check units, check the discriminant, check n is a " +
-      "positive integer where the problem demands it).",
-    "- If you are not certain a computation is right, say what is certain and " +
-      "what should be double-checked — never present a guess as a verified result.",
-    "",
-    "Length and depth:",
-    "- Be concise by default. Give the most useful direct answer first.",
-    "- If there's more depth available, offer it briefly (one line) at the end — " +
-      "don't front-load everything you could possibly say.",
-    "",
-    "Library resources:",
-    "- The student has textbooks, past papers, worksheets and guides in the " +
-      "Learnyx Academy ET 🇪🇹 library. Mention a specific resource ONLY when it's a " +
-      "genuinely natural next step (e.g. they want practice problems, or ask " +
-      "where to read more). Never as a default closing paragraph.",
-    "",
-    "Cross-subject connections:",
-    "- Only draw them when they're real and relevant. If a Social Science student " +
-      "asks a Physics question, just answer it well — don't add a paragraph " +
-      "explaining why it's okay to ask about Physics.",
-    "",
-    "Accuracy and scope:",
-    "- Never invent facts, figures, dates or exam statistics. If unsure, say so.",
-    "- If a question is out of scope, say so briefly and offer the closest relevant help.",
-    "",
-    "Formatting:",
-    "- Use markdown (headers, bullets, numbered steps) only when it genuinely " +
-      "helps clarity — multi-part explanations, problem walkthroughs, etc. " +
-      "A short answer doesn't need headers or horizontal rules.",
-    "",
-    `Today's date is ${new Date().toISOString().slice(0, 10)}.`,
-    "",
-  ];
+  const parts: string[] = [TUTOR_BASE_PROMPT];
 
   // ── Active tutor mode ────────────────────────────────────────────────
-  // The mode block is injected RIGHT after the base voice rules so it
-  // frames every reply in this turn. Default is "learn" (general teaching).
   const mode: TutorMode = opts?.mode ?? "learn";
-  lines.push(TUTOR_MODE_PROMPTS[mode], "");
+  parts.push(TUTOR_MODE_PROMPTS[mode]);
 
   // ── Academic memory — grade + conciseness preference ───────────────
-  // Grade grounds difficulty (a Grade 9 photosynthesis answer differs a
-  // lot from a Grade 12 one). Concise is a persisted student preference.
   if (opts?.grade) {
-    lines.push(
-      `The student is in Grade ${opts.grade}. Pitch explanations, vocabulary ` +
-        `and question difficulty at the Ethiopian Grade ${opts.grade} syllabus level.`,
-      "",
+    parts.push(
+      `The student is in Grade ${opts.grade}. Pitch explanations, vocabulary and question difficulty at the Ethiopian Grade ${opts.grade} syllabus level.`,
     );
   }
   if (opts?.concise) {
-    lines.push(
-      "This student prefers CONCISE answers: lead with the point, strip " +
-        "preamble, keep worked examples but compress prose around them.",
-      "",
+    parts.push(
+      "This student prefers CONCISE answers: lead with the point, strip preamble, keep worked examples but compress prose around them.",
     );
   }
   if (opts?.hasImages) {
-    lines.push(
-      "The student attached one or more images (a textbook page, handwritten " +
-        "work, a past-paper question, a diagram or a screenshot). Read the image " +
-        "carefully: if it contains a question, solve it showing every step; if " +
-        "it contains notes or a diagram, explain what it shows. If the image is " +
-        "unclear or cut off, say exactly what you can and cannot read.",
-      "",
+    parts.push(
+      "The student attached image(s) (a textbook page, handwritten work, a past-paper question or a diagram). Read them carefully: solve questions showing every step; explain notes/diagrams. If unclear or cut off, say exactly what you can and cannot read.",
     );
   }
   if (opts?.hasFiles) {
-    lines.push(
-      "FILE GROUNDING RULES (the student attached document(s) — their extracted " +
-        "text is in this message between the ATTACHED FILE markers):",
-      "- Answer from the REAL text in those files. Quote or reference the actual " +
-        "passage when you use it, and name the source file.",
-      "- When page/slide labels like [Page 3] or [Slide 2] appear, cite them the " +
-        "same way so the student can find the spot.",
-      "- NEVER invent content that is not in the extracted text. If the answer " +
-        "is not in the file, say so plainly and offer your general knowledge as " +
-        "a clearly-labeled alternative.",
-      "- If the extraction looks garbled, empty or cut off (truncation markers), " +
-        "tell the student exactly what you received and ask them to re-send the " +
-        "missing part (e.g. a photo of the page or the specific section).",
-      "- Math inside files is often flattened (x^2, 1/2, sqrt(3)) — re-typeset " +
-        "it into proper $…$ / $$…$$ LaTeX in your reply.",
-      "",
+    parts.push(
+      "FILE GROUNDING: the student's extracted document text is in this message between ATTACHED FILE markers. Answer from the REAL text — quote passages and name the file; cite [Page 3]/[Slide 2] labels the same way. NEVER invent content that isn't in the extracted text; if the answer isn't there, say so plainly and label any general knowledge as such. Math in files is often flattened (x^2, 1/2) — re-typeset it into proper $…$/$$…$$ LaTeX. If extraction looks garbled or truncated, say what you received and ask for the missing part.",
     );
   }
 
-  // Personalization: the student's profile (stream + display name) and their
-  // self-marked difficulty tags for this subject. Keep it light — the tutor
-  // should feel adaptive, not like it's reading a file.
-  const profile = await ctx.runQuery(internal.profile.getProfileByUser, { userId });
-  if (profile?.stream) {
-    const streamLabel =
-      profile.stream === "natural"
-        ? "Natural Science"
-        : profile.stream === "social"
-          ? "Social Science"
-          : "the shared common subjects (English, Mathematics and the SAT)";
-    lines.push(
-      `This student is on the ${streamLabel} track. Frame advice around that stream's exam subjects.`,
-    );
+  // Personalization: stream + display name (light — adaptive, not a dossier).
+  try {
+    const profile = await ctx.runQuery(internal.profile.getProfileByUser, { userId });
+    if (profile?.stream) {
+      const streamLabel =
+        profile.stream === "natural"
+          ? "Natural Science"
+          : profile.stream === "social"
+            ? "Social Science"
+            : "the shared common subjects";
+      parts.push(
+        `This student is on the ${streamLabel} track. Frame advice around that stream's exam subjects.`,
+      );
+    }
+    if (profile?.displayName) {
+      parts.push(
+        `The student's name is ${profile.displayName}. Use it once or twice naturally across the conversation — never in every reply.`,
+      );
+    }
+  } catch {
+    // Profile is optional flavor — never let it break the tutor.
   }
-  if (profile?.displayName) {
-    lines.push(
-      `This student's name is ${profile.displayName}. Use it once or twice naturally across the conversation — never in every reply.`,
-    );
-  }
-  lines.push("");
 
-  // ── Latest mock exam performance ─────────────────────────────────────
-  // Grounds the tutor's advice in the student's most recent simulated
-  // EHEEE sitting. Lets the tutor proactively suggest reviewing weak
-  // subjects, taking another mock exam, or revisiting topics that
-  // dragged down their score. Skipped cleanly if they've never taken one.
+  // ── Latest mock exam performance (one line, not a paragraph) ────────
   try {
     const latestMock = await ctx.runQuery(
       internal.mockExam.getLatestMockExamSummary,
@@ -539,172 +728,739 @@ async function buildSystemPrompt(
       const daysAgo = Math.floor(
         (Date.now() - latestMock.latestCompletedAt) / (24 * 60 * 60 * 1000),
       );
-      const whenLabel =
-        daysAgo <= 0
-          ? "today"
-          : daysAgo === 1
-            ? "yesterday"
-            : `${daysAgo} days ago`;
-      lines.push(
-        `The student completed their most recent full mock exam ${whenLabel} (${latestMock.totalAttempts} attempt${latestMock.totalAttempts === 1 ? "" : "s"} total).`,
-        `Overall score: ${latestMock.latestScore}%. Weakest subject: ${latestMock.weakestSubjectName} at ${latestMock.weakestSubjectScore}%.`,
-        `When the student asks for what to study or how to prepare, prioritise ${latestMock.weakestSubjectName} — it's the biggest gap in their readiness.`,
-        `You can also suggest they take another mock exam at /mock-exam to track progress, especially if some time has passed since the last attempt.`,
-        "",
-      );
-    } else {
-      // Never taken one — nudge gently when the student asks about exam
-      // readiness or practice, but don't push on every turn.
-      lines.push(
-        "The student has not yet taken a mock exam on the platform. If they ask about exam readiness, past papers, or full-length practice, suggest they try a mock exam at /mock-exam — it generates ~340 original AI questions across all 6 EHEEE subjects and grades them per section.",
-        "",
+      parts.push(
+        `Latest mock exam (${daysAgo <= 0 ? "today" : daysAgo === 1 ? "yesterday" : `${daysAgo}d ago`}): ${latestMock.latestScore}% overall, weakest ${latestMock.weakestSubjectName} ${latestMock.weakestSubjectScore}%. When asked what to study, prioritise that gap.`,
       );
     }
   } catch {
-    // Non-fatal: if the query fails for any reason, skip the mock-exam
-    // context block. The tutor still works without it.
+    // Non-fatal.
   }
 
+  // ── Subject scope + difficulty pacing + capped topic list ───────────
   if (subjectId) {
-    const subject = await ctx.runQuery(internal.ai.getSubjectById, { subjectId });
-    if (subject) {
-      lines.push(
-        `This conversation is scoped to ${subject.name} (${subject.stream} stream).`,
-        `Stay within ${subject.name} unless the student explicitly asks to branch out.`,
-        "",
-      );
-      // Difficulty-aware pacing: if the student marked this subject hard/easy
-      // in their notes, adjust the teaching style to match.
-      const noteSignals = await ctx.runQuery(internal.notes.getDifficultyBySubject, {
-        userId,
-        subjectId,
-      });
-      if (noteSignals.difficulties.includes("hard")) {
-        lines.push(
-          `This student has marked ${subject.name} as a HARD subject in their notes. ` +
-            "Adjust your pacing accordingly: define terms before using them, break steps " +
-            "into smaller pieces, check understanding frequently, and be extra patient and " +
-            "encouraging. Prefer simpler examples before moving to harder ones.",
-          "",
+    try {
+      const subject = await ctx.runQuery(internal.ai.getSubjectById, { subjectId });
+      if (subject) {
+        parts.push(
+          `Conversation scoped to ${subject.name} (${subject.stream} stream); stay within it unless the student asks to branch out.`,
         );
-      } else if (noteSignals.difficulties.includes("easy")) {
-        lines.push(
-          `This student has marked ${subject.name} as EASY in their notes. ` +
-            "Keep the pace brisk: skip redundant definitions, go deeper into nuance and " +
-            "exam-style application, and challenge them with harder variants.",
-          "",
-        );
-      }
-      // Give the model the topic list that exists in the library so answers
-      // track the actual syllabus structure.
-      const topics = await ctx.runQuery(internal.ai.listTopicsBySubject, { subjectId });
-      if (topics.length > 0) {
-        const byGrade = new Map<number, string[]>();
-        for (const topic of topics) {
-          const list = byGrade.get(topic.grade) ?? [];
-          list.push(topic.name);
-          byGrade.set(topic.grade, list);
+        const noteSignals = await ctx.runQuery(internal.notes.getDifficultyBySubject, {
+          userId,
+          subjectId,
+        });
+        if (noteSignals.difficulties.includes("hard")) {
+          parts.push(
+            `The student marked ${subject.name} as HARD: define terms first, smaller steps, frequent checks, extra patience.`,
+          );
+        } else if (noteSignals.difficulties.includes("easy")) {
+          parts.push(
+            `The student marked ${subject.name} as EASY: brisk pace, deeper nuance, harder variants.`,
+          );
         }
-        lines.push("Known syllabus topics in the Learnyx Academy ET 🇪🇹 library:");
-        for (const [grade, names] of [...byGrade.entries()].sort(
-          ([a], [b]) => a - b,
-        )) {
-          lines.push(`- Grade ${grade}: ${names.slice(0, 40).join(", ")}`);
+        if (opts?.includeTopics !== false) {
+          const topics = await ctx.runQuery(internal.ai.listTopicsBySubject, { subjectId });
+          if (topics.length > 0) {
+            const byGrade = new Map<number, string[]>();
+            for (const topic of topics) {
+              const list = byGrade.get(topic.grade) ?? [];
+              list.push(topic.name);
+              byGrade.set(topic.grade, list);
+            }
+            // Diet: 12 topics per grade, at most 2 grades (nearest the
+            // student's), instead of 40×4. The list anchors answers to the
+            // syllabus; it doesn't need to BE the syllabus.
+            const grades = [...byGrade.keys()].sort((a, b) => {
+              if (!opts?.grade) return a - b;
+              return Math.abs(a - opts.grade) - Math.abs(b - opts.grade);
+            });
+            const chosen = grades.slice(0, 2);
+            const topicLines = chosen
+              .sort((a, b) => a - b)
+              .map(
+                (grade) =>
+                  `- Grade ${grade}: ${byGrade.get(grade)!.slice(0, 12).join(", ")}`,
+              );
+            parts.push(
+              `Known syllabus topics in the Learnyx library:\n${topicLines.join("\n")}\nUse these to anchor answers to the curriculum students actually study.`,
+            );
+          }
         }
-        lines.push(
-          "Use these topics to anchor answers to the curriculum students actually study.",
-          "",
-        );
       }
+    } catch {
+      // Subject flavor is non-critical.
     }
   }
 
-
-
-  // Content grounding — the conversation is attached to a specific document.
+  // ── Content document grounding ────────────────────────────────────────
   if (contentId) {
-    const content = await ctx.runQuery(internal.content.getContentItemById, {
-      contentId,
-    });
-    if (content) {
-      lines.push(
-        "",
-        "The student is discussing a specific document from the library:",
-        `- Title: ${content.title}`,
-        `- Type: ${content.contentType}${content.examYear ? ` · Year: ${content.examYear}` : ""}`,
-        `- Grade: ${content.grade}`,
-        "Reference this document directly in your answers where relevant (its topics, " +
-          "structure, or the questions it contains). This is the student's frame of reference.",
-        "",
-        "Textbook provenance rules (the app shows this document's title as the source of your answers — never break that trust):",
-        "- You may reference the document ONLY by the exact title, type, year and " +
-          "grade listed above.",
-        "- NEVER invent page numbers, section numbers, unit numbers or exercise " +
-          "numbers for it. You cannot see the document's internal pages — " +
-          "claiming \"page 45\" or \"Exercise 2.3\" would be fabrication.",
-        "- When your explanation goes beyond what the document's metadata " +
-          "guarantees, say plainly that it is a general explanation of the topic " +
-          "rather than something quoted from the document.",
-        "- Label worked examples you create yourself as tutor-created examples; " +
-          "never present them as examples copied from the document.",
-        "- Preserve mathematical notation faithfully: if the student quotes a " +
-          "formula from the document, keep its meaning intact while re-typesetting it.",
-      );
+    try {
+      const content = await ctx.runQuery(internal.content.getContentItemById, {
+        contentId,
+      });
+      if (content) {
+        parts.push(
+          `The student is discussing the library document "${content.title}" (${content.contentType}${content.examYear ? `, year ${content.examYear}` : ""}, Grade ${content.grade}). Reference it only by that exact title/type/year/grade. NEVER invent page numbers, section numbers or exercise numbers — you cannot see its internal pages; when you go beyond its metadata, say it's a general explanation. Label tutor-created examples as such. Keep quoted notation faithful.`,
+        );
+      }
+    } catch {
+      // Non-critical.
     }
   }
 
-  // ── Tutor file memory ──────────────────────────────────────────────────
-  // What the student uploaded before, remembered ACROSS conversations. The
-  // short excerpt keeps the tutor aware of the student's materials without
-  // burning tokens; the full text is re-injected only when a turn actually
-  // re-grounds on one file (see recentFileContext).
+  // ── Tutor file memory (excerpts only — full text only on re-grounding) ──
   try {
     const recentFiles = await ctx.runQuery(internal.ai.getRecentTutorFiles, {
       userId,
-      limit: 6,
+      limit: 5,
     });
     if (recentFiles.length > 0) {
-      lines.push(
-        "",
-        "Files the student has uploaded to the tutor (their study memory — newest first):",
-      );
-      for (const file of recentFiles) {
-        const pagesLabel = file.pages ? `, ${file.pages} pages` : "";
-        const excerpt = file.excerpt
-          .replace(/\s+/g, " ")
-          .slice(0, MAX_MEMORY_EXCERPT_CHARS);
-        lines.push(
-          `- "${file.name}" (${Math.round(file.chars / 1000)}k chars${pagesLabel}): ${excerpt}${file.excerpt.length > MAX_MEMORY_EXCERPT_CHARS ? "…" : ""}`,
-        );
-      }
-      lines.push(
-        "Treat these as materials the student is actively studying — reference them when " +
-          "relevant. If the student asks about a part of one of these files that the excerpt " +
-          "doesn't show, ask them to re-attach that file or paste the specific section.",
-        "",
+      const list = recentFiles
+        .map((file) => {
+          const excerpt = file.excerpt.replace(/\s+/g, " ").slice(0, MAX_MEMORY_EXCERPT_CHARS);
+          const pagesLabel = file.pages ? `, ${file.pages}p` : "";
+          return `- "${file.name}" (${Math.round(file.chars / 1000)}k chars${pagesLabel}): ${excerpt}${file.excerpt.length > MAX_MEMORY_EXCERPT_CHARS ? "…" : ""}`;
+        })
+        .join("\n");
+      parts.push(
+        `Files the student has uploaded to the tutor (newest first):\n${list}\nTreat these as the student's active study materials; if a question targets a part an excerpt doesn't show, ask them to re-attach or paste it.`,
       );
     }
   } catch {
-    // Memory listing is non-critical — never let it break the tutor.
+    // Memory listing is non-critical.
   }
 
-  // Follow-up re-grounding: the current turn references a conversation where
-  // a file was recently attached. Inject its stored text head.
-  if (opts?.recentFileContext?.textHead) {
-    lines.push(
-      "",
-      `=== PREVIOUSLY UPLOADED FILE (head): ${opts.recentFileContext.name} ===`,
-      opts.recentFileContext.textHead,
-      "=== END PREVIOUSLY UPLOADED FILE (this is the first ~8,000 characters — if the question targets a later part, ask the student to re-attach or paste it) ===",
-      "",
+  // ── Rolling summary of the conversation's older turns ────────────────
+  if (opts?.summary) {
+    parts.push(
+      `Earlier in this conversation (beyond the recent turns shown below):\n${opts.summary}`,
     );
   }
 
-  return lines.join("\n");
+  // ── Follow-up re-grounding head ───────────────────────────────────────
+  if (opts?.recentFileContext?.textHead) {
+    parts.push(
+      `=== PREVIOUSLY UPLOADED FILE (head): ${opts.recentFileContext.name} ===\n${opts.recentFileContext.textHead}\n=== END (first ~4,000 characters — if the question targets a later part, ask the student to re-attach or paste it) ===`,
+    );
+  }
+
+  parts.push(`Today's date is ${new Date().toISOString().slice(0, 10)}.`);
+  return parts.join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
-// sendMessage — the tutor action
+// Turn context — one dieted build used by sendMessage, the queue worker and
+// regenerate. Enforces the hard per-request input budget by trimming, in
+// order: history message length → rolling summary → file chunk budget →
+// topic list.
+// ---------------------------------------------------------------------------
+
+export interface BuiltTurn {
+  system: string;
+  history: { role: "user" | "assistant"; content: string }[];
+  userTurn: string;
+  images: string[];
+  estInputTokens: number;
+  contextHash: string;
+}
+
+async function buildTurnContext(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  conversationId: Id<"conversations">,
+  opts?: {
+    mode?: TutorMode;
+    grade?: number;
+    concise?: boolean;
+    /** Fresh attachment text for THIS turn (sendMessage); the worker re-grounds from memory. */
+    freshFiles?: TutorFileInput[];
+  },
+): Promise<BuiltTurn | null> {
+  const conversation = await ctx.runQuery(internal.ai.getConversationById, {
+    conversationId,
+  });
+  if (!conversation) return null;
+
+  const historyRows: Doc<"messages">[] = await ctx.runQuery(
+    internal.ai.getMessagesByConversation,
+    { conversationId },
+  );
+  const lastUser = [...historyRows].reverse().find((m) => m.role === "user");
+  if (!lastUser) return null;
+
+  const question = lastUser.content;
+
+  // File grounding: fresh attachment text for this turn, or the stored head
+  // of the most recently attached file from the student's memory.
+  let fileChunks: { name: string; text: string; pages?: number }[] = [];
+  if (opts?.freshFiles && opts.freshFiles.length > 0) {
+    fileChunks = opts.freshFiles.map((f) => ({
+      name: f.name,
+      text: relevantFileChunk(question, f.text, FILE_CHUNK_TOKEN_BUDGET),
+      ...(f.pages !== undefined ? { pages: f.pages } : {}),
+    }));
+  } else if (!lastUser.files?.length && !lastUser.images?.length) {
+    const lastFileMessage = [...historyRows]
+      .reverse()
+      .find((m) => m.role === "user" && m.files && m.files.length > 0);
+    const targetName = lastFileMessage?.files?.[0]?.name;
+    if (targetName) {
+      try {
+        const memoryRow = (await ctx.runQuery(internal.ai.getTutorFileTextByName, {
+          userId,
+          name: targetName,
+        })) as Doc<"tutorFileMemory"> | null;
+        if (memoryRow && memoryRow.text.trim()) {
+          fileChunks = [
+            {
+              name: memoryRow.name,
+              text: memoryRow.text
+                .slice(0, MAX_FOLLOWUP_FILE_CHARS)
+                .replace(/\s+\[Text truncated[^\]]*\]$/, ""),
+            },
+          ];
+        }
+      } catch {
+        // Non-critical — proceed without re-grounding.
+      }
+    }
+  }
+
+  // History window: last 6 turns before the current one, with attachment
+  // markers replaying as bounded text.
+  const priorRows = historyRows.filter((m) => m._id !== lastUser._id);
+  const history = priorRows.slice(-HISTORY_LIMIT).map((message) => {
+    const markers: string[] = [];
+    if (message.images?.length) markers.push("[image attached]");
+    if (message.files?.length) {
+      markers.push(`[file attached: ${message.files.map((f) => f.name).join(", ")}]`);
+    }
+    return {
+      role: message.role as "user" | "assistant",
+      content: markers.length
+        ? `${message.content}\n${markers.join(" ")}`
+        : message.content,
+    };
+  });
+
+  const recentFileContext =
+    opts?.freshFiles?.length || lastUser.files?.length
+      ? null
+      : fileChunks.length > 0
+        ? { name: fileChunks[0].name, textHead: fileChunks[0].text }
+        : null;
+
+  const buildSystem = (includeTopics: boolean) =>
+    buildSystemPrompt(ctx, userId, conversation.subjectId, conversation.contentId, {
+      mode: opts?.mode,
+      grade: opts?.grade,
+      concise: opts?.concise,
+      hasImages: (lastUser.images?.length ?? 0) > 0,
+      hasFiles: fileChunks.length > 0,
+      includeTopics,
+      summary: conversation.summary ?? null,
+      ...(recentFileContext ? { recentFileContext } : {}),
+    });
+
+  let system = await buildSystem(true);
+  let fileTexts = fileChunks;
+  let historyFinal = history;
+
+  // Budget enforcement — trim until the whole turn fits, in a fixed order so
+  // the LEAST valuable context goes first.
+  const currentTurn = fileTexts.length
+    ? `${question}\n\n` +
+      fileTexts
+        .map(
+          (f) =>
+            `=== ATTACHED FILE: ${f.name} ===\n${f.text}\n=== END FILE: ${f.name} ===`,
+        )
+        .join("\n\n")
+    : question;
+  const imageTokens = (lastUser.images?.length ?? 0) * 600;
+  const spent = () =>
+    estimateTokens(system) +
+    estimateTokens(historyFinal.map((h) => h.content).join("\n")) +
+    estimateTokens(currentTurn) +
+    imageTokens +
+    TOKEN_OVERHEAD_RESERVE;
+  const budget = HARD_INPUT_BUDGET_TOKENS - MAX_COMPLETION_TOKENS;
+
+  // 1. Trim per-message history length.
+  if (spent() > budget) {
+    historyFinal = historyFinal.map((h) => ({
+      role: h.role,
+      content:
+        h.content.length > HISTORY_MESSAGE_CHAR_CAP
+          ? `${h.content.slice(0, HISTORY_MESSAGE_CHAR_CAP).trimEnd()}…`
+          : h.content,
+    }));
+    system = await buildSystem(true);
+  }
+  // 2. Halve the file chunk budget (re-chunk fresh files; trim stored heads).
+  if (spent() > budget && fileTexts.length > 0) {
+    fileTexts = fileTexts.map((f) => ({
+      ...f,
+      text:
+        opts?.freshFiles?.length && opts.freshFiles[0]
+          ? relevantFileChunk(
+              question,
+              (opts.freshFiles.find((x) => x.name === f.name) ?? opts.freshFiles[0]).text,
+              Math.floor(FILE_CHUNK_TOKEN_BUDGET / 3),
+            )
+          : f.text.slice(0, Math.floor((MAX_FOLLOWUP_FILE_CHARS * 2) / 3)),
+    }));
+    system = await buildSystem(true);
+  }
+  // 3. Drop the topic list from the system prompt.
+  if (spent() > budget) {
+    system = await buildSystem(false);
+  }
+  // 4. Last resort: drop the rolling summary.
+  if (spent() > budget) {
+    system = await buildSystem(false);
+    const summaryStart = system.indexOf("Earlier in this conversation");
+    if (summaryStart !== -1) {
+      system = system.slice(0, summaryStart).trimEnd();
+    }
+  }
+
+  const finalTurn = fileTexts.length
+    ? `${question}\n\n` +
+      fileTexts
+        .map(
+          (f) =>
+            `=== ATTACHED FILE: ${f.name} ===\n${f.text}\n=== END FILE: ${f.name} ===`,
+        )
+        .join("\n\n")
+    : question;
+
+  const historyText = historyFinal.map((h) => h.content).join("\n");
+  const contextHash = fnv1a64(
+    normalizeForCache(system).slice(0, 600) + "|" + normalizeForCache(historyText).slice(0, 600),
+  );
+
+  return {
+    system,
+    history: historyFinal,
+    userTurn: finalTurn,
+    images: lastUser.images ?? [],
+    estInputTokens: spent(),
+    contextHash,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Graceful last-resort mode — helpful offline-style answer, NEVER a raw
+// error. Searches the student's own materials for a relevant snippet, then
+// honestly says the tutor is busy and that the question is saved.
+// ---------------------------------------------------------------------------
+
+/** The student's recent notes for one subject (graceful-mode snippet search). */
+export const getRecentNotesForSubject = internalQuery({
+  args: { userId: v.id("users"), subjectId: v.id("subjects") },
+  handler: async (ctx, { userId, subjectId }) =>
+    await ctx.db
+      .query("notes")
+      .withIndex("by_user_subject", (q) =>
+        q.eq("userId", userId).eq("subjectId", subjectId),
+      )
+      .order("desc")
+      .take(10),
+});
+
+async function composeGracefulReply(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  conversationId: Id<"conversations">,
+): Promise<string> {
+  const snippets: string[] = [];
+  const question = await (async () => {
+    const rows = await ctx.runQuery(internal.ai.getMessagesByConversation, {
+      conversationId,
+    });
+    const lastUser = [...rows].reverse().find((m) => m.role === "user");
+    return lastUser?.content ?? "";
+  })();
+
+  // 1. The student's saved notes for this subject (highest signal).
+  try {
+    const conversation = await ctx.runQuery(internal.ai.getConversationById, {
+      conversationId,
+    });
+    if (conversation?.subjectId) {
+      const notes = await ctx.runQuery(internal.ai.getRecentNotesForSubject, {
+        userId,
+        subjectId: conversation.subjectId,
+      });
+      const keywords = [...questionKeywords(question)];
+      const ranked = notes
+        .map((n) => {
+          const words = normalizeForCache(n.content).split(" ");
+          let hits = 0;
+          for (const k of keywords) if (words.some((w) => w.startsWith(k.slice(0, 4)))) hits += 1;
+          return { n, hits };
+        })
+        .filter((r) => r.hits > 0)
+        .sort((a, b) => b.hits - a.hits);
+      for (const r of ranked.slice(0, 2)) {
+        snippets.push(truncate(r.n.content, 260));
+      }
+    }
+  } catch {
+    // Notes are optional.
+  }
+
+  // 2. Uploaded-file excerpts (what they've been studying).
+  if (snippets.length === 0) {
+    try {
+      const files = await ctx.runQuery(internal.ai.getRecentTutorFiles, { userId, limit: 3 });
+      for (const f of files.slice(0, 1)) {
+        snippets.push(truncate(f.excerpt, 220));
+      }
+    } catch {
+      // Memory is optional.
+    }
+  }
+
+  const studyBlock = snippets.length
+    ? `From your study materials:\n> ${snippets.join("\n> ")}\n\n`
+    : "";
+  return (
+    "🎓 **The tutor is swamped right now** — every AI provider is at capacity " +
+    "from heavy demand across the platform.\n\n" +
+    studyBlock +
+    "**Your question is saved.** I'll answer it automatically the moment a " +
+    "slot frees up — keep this chat open (or come back to it) and the reply " +
+    "will appear here. Meanwhile, the library has textbooks and past papers " +
+    "you can keep working through."
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Queue — Convex-backed short queue for turns fired while EVERY provider is
+// exhausted. Scheduled retries (exponential backoff + jitter for ~40s, then
+// a slower capacity-return cadence) survive page refresh because the queue
+// row lives in the database, and the frontend watches it live.
+// ---------------------------------------------------------------------------
+
+const QUEUE_FAST_WINDOW_MS = 40_000;
+const QUEUE_MAX_ATTEMPTS = 10;
+
+export const enqueueTutorTurn = internalMutation({
+  args: {
+    userId: v.id("users"),
+    conversationId: v.id("conversations"),
+    kind: v.union(v.literal("send"), v.literal("regenerate")),
+    mode: v.optional(v.string()),
+    grade: v.optional(v.number()),
+    concise: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const pending = await ctx.db
+      .query("aiRequestQueue")
+      .withIndex("by_status_createdAt", (q) => q.eq("status", "pending"))
+      .order("asc")
+      .take(80);
+    const position = pending.filter((p) => p.createdAt <= now).length + 1;
+    const requestId = await ctx.db.insert("aiRequestQueue", {
+      ...args,
+      status: "pending",
+      attempts: 0,
+      maxAttempts: QUEUE_MAX_ATTEMPTS,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { requestId, position };
+  },
+});
+
+export const patchQueueRequest = internalMutation({
+  args: {
+    requestId: v.id("aiRequestQueue"),
+    attempts: v.optional(v.number()),
+    status: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("delivered"),
+        v.literal("graceful"),
+        v.literal("abandoned"),
+      ),
+    ),
+    nextAttemptAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    gracefulReplied: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { requestId, ...patch }) => {
+    await ctx.db.patch(requestId, { ...patch, updatedAt: Date.now() });
+    return { ok: true };
+  },
+});
+
+export const getQueueRow = internalQuery({
+  args: { requestId: v.id("aiRequestQueue") },
+  handler: async (ctx, { requestId }) => (await ctx.db.get(requestId)) ?? null,
+});
+
+/**
+ * The retry worker. Runs as an internal action scheduled with exponential
+ * backoff + jitter: fast retries for the first ~40s (backoff 2.5s → 12s),
+ * then a slower ~3-minute cadence so the answer still lands "when capacity
+ * returns". Rebuilds the turn context from the database, so it stays correct
+ * even if the student kept chatting while the request waited.
+ */
+export const processQueuedRequest = internalAction({
+  args: { requestId: v.id("aiRequestQueue") },
+  handler: async (ctx, { requestId }): Promise<{ done: boolean; retriedInMs?: number }> => {
+    const row = await ctx.runQuery(internal.ai.getQueueRow, { requestId });
+    if (!row || row.status !== "pending") return { done: false };
+
+    const conversation = await ctx.runQuery(internal.ai.getConversationById, {
+      conversationId: row.conversationId,
+    });
+    if (!conversation) {
+      await ctx.runMutation(internal.ai.patchQueueRequest, {
+        requestId,
+        status: "abandoned",
+      });
+      return { done: false };
+    }
+
+    const attempts = (row.attempts ?? 0) + 1;
+    await ctx.runMutation(internal.ai.patchQueueRequest, {
+      requestId,
+      attempts,
+      nextAttemptAt: undefined,
+    });
+
+    if (attempts > QUEUE_MAX_ATTEMPTS) {
+      await ctx.runMutation(internal.ai.patchQueueRequest, {
+        requestId,
+        status: "abandoned",
+      });
+      return { done: false };
+    }
+
+    const mode = (row.mode as TutorMode | undefined) ?? undefined;
+    const turn = await buildTurnContext(ctx, row.userId, row.conversationId, {
+      ...(mode ? { mode } : {}),
+      ...(row.grade !== undefined
+        ? { grade: row.grade as 9 | 10 | 11 | 12 }
+        : {}),
+      ...(row.concise !== undefined ? { concise: row.concise } : {}),
+    });
+    if (!turn) {
+      await ctx.runMutation(internal.ai.patchQueueRequest, {
+        requestId,
+        status: "abandoned",
+      });
+      return { done: false };
+    }
+
+    const result = await routeChat(ctx, {
+      system: turn.system,
+      history: turn.history,
+      userTurn: turn.userTurn,
+      ...(turn.images.length > 0 ? { images: turn.images } : {}),
+      maxOutputTokens: MAX_COMPLETION_TOKENS,
+      temperature: row.kind === "regenerate" ? 0.55 : 0.5,
+      purpose: row.kind === "regenerate" ? "regenerate" : "chat",
+      userId: row.userId,
+      conversationId: row.conversationId,
+    });
+
+    if (result.ok) {
+      let reply = result.text;
+      if (result.finishReason === "length") {
+        reply =
+          balanceTrailingMath(reply) +
+          "\n\n*ⓘ The reply reached its length limit mid-answer. Say \"continue\" and I'll pick up exactly where I stopped.*";
+      }
+      const now = Date.now();
+      await ctx.runMutation(internal.ai.insertMessage, {
+        conversationId: row.conversationId,
+        role: "assistant",
+        content: reply,
+        ...(row.gracefulReplied ? { degraded: false } : {}),
+        createdAt: now,
+      });
+      await ctx.runMutation(internal.ai.patchConversation, {
+        conversationId: row.conversationId,
+        updatedAt: now,
+      });
+      await ctx.runMutation(internal.ai.patchQueueRequest, {
+        requestId,
+        status: "delivered",
+      });
+      await scheduleSummary(ctx, row.conversationId);
+      return { done: true };
+    }
+
+    // Still exhausted. Fast retries inside the ~40s window, then slow ones.
+    const elapsed = Date.now() - row.createdAt;
+    if (!row.gracefulReplied && elapsed >= QUEUE_FAST_WINDOW_MS) {
+      const graceful = await composeGracefulReply(
+        ctx,
+        row.userId,
+        row.conversationId,
+      );
+      await ctx.runMutation(internal.ai.insertMessage, {
+        conversationId: row.conversationId,
+        role: "assistant",
+        content: graceful,
+        degraded: true,
+        createdAt: Date.now(),
+      });
+      await ctx.runMutation(internal.ai.patchConversation, {
+        conversationId: row.conversationId,
+        updatedAt: Date.now(),
+      });
+      await ctx.runMutation(internal.ai.patchQueueRequest, {
+        requestId,
+        gracefulReplied: true,
+        status: "graceful",
+      });
+    }
+
+    const delay =
+      elapsed < QUEUE_FAST_WINDOW_MS
+        ? Math.min(2_500 * Math.pow(2, attempts - 1), 12_000) +
+          Math.floor(Math.random() * 1_200)
+        : 180_000 + Math.floor(Math.random() * 20_000);
+    await ctx.runMutation(internal.ai.patchQueueRequest, {
+      requestId,
+      nextAttemptAt: Date.now() + delay,
+      lastError: `exhausted (attempt ${attempts}, ${result.hops.length} hops)`,
+    });
+    await ctx.scheduler.runAfter(delay, internal.ai.processQueuedRequest, {
+      requestId,
+    });
+    return { done: false, retriedInMs: delay };
+  },
+});
+
+/**
+ * Sweeper for queue rows whose scheduler chain was lost (e.g. the backend
+ * was redeployed between retries). Bounded, indexed, idempotent — rows
+ * still being processed are protected by nextAttemptAt.
+ */
+export const sweepStaleQueueRequests = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ rescheduled: number }> => {
+    const now = Date.now();
+    const rows = await ctx.runQuery(internal.ai.listStalePendingQueueRows, {
+      now,
+    });
+    for (const requestId of rows) {
+      await ctx.scheduler.runAfter(
+        Math.floor(Math.random() * 5_000),
+        internal.ai.processQueuedRequest,
+        { requestId },
+      );
+    }
+    return { rescheduled: rows.length };
+  },
+});
+
+export const listStalePendingQueueRows = internalQuery({
+  args: { now: v.number() },
+  handler: async (ctx, { now }) => {
+    const rows = await ctx.db
+      .query("aiRequestQueue")
+      .withIndex("by_status_createdAt", (q) => q.eq("status", "pending"))
+      .order("asc")
+      .take(20);
+    return rows
+      .filter((r) => (r.nextAttemptAt ?? r.updatedAt) < now - 60_000)
+      .map((r) => r._id);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Rolling summary — the dieted history window is 6 messages; older turns
+// collapse into a short rolling summary stored on the conversation. Runs
+// asynchronously after replies (never in the reply's critical path) with a
+// tiny model, and merges into the previous summary so it stays rolling.
+// ---------------------------------------------------------------------------
+
+async function scheduleSummary(
+  ctx: ActionCtx,
+  conversationId: Id<"conversations">,
+): Promise<void> {
+  try {
+    await ctx.scheduler.runAfter(
+      3_000,
+      internal.ai.maybeUpdateConversationSummary,
+      { conversationId },
+    );
+  } catch {
+    // Scheduling is best-effort.
+  }
+}
+
+export const maybeUpdateConversationSummary = internalAction({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, { conversationId }) => {
+    const conversation = await ctx.runQuery(internal.ai.getConversationById, {
+      conversationId,
+    });
+    if (!conversation) return { updated: false };
+
+    const rows = await ctx.runQuery(internal.ai.getMessagesByConversation, {
+      conversationId,
+    });
+    if (rows.length <= SUMMARY_TRIGGER_COUNT) return { updated: false };
+
+    const covered = conversation.summarizedUpTo ?? 0;
+    const older = rows.slice(covered, rows.length - HISTORY_LIMIT);
+    if (older.length < SUMMARY_MIN_NEW_TURNS) return { updated: false };
+
+    const transcript = older
+      .map(
+        (m) =>
+          `${m.role === "user" ? "Student" : "Tutor"}: ${truncate(m.content, 260)}`,
+      )
+      .join("\n");
+
+    const result = await routeChat(ctx, {
+      system:
+        "Compress a tutoring conversation into a running summary for the tutor's own context. Keep: subject/topics covered, key formulas or facts, mistakes the student made, where the discussion left off. Max 120 words, plain text, no preamble. Merge with the existing summary if provided — drop resolved detail, keep standing context.",
+      history: [],
+      userTurn:
+        (conversation.summary
+          ? `Existing summary to update:\n${conversation.summary.slice(0, MAX_SUMMARY_CHARS)}\n\n`
+          : "") +
+        `New turns to fold in:\n${transcript.slice(0, 6_000)}`,
+      maxOutputTokens: 200,
+      temperature: 0.2,
+      preference: "tiny",
+      purpose: "summary",
+      userId: conversation.userId,
+      conversationId,
+    });
+    if (!result.ok) return { updated: false };
+
+    await ctx.runMutation(internal.ai.patchConversation, {
+      conversationId,
+      summary: truncate(result.text.replace(/\s+/g, " ").trim(), MAX_SUMMARY_CHARS),
+      updatedAt: Date.now(),
+    });
+    await ctx.runMutation(internal.ai.setSummarizedUpTo, {
+      conversationId,
+      count: rows.length - HISTORY_LIMIT,
+    });
+    return { updated: true };
+  },
+});
+
+export const setSummarizedUpTo = internalMutation({
+  args: { conversationId: v.id("conversations"), count: v.number() },
+  handler: async (ctx, { conversationId, count }) => {
+    await ctx.db.patch(conversationId, { summarizedUpTo: count });
+    return { ok: true };
+  },
+});
+
 // ---------------------------------------------------------------------------
 
 export const sendMessage = action({
@@ -742,7 +1498,12 @@ export const sendMessage = action({
     // Persisted student preference (academic memory, client-side stored).
     concise: v.optional(v.boolean()),
   },
-  handler: async (ctx, args): Promise<{ reply: string; conversationId: Id<"conversations"> }> => {
+  handler: async (ctx, args): Promise<{
+    reply: string;
+    conversationId: Id<"conversations">;
+    /** Present when every provider was busy — the turn is queued in Convex. */
+    queued?: { requestId: Id<"aiRequestQueue">; position: number; etaSeconds: number };
+  }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required to use the tutor.", code: "unauthorized" });
@@ -936,175 +1697,35 @@ export const sendMessage = action({
       }
     }
 
-    // --- Pull bounded history for context -------------------------------
-    const historyRows: Doc<"messages">[] = await ctx.runQuery(
-      internal.ai.getMessagesByConversation,
-      { conversationId },
-    );
-    const history = historyRows
-      .slice(-HISTORY_LIMIT)
-      .map((message) => {
-        const markers: string[] = [];
-        if (message.images?.length) markers.push("[image attached]");
-        if (message.files?.length) {
-          markers.push(
-            `[file attached: ${message.files.map((f) => f.name).join(", ")}]`,
-          );
-        }
-        return {
-          role: message.role as "user" | "assistant",
-          // Attachment turns replay as text markers so history tokens stay
-          // bounded — the real content is re-injected fresh where needed.
-          content: markers.length
-            ? `${message.content}\n${markers.join(" ")}`
-            : message.content,
-        };
-      });
-
-    // --- Follow-up re-grounding ------------------------------------------
-    // When the student asks "explain page 5 of that file" in a LATER turn
-    // (no new attachment), pull the head of the most recently attached
-    // file out of their memory so the tutor can still see the material.
-    let recentFileContext: { name: string; textHead: string } | null = null;
-    if (files.length === 0) {
-      const lastFileMessage = [...historyRows]
-        .reverse()
-        .find((m) => m.role === "user" && m.files && m.files.length > 0);
-      const targetName = lastFileMessage?.files?.[0]?.name;
-      if (targetName) {
-        try {
-          const memoryRow = (await ctx.runQuery(
-            internal.ai.getTutorFileTextByName,
-            { userId, name: targetName },
-          )) as Doc<"tutorFileMemory"> | null;
-          if (memoryRow && memoryRow.text.trim()) {
-            recentFileContext = {
-              name: memoryRow.name,
-              textHead: memoryRow.text
-                .slice(0, MAX_FOLLOWUP_FILE_CHARS)
-                .replace(/\s+\[Text truncated[^\]]*\]$/, ""),
-            };
-          }
-        } catch {
-          // Non-critical — the turn proceeds without re-grounding.
-        }
-      }
-    }
-
-    // --- Call AI model ---------------------------------------------------
+    // --- Fairness: hourly per-user cap ------------------------------------
+    // The free-tier daily cap above still applies; this hourly ceiling (via
+    // the rate-limiter component) protects the SHARED provider quota from a
+    // few heavy users burning everyone's tokens.
+    const mode: TutorMode = args.mode ?? "learn";
     const conversation = await ctx.runQuery(internal.ai.getConversationById, {
       conversationId,
     });
-    const systemPrompt = await buildSystemPrompt(
+    const hourly = await tutorLimiter.limit(
       ctx,
-      userId,
-      conversation?.subjectId,
-      conversation?.contentId,
-      {
-        mode: args.mode,
-        grade: args.grade,
-        concise: args.concise,
-        hasImages: images.length > 0,
-        hasFiles: files.length > 0,
-        recentFileContext,
-      },
+      premium ? "tutorHourlyPremium" : "tutorHourlyFree",
+      { key: userId, throws: false },
     );
-
-    // Current-turn user message: the typed text + full extracted file text
-    // (up to MAX_TURN_FILE_CHARS per file) inside explicit grounding markers.
-    let userTurn = effectiveContent;
-    if (files.length > 0) {
-      const blocks = files.map((file) => {
-        const pagesLabel = file.pages ? `, ${file.pages} pages` : "";
-        const head =
-          file.text.length > MAX_TURN_FILE_CHARS
-            ? `${file.text.slice(0, MAX_TURN_FILE_CHARS)}\n[Text truncated at ${MAX_TURN_FILE_CHARS.toLocaleString()} characters — the student can re-send specific sections for deeper detail]`
-            : file.text;
-        return (
-          `=== ATTACHED FILE: ${file.name} (${file.mime}${pagesLabel}, ${file.chars.toLocaleString()} chars) ===\n` +
-          `${head}\n` +
-          `=== END FILE: ${file.name} ===`
-        );
+    if (!hourly.ok) {
+      const waitMin = Math.max(1, Math.ceil((hourly.retryAfter ?? 60_000) / 60_000));
+      throw new ConvexError({
+        message:
+          `You're sending messages really fast — the tutor allows ${premium ? 45 : 20} messages per hour ` +
+          `so everyone gets a fair share. Try again in about ${waitMin} minute${waitMin === 1 ? "" : "s"}.`,
+        code: "hourly_limit_reached",
       });
-      userTurn = `${userTurn}\n\n${blocks.join("\n\n")}`;
     }
 
-    let reply: string;
-    const aiStart = Date.now();
-    // Image turns need a vision-capable model (gpt-oss-120b is text-only).
-    // resolveVisionModel picks a LIVE image-capable model from Groq's
-    // catalog (self-healing when Groq rotates/deprecates models) and
-    // callGroq retries once with a fresh model if it 404s mid-flight.
-    // Document-only turns stay on the text model — the extracted text is
-    // already plain text, no vision needed.
-    const visionModel = images.length > 0 ? await resolveVisionModel(ctx) : undefined;
-    try {
-      // 4096 tokens: full worked derivations + practice questions fit
-      // comfortably (gpt-oss-120b supports far more). Every truncation was
-      // the #1 source of broken math in a lesson — a reply cut mid-$$ or
-      // mid-aligned used to leak raw LaTeX into the chat.
-      const result = await callGroqDetailed(ctx, {
-        systemPrompt,
-        userMessage: userTurn,
-        history,
-        maxTokens: 4096,
-        temperature: 0.5,
-        model: visionModel,
-      });
-      reply = result.text;
-      // Truncated reply — say so honestly instead of letting a formula die
-      // mid-stream. Balance FIRST (close dangling $$ / $ / environments)
-      // so the marker lands outside any math region and the partial
-      // derivation still renders as typeset mathematics.
-      if (result.finishReason === "length") {
-        reply =
-          balanceTrailingMath(reply) +
-          "\n\n*ⓘ The reply reached its length limit mid-answer. Say \"continue\" and I'll pick up exactly where I stopped.*";
-      }
-      await logEventAction(ctx, {
-        eventType: "api_call",
-        source: "ai.sendMessage.groq",
-        status: "success",
-        userId,
-        metadata: {
-          model: visionModel ?? getModelName(),
-          conversationId,
-          hasImages: images.length > 0,
-          hasFiles: files.length > 0,
-          fileNames: files.map((f) => f.name),
-          mode: args.mode ?? "learn",
-          truncated: result.finishReason === "length",
-        },
-        durationMs: Date.now() - aiStart,
-      });
-    } catch (error) {
-      await logEventAction(ctx, {
-        eventType: "error",
-        source: "ai.sendMessage.groq",
-        status: "error",
-        userId,
-        metadata: { message: error instanceof Error ? error.message : "unknown" },
-        durationMs: Date.now() - aiStart,
-      });
-      throw asAiError(error, "The AI tutor could not reach Groq. Try again.");
-    }
-
-    // --- Persist the assistant reply ------------------------------------
-    await ctx.runMutation(internal.ai.insertMessage, {
-      conversationId,
-      role: "assistant",
-      content: reply,
-      createdAt: Date.now(),
-    });
-    await ctx.runMutation(internal.ai.patchConversation, {
-      conversationId,
-      updatedAt: Date.now(),
-    });
-
-    // --- Generate a title from the first exchange ------------------------
-    if (isFirstExchange) {
+    // --- Title the thread immediately on first exchange -------------------
+    // Set BEFORE the AI call so a queued turn still gets a proper sidebar
+    // title even if the answer lands seconds later via the retry worker.
+    if (isFirstExchange && conversation) {
       let title: string;
-      if (conversation?.subjectId) {
+      if (conversation.subjectId) {
         const subject = await ctx.runQuery(internal.ai.getSubjectById, {
           subjectId: conversation.subjectId,
         });
@@ -1121,7 +1742,182 @@ export const sendMessage = action({
       });
     }
 
-    return { reply, conversationId };
+    // --- One in-flight request per user -------------------------------------
+    const inflightOk = await ctx.runMutation(internal.ai.markTutorInflight, { userId });
+    if (!inflightOk) {
+      throw new ConvexError({
+        message:
+          "You're already waiting on an answer — give the tutor a few seconds to finish, then send the next one.",
+        code: "busy",
+      });
+    }
+
+    try {
+      // --- Build the dieted turn context ---------------------------------
+      // 6-message window + rolling summary + relevance-scored file chunks,
+      // all enforced against the hard input budget inside buildTurnContext.
+      const turn = await buildTurnContext(ctx, userId, conversationId, {
+        mode,
+        ...(args.grade !== undefined ? { grade: args.grade } : {}),
+        ...(args.concise !== undefined ? { concise: args.concise } : {}),
+        ...(files.length > 0 ? { freshFiles: files } : {}),
+      });
+      if (!turn) {
+        throw new ConvexError({ message: "Nothing to answer yet.", code: "invalid" });
+      }
+
+      // --- Answer cache ----------------------------------------------------
+      // Identical/near-identical questions in the same lesson context are
+      // served instantly. Stateful modes (practice/exam/quiz) and image
+      // turns are never cached — the same question must give a fresh result.
+      const cacheable = !NON_CACHEABLE_MODES.has(mode) && images.length === 0;
+      const key = cacheable
+        ? cacheKey({
+            question: effectiveContent,
+            mode,
+            ...(args.grade !== undefined ? { grade: args.grade } : {}),
+            ...(conversation?.subjectId ? { subjectId: conversation.subjectId } : {}),
+            ...(conversation?.contentId ? { contentId: conversation.contentId } : {}),
+            contextHash: turn.contextHash,
+          })
+        : null;
+      if (key) {
+        const cached = await ctx.runQuery(internal.ai.lookupAnswerCache, { hash: key });
+        if (cached) {
+          const now = Date.now();
+          await ctx.runMutation(internal.ai.insertMessage, {
+            conversationId,
+            role: "assistant",
+            content: cached,
+            createdAt: now,
+          });
+          await ctx.runMutation(internal.ai.patchConversation, {
+            conversationId,
+            updatedAt: now,
+          });
+          await ctx.runMutation(internal.aiRouter.insertCallLog, {
+            userId,
+            conversationId,
+            purpose: "chat",
+            cacheHit: true,
+            provider: "cache",
+            model: "cache",
+            latencyMs: 0,
+            estInputTokens: turn.estInputTokens,
+          });
+          return { reply: cached, conversationId };
+        }
+      }
+
+      // --- Route across providers (capacity-aware, never throws) ----------
+      const result = await routeChat(ctx, {
+        system: turn.system,
+        history: turn.history,
+        userTurn: turn.userTurn,
+        ...(turn.images.length > 0 ? { images: turn.images } : {}),
+        maxOutputTokens: MAX_COMPLETION_TOKENS,
+        temperature: 0.5,
+        purpose: "chat",
+        userId,
+        conversationId,
+      });
+
+      if (result.ok) {
+        let reply = result.text;
+        // Truncated reply — say so honestly instead of letting a formula die
+        // mid-stream. Balance FIRST (close dangling $$ / $ / environments)
+        // so the marker lands outside any math region and the partial
+        // derivation still renders as typeset mathematics.
+        if (result.finishReason === "length") {
+          reply =
+            balanceTrailingMath(reply) +
+            "\n\n*ⓘ The reply reached its length limit mid-answer. Say \"continue\" and I'll pick up exactly where I stopped.*";
+        }
+        if (key) {
+          await ctx.runMutation(internal.ai.storeAnswerCache, {
+            hash: key,
+            answer: reply,
+            provider: result.provider,
+            model: result.model,
+          });
+        }
+        await ctx.runMutation(internal.ai.insertMessage, {
+          conversationId,
+          role: "assistant",
+          content: reply,
+          createdAt: Date.now(),
+        });
+        await ctx.runMutation(internal.ai.patchConversation, {
+          conversationId,
+          updatedAt: Date.now(),
+        });
+        await scheduleSummary(ctx, conversationId);
+        await logEventAction(ctx, {
+          eventType: "api_call",
+          source: "ai.sendMessage.router",
+          status: "success",
+          userId,
+          metadata: {
+            provider: result.provider,
+            model: result.model,
+            hops: result.hops.length,
+            conversationId,
+            hasImages: images.length > 0,
+            hasFiles: files.length > 0,
+            mode,
+            truncated: result.finishReason === "length",
+          },
+          durationMs: result.latencyMs,
+        });
+        return { reply, conversationId };
+      }
+
+      // --- Every provider busy → Convex-backed queue -----------------------
+      // The user message is already persisted; the scheduled retry worker
+      // rebuilds the turn from the database and answers it as capacity
+      // returns. The frontend switches to a friendly "high demand" status
+      // with a live queue position and keeps watching this conversation.
+      const { requestId, position } = await ctx.runMutation(internal.ai.enqueueTutorTurn, {
+        userId,
+        conversationId,
+        kind: "send",
+        mode,
+        ...(args.grade !== undefined ? { grade: args.grade } : {}),
+        ...(args.concise !== undefined ? { concise: args.concise } : {}),
+      });
+      await ctx.scheduler.runAfter(
+        4_000 + Math.floor(Math.random() * 2_000),
+        internal.ai.processQueuedRequest,
+        { requestId },
+      );
+      await logEventAction(ctx, {
+        eventType: "api_call",
+        source: "ai.sendMessage.queued",
+        status: "success",
+        userId,
+        metadata: { requestId, position, hops: result.hops.length },
+      });
+      return {
+        reply: "",
+        conversationId,
+        queued: {
+          requestId,
+          position,
+          etaSeconds: Math.min(40, 8 + position * 4),
+        },
+      };
+    } catch (error) {
+      await logEventAction(ctx, {
+        eventType: "error",
+        source: "ai.sendMessage",
+        status: "error",
+        userId,
+        metadata: { message: error instanceof Error ? error.message : "unknown" },
+      });
+      throw asAiError(error, "The tutor hit a temporary snag. Please try again in a moment.");
+    } finally {
+      await ctx.runMutation(internal.ai.clearTutorInflight, { userId });
+    }
   },
 });
 
@@ -1173,16 +1969,25 @@ export const generateFollowUps = action({
       '{"followUps": ["q1", "q2"], "miniCheck": {"question": "...", "options": ["A","B","C","D"], "correctIndex": 0, "explanation": "..."}}. ' +
       "If the topic doesn't lend itself to a quick check, set miniCheck to null.";
 
-    const userMessage = `The student just received this explanation about ${subjectName}:\n\n${lastAssistant.content.slice(0, 1500)}\n\nGenerate 2 follow-up questions and an optional mini-check.`;
+    const userMessage = `The student just received this explanation about ${subjectName}:\n\n${lastAssistant.content.slice(0, 1200)}\n\nGenerate 2 follow-up questions and an optional mini-check.`;
 
+    // Fire-and-forget helper turn — routed with a tiny model and a small
+    // budget; when every provider is busy the chips just don't render (the
+    // existing UI already treats this as non-fatal), never an error.
     try {
-      const raw = await callGroq(ctx, {
-        systemPrompt,
-        userMessage,
-        maxTokens: 512,
+      const result = await routeChat(ctx, {
+        system: systemPrompt,
+        history: [],
+        userTurn: userMessage,
+        maxOutputTokens: 320,
         temperature: 0.6,
+        preference: "tiny",
+        purpose: "followups",
+        userId,
+        conversationId: args.conversationId,
       });
-      const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+      if (!result.ok) return { followUps: [], miniCheck: null };
+      const cleaned = result.text.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
       const parsed = JSON.parse(cleaned) as {
         followUps?: string[];
         miniCheck?: { question: string; options: string[]; correctIndex: number; explanation: string } | null;
@@ -1232,19 +2037,33 @@ export const saveNotesFromConversation = action({
       throw new ConvexError({ message: "Nothing to save yet — ask a question first.", code: "not_found" });
     }
 
-    const raw = await callGroq(ctx, {
-      systemPrompt:
+    // Routed with a tiny model + small budget; on total exhaustion the
+    // student gets an honest, friendly hold message instead of provider noise.
+    const result = await routeChat(ctx, {
+      system:
         "You compress a tutor explanation into concise study notes for an Ethiopian " +
         "student preparing for national exams. Output ONLY the note content: markdown " +
         "bullets, key definitions, formulas and one worked example if present. Max " +
         "200 words. No preamble, no closing remarks. All mathematics must be LaTeX " +
         "inside $…$ (inline) or $$…$$ (display) — never raw LaTeX commands outside " +
         "delimiters, never plain-text approximations like x^2 when $x^2$ is meant.",
-      userMessage:
-        `Compress this explanation into study notes:\n\n${lastAssistant.content.slice(0, 4000)}`,
-      maxTokens: 600,
+      history: [],
+      userTurn: `Compress this explanation into study notes:\n\n${lastAssistant.content.slice(0, 3200)}`,
+      maxOutputTokens: 600,
       temperature: 0.3,
+      preference: "tiny",
+      purpose: "notes",
+      userId,
+      conversationId,
     });
+    if (!result.ok) {
+      throw new ConvexError({
+        message:
+          "The tutor is very busy right now — try saving notes again in a minute.",
+        code: "tutor_busy",
+      });
+    }
+    const raw = result.text;
 
     // notes.create enforces the 2,000-char cap and subject existence.
     const noteId = await ctx.runMutation(api.notes.create, {
@@ -1431,7 +2250,7 @@ export const regenerateReply = action({
     )),
     concise: v.optional(v.boolean()),
   },
-  handler: async (ctx, args): Promise<{ reply: string }> => {
+  handler: async (ctx, args): Promise<{ reply: string; queued?: { requestId: Id<"aiRequestQueue"> } }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required to use the tutor.", code: "unauthorized" });
@@ -1464,99 +2283,79 @@ export const regenerateReply = action({
       });
     }
 
-    // History EXCLUDES the final user turn — callGroq appends userMessage
-    // itself, so passing both would duplicate the turn in context.
-    const history = historyRows
-      .filter((m) => m._id !== lastUser._id)
-      .slice(-HISTORY_LIMIT)
-      .map((message) => {
-        const markers: string[] = [];
-        if (message.images?.length) markers.push("[image attached]");
-        if (message.files?.length) {
-          markers.push(
-            `[file attached: ${message.files.map((f) => f.name).join(", ")}]`,
-          );
-        }
-        return {
-          role: message.role as "user" | "assistant",
-          content: markers.length
-            ? `${message.content}\n${markers.join(" ")}`
-            : message.content,
-        };
+    // Dieted rebuild via buildTurnContext: 6-message window, rolling
+    // summary, re-grounding on the attached file's stored memory head —
+    // the regenerated answer keeps the REAL content grounding.
+    const turn = await buildTurnContext(ctx, userId, args.conversationId, {
+      ...(args.mode ? { mode: args.mode } : {}),
+      ...(args.grade !== undefined ? { grade: args.grade } : {}),
+      ...(args.concise !== undefined ? { concise: args.concise } : {}),
+    });
+    if (!turn) {
+      throw new ConvexError({
+        message: "Nothing to regenerate yet.",
+        code: "invalid",
       });
-
-    // If the turn being regenerated attached files, re-ground on their
-    // stored memory text so the regenerated answer still cites the REAL
-    // content instead of hallucinating from the "[file attached]" marker.
-    let hasFiles = false;
-    let recentFileContext: { name: string; textHead: string } | null = null;
-    const regenFileName = lastUser.files?.[0]?.name;
-    if (regenFileName) {
-      hasFiles = true;
-      try {
-        const memoryRow = (await ctx.runQuery(internal.ai.getTutorFileTextByName, {
-          userId,
-          name: regenFileName,
-        })) as Doc<"tutorFileMemory"> | null;
-        if (memoryRow && memoryRow.text.trim()) {
-          recentFileContext = {
-            name: memoryRow.name,
-            textHead: memoryRow.text.slice(0, MAX_FOLLOWUP_FILE_CHARS * 2),
-          };
-        }
-      } catch {
-        // Non-critical — regenerate proceeds from the marker text.
-      }
     }
 
-    const systemPrompt = await buildSystemPrompt(
-      ctx,
+    const result = await routeChat(ctx, {
+      system: turn.system,
+      history: turn.history,
+      userTurn: turn.userTurn,
+      ...(turn.images.length > 0 ? { images: turn.images } : {}),
+      maxOutputTokens: MAX_COMPLETION_TOKENS,
+      temperature: 0.55, // a touch more variance than the first pass
+      purpose: "regenerate",
       userId,
-      conversation.subjectId,
-      conversation.contentId,
-      {
-        mode: args.mode,
-        grade: args.grade,
-        concise: args.concise,
-        hasImages: false,
-        hasFiles,
-        recentFileContext,
-      },
-    );
+      conversationId: args.conversationId,
+    });
 
-    let reply: string;
-    const aiStart = Date.now();
-    try {
-      reply = await callGroq(ctx, {
-        systemPrompt,
-        // If the last turn carried files, re-send its text head here too so
-        // the regenerated reply keeps the same grounding as the original.
-        userMessage: hasFiles && recentFileContext
-          ? `${lastUser.content}\n\n=== ATTACHED FILE (head): ${recentFileContext.name} ===\n${recentFileContext.textHead}\n=== END FILE ===`
-          : lastUser.content,
-        history,
-        maxTokens: 4096,
-        temperature: 0.55, // a touch more variance than the first pass
+    if (!result.ok) {
+      // Every provider busy — enqueue the regeneration. The trailing
+      // assistant message is already deleted, so the retry worker's reply
+      // simply appears in its place; survives a page refresh.
+      const { requestId } = await ctx.runMutation(internal.ai.enqueueTutorTurn, {
+        userId,
+        conversationId: args.conversationId,
+        kind: "regenerate",
+        ...(args.mode ? { mode: args.mode } : {}),
+        ...(args.grade !== undefined ? { grade: args.grade } : {}),
+        ...(args.concise !== undefined ? { concise: args.concise } : {}),
       });
+      await ctx.scheduler.runAfter(
+        4_000 + Math.floor(Math.random() * 2_000),
+        internal.ai.processQueuedRequest,
+        { requestId },
+      );
       await logEventAction(ctx, {
         eventType: "api_call",
-        source: "ai.regenerateReply.groq",
+        source: "ai.regenerateReply.queued",
         status: "success",
         userId,
-        metadata: { model: getModelName(), conversationId: args.conversationId },
-        durationMs: Date.now() - aiStart,
+        metadata: { requestId, conversationId: args.conversationId },
       });
-    } catch (error) {
-      await logEventAction(ctx, {
-        eventType: "error",
-        source: "ai.regenerateReply.groq",
-        status: "error",
-        userId,
-        metadata: { message: error instanceof Error ? error.message : "unknown" },
-        durationMs: Date.now() - aiStart,
-      });
-      throw asAiError(error, "The AI tutor could not reach Groq. Try again.");
+      return { reply: "", queued: { requestId } };
     }
+
+    let reply = result.text;
+    if (result.finishReason === "length") {
+      reply =
+        balanceTrailingMath(reply) +
+        "\n\n*ⓘ The reply reached its length limit mid-answer. Say \"continue\" and I'll pick up exactly where I stopped.*";
+    }
+    await logEventAction(ctx, {
+      eventType: "api_call",
+      source: "ai.regenerateReply.router",
+      status: "success",
+      userId,
+      metadata: {
+        provider: result.provider,
+        model: result.model,
+        hops: result.hops.length,
+        conversationId: args.conversationId,
+      },
+      durationMs: result.latencyMs,
+    });
 
     const now = Date.now();
     await ctx.runMutation(internal.ai.insertMessage, {
@@ -1569,6 +2368,7 @@ export const regenerateReply = action({
       conversationId: args.conversationId,
       updatedAt: now,
     });
+    await scheduleSummary(ctx, args.conversationId);
     return { reply };
   },
 });
@@ -1594,7 +2394,11 @@ export const branchConversation = action({
   handler: async (
     ctx,
     args,
-  ): Promise<{ reply: string; conversationId: Id<"conversations"> }> => {
+  ): Promise<{
+    reply: string;
+    conversationId: Id<"conversations">;
+    queued?: { requestId: Id<"aiRequestQueue"> };
+  }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError({ message: "Sign in required to use the tutor.", code: "unauthorized" });
@@ -1680,38 +2484,54 @@ export const branchConversation = action({
       updatedAt: now,
     });
 
-    // Answer the edited turn inside the branch.
-    const history = [...prefix.map((message) => ({
-      role: message.role as "user" | "assistant",
-      content: message.images?.length
-        ? `${message.content}\n[image attached]`
-        : message.content,
-    })), ].slice(-HISTORY_LIMIT);
+    // Answer the edited turn inside the branch — dieted rebuild via
+    // buildTurnContext (6-message window + rolling summary; the fresh
+    // branch has no summary yet, so it degrades to just the window).
+    const turn = await buildTurnContext(ctx, userId, branchId, {
+      ...(args.mode ? { mode: args.mode } : {}),
+      ...(args.grade !== undefined ? { grade: args.grade } : {}),
+      ...(args.concise !== undefined ? { concise: args.concise } : {}),
+    });
+    if (!turn) {
+      throw new ConvexError({ message: "Couldn't build the branched turn.", code: "invalid" });
+    }
 
-    const systemPrompt = await buildSystemPrompt(
-      ctx,
+    const result = await routeChat(ctx, {
+      system: turn.system,
+      history: turn.history,
+      userTurn: turn.userTurn,
+      ...(turn.images.length > 0 ? { images: turn.images } : {}),
+      maxOutputTokens: MAX_COMPLETION_TOKENS,
+      temperature: 0.5,
+      purpose: "branch",
       userId,
-      original.subjectId,
-      original.contentId,
-      {
-        mode: args.mode,
-        grade: args.grade,
-        concise: args.concise,
-        hasImages: false,
-      },
-    );
+      conversationId: branchId,
+    });
 
-    let reply: string;
-    try {
-      reply = await callGroq(ctx, {
-        systemPrompt,
-        userMessage: content,
-        history,
-        maxTokens: 1024,
-        temperature: 0.5,
+    if (!result.ok) {
+      // Every provider busy — the branch + edited message already exist, so
+      // the retry worker can answer it from the database alone.
+      const { requestId } = await ctx.runMutation(internal.ai.enqueueTutorTurn, {
+        userId,
+        conversationId: branchId,
+        kind: "send",
+        ...(args.mode ? { mode: args.mode } : {}),
+        ...(args.grade !== undefined ? { grade: args.grade } : {}),
+        ...(args.concise !== undefined ? { concise: args.concise } : {}),
       });
-    } catch (error) {
-      throw asAiError(error, "The AI tutor could not reach Groq. Try again.");
+      await ctx.scheduler.runAfter(
+        4_000 + Math.floor(Math.random() * 2_000),
+        internal.ai.processQueuedRequest,
+        { requestId },
+      );
+      return { reply: "", conversationId: branchId, queued: { requestId } };
+    }
+
+    let reply = result.text;
+    if (result.finishReason === "length") {
+      reply =
+        balanceTrailingMath(reply) +
+        "\n\n*ⓘ The reply reached its length limit mid-answer. Say \"continue\" and I'll pick up exactly where I stopped.*";
     }
 
     await ctx.runMutation(internal.ai.insertMessage, {
@@ -1724,6 +2544,7 @@ export const branchConversation = action({
       conversationId: branchId,
       updatedAt: Date.now(),
     });
+    await scheduleSummary(ctx, branchId);
     return { reply, conversationId: branchId };
   },
 });
