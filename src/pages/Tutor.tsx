@@ -2194,7 +2194,9 @@ function Composer({
                   <p className="type-mono text-[9px] leading-tight text-muted-foreground">
                     {formatBytes(doc.size)}
                     {doc.pages ? ` · ${doc.pages} pages` : ""}
-                    {" · "+ doc.chars.toLocaleString() + " chars read"}
+                    {doc.scanned
+                      ? " · scanned — attached as images"
+                      : " · " + doc.chars.toLocaleString() + " chars read"}
                   </p>
                 </div>
                 <button
@@ -2659,7 +2661,31 @@ export default function Tutor() {
           // Real text extraction — PDF via pdf.js, DOCX/PPTX/XLSX via the
           // OOXML zip, plain text directly. Throws with a user-facing
           // message when the file is unreadable.
-          nextDocs.push(await extractTutorFile(file));
+          const extraction = await extractTutorFile(file);
+          nextDocs.push(extraction);
+
+          // ── Scanned-PDF vision fallback ──
+          // A scanned textbook has no text layer. The extractor rendered
+          // its first pages as JPEGs — attach them as images (respecting
+          // the per-message image cap) so the tutor READS the page pixels
+          // instead of failing with "no text".
+          if (extraction.scanned && extraction.renderedPages?.length) {
+            const imageRoomLeft = imageRoom - nextImages.length;
+            const attachable = extraction.renderedPages.slice(
+              0,
+              Math.max(0, imageRoomLeft),
+            );
+            nextImages.push(...attachable.map((p) => p.dataUrl));
+            if (attachable.length > 0) {
+              toast.info(
+                `"${file.name}" has no text layer (scanned PDF) — page ${attachable[0].pageNumber}${attachable.length > 1 ? `-${attachable[attachable.length - 1].pageNumber}` : ""} attached as image${attachable.length > 1 ? "s" : ""} so the tutor can read it visually.`,
+              );
+            } else {
+              toast.error(
+                `No image slots left for "${file.name}"'s scanned pages — send it in its own message so the tutor can see them.`,
+              );
+            }
+          }
         } else if (isLegacyOfficeFile(file)) {
           toast.error(
             `"${file.name}" is a legacy Office file — save it as .docx/.pptx/.xlsx first.`,

@@ -10,12 +10,59 @@
 //   • TXT/MD/CSV/JSON → plain text
 // Images are handled separately by the composer's downscale-to-JPEG path.
 //
+// PDF hardening (the "grade-9-amharic-new-curriculum--student-textbook.pdf"
+// class of failures):
+//   1. workerSrc — the Tutor page is a lazy chunk that NEVER loads the
+//      Reader bundle, so react-pdf's pdf.js had no worker configured there:
+//      getDocument threw "No GlobalWorkerOptions.workerSrc specified" and
+//      every tutor PDF upload died with the generic "scanned or
+//      password-protected" toast. We configure it here, unconditionally.
+//   2. CMaps — Amharic/Ge'ez, CJK and many curriculum fonts are CID-keyed
+//      (Identity-H encoding); decoding their text REQUIRES pdf.js CMap
+//      data, which ships in public/cmaps + public/standard_fonts (synced
+//      by scripts/sync-pdfjs.mjs). Without them getTextContent() throws
+//      or returns garbage for exactly the textbooks students upload most.
+//   3. Password/corrupt distinction — PasswordException and
+//      InvalidPDFException get their own actionable messages instead of
+//      the blanket "scanned or password-protected".
+//   4. Scanned fallback — a PDF with (almost) no text layer is not a dead
+//      end: the first pages are rendered to vision-quality JPEGs and
+//      attached as images, so the model reads them visually.
+//
 // Everything runs in the browser: nothing is uploaded anywhere except the
 // extracted text (capped) inside the chat message itself. Extraction
 // failures degrade honestly — the chip shows what went wrong instead of
 // the tutor hallucinating over an empty attachment.
 
 import { pdfjs } from "react-pdf";
+
+// The Tutor page never loads PdfStage/pdfText, so react-pdf's pdf.js would
+// run without a usable worker here. Assign UNCONDITIONALLY: pdf.js v5.4+
+// self-defaults `GlobalWorkerOptions.workerSrc ||= "./pdf.worker.mjs"` at
+// module load — a bare specifier that can never load — so any truthiness
+// guard sees a value and skips, and getDocument dies with "Setting up fake
+// worker failed: Failed to resolve module specifier 'pdf.worker.mjs'".
+// Same local worker file the Reader uses, version-synced into public/ by
+// scripts/sync-pdfjs.mjs postinstall.
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+// Local, same-origin CMap + font data for CID-keyed and standard fonts.
+// NOTE: react-pdf@10 resolves its OWN nested pdfjs-dist (v5.4.296) — that
+// copy is what actually runs for both the Reader and this extraction, and
+// it accepts these options. cMapUrl/cMapPacked are REQUIRED for CID-keyed
+// fonts (the Identity-H encodings Amharic/Ge'ez curriculum textbooks use).
+const PDF_DOC_OPTIONS = {
+  cMapUrl: "/cmaps/",
+  cMapPacked: true as const,
+  standardFontDataUrl: "/standard_fonts/",
+};
+
+// Types derived from react-pdf's pdfjs re-export so they match the ACTUAL
+// runtime copy (its nested v5.4.296), not the top-level v6 package.
+type PdfDocumentProxy = Awaited<
+  ReturnType<typeof pdfjs.getDocument>["promise"]
+>;
+type PdfPageProxy = Awaited<ReturnType<PdfDocumentProxy["getPage"]>>;
 
 export const MAX_DOCS_PER_MESSAGE = 2;
 export const MAX_FILE_TEXT_CHARS = 60_000; // stored in tutor file memory
@@ -32,6 +79,45 @@ export interface TutorFileExtraction {
   chars: number;
   /** Page/slide count when the format reports one. */
   pages?: number;
+  /** True when the PDF had no usable text layer (scanned/image-based). */
+  scanned?: boolean;
+  /** Vision-fallback JPEG data URLs for the first pages (scanned PDFs). */
+  renderedPages?: { pageNumber: number; dataUrl: string }[];
+}
+
+/** An Error the caller should surface verbatim (it is already actionable). */
+function userFacingError(message: string): Error {
+  const error = new Error(message);
+  (error as Error & { userFacing?: boolean }).userFacing = true;
+  return error;
+}
+
+function isUserFacingError(error: unknown): boolean {
+  return Boolean(
+    error instanceof Error && (error as Error & { userFacing?: boolean }).userFacing,
+  );
+}
+
+function errorName(error: unknown): string {
+  return (error as { name?: string } | null)?.name ?? "";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isPasswordError(error: unknown): boolean {
+  return (
+    errorName(error) === "PasswordException" ||
+    /password/i.test(errorMessage(error))
+  );
+}
+
+function isInvalidPdfError(error: unknown): boolean {
+  return (
+    errorName(error) === "InvalidPDFException" ||
+    /Invalid PDF|invalid pdf/i.test(errorMessage(error))
+  );
 }
 
 const SUPPORTED_DOC_EXTENSIONS = [
@@ -176,48 +262,151 @@ function xmlTextBody(xml: string): string {
 
 // ─── Format extractors ────────────────────────────────────────────────────
 
+// A text layer that yields almost nothing per sampled page means the PDF
+// is image-based (scanned/photographed) — no word extractor can help; the
+// pages must be READ visually. Threshold is page-count-aware: a sparse
+// 1-page text sheet (e.g. 180 chars) is a REAL text document, while a
+// 60-page scanned textbook yields ~0 chars total. 10 chars/page average
+// across the sampled pages, floored at 50 for very short documents.
+const SCANNED_MIN_CHARS_PER_PAGE = 10;
+const SCANNED_ABSOLUTE_FLOOR_CHARS = 50;
+/** How many pages to render as images for the vision fallback. */
+const SCANNED_RENDER_PAGE_COUNT = 2;
+/** Target width (px) for rendered fallback pages — matches the vision
+ * upload quality band used by the composer's image downscaler. */
+const SCANNED_RENDER_TARGET_WIDTH = 1600;
+
+/** Render one pdf.js page to a vision-quality JPEG data URL. */
+async function renderPageToDataUrl(
+  page: PdfPageProxy,
+  targetWidth = SCANNED_RENDER_TARGET_WIDTH,
+): Promise<string> {
+  const base = page.getViewport({ scale: 1 });
+  // Clamp: tiny pages upscale a little, huge pages downscale — never blow
+  // up memory with a 10,000px canvas.
+  const scale = Math.min(2.5, Math.max(0.5, targetWidth / base.width));
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unavailable");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvas, viewport }).promise;
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 async function extractPdf(file: File): Promise<TutorFileExtraction> {
   const data = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data }).promise;
-  const pages = doc.numPages;
-  // Cap reading at 60 pages — exam papers are ≤40; anything longer gets an
-  // honest truncation note so the tutor knows the text is partial.
-  const pageCap = Math.min(pages, 60);
-  const parts: string[] = [];
-  for (let p = 1; p <= pageCap; p++) {
-    const page = await doc.getPage(p);
-    const content = await page.getTextContent();
-    let lastY: number | null = null;
-    let pageText = "";
-    for (const item of content.items) {
-      if (!("str" in item)) continue;
-      const y = (item as { transform?: number[] }).transform?.[5] ?? null;
-      // New line when the text baseline moves — pdf.js items are fragments,
-      // and joining them blind glues whole columns into one word.
-      if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) {
-        pageText += "\n";
-      } else if (pageText && !pageText.endsWith(" ")) {
-        pageText += " ";
+  const loadingTask = pdfjs.getDocument({ data, ...PDF_DOC_OPTIONS });
+  let doc: PdfDocumentProxy | null = null;
+  try {
+    doc = await loadingTask.promise;
+    const pages = doc.numPages;
+    // Cap reading at 60 pages — exam papers are ≤40; anything longer gets an
+    // honest truncation note so the tutor knows the text is partial.
+    const pageCap = Math.min(pages, 60);
+    const parts: string[] = [];
+    let contentChars = 0;
+    for (let p = 1; p <= pageCap; p++) {
+      const page = await doc.getPage(p);
+      const content = await page.getTextContent();
+      let lastY: number | null = null;
+      let pageText = "";
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        const y = (item as { transform?: number[] }).transform?.[5] ?? null;
+        // New line when the text baseline moves — pdf.js items are fragments,
+        // and joining them blind glues whole columns into one word.
+        if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) {
+          pageText += "\n";
+        } else if (pageText && !pageText.endsWith(" ")) {
+          pageText += " ";
+        }
+        pageText += item.str;
+        if (y !== null) lastY = y;
       }
-      pageText += item.str;
-      if (y !== null) lastY = y;
+      contentChars += pageText.replace(/\s+/g, "").length;
+      parts.push(`[Page ${p}]\n${pageText.trim()}`);
     }
-    parts.push(`[Page ${p}]\n${pageText.trim()}`);
+
+    // ── Scanned-PDF vision fallback ──
+    // Almost no selectable text across 60 pages = scanned/image-based
+    // document (typical for photographed textbooks). Instead of a dead-end
+    // error, render the first pages as JPEGs and let the model READ them
+    // visually — it answers from the actual page pixels, including Amharic
+    // script where text-layer extraction never applied anyway.
+    let scanned = false;
+    let renderedPages: { pageNumber: number; dataUrl: string }[] | undefined;
+    const scannedThreshold = Math.max(
+      SCANNED_ABSOLUTE_FLOOR_CHARS,
+      SCANNED_MIN_CHARS_PER_PAGE * pageCap,
+    );
+    if (contentChars < scannedThreshold) {
+      scanned = true;
+      renderedPages = [];
+      const renderCount = Math.min(pages, SCANNED_RENDER_PAGE_COUNT);
+      for (let p = 1; p <= renderCount; p++) {
+        try {
+          const page = await doc.getPage(p);
+          const dataUrl = await renderPageToDataUrl(page);
+          renderedPages.push({ pageNumber: p, dataUrl });
+        } catch {
+          // Rendering one page must not kill the whole fallback — skip it.
+        }
+      }
+      parts.push(
+        `[NOTE] This PDF has no selectable text layer — it is scanned or image-based (${pages} pages). ` +
+          (renderedPages.length > 0
+            ? `Page ${renderedPages.map((p) => p.pageNumber).join(" and ")} ${renderedPages.length === 1 ? "is" : "are"} attached below as image(s) for visual reading. `
+            : "") +
+          `For deeper pages, the student can attach screenshots of the specific pages they need.`,
+      );
+    }
+
+    let text = parts.join("\n\n");
+    if (pages > pageCap) {
+      text += `\n\n[Document has ${pages} pages — text extracted for the first ${pageCap}.]`;
+    }
+    const cleaned = cleanExtractedText(text);
+    return {
+      name: file.name,
+      mime: file.type || "application/pdf",
+      size: file.size,
+      text: cleaned,
+      chars: cleaned.length,
+      pages,
+      ...(scanned ? { scanned: true } : {}),
+      ...(renderedPages && renderedPages.length > 0 ? { renderedPages } : {}),
+    };
+  } catch (error) {
+    // Real, actionable failure classes get their own message instead of
+    // the generic "scanned or password-protected" blanket.
+    if (isPasswordError(error)) {
+      throw userFacingError(
+        `"${file.name}" is password-protected. Remove the password (open it → Print → Save as PDF) and attach it again.`,
+      );
+    }
+    if (isInvalidPdfError(error)) {
+      throw userFacingError(
+        `"${file.name}" isn't a readable PDF — it may be corrupted or renamed from another file type.`,
+      );
+    }
+    throw error;
+  } finally {
+    // Never leak the document/worker between uploads.
+    try {
+      await doc?.destroy();
+    } catch {
+      // Already destroyed
+    }
+    try {
+      await loadingTask.destroy();
+    } catch {
+      // Already destroyed
+    }
   }
-  doc.destroy();
-  let text = parts.join("\n\n");
-  if (pages > pageCap) {
-    text += `\n\n[Document has ${pages} pages — text extracted for the first ${pageCap}.]`;
-  }
-  const cleaned = cleanExtractedText(text);
-  return {
-    name: file.name,
-    mime: file.type || "application/pdf",
-    size: file.size,
-    text: cleaned,
-    chars: cleaned.length,
-    pages,
-  };
 }
 
 async function extractDocx(file: File): Promise<TutorFileExtraction> {
@@ -357,9 +546,18 @@ export async function extractTutorFile(file: File): Promise<TutorFileExtraction>
         throw new Error(`Unsupported file type: .${ext || "unknown"}`);
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes("limit is")) throw error;
-    if (error instanceof Error && error.message.includes("legacy Office")) throw error;
-    if (error instanceof Error && error.message.startsWith("Unsupported file type")) throw error;
+    // Size / legacy / unsupported / password / corrupt messages are already
+    // actionable — surface them verbatim. Everything else (unexpected
+    // extraction failures) degrades to the honest generic message.
+    if (
+      error instanceof Error &&
+      (isUserFacingError(error) ||
+        error.message.includes("limit is") ||
+        error.message.includes("legacy Office") ||
+        error.message.startsWith("Unsupported file type"))
+    ) {
+      throw error;
+    }
     throw new Error(
       `Couldn't read "${file.name}" — the file may be scanned or password-protected. Try a text-based version.`,
     );
