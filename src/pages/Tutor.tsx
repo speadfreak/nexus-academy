@@ -91,6 +91,7 @@ import {
 } from "@/lib/tutorFiles";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useQuerySafe } from "@/hooks/useQuerySafe";
 import {
   AiText,
   mathToPlainText,
@@ -2762,11 +2763,14 @@ export default function Tutor() {
     requestId: string;
     conversationId: string;
   } | null>(null);
-  const queuedStatus = useQuery(
+  // useQuerySafe: these two queries survive backend/frontend deploy windows —
+  // if the Convex function is briefly missing (Vercel ships before the Convex
+  // CI deploy), the page stays alive and the queue UI just shows fallbacks.
+  const queuedStatus = useQuerySafe(
     api.aiRouter.getQueueRequest,
     queuedTurn ? { requestId: queuedTurn.requestId as never } : "skip",
   );
-  const myPendingTurn = useQuery(api.aiRouter.getMyPendingQueueRequest);
+  const myPendingTurn = useQuerySafe(api.aiRouter.getMyPendingQueueRequest);
   const awaitingSinceCountRef = useRef<number>(0);
 
   // ── Tutor history search (debounced) ──

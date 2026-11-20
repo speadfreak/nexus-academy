@@ -12,7 +12,7 @@
 // Convex tables the router writes on every turn.
 
 import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useQuerySafe } from "@/hooks/useQuerySafe";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -101,8 +101,10 @@ const HOP_TONE: Record<string, string> = {
 };
 
 export function AdminAiHealthSection() {
-  const data = useQuery(api.aiHealth.getAiHealthDashboard);
-  const queueStats = useQuery(api.aiHealth.getQueueOutcomeStats);
+  // useQuerySafe: admin dashboard survives backend/frontend deploy windows —
+  // a missing/errored AI Health query renders as "loading" instead of crashing.
+  const data = useQuerySafe(api.aiHealth.getAiHealthDashboard);
+  const queueStats = useQuerySafe(api.aiHealth.getQueueOutcomeStats);
 
   if (data === undefined) {
     return (
