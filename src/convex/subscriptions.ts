@@ -145,7 +145,7 @@ export const recordActiveDay = internalMutation({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("asc").take(1))[0];
     if (!sub) return { ok: true };
-    if (!/^^\d{4}-\d{2}-\d{2}$/.test(localDate)) return { ok: true };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return { ok: true };
     if (sub.lastActiveDate === localDate) return { ok: true }; // already counted
 
     if (sub.status === "trial") {
@@ -301,30 +301,44 @@ export const getEntitlements = query({
       };
     }
 
-    const sub = (await ctx.db
+    // `.take(1)[0]` yields `undefined` (not null) when the user has no
+    // subscription row yet — comparing against `null` here once shipped a
+    // production crash ("Cannot read properties of undefined (reading
+    // 'status')") on every dashboard load for fresh users. Normalize first.
+    const sub = ((await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .order("asc").take(1))[0];
+      .order("asc").take(1))[0]) ?? null;
     const premiumAccess = sub !== null && isPremiumStatus(sub.status);
 
     // --- Real free-tier usage counts -------------------------------------
     // Tutor messages in the last 24h (rolling window — same window the gate
     // in ai.ts uses, so the UI count always matches the enforced cap).
+    // Conversations come newest-first (by_user_updatedAt desc) and the walk
+    // STOPS at the first conversation older than the window — a conversation's
+    // updatedAt always reflects its latest message, so everything past that
+    // point is guaranteed outside the window. This replaces the old N+1
+    // crawl over 50 conversations × 200 messages that ran on every dashboard
+    // load.
     const since = Date.now() - 24 * 60 * 60 * 1000;
     let tutorUsedToday = 0;
     const conversations = await ctx.db
       .query("conversations")
       .withIndex("by_user_updatedAt", (q) => q.eq("userId", userId))
+      .order("desc")
       .take(50);
     for (const conversation of conversations) {
+      if (conversation.updatedAt < since) break; // rest are older — stop
       const messages = await ctx.db
         .query("messages")
         .withIndex("by_conversation", (q) =>
           q.eq("conversationId", conversation._id),
         )
+        .order("desc")
         .take(200);
       for (const message of messages) {
-        if (message.role === "user" && message.createdAt >= since) {
+        if (message.createdAt < since) break; // older messages — stop inner walk
+        if (message.role === "user") {
           tutorUsedToday += 1;
         }
       }
@@ -421,7 +435,9 @@ export async function getPremiumAccess(
   const sub = await ctx.runQuery(internal.subscriptions.getSubscriptionByUser, {
     userId,
   });
-  return sub !== null && isPremiumStatus(sub.status);
+  // getSubscriptionByUser normalizes to null (?? null), so this comparison
+  // is safe — but != guards against undefined slipping through future edits.
+  return sub != null && isPremiumStatus(sub.status);
 }
 
 /** Public action used by client polling (mirrors the query for convenience). */

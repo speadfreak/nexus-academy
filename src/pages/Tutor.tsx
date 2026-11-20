@@ -80,6 +80,15 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { clockTime, relativeTime } from "@/lib/dates";
 import { useFriendlyError, errorCode, errorMessage } from "@/lib/errors";
+import {
+  extractTutorFile,
+  formatBytes,
+  isImageFile,
+  isLegacyOfficeFile,
+  isSupportedDocFile,
+  MAX_DOCS_PER_MESSAGE,
+  type TutorFileExtraction,
+} from "@/lib/tutorFiles";
 import { PremiumPrompt } from "@/components/PremiumPrompt";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import {
@@ -113,11 +122,20 @@ import { cn } from "@/lib/utils";
 // Types
 // ---------------------------------------------------------------------------
 
+type MessageFileMeta = {
+  name: string;
+  mime: string;
+  size: number;
+  chars: number;
+  pages?: number;
+};
+
 type MessageDoc = {
   _id: string;
   role: "user" | "assistant";
   content: string;
   images?: string[];
+  files?: MessageFileMeta[];
   createdAt: number;
 };
 
@@ -300,11 +318,13 @@ type SessionState = {
 // shared Learnyx Math Renderer module — mathToSpeech() for text-to-speech,
 // mathToPlainText() for share/copy. Rendering is handled by <AiText />.
 
-/** Downscale an image file to a compact JPEG data URL for vision upload. */
+/** Downscale an image file to a compact JPEG data URL for vision upload.
+ *  1600px / 0.82 keeps dense exam-page text legible for the vision model
+ *  (the old 1024px / 0.78 blurred fine print and hurt OCR accuracy). */
 async function fileToDownscaledDataUrl(
   file: File,
-  maxDim = 1024,
-  quality = 0.78,
+  maxDim = 1600,
+  quality = 0.82,
 ): Promise<string> {
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) {
@@ -767,6 +787,24 @@ const UserMessage = memo(function UserMessage({
                 alt="Attached study material"
                 className="max-h-44 max-w-full rounded-xl border border-primary/20 object-cover"
               />
+            ))}
+          </div>
+        )}
+        {message.files && message.files.length > 0 && (
+          <div className="mb-2 flex flex-wrap justify-end gap-1.5">
+            {message.files.map((file, i) => (
+              <span
+                key={i}
+                className="flex max-w-full items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary"
+                title={`${file.name} · ${formatBytes(file.size)}${file.pages ? ` · ${file.pages} pages` : ""} · read by your tutor`}
+              >
+                <FileText className="size-3 shrink-0" />
+                <span className="max-w-[160px] truncate sm:max-w-[220px]">{file.name}</span>
+                {file.pages ? (
+                  <span className="type-mono shrink-0 text-[9px] opacity-70">p{file.pages}</span>
+                ) : null}
+                <span className="type-mono shrink-0 text-[9px] opacity-70">{formatBytes(file.size)}</span>
+              </span>
             ))}
           </div>
         )}
@@ -2021,9 +2059,11 @@ function Composer({
   fileInputRef,
   onFilesPicked,
   images,
+  docs,
   attaching,
   onAttachClick,
   onRemoveImage,
+  onRemoveDoc,
   onSend,
   isAwaiting,
   speech,
@@ -2041,9 +2081,11 @@ function Composer({
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFilesPicked: (files: FileList | null) => void;
   images: string[];
+  docs: TutorFileExtraction[];
   attaching: boolean;
   onAttachClick: () => void;
   onRemoveImage: (i: number) => void;
+  onRemoveDoc: (i: number) => void;
   onSend: () => void;
   isAwaiting: boolean;
   speech: {
@@ -2121,11 +2163,11 @@ function Composer({
         </AnimatePresence>
 
         {/* Attachment previews */}
-        {images.length > 0 && (
+        {(images.length > 0 || docs.length > 0) && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {images.map((src, i) => (
               <div
-                key={i}
+                key={`img-${i}`}
                 className="group relative size-14 overflow-hidden rounded-lg border border-primary/20"
               >
                 <img src={src} alt="Attachment preview" className="size-full object-cover" />
@@ -2139,8 +2181,40 @@ function Composer({
                 </button>
               </div>
             ))}
+            {docs.map((doc, i) => (
+              <div
+                key={`doc-${i}`}
+                className="group relative flex max-w-[220px] items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2 py-1.5"
+              >
+                <FileText className="size-3.5 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <p className="max-w-[150px] truncate text-[11px] font-semibold leading-tight text-foreground">
+                    {doc.name}
+                  </p>
+                  <p className="type-mono text-[9px] leading-tight text-muted-foreground">
+                    {formatBytes(doc.size)}
+                    {doc.pages ? ` · ${doc.pages} pages` : ""}
+                    {" · "+ doc.chars.toLocaleString() + " chars read"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Remove ${doc.name}`}
+                  onClick={() => onRemoveDoc(i)}
+                  className="ml-0.5 flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/20 hover:text-foreground"
+                >
+                  <X className="size-2.5" />
+                </button>
+              </div>
+            ))}
             <span className="type-mono text-[10px] text-muted-foreground">
-              {images.length}/2 · {t("tutor:attachHint", { defaultValue: "the AI will read your images" })}
+              {images.length > 0 ? `${images.length}/3` : null}
+              {images.length > 0 && docs.length > 0 ? " · " : null}
+              {docs.length > 0 ? `${docs.length}/${MAX_DOCS_PER_MESSAGE}` : null}
+              {" · "}
+              {docs.length > 0
+                ? t("tutor:docAttachHint", { defaultValue: "your files are read and remembered" })
+                : t("tutor:attachHint", { defaultValue: "the AI will read your images" })}
             </span>
           </div>
         )}
@@ -2186,11 +2260,12 @@ function Composer({
             )}
           />
           <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1.5 sm:gap-1.5 sm:border-t sm:border-border/50 sm:px-3 sm:pb-2.5 sm:pt-2">
-            {/* Image upload */}
+            {/* Image + document upload — one picker, both paths. Documents
+                are text-extracted in the browser (see lib/tutorFiles.ts). */}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,.pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.rtf"
               multiple
               className="hidden"
               onChange={(e) => onFilesPicked(e.target.files)}
@@ -2198,9 +2273,13 @@ function Composer({
             <button
               type="button"
               onClick={onAttachClick}
-              disabled={isAwaiting || images.length >= 2 || attaching}
-              aria-label="Attach an image"
-              title="Attach a textbook page, handwritten work or a problem screenshot (max 2)"
+              disabled={
+                isAwaiting ||
+                attaching ||
+                (images.length >= 3 && docs.length >= MAX_DOCS_PER_MESSAGE)
+              }
+              aria-label="Attach an image or document"
+              title="Attach images, PDFs, DOCX, PPTX, XLSX or notes — the tutor reads them and remembers them"
               className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-primary/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
               {attaching ? (
@@ -2548,27 +2627,65 @@ export default function Tutor() {
     }
   }, [speech.error]);
 
-  // ── Image attachments ──
+  // ── Attachments: images + study documents ──────────────────────────────
   const [images, setImages] = useState<string[]>([]);
+  const [docs, setDocs] = useState<TutorFileExtraction[]>([]);
   const [attaching, setAttaching] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleAttach = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const room = 2 - images.length;
-    if (room <= 0) {
-      toast.error("Max 2 images per message.");
-      return;
-    }
     setAttaching(true);
     try {
-      const converted: string[] = [];
-      for (const file of Array.from(files).slice(0, room)) {
-        if (!file.type.startsWith("image/")) continue;
-        converted.push(await fileToDownscaledDataUrl(file));
+      const picked = Array.from(files);
+      const imageRoom = 3 - images.length;
+      const docRoom = MAX_DOCS_PER_MESSAGE - docs.length;
+
+      const nextImages: string[] = [];
+      const nextDocs: TutorFileExtraction[] = [];
+      let skipped = 0;
+
+      for (const file of picked) {
+        if (isImageFile(file)) {
+          if (nextImages.length >= imageRoom) {
+            skipped += 1;
+            continue;
+          }
+          nextImages.push(await fileToDownscaledDataUrl(file));
+        } else if (isSupportedDocFile(file)) {
+          if (nextDocs.length >= docRoom) {
+            skipped += 1;
+            continue;
+          }
+          // Real text extraction — PDF via pdf.js, DOCX/PPTX/XLSX via the
+          // OOXML zip, plain text directly. Throws with a user-facing
+          // message when the file is unreadable.
+          nextDocs.push(await extractTutorFile(file));
+        } else if (isLegacyOfficeFile(file)) {
+          toast.error(
+            `"${file.name}" is a legacy Office file — save it as .docx/.pptx/.xlsx first.`,
+          );
+        } else {
+          skipped += 1;
+        }
       }
-      setImages((prev) => [...prev, ...converted].slice(0, 2));
-    } catch {
-      toast.error("Couldn't read that image — try a JPEG or PNG.");
+
+      if (nextImages.length > 0) {
+        setImages((prev) => [...prev, ...nextImages].slice(0, 3));
+      }
+      if (nextDocs.length > 0) {
+        setDocs((prev) => [...prev, ...nextDocs].slice(0, MAX_DOCS_PER_MESSAGE));
+      }
+      if (skipped > 0) {
+        toast.error(
+          `${skipped} file${skipped === 1 ? "" : "s"} skipped — max 3 images + ${MAX_DOCS_PER_MESSAGE} documents per message.`,
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Couldn't read that file — try a text-based version.",
+      );
     } finally {
       setAttaching(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -2798,11 +2915,20 @@ export default function Tutor() {
     },
   ) => {
     const content = (raw ?? input).trim();
-    if ((!content && images.length === 0) || isAwaiting) return;
+    if ((!content && images.length === 0 && docs.length === 0) || isAwaiting) return;
     setInput("");
     const sentImages = opts?.imagesOverride ?? images;
+    const sentDocs = docs;
     setImages([]);
-    setSending({ content: content || "📸 Solve this and explain every step.", edited: opts?.edited });
+    setDocs([]);
+    setSending({
+      content:
+        content ||
+        (sentImages.length > 0
+          ? "📸 Solve this and explain every step."
+          : `📄 Studying ${sentDocs[0]?.name ?? "your file"}…`),
+      edited: opts?.edited,
+    });
     setIsAwaiting(true);
     setFollowUps([]);
     setMiniCheck(null);
@@ -2817,9 +2943,30 @@ export default function Tutor() {
         mode: effectiveMode,
         grade: (grade ?? undefined) as 9 | 10 | 11 | 12 | undefined,
         images: sentImages.length > 0 ? sentImages : undefined,
+        files:
+          sentDocs.length > 0
+            ? sentDocs.map((doc) => ({
+                name: doc.name,
+                mime: doc.mime,
+                size: doc.size,
+                chars: doc.chars,
+                ...(doc.pages !== undefined ? { pages: doc.pages } : {}),
+                text: doc.text,
+              }))
+            : undefined,
         concise,
       });
       if (!selectedId) setSelectedId(result.conversationId as string);
+
+      // The uploads are now part of the tutor's persistent memory — say so,
+      // so "will it remember this?" is answered before it's asked.
+      if (sentDocs.length > 0) {
+        toast.success(
+          sentDocs.length === 1
+            ? `📄 "${sentDocs[0].name}" saved to your study memory.`
+            : `📄 ${sentDocs.length} files saved to your study memory.`,
+        );
+      }
 
       // Voice output — read the reply aloud when the student enabled it.
       if (voiceOutRef.current) speak(result.reply);
@@ -3154,6 +3301,8 @@ export default function Tutor() {
     setSending(null);
     setIsAwaiting(false);
     setInput("");
+    setImages([]);
+    setDocs([]);
     setEditing(null);
     setFollowUps([]);
     setMiniCheck(null);
@@ -3165,6 +3314,8 @@ export default function Tutor() {
       setSelectedId(id);
       setSending(null);
       setContentId(null);
+      setImages([]);
+      setDocs([]);
       const match = conversations?.find((c) => c._id === (id as never));
       if (match?.subjectId) setScopeSubjectId(match.subjectId as string);
       setMobileNavOpen(false);
@@ -4052,9 +4203,11 @@ export default function Tutor() {
             fileInputRef={fileInputRef}
             onFilesPicked={(files) => void handleAttach(files)}
             images={images}
+            docs={docs}
             attaching={attaching}
             onAttachClick={() => fileInputRef.current?.click()}
             onRemoveImage={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+            onRemoveDoc={(i) => setDocs((prev) => prev.filter((_, j) => j !== i))}
             onSend={() => void handleSend()}
             isAwaiting={isAwaiting}
             speech={speech}

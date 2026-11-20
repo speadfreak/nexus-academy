@@ -38,10 +38,13 @@ export const getJourney = query({
         correlations: [],
       };
     }
-    const sub = (await ctx.db
+    // `.take(1)[0]` is `undefined` for missing rows — normalize to null so
+    // the status read can never throw (same crash class fixed in
+    // subscriptions.getEntitlements).
+    const sub = ((await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .order("asc").take(1))[0];
+      .order("asc").take(1))[0]) ?? null;
     const premiumAccess = sub !== null && isPremiumStatus(sub.status);
 
     // --- Hours per subject ------------------------------------------------

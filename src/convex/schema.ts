@@ -267,8 +267,47 @@ const schema = defineSchema(
       // are sent to the vision model — history replays get "[image attached]"
       // markers instead, so token budgets stay bounded.
       images: v.optional(v.array(v.string())),
+      // Document attachments on user messages (PDF/DOCX/PPTX/XLSX/TXT…).
+      // METADATA ONLY — the extracted text is not stored here (it lives in
+      // tutorFileMemory); this block drives the file chips in the chat UI
+      // and the "[file attached: name]" history markers.
+      files: v.optional(
+        v.array(
+          v.object({
+            name: v.string(),
+            mime: v.string(),
+            size: v.number(),
+            chars: v.number(),
+            pages: v.optional(v.number()),
+          }),
+        ),
+      ),
       createdAt: v.number(),
     }).index("by_conversation", ["conversationId", "createdAt"]),
+
+    // ── Tutor file memory ────────────────────────────────────────────────
+    // What the student has uploaded to the tutor, remembered ACROSS
+    // conversations. One row per unique file (deduped on userId+name+size —
+    // re-uploading the same file refreshes it instead of duplicating).
+    // `text` holds the client-extracted content (capped in ai.sendMessage)
+    // so later turns — and entirely different conversations — can still
+    // reason over what the student is studying. `excerpt` is the short
+    // version injected into every system prompt so the tutor is always
+    // aware of the student's materials without burning the token budget.
+    tutorFileMemory: defineTable({
+      userId: v.id("users"),
+      name: v.string(),
+      mime: v.string(),
+      size: v.number(),
+      chars: v.number(),
+      pages: v.optional(v.number()),
+      excerpt: v.string(),
+      text: v.string(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_user_updatedAt", ["userId", "updatedAt"])
+      .index("by_user_createdAt", ["userId", "createdAt"]),
 
     // Student task list. priority: low | medium | high.
     todos: defineTable({
