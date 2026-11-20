@@ -17,6 +17,8 @@ import type * as adminManagement from "../adminManagement.js";
 import type * as adminTopics from "../adminTopics.js";
 import type * as affiliates from "../affiliates.js";
 import type * as ai from "../ai.js";
+import type * as aiHealth from "../aiHealth.js";
+import type * as aiRouter from "../aiRouter.js";
 import type * as aptitude from "../aptitude.js";
 import type * as aptitudeActions from "../aptitudeActions.js";
 import type * as auth from "../auth.js";
@@ -113,6 +115,8 @@ declare const fullApi: ApiFromModules<{
   adminTopics: typeof adminTopics;
   affiliates: typeof affiliates;
   ai: typeof ai;
+  aiHealth: typeof aiHealth;
+  aiRouter: typeof aiRouter;
   aptitude: typeof aptitude;
   aptitudeActions: typeof aptitudeActions;
   auth: typeof auth;
@@ -220,4 +224,8 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  rateLimiter: ConstructorParameters<
+    typeof import("@convex-dev/rate-limiter").RateLimiter
+  >[0];
+};

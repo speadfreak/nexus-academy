@@ -149,4 +149,26 @@ crons.daily(
   {},
 );
 
+// ── AI tutor reliability layer ──────────────────────────────────────────
+
+// Every 10 minutes: reschedule tutor queue rows whose retry chain was lost
+// (e.g. the backend restarted between scheduled retries). The chain itself
+// runs on exponential backoff; this sweeper only catches rows whose
+// nextAttemptAt has been stale for a minute, so live chains are untouched.
+crons.interval(
+  "ai-queue-sweeper",
+  { minutes: 10 },
+  internal.ai.sweepStaleQueueRequests,
+);
+
+// Daily: AI reliability tables retention — aiCallLog older than 7 days,
+// expired aiAnswerCache rows, terminal aiRequestQueue rows older than 24h,
+// aiProviderState rows untouched for a week. Bounded 500-row batches per
+// table; keeps the AI Health dashboard fast. See src/convex/aiRouter.ts.
+crons.daily(
+  "ai-maintenance",
+  { hourUTC: 3, minuteUTC: 15 },
+  internal.aiRouter.maintenance,
+);
+
 export default crons;

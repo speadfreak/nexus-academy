@@ -84,6 +84,9 @@ import { relativeTime } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
 /* Heavy workspaces load on demand — keeps the /admin route chunk light. */
+const AdminAiHealthSection = lazy(() =>
+  import("@/components/admin/AdminAiHealthSection").then((m) => ({ default: m.AdminAiHealthSection })),
+);
 const AdminContentSection = lazy(() =>
   import("@/components/admin/AdminContentSection").then((m) => ({ default: m.AdminContentSection })),
 );
@@ -1597,6 +1600,13 @@ export default function Admin() {
         {tab === "examengine" && (
           <Suspense fallback={<SectionFallback />}>
             <ExamEngineAdmin />
+          </Suspense>
+        )}
+
+        {/* ══════ AI HEALTH (tutor reliability ops) ══════ */}
+        {tab === "ai" && (
+          <Suspense fallback={<SectionFallback />}>
+            <AdminAiHealthSection />
           </Suspense>
         )}
 

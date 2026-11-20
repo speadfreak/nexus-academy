@@ -424,7 +424,13 @@ function TutorMark({ className }: { className?: string }) {
 // Flat on the canvas: no bubble, no border, no scan lines.
 // ---------------------------------------------------------------------------
 
-function ThinkingIndicator({ modeLabel }: { modeLabel: string }) {
+function ThinkingIndicator({
+  modeLabel,
+  queueStatus,
+}: {
+  modeLabel: string;
+  queueStatus?: { position: number; etaSeconds: number } | null;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -435,7 +441,9 @@ function ThinkingIndicator({ modeLabel }: { modeLabel: string }) {
     >
       <TutorMark className="text-sm" />
       <span className="type-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground/80">
-        Learnyx is thinking
+        {queueStatus
+          ? "Tutor is thinking… (high demand, hang tight)"
+          : "Learnyx is thinking"}
       </span>
       <span className="flex items-center gap-1" aria-hidden="true">
         {[0, 1, 2].map((i) => (
@@ -448,6 +456,11 @@ function ThinkingIndicator({ modeLabel }: { modeLabel: string }) {
         ))}
       </span>
       <span className="type-mono text-[10px] text-muted-foreground/40">· {modeLabel}</span>
+      {queueStatus && (
+        <span className="type-mono text-[10px] text-primary/70">
+          · position {queueStatus.position} · ~{Math.max(5, queueStatus.etaSeconds)}s
+        </span>
+      )}
     </motion.div>
   );
 }
@@ -2738,6 +2751,24 @@ export default function Tutor() {
     selectedId ? { conversationId: selectedId as never } : "skip",
   );
 
+  // ── Queue watching (rate-limit-proof routing) ──
+  // When EVERY AI provider is busy, sendMessage queues the turn in Convex
+  // and returns queued info instead of a reply. The UI keeps showing the
+  // thinking indicator with a live position; when the scheduled retry
+  // worker delivers the answer, it lands in `messages` via Convex
+  // reactivity and the effect below clears the waiting state. The pending
+  // query is also what restores a waiting state after a page refresh.
+  const [queuedTurn, setQueuedTurn] = useState<{
+    requestId: string;
+    conversationId: string;
+  } | null>(null);
+  const queuedStatus = useQuery(
+    api.aiRouter.getQueueRequest,
+    queuedTurn ? { requestId: queuedTurn.requestId as never } : "skip",
+  );
+  const myPendingTurn = useQuery(api.aiRouter.getMyPendingQueueRequest);
+  const awaitingSinceCountRef = useRef<number>(0);
+
   // ── Tutor history search (debounced) ──
   useEffect(() => {
     const id = setTimeout(() => setSearchQ(searchInput), 280);
@@ -2960,6 +2991,7 @@ export default function Tutor() {
     setMiniCheck(null);
     setMiniCheckAnswer(null);
     const effectiveMode = opts?.modeOverride ?? mode;
+    let keepAwaiting = false;
     try {
       const result = await sendMessage({
         conversationId: (selectedId || undefined) as never,
@@ -2984,6 +3016,20 @@ export default function Tutor() {
       });
       if (!selectedId) setSelectedId(result.conversationId as string);
 
+      // Queued path — every provider was busy. The turn is saved in Convex
+      // and a scheduled retry worker answers it; keep the thinking indicator
+      // up (with a live position) and let the reply-landed effect below
+      // close the loop. NEVER an error toast.
+      if (result.queued) {
+        awaitingSinceCountRef.current = messages?.length ?? 0;
+        setQueuedTurn({
+          requestId: result.queued.requestId as string,
+          conversationId: result.conversationId as string,
+        });
+        keepAwaiting = true;
+        return;
+      }
+
       // The uploads are now part of the tutor's persistent memory — say so,
       // so "will it remember this?" is answered before it's asked.
       if (sentDocs.length > 0) {
@@ -2995,7 +3041,7 @@ export default function Tutor() {
       }
 
       // Voice output — read the reply aloud when the student enabled it.
-      if (voiceOutRef.current) speak(result.reply);
+      if (result.reply && voiceOutRef.current) speak(result.reply);
 
       if (session?.running) {
         setSession((s) =>
@@ -3025,7 +3071,9 @@ export default function Tutor() {
       }
     } finally {
       setSending(null);
-      setIsAwaiting(false);
+      // A queued turn keeps the thinking indicator alive until the retry
+      // worker delivers the reply (see the reply-landed effect).
+      if (!keepAwaiting) setIsAwaiting(false);
     }
   };
 
@@ -3034,6 +3082,71 @@ export default function Tutor() {
   useEffect(() => {
     sendRef.current = handleSend;
   });
+
+  // ── Reply-landed effect — closes out a queued turn when the answer
+  // arrives. The retry worker inserts the assistant reply into the
+  // conversation; the messages query updates reactively and this effect
+  // releases the waiting UI (and fires the follow-up chips for the
+  // delivered answer). Survives refreshes because the queue row lives in
+  // Convex, not in component state.
+  useEffect(() => {
+    if (!queuedTurn || !messages) return;
+    const last = messages[messages.length - 1];
+    const workerClosed =
+      queuedStatus?.status === "delivered" || queuedStatus?.status === "graceful";
+    const replyLanded =
+      workerClosed ||
+      (messages.length > awaitingSinceCountRef.current && last?.role === "assistant");
+    if (!replyLanded) return;
+    const convId = queuedTurn.conversationId;
+    setQueuedTurn(null);
+    setIsAwaiting(false);
+    // Follow-ups for the delivered answer — only when the student is still
+    // looking at that conversation (fire-and-forget, never an error).
+    if (selectedId === convId) {
+      void (async () => {
+        setFetchingFollowUps(true);
+        try {
+          const fu = await generateFollowUps({
+            conversationId: convId as never,
+          });
+          setFollowUps(fu.followUps ?? []);
+          setMiniCheck(fu.miniCheck ?? null);
+        } catch {
+          // Non-fatal
+        } finally {
+          setFetchingFollowUps(false);
+        }
+      })();
+    }
+  }, [queuedTurn, queuedStatus, messages, selectedId, generateFollowUps]);
+
+  // Abandoned queue row — the worker gave up for good; stop waiting and say
+  // so honestly (this basically never happens: providers only have to
+  // recover for one attempt in ~40s, then graceful mode keeps the answer
+  // flowing — but the UI must never hang forever).
+  useEffect(() => {
+    if (queuedStatus?.status === "abandoned" && queuedTurn) {
+      setQueuedTurn(null);
+      setIsAwaiting(false);
+      toast.error(
+        "The tutor stayed too busy to answer that one — please send it again.",
+      );
+    }
+  }, [queuedStatus, queuedTurn]);
+
+  // ── Refresh survival — restore the waiting UI if the student refreshed
+  // (or navigated back) while a queued turn is still pending in Convex.
+  useEffect(() => {
+    if (!myPendingTurn || queuedTurn || isAwaiting) return;
+    if (selectedId && myPendingTurn.conversationId !== selectedId) return;
+    awaitingSinceCountRef.current = messages?.length ?? 0;
+    setQueuedTurn({
+      requestId: myPendingTurn._id as string,
+      conversationId: myPendingTurn.conversationId as string,
+    });
+    setIsAwaiting(true);
+  }, [myPendingTurn, queuedTurn, isAwaiting, selectedId, messages]);
 
   // ── Message actions — copy, edit & resend, branch, retry, trim ──
 
@@ -3055,19 +3168,30 @@ export default function Tutor() {
     if (!selectedId || regenerating || isAwaiting) return;
     setRegenerating(true);
     try {
-      await regenerateReply({
+      const regen = await regenerateReply({
         conversationId: selectedId as never,
         mode,
         grade: (grade ?? undefined) as 9 | 10 | 11 | 12 | undefined,
         concise,
       });
+      if (regen.queued) {
+        // Every provider busy — the answer arrives automatically via the
+        // Convex queue worker (survives refresh). isAwaiting hands the
+        // waiting state to the queue watcher (reply-landed effect).
+        awaitingSinceCountRef.current = messages?.length ?? 0;
+        setQueuedTurn({
+          requestId: regen.queued.requestId as string,
+          conversationId: selectedId as string,
+        });
+        setIsAwaiting(true);
+      }
     } catch (error) {
       if (errorCode(error) === "daily_limit_reached") setCapPromptOpen(true);
       else toast.error(friendlyError(error, "Couldn't regenerate the answer."));
     } finally {
       setRegenerating(false);
     }
-  }, [selectedId, regenerating, isAwaiting, regenerateReply, mode, grade, concise, friendlyError]);
+  }, [selectedId, regenerating, isAwaiting, regenerateReply, mode, grade, concise, friendlyError, messages]);
 
   const saveEdit = useCallback(async (message: MessageDoc, content: string) => {
     if (!selectedId || !content.trim() || isAwaiting) return;
@@ -3100,7 +3224,15 @@ export default function Tutor() {
         concise,
       });
       setSelectedId(result.conversationId as string);
-      toast.success("Branch created — the original conversation stays untouched.");
+      if (result.queued) {
+        // Every provider busy — the branch + edited message already exist;
+        // the Convex queue worker answers it and the reply appears live.
+        toast(
+          "Branch created — the tutor is busy right now, your answer will appear here automatically.",
+        );
+      } else {
+        toast.success("Branch created — the original conversation stays untouched.");
+      }
     } catch (error) {
       if (errorCode(error) === "daily_limit_reached") setCapPromptOpen(true);
       else toast.error(friendlyError(error, "Couldn't create the branch."));
@@ -4119,6 +4251,14 @@ export default function Tutor() {
                   {(isAwaiting || regenerating) && (
                     <ThinkingIndicator
                       modeLabel={regenerating && !isAwaiting ? "Regenerating" : modeLabel}
+                      queueStatus={
+                        queuedTurn && queuedTurn.conversationId === (selectedId ?? "")
+                          ? {
+                              position: queuedStatus?.position ?? 1,
+                              etaSeconds: queuedStatus?.etaSeconds ?? 20,
+                            }
+                          : null
+                      }
                     />
                   )}
                 </AnimatePresence>
