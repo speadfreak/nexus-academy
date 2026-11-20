@@ -361,16 +361,29 @@ export const PdfStage = memo(function PdfStage({
 
   // ── Stable file prop (never re-creates the document on re-render) ───
   // THE DETACHED-ARRAYBUFFER CONTRACT (this file's #1 invariant):
-  //   pdf.js constructs a view over ANY ArrayBuffer it receives, then
-  //   TRANSFERS it into its worker (GetDocRequest → `[data.buffer]`) — the
-  //   main-thread copy dies on first use. react-pdf re-runs getDocument()
-  //   whenever the `file` OBJECT identity changes. Therefore `file` may
-  //   only be rebuilt from a PROVABLY fresh buffer (a new fullBuffer from
-  //   the load engine — cache decode or fresh download) — never re-wrapped
-  //   from one pdf.js already consumed.
+  //   pdf.js TRANSFERS the ArrayBuffer it receives into its worker
+  //   (GetDocRequest → `[data.buffer]`) — the main-thread copy is DETACHED
+  //   on the first getDocument(). react-pdf re-runs getDocument() whenever
+  //   this object's identity changes, and useMemo is a CACHE, not a
+  //   guarantee: React may legitimately discard it and re-initialize this
+  //   memo with the SAME fullBuffer at any time (remounts, concurrent
+  //   re-renders — this was the production "Cannot perform Construct on a
+  //   detached ArrayBuffer" crash caught by LazyErrorBoundary on /read).
+  //   So the master fullBuffer state must NEVER be handed to pdf.js: this
+  //   memo hands it a PRIVATE byte copy (slice()), keeping fullBuffer
+  //   detached-free forever. Re-initialization with the same master now
+  //   always yields a fresh, consumable copy. Defensive: if fullBuffer
+  //   somehow arrived pre-detached, slice() throws — return null so the
+  //   loader/retry card renders instead of crashing the engine boundary.
+  //   Cost: one extra byte copy per document open (tens of ms for a 40MB
+  //   textbook) — cheap insurance against a whole-page crash.
   const file = useMemo(() => {
-    if (fullBuffer) return { data: fullBuffer };
-    return null;
+    if (!fullBuffer) return null;
+    try {
+      return { data: fullBuffer.slice(0) };
+    } catch {
+      return null;
+    }
   }, [fullBuffer]);
 
   // ── Page navigation with direction for the flip animation ───────────
