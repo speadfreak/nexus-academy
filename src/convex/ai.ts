@@ -11,7 +11,8 @@
 // 8,000 tokens-per-minute per model, so every character in a turn is
 // budgeted: 6-message history + a rolling Convex-stored summary of older
 // turns, a compact system prompt, relevance-scored file chunks instead of
-// whole documents, 720 max completion tokens and reasoning_effort "low" for
+// whole documents, 2,048-token completions that the router auto-continues
+// and stitches when they hit the cap, and reasoning_effort "low" for
 // reasoning models — all enforced against a hard per-request input budget.
 
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -109,8 +110,13 @@ const MAX_SUMMARY_CHARS = 1_100;
 const FILE_CHUNK_TOKEN_BUDGET = 1_800;
 /** Re-grounding head on later turns (was 8,000 chars). */
 const MAX_FOLLOWUP_FILE_CHARS = 4_000;
-/** Max completion tokens for tutor replies (was 4096). */
-export const MAX_COMPLETION_TOKENS = 720;
+/**
+ * Max completion tokens per model call for tutor replies (was 720 — the #1
+ * cause of "The reply reached its length limit mid-answer"). Replies that
+ * fill this are auto-continued and stitched by the router, so a single
+ * answer can reach ~3x this before the fallback marker ever appears.
+ */
+export const MAX_COMPLETION_TOKENS = 2048;
 /** Per-message cap in the trimmed history window (chars). */
 const HISTORY_MESSAGE_CHAR_CAP = 500;
 /** Token reserve for chat-template overhead + safety margin. */
