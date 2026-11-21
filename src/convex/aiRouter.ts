@@ -63,8 +63,13 @@ export function estimateTokens(text: string): number {
   return Math.ceil(ascii / 4) + Math.ceil(nonAscii * 0.9);
 }
 
-/** Hard per-request INPUT budget — the diet the prompt builder must fit. */
-export const HARD_INPUT_BUDGET_TOKENS = 6200;
+/**
+ * Hard per-request INPUT budget — the diet the prompt builder must fit.
+ * Sized so the worst-case turn (full input + full 2,048-token completion)
+ * still projects under Groq's 8,000 TPM per-model free tier, keeping Groq
+ * eligible for every turn rather than pushing everything to Gemini.
+ */
+export const HARD_INPUT_BUDGET_TOKENS = 7500;
 
 // ---------------------------------------------------------------------------
 // Model catalog — free-tier providers, best-quality-first for tutor turns
@@ -79,6 +84,8 @@ export interface ModelSpec {
   quality: number; // route preference — higher is better
   vision: boolean;
   maxInputTokens: number;
+  /** Model's own hard output cap. Per-turn requests clamp to it via
+   *  req.maxOutputTokens (min of the two is what actually gets sent). */
   maxOutputTokens: number;
   rpm: number;
   tpm: number;
@@ -99,7 +106,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 95,
     vision: false,
     maxInputTokens: 6200,
-    maxOutputTokens: 720,
+    maxOutputTokens: 32768,
     ...GROQ_LIMITS,
     tokenParam: "max_completion_tokens",
     reasoningEffort: true,
@@ -111,7 +118,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 90,
     vision: true,
     maxInputTokens: 10000,
-    maxOutputTokens: 720,
+    maxOutputTokens: 8192,
     rpm: 30,
     tpm: 250000,
     rpd: 1400,
@@ -124,7 +131,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 88,
     vision: false,
     maxInputTokens: 6200,
-    maxOutputTokens: 720,
+    maxOutputTokens: 32768,
     ...GROQ_LIMITS,
     tokenParam: "max_tokens",
     unstable: true,
@@ -136,7 +143,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 86,
     vision: false,
     maxInputTokens: 6000,
-    maxOutputTokens: 720,
+    maxOutputTokens: 32768,
     rpm: 8,
     tpm: 30000,
     tokenParam: "max_tokens",
@@ -149,7 +156,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 82,
     vision: false,
     maxInputTokens: 6200,
-    maxOutputTokens: 720,
+    maxOutputTokens: 32768,
     ...GROQ_LIMITS,
     tokenParam: "max_completion_tokens",
     reasoningEffort: true,
@@ -161,7 +168,9 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 72,
     vision: false,
     maxInputTokens: 6000,
-    maxOutputTokens: 720,
+    // Free OpenRouter models are slow and rotate often — keep their output
+    // clamp modest so a full-length generation can't outrun the call timeout.
+    maxOutputTokens: 2048,
     rpm: 18,
     tpm: 60000,
     rpd: 48,
@@ -174,7 +183,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 74,
     vision: false,
     maxInputTokens: 6000,
-    maxOutputTokens: 720,
+    maxOutputTokens: 8192,
     rpm: 8,
     tpm: 30000,
     tokenParam: "max_tokens",
@@ -187,7 +196,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 62,
     vision: false,
     maxInputTokens: 6200,
-    maxOutputTokens: 720,
+    maxOutputTokens: 8192,
     ...GROQ_LIMITS,
     tokenParam: "max_tokens",
     unstable: true,
@@ -199,7 +208,7 @@ export const QUALITY_ORDER: ModelSpec[] = [
     quality: 68,
     vision: false,
     maxInputTokens: 6000,
-    maxOutputTokens: 720,
+    maxOutputTokens: 2048,
     rpm: 18,
     tpm: 60000,
     rpd: 48,
@@ -376,6 +385,8 @@ interface AdapterCallInput {
   spec: ModelSpec;
   temperature: number;
   timeoutMs: number;
+  /** Effective output cap for THIS call: min(req.maxOutputTokens, spec cap). */
+  maxTokens: number;
 }
 
 interface AdapterOk {
@@ -391,12 +402,11 @@ async function callOpenAiCompatible(input: AdapterCallInput): Promise<AdapterOk>
   const body: Record<string, unknown> = {
     model,
     messages,
-    [spec.tokenParam]: spec.maxOutputTokens,
+    [spec.tokenParam]: input.maxTokens,
     temperature,
   };
-  // gpt-oss reasoning models on Groq/Cerebras: low effort keeps the visible
-  // answer inside the 720-token completion budget instead of burning tokens
-  // in hidden chain-of-thought.
+  // gpt-oss reasoning models on Groq/Cerebras: low effort keeps hidden
+  // chain-of-thought from eating into the visible answer's completion budget.
   if (spec.reasoningEffort) body.reasoning_effort = "low";
 
   const controller = new AbortController();
@@ -479,7 +489,7 @@ async function groqVisionSpec(ctx: ActionCtx): Promise<ModelSpec | null> {
       quality: 92,
       vision: true,
       maxInputTokens: 6200,
-      maxOutputTokens: 900,
+      maxOutputTokens: 4096,
       rpm: GROQ_LIMITS.rpm,
       tpm: GROQ_LIMITS.tpm,
       rpd: GROQ_LIMITS.rpd,
@@ -701,6 +711,83 @@ const CALL_TIMEOUT_VISION_MS = 30_000;
 /** Rough token cost of one attached image (vision turns only). */
 const EST_TOKENS_PER_IMAGE = 600;
 
+// ---------------------------------------------------------------------------
+// Auto-continuation — the student never types "continue"
+// ---------------------------------------------------------------------------
+// When a reply hits the output cap mid-answer (finish_reason "length"), the
+// router immediately asks the SAME model to continue from the exact stop
+// point and stitches the parts together, up to MAX_CONTINUATION_ROUNDS extra
+// calls. The "say continue" fallback note in ai.ts only survives for
+// pathological cases (every continuation also truncated, or the provider
+// went away mid-answer).
+
+const MAX_CONTINUATION_ROUNDS = 2;
+/** Don't START another continuation after this much turn time has elapsed
+ *  (each round still gets its full call timeout once started). */
+const CONTINUATION_ELAPSED_CAP_MS = 30_000;
+
+const CONTINUE_INSTRUCTION =
+  "Your previous reply was cut off by a length limit. CONTINUE it from the " +
+  "exact point where it stopped. Rules: output ONLY the continuation — no " +
+  "preamble (never 'Sure', 'Certainly' or 'Continuing'), no repetition of " +
+  "any earlier text, do not restart the answer. Complete the interrupted " +
+  "sentence, formula or markdown block first, then finish the remaining " +
+  "answer naturally. Keep all mathematics in $…$ or $$…$.";
+
+/** Join a continuation onto its truncated prefix so markdown and LaTeX
+ *  survive the seam. Handles the two failure modes models actually show:
+ *  replaying the tail (overlap dedup) and restarting the whole answer
+ *  (adopt the longer re-emission). */
+export function stitchContinuation(prev: string, next: string): string {
+  const left = prev.trimEnd();
+  const cont = next.trim();
+  if (!cont) return left;
+  // A model that re-emits the whole reply is adopted as a fresh, longer take.
+  const head = prev.trimStart().slice(0, 120);
+  if (head.length >= 60 && cont.includes(head) && cont.length > prev.length) {
+    return cont;
+  }
+  // Overlap dedup: some models replay the final lines before continuing.
+  // Find the longest suffix of the prefix that the continuation re-emits.
+  // >= 12 chars (2-3 words): real replays always clear this, while 1-2
+  // character coincidences ("42") are left alone.
+  const MIN_OVERLAP = 12;
+  const maxCheck = Math.min(left.length, cont.length, 400);
+  for (let len = maxCheck; len >= MIN_OVERLAP; len--) {
+    if (left.endsWith(cont.slice(0, len))) {
+      const rest = cont.slice(len).trimStart();
+      return rest ? joinContinuationSeam(left, rest) : left;
+    }
+  }
+  return joinContinuationSeam(left, cont);
+}
+
+function joinContinuationSeam(left: string, cont: string): string {
+  const lc = left.slice(-1);
+  const rc = cont.slice(0, 1);
+  // Never inject whitespace inside a LaTeX region: escape sequences, brace
+  // groups and $ delimiters must meet tightly across the seam.
+  if (
+    lc === "\\" || lc === "{" || lc === "}" || lc === "$" ||
+    rc === "\\" || rc === "{" || rc === "}" || rc === "$"
+  ) {
+    return left + cont;
+  }
+  // A cut mid-LaTeX-command-name ("\fra" + "c{3}{4}") — a space here would
+  // corrupt the command. Plain prose cuts get a space instead (math mode
+  // ignores spaces, so "x^2" + " + 1" joins safely either way).
+  if (/\\[a-zA-Z]+$/.test(left)) return left + cont;
+  // An unfinished list item / table row continues on the same line.
+  const lastLine = left.slice(left.lastIndexOf("\n") + 1).trimEnd();
+  if (/^(?:[-*+]|\d+[.)]|[A-Za-z][.)])\s+\S/.test(lastLine) && !/[.!?:]$/.test(lastLine)) {
+    const tight = /[A-Za-z0-9]/.test(lc) && /[A-Za-z0-9]/.test(rc) ? " " : "";
+    return left + tight + cont;
+  }
+  // Mid-sentence → single space; sentence/paragraph boundary → blank line.
+  if (/[.!?:;]/.test(lc) || /^[#>*|-]/.test(rc)) return `${left}\n\n${cont}`;
+  return `${left} ${cont}`;
+}
+
 function buildMessages(
   req: RouteTurnRequest,
 ): { role: string; content: unknown }[] {
@@ -832,7 +919,10 @@ export async function routeChat(
     const projectedTokens =
       (state?.tpmWindowStart && now - state.tpmWindowStart < 60_000 ? (state.tpmUsedEst ?? 0) : 0) +
       estInputTokens +
-      spec.maxOutputTokens;
+      // Project with the output size we'll actually REQUEST (clamped to the
+      // model's cap) — not the model's full headroom, or every raise of the
+      // per-turn budget would falsely skip the model on TPM headroom.
+      Math.min(req.maxOutputTokens, spec.maxOutputTokens);
     if (projectedTokens > spec.tpm) {
       const wait = state?.tpmWindowStart && now - state.tpmWindowStart < 60_000
         ? 60_000 - (now - state.tpmWindowStart)
@@ -853,54 +943,23 @@ export async function routeChat(
 
     // -- attempt -------------------------------------------------------------
     const hopStart = Date.now();
+    const callTimeoutMs =
+      req.images && req.images.length > 0 ? CALL_TIMEOUT_VISION_MS : CALL_TIMEOUT_MS;
+    const effOut = Math.min(req.maxOutputTokens, spec.maxOutputTokens);
+    let apiKey = "";
+    let first: AdapterOk | null = null;
     try {
-      const apiKey = await resolveProviderApiKey(ctx, spec.provider);
-      const result = await callOpenAiCompatible({
+      apiKey = await resolveProviderApiKey(ctx, spec.provider);
+      first = await callOpenAiCompatible({
         provider: spec.provider,
         apiKey,
         model: spec.model,
         messages: buildMessages(req),
         spec,
         temperature: req.temperature,
-        timeoutMs: req.images && req.images.length > 0 ? CALL_TIMEOUT_VISION_MS : CALL_TIMEOUT_MS,
+        maxTokens: effOut,
+        timeoutMs: callTimeoutMs,
       });
-      const latencyMs = Date.now() - hopStart;
-      hops.push({
-        provider: spec.provider,
-        model: spec.model,
-        status: "ok",
-        latencyMs,
-      });
-      await ctx.runMutation(internal.aiRouter.recordAttempt, {
-        key: spec.key,
-        provider: spec.provider,
-        model: spec.model,
-        kind: "success",
-        estTokens: result.promptTokens ?? estInputTokens + (result.completionTokens ?? 0),
-        rpmLimit: spec.rpm,
-        tpmLimit: spec.tpm,
-        rpdLimit: spec.rpd,
-      });
-      await logTurn(ctx, req, {
-        cacheHit: false,
-        provider: spec.provider,
-        model: spec.model,
-        hops,
-        latencyMs: Date.now() - startedAt,
-        estInputTokens,
-        outputTokens: result.completionTokens,
-      });
-      return {
-        ok: true,
-        text: result.text,
-        finishReason: result.finishReason,
-        provider: spec.provider,
-        model: spec.model,
-        hops,
-        estInputTokens,
-        outputTokens: result.completionTokens,
-        latencyMs: Date.now() - startedAt,
-      };
     } catch (error) {
       const latencyMs = Date.now() - hopStart;
       const skip =
@@ -932,7 +991,141 @@ export async function routeChat(
         tpmLimit: spec.tpm,
         rpdLimit: spec.rpd,
       }).catch(() => undefined);
+      continue;
     }
+    if (!first) continue;
+
+    // -- success: complete a truncated answer BEFORE the student sees it -----
+    hops.push({
+      provider: spec.provider,
+      model: spec.model,
+      status: "ok",
+      latencyMs: Date.now() - hopStart,
+    });
+    await ctx.runMutation(internal.aiRouter.recordAttempt, {
+      key: spec.key,
+      provider: spec.provider,
+      model: spec.model,
+      kind: "success",
+      estTokens: first.promptTokens ?? estInputTokens + (first.completionTokens ?? 0),
+      rpmLimit: spec.rpm,
+      tpmLimit: spec.tpm,
+      rpdLimit: spec.rpd,
+    }).catch(() => undefined);
+
+    let text = first.text;
+    let finishReason = first.finishReason;
+    let completionTokens = first.completionTokens;
+    if (finishReason === "length") {
+      const baseMessages = buildMessages(req);
+      for (
+        let round = 1;
+        round <= MAX_CONTINUATION_ROUNDS && finishReason === "length";
+        round++
+      ) {
+        if (Date.now() - startedAt > CONTINUATION_ELAPSED_CAP_MS) {
+          hops.push({
+            provider: spec.provider,
+            model: spec.model,
+            status: "skipped",
+            latencyMs: 0,
+            detail: "continuation turn budget exhausted",
+          });
+          break;
+        }
+        const contStart = Date.now();
+        try {
+          // Same provider/model that produced the partial — it has capacity
+          // and the context. Text timeout even for vision turns keeps the
+          // whole action safely inside Convex's action time limit.
+          const cont = await callOpenAiCompatible({
+            provider: spec.provider,
+            apiKey,
+            model: spec.model,
+            messages: [
+              ...baseMessages,
+              { role: "assistant", content: text },
+              { role: "user", content: CONTINUE_INSTRUCTION },
+            ],
+            spec,
+            temperature: req.temperature,
+            maxTokens: effOut,
+            timeoutMs: CALL_TIMEOUT_MS,
+          });
+          const stitched = stitchContinuation(text, cont.text);
+          if (stitched === text) {
+            finishReason = "stop"; // model stalled — don't loop on it
+            break;
+          }
+          text = stitched;
+          finishReason = cont.finishReason;
+          completionTokens = (completionTokens ?? 0) + (cont.completionTokens ?? 0);
+          hops.push({
+            provider: spec.provider,
+            model: spec.model,
+            status: "ok",
+            latencyMs: Date.now() - contStart,
+            detail: `continuation ${round}`,
+          });
+          await ctx.runMutation(internal.aiRouter.recordAttempt, {
+            key: spec.key,
+            provider: spec.provider,
+            model: spec.model,
+            kind: "success",
+            estTokens: cont.promptTokens ?? estInputTokens + (cont.completionTokens ?? 0),
+            rpmLimit: spec.rpm,
+            tpmLimit: spec.tpm,
+            rpdLimit: spec.rpd,
+          }).catch(() => undefined);
+        } catch (contError) {
+          // Continuation hiccup — keep the stitched partial. A genuine 429
+          // still teaches the router so the next turn routes around it.
+          const skip =
+            contError instanceof RouterSkip
+              ? contError
+              : new RouterSkip("error", spec.provider, spec.model, contError instanceof Error ? contError.message : String(contError));
+          hops.push({
+            provider: spec.provider,
+            model: spec.model,
+            status: skip.kind,
+            latencyMs: Date.now() - contStart,
+            detail: `continuation ${round}: ${skip.message.slice(0, 180)}`,
+          });
+          if (skip.kind === "rate_limited") {
+            await ctx.runMutation(internal.aiRouter.recordAttempt, {
+              key: spec.key,
+              provider: spec.provider,
+              model: spec.model,
+              kind: skip.kind,
+              retryAfterMs: skip.retryAfterMs,
+              detail: skip.message.slice(0, 300),
+            }).catch(() => undefined);
+          }
+          break;
+        }
+      }
+    }
+
+    await logTurn(ctx, req, {
+      cacheHit: false,
+      provider: spec.provider,
+      model: spec.model,
+      hops,
+      latencyMs: Date.now() - startedAt,
+      estInputTokens,
+      outputTokens: completionTokens,
+    });
+    return {
+      ok: true,
+      text,
+      finishReason,
+      provider: spec.provider,
+      model: spec.model,
+      hops,
+      estInputTokens,
+      outputTokens: completionTokens,
+      latencyMs: Date.now() - startedAt,
+    };
   }
 
   await logTurn(ctx, req, {
